@@ -179,6 +179,93 @@ describe("SAPAIEmbeddingModel", () => {
     });
   });
 
+  describe("constructor validation", () => {
+    it("should validate modelParams at construction time", () => {
+      expect(
+        () =>
+          new SAPAIEmbeddingModel(
+            "text-embedding-ada-002",
+            {
+              modelParams: {
+                dimensions: -1, // Invalid: must be positive
+              },
+            },
+            defaultConfig,
+          ),
+      ).toThrow();
+    });
+
+    it("should accept valid modelParams", () => {
+      expect(
+        () =>
+          new SAPAIEmbeddingModel(
+            "text-embedding-3-small",
+            {
+              modelParams: {
+                dimensions: 1536,
+                encoding_format: "float",
+                normalize: true,
+              },
+            },
+            defaultConfig,
+          ),
+      ).not.toThrow();
+    });
+
+    it("should reject invalid dimensions (non-integer)", () => {
+      expect(
+        () =>
+          new SAPAIEmbeddingModel(
+            "text-embedding-ada-002",
+            {
+              modelParams: {
+                dimensions: 1.5, // Invalid: must be integer
+              },
+            },
+            defaultConfig,
+          ),
+      ).toThrow();
+    });
+
+    it("should reject invalid encoding_format", () => {
+      expect(
+        () =>
+          new SAPAIEmbeddingModel(
+            "text-embedding-ada-002",
+            {
+              modelParams: {
+                // @ts-expect-error - Testing invalid enum value
+                encoding_format: "invalid",
+              },
+            },
+            defaultConfig,
+          ),
+      ).toThrow();
+    });
+
+    it("should reject non-boolean normalize", () => {
+      expect(
+        () =>
+          new SAPAIEmbeddingModel(
+            "text-embedding-ada-002",
+            {
+              modelParams: {
+                // @ts-expect-error - Testing invalid type
+                normalize: "true",
+              },
+            },
+            defaultConfig,
+          ),
+      ).toThrow();
+    });
+
+    it("should not throw when modelParams is undefined", () => {
+      expect(
+        () => new SAPAIEmbeddingModel("text-embedding-ada-002", {}, defaultConfig),
+      ).not.toThrow();
+    });
+  });
+
   describe("doEmbed", () => {
     it("should generate embeddings with correct result structure", async () => {
       const model = new SAPAIEmbeddingModel("text-embedding-ada-002", {}, defaultConfig);

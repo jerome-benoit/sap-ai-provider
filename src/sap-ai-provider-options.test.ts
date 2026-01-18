@@ -5,17 +5,22 @@
  * `providerOptions['sap-ai']` in AI SDK calls.
  */
 
+import type { SharedV3Warning } from "@ai-sdk/provider";
+
 import { safeValidateTypes } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 
 import {
+  embeddingModelParamsSchema,
   modelParamsSchema,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
   type SAPAIEmbeddingProviderOptions,
   sapAILanguageModelProviderOptions,
   type SAPAILanguageModelProviderOptions,
+  validateEmbeddingModelParamsSettings,
   validateModelParamsSettings,
+  validateModelParamsWithWarnings,
 } from "./sap-ai-provider-options";
 
 describe("SAP_AI_PROVIDER_NAME", () => {
@@ -25,17 +30,12 @@ describe("SAP_AI_PROVIDER_NAME", () => {
 });
 
 describe("sapAILanguageModelProviderOptions", () => {
-  // Helper to validate options using the schema
-  const validateLanguageModelOptions = async (value: unknown) => {
-    return safeValidateTypes({
-      schema: sapAILanguageModelProviderOptions,
-      value,
-    });
-  };
-
   describe("valid options", () => {
     it("should accept empty object", async () => {
-      const result = await validateLanguageModelOptions({});
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {},
+      });
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.value).toEqual({});
@@ -43,7 +43,10 @@ describe("sapAILanguageModelProviderOptions", () => {
     });
 
     it("should accept includeReasoning boolean", async () => {
-      const result = await validateLanguageModelOptions({ includeReasoning: true });
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { includeReasoning: true },
+      });
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.value).toEqual({ includeReasoning: true });
@@ -51,8 +54,9 @@ describe("sapAILanguageModelProviderOptions", () => {
     });
 
     it("should accept modelParams with temperature", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { temperature: 0.7 },
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { modelParams: { temperature: 0.7 } },
       });
       expect(result.success).toBe(true);
       if (result.success) {
@@ -73,7 +77,10 @@ describe("sapAILanguageModelProviderOptions", () => {
           topP: 0.9,
         },
       };
-      const result = await validateLanguageModelOptions(options);
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: options,
+      });
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.value).toEqual(options);
@@ -81,10 +88,13 @@ describe("sapAILanguageModelProviderOptions", () => {
     });
 
     it("should allow passthrough of unknown modelParams fields", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: {
-          customField: "custom-value",
-          temperature: 0.5,
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          modelParams: {
+            customField: "custom-value",
+            temperature: 0.5,
+          },
         },
       });
       expect(result.success).toBe(true);
@@ -100,86 +110,18 @@ describe("sapAILanguageModelProviderOptions", () => {
   });
 
   describe("validation constraints", () => {
-    it("should reject temperature below 0", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { temperature: -0.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject temperature above 2", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { temperature: 2.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject frequencyPenalty below -2", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { frequencyPenalty: -2.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject frequencyPenalty above 2", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { frequencyPenalty: 2.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject presencePenalty below -2", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { presencePenalty: -2.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject presencePenalty above 2", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { presencePenalty: 2.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject topP below 0", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { topP: -0.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject topP above 1", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { topP: 1.1 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-positive maxTokens", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { maxTokens: 0 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-integer maxTokens", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { maxTokens: 100.5 },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-positive n", async () => {
-      const result = await validateLanguageModelOptions({
-        modelParams: { n: 0 },
+    it("should reject invalid modelParams", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { modelParams: { temperature: 99 } },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject includeReasoning non-boolean", async () => {
-      const result = await validateLanguageModelOptions({
-        includeReasoning: "true",
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { includeReasoning: "true" },
       });
       expect(result.success).toBe(false);
     });
@@ -201,50 +143,36 @@ describe("sapAILanguageModelProviderOptions", () => {
 });
 
 describe("sapAIEmbeddingProviderOptions", () => {
-  // Helper to validate options using the schema
-  const validateEmbeddingOptions = async (value: unknown) => {
-    return safeValidateTypes({
-      schema: sapAIEmbeddingProviderOptions,
-      value,
-    });
-  };
-
   describe("valid options", () => {
     it("should accept empty object", async () => {
-      const result = await validateEmbeddingOptions({});
+      const result = await safeValidateTypes({
+        schema: sapAIEmbeddingProviderOptions,
+        value: {},
+      });
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.value).toEqual({});
       }
     });
 
-    it("should accept type 'text'", async () => {
-      const result = await validateEmbeddingOptions({ type: "text" });
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.value).toEqual({ type: "text" });
-      }
-    });
-
-    it("should accept type 'query'", async () => {
-      const result = await validateEmbeddingOptions({ type: "query" });
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.value).toEqual({ type: "query" });
-      }
-    });
-
-    it("should accept type 'document'", async () => {
-      const result = await validateEmbeddingOptions({ type: "document" });
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.value).toEqual({ type: "document" });
-      }
-    });
+    it.each([{ type: "text" as const }, { type: "query" as const }, { type: "document" as const }])(
+      "should accept type '$type'",
+      async ({ type }) => {
+        const result = await safeValidateTypes({
+          schema: sapAIEmbeddingProviderOptions,
+          value: { type },
+        });
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.value).toEqual({ type });
+        }
+      },
+    );
 
     it("should accept modelParams as record", async () => {
-      const result = await validateEmbeddingOptions({
-        modelParams: { dimensions: 1536 },
+      const result = await safeValidateTypes({
+        schema: sapAIEmbeddingProviderOptions,
+        value: { modelParams: { dimensions: 1536 } },
       });
       expect(result.success).toBe(true);
       if (result.success) {
@@ -257,7 +185,10 @@ describe("sapAIEmbeddingProviderOptions", () => {
         modelParams: { customParam: true, dimensions: 1536 },
         type: "query" as const,
       };
-      const result = await validateEmbeddingOptions(options);
+      const result = await safeValidateTypes({
+        schema: sapAIEmbeddingProviderOptions,
+        value: options,
+      });
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.value).toEqual(options);
@@ -267,15 +198,25 @@ describe("sapAIEmbeddingProviderOptions", () => {
 
   describe("validation constraints", () => {
     it("should reject invalid type value", async () => {
-      const result = await validateEmbeddingOptions({
-        type: "invalid",
+      const result = await safeValidateTypes({
+        schema: sapAIEmbeddingProviderOptions,
+        value: { type: "invalid" },
       });
       expect(result.success).toBe(false);
     });
 
     it("should reject type as number", async () => {
-      const result = await validateEmbeddingOptions({
-        type: 123,
+      const result = await safeValidateTypes({
+        schema: sapAIEmbeddingProviderOptions,
+        value: { type: 123 },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid modelParams", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAIEmbeddingProviderOptions,
+        value: { modelParams: { dimensions: -1 } },
       });
       expect(result.success).toBe(false);
     });
@@ -408,49 +349,219 @@ describe("modelParamsSchema", () => {
 });
 
 describe("validateModelParamsSettings", () => {
-  describe("valid settings", () => {
-    it("should accept valid modelParams", () => {
-      expect(() =>
-        validateModelParamsSettings({
-          maxTokens: 1000,
-          temperature: 0.7,
-        }),
-      ).not.toThrow();
-    });
+  it("should accept valid modelParams", () => {
+    expect(() =>
+      validateModelParamsSettings({
+        maxTokens: 1000,
+        temperature: 0.7,
+      }),
+    ).not.toThrow();
+  });
 
-    it("should return validated params", () => {
-      const result = validateModelParamsSettings({
-        temperature: 0.5,
-        topP: 0.9,
-      });
-      expect(result).toEqual({
-        temperature: 0.5,
-        topP: 0.9,
-      });
+  it("should return validated params", () => {
+    const result = validateModelParamsSettings({
+      temperature: 0.5,
+      topP: 0.9,
+    });
+    expect(result).toEqual({
+      temperature: 0.5,
+      topP: 0.9,
     });
   });
 
-  describe("invalid settings (throws ZodError)", () => {
-    it("should throw on invalid temperature", () => {
-      expect(() => validateModelParamsSettings({ temperature: 3 })).toThrow();
+  it("should throw on invalid params", () => {
+    expect(() => validateModelParamsSettings({ temperature: 99 })).toThrow();
+  });
+
+  it("should throw with descriptive error message", () => {
+    try {
+      validateModelParamsSettings({ temperature: -1 });
+      expect.fail("Should have thrown");
+    } catch (error) {
+      expect(error).toBeDefined();
+      expect(String(error)).toContain("temperature");
+    }
+  });
+});
+
+describe("validateModelParamsWithWarnings", () => {
+  describe("consistency with modelParamsSchema", () => {
+    const testCases = [
+      // Valid values - should NOT produce warnings
+      { desc: "empty object", expectWarning: false, params: {} },
+      { desc: "temperature at min (0)", expectWarning: false, params: { temperature: 0 } },
+      { desc: "temperature at max (2)", expectWarning: false, params: { temperature: 2 } },
+      { desc: "temperature in range", expectWarning: false, params: { temperature: 0.7 } },
+      { desc: "topP at min (0)", expectWarning: false, params: { topP: 0 } },
+      { desc: "topP at max (1)", expectWarning: false, params: { topP: 1 } },
+      { desc: "topP in range", expectWarning: false, params: { topP: 0.5 } },
+      {
+        desc: "frequencyPenalty at min (-2)",
+        expectWarning: false,
+        params: { frequencyPenalty: -2 },
+      },
+      {
+        desc: "frequencyPenalty at max (2)",
+        expectWarning: false,
+        params: { frequencyPenalty: 2 },
+      },
+      {
+        desc: "presencePenalty at min (-2)",
+        expectWarning: false,
+        params: { presencePenalty: -2 },
+      },
+      { desc: "presencePenalty at max (2)", expectWarning: false, params: { presencePenalty: 2 } },
+      { desc: "maxTokens at min (1)", expectWarning: false, params: { maxTokens: 1 } },
+      { desc: "maxTokens in range", expectWarning: false, params: { maxTokens: 1000 } },
+
+      // Invalid values - SHOULD produce warnings
+      { desc: "temperature below min", expectWarning: true, params: { temperature: -0.1 } },
+      { desc: "temperature above max", expectWarning: true, params: { temperature: 2.1 } },
+      { desc: "topP below min", expectWarning: true, params: { topP: -0.1 } },
+      { desc: "topP above max", expectWarning: true, params: { topP: 1.1 } },
+      {
+        desc: "frequencyPenalty below min",
+        expectWarning: true,
+        params: { frequencyPenalty: -2.1 },
+      },
+      {
+        desc: "frequencyPenalty above max",
+        expectWarning: true,
+        params: { frequencyPenalty: 2.1 },
+      },
+      { desc: "presencePenalty below min", expectWarning: true, params: { presencePenalty: -2.1 } },
+      { desc: "presencePenalty above max", expectWarning: true, params: { presencePenalty: 2.1 } },
+      { desc: "maxTokens at zero", expectWarning: true, params: { maxTokens: 0 } },
+      { desc: "maxTokens negative", expectWarning: true, params: { maxTokens: -1 } },
+    ];
+
+    for (const { desc, expectWarning, params } of testCases) {
+      it(`validateModelParamsWithWarnings should ${expectWarning ? "warn" : "NOT warn"} for ${desc}`, () => {
+        const warnings: SharedV3Warning[] = [];
+        validateModelParamsWithWarnings(params, warnings);
+
+        // Verify consistency: warning result should match schema validation result
+        const schemaResult = modelParamsSchema.safeParse(params);
+        const schemaIsValid = schemaResult.success;
+        const hasWarnings = warnings.length > 0;
+
+        // Key invariant: if schema says invalid, we should have warnings; if valid, no warnings
+        expect(hasWarnings).toBe(!schemaIsValid);
+        expect(hasWarnings).toBe(expectWarning);
+      });
+    }
+
+    it("should produce warnings with type 'other'", () => {
+      const warnings: SharedV3Warning[] = [];
+      validateModelParamsWithWarnings({ temperature: 3 }, warnings);
+
+      expect(warnings.length).toBeGreaterThan(0);
+      expect(warnings[0].type).toBe("other");
     });
 
-    it("should throw on invalid maxTokens", () => {
-      expect(() => validateModelParamsSettings({ maxTokens: -10 })).toThrow();
+    it("should include parameter name in warning message", () => {
+      const warnings: SharedV3Warning[] = [];
+      validateModelParamsWithWarnings({ temperature: 3, topP: 2 }, warnings);
+
+      expect(warnings.length).toBe(2);
+      // Find warning for each parameter
+      const tempWarning = warnings.find(
+        (w) => w.type === "other" && w.message.includes("temperature"),
+      );
+      const topPWarning = warnings.find((w) => w.type === "other" && w.message.includes("topP"));
+      expect(tempWarning).toBeDefined();
+      expect(topPWarning).toBeDefined();
+    });
+  });
+});
+
+describe("embeddingModelParamsSchema", () => {
+  describe("valid parameters", () => {
+    it("should accept empty object", () => {
+      const result = embeddingModelParamsSchema.safeParse({});
+      expect(result.success).toBe(true);
     });
 
-    it("should throw on invalid topP", () => {
-      expect(() => validateModelParamsSettings({ topP: 2 })).toThrow();
+    it("should accept all known parameters", () => {
+      const result = embeddingModelParamsSchema.safeParse({
+        dimensions: 1536,
+        encoding_format: "float",
+        normalize: true,
+      });
+      expect(result.success).toBe(true);
     });
 
-    it("should throw with descriptive error message", () => {
-      try {
-        validateModelParamsSettings({ temperature: -1 });
-        expect.fail("Should have thrown");
-      } catch (error) {
-        expect(error).toBeDefined();
-        expect(String(error)).toContain("temperature");
+    it("should accept dimensions as positive integer", () => {
+      const result = embeddingModelParamsSchema.safeParse({ dimensions: 256 });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept all encoding_format values", () => {
+      for (const format of ["float", "base64", "binary"] as const) {
+        const result = embeddingModelParamsSchema.safeParse({ encoding_format: format });
+        expect(result.success).toBe(true);
       }
+    });
+
+    it("should accept unknown additional properties", () => {
+      const result = embeddingModelParamsSchema.safeParse({
+        customProperty: "value",
+        dimensions: 1536,
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("invalid parameters", () => {
+    it("should reject non-positive dimensions", () => {
+      const result = embeddingModelParamsSchema.safeParse({ dimensions: 0 });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject negative dimensions", () => {
+      const result = embeddingModelParamsSchema.safeParse({ dimensions: -1 });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject non-integer dimensions", () => {
+      const result = embeddingModelParamsSchema.safeParse({ dimensions: 1.5 });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject invalid encoding_format", () => {
+      const result = embeddingModelParamsSchema.safeParse({ encoding_format: "invalid" });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject non-boolean normalize", () => {
+      const result = embeddingModelParamsSchema.safeParse({ normalize: "true" });
+      expect(result.success).toBe(false);
+    });
+  });
+});
+
+describe("validateEmbeddingModelParamsSettings", () => {
+  it("should accept valid embedding params", () => {
+    expect(() =>
+      validateEmbeddingModelParamsSettings({
+        dimensions: 1536,
+        encoding_format: "float",
+      }),
+    ).not.toThrow();
+  });
+
+  it("should throw on invalid dimensions", () => {
+    expect(() => validateEmbeddingModelParamsSettings({ dimensions: -1 })).toThrow();
+  });
+
+  it("should return validated params", () => {
+    const result = validateEmbeddingModelParamsSettings({
+      dimensions: 1536,
+      normalize: true,
+    });
+    expect(result).toEqual({
+      dimensions: 1536,
+      normalize: true,
     });
   });
 });

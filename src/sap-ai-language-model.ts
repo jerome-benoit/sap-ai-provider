@@ -39,6 +39,7 @@ import {
   SAP_AI_PROVIDER_NAME,
   sapAILanguageModelProviderOptions,
   validateModelParamsSettings,
+  validateModelParamsWithWarnings,
 } from "./sap-ai-provider-options";
 import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings";
 
@@ -978,8 +979,8 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       modelParams.seed = options.seed;
     }
 
-    // Validate AI SDK options
-    validateAISDKParameters(
+    // Warn on out-of-range AI SDK options; API is authoritative
+    validateModelParamsWithWarnings(
       {
         frequencyPenalty: options.frequencyPenalty,
         maxTokens: options.maxOutputTokens,
@@ -1206,69 +1207,5 @@ function mapFinishReason(reason: string | undefined): LanguageModelV3FinishReaso
       return { raw, unified: "length" };
     default:
       return { raw, unified: "other" };
-  }
-}
-
-/**
- * Validates AI SDK standard parameters and adds warnings for out-of-range values.
- * Only warns (does not throw) to allow API-side validation to be authoritative.
- * @param params - AI SDK options parameters
- * @param params.frequencyPenalty - Frequency penalty
- * @param params.maxTokens - Max tokens
- * @param params.presencePenalty - Presence penalty
- * @param params.temperature - Temperature
- * @param params.topP - Top P
- * @param warnings - Warnings array
- * @internal
- */
-function validateAISDKParameters(
-  params: {
-    frequencyPenalty?: number;
-    maxTokens?: number;
-    presencePenalty?: number;
-    temperature?: number;
-    topP?: number;
-  },
-  warnings: SharedV3Warning[],
-): void {
-  if (params.temperature !== undefined && (params.temperature < 0 || params.temperature > 2)) {
-    warnings.push({
-      message: `temperature=${String(params.temperature)} is outside typical range [0, 2]. The API may reject this value.`,
-      type: "other",
-    });
-  }
-
-  if (params.topP !== undefined && (params.topP < 0 || params.topP > 1)) {
-    warnings.push({
-      message: `topP=${String(params.topP)} is outside valid range [0, 1]. The API may reject this value.`,
-      type: "other",
-    });
-  }
-
-  if (
-    params.frequencyPenalty !== undefined &&
-    (params.frequencyPenalty < -2 || params.frequencyPenalty > 2)
-  ) {
-    warnings.push({
-      message: `frequencyPenalty=${String(params.frequencyPenalty)} is outside typical range [-2, 2]. The API may reject this value.`,
-      type: "other",
-    });
-  }
-
-  if (
-    params.presencePenalty !== undefined &&
-    (params.presencePenalty < -2 || params.presencePenalty > 2)
-  ) {
-    warnings.push({
-      message: `presencePenalty=${String(params.presencePenalty)} is outside typical range [-2, 2]. The API may reject this value.`,
-      type: "other",
-    });
-  }
-
-  if (params.maxTokens !== undefined && params.maxTokens <= 0) {
-    warnings.push({
-      message: `maxTokens=${String(params.maxTokens)} must be positive. The API will likely reject this value.`,
-      type: "other",
-    });
   }
 }

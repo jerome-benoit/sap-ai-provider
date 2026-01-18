@@ -14,7 +14,11 @@ import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
 
 import { convertToAISDKError } from "./sap-ai-error.js";
-import { SAP_AI_PROVIDER_NAME, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
+import {
+  SAP_AI_PROVIDER_NAME,
+  sapAIEmbeddingProviderOptions,
+  validateEmbeddingModelParamsSettings,
+} from "./sap-ai-provider-options.js";
 
 /**
  * Default maximum number of embeddings per call.
@@ -131,6 +135,10 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
     settings: SAPAIEmbeddingSettings = {},
     config: SAPAIEmbeddingConfig,
   ) {
+    // Validate modelParams at construction time
+    if (settings.modelParams) {
+      validateEmbeddingModelParamsSettings(settings.modelParams);
+    }
     this.modelId = modelId;
     this.settings = settings;
     this.config = config;
