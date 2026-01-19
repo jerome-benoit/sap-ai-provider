@@ -55,8 +55,9 @@ import { lazySchema, zodSchema } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
 /**
- * The provider identifier used for provider options.
- * Use this key in `providerOptions` to pass SAP AI-specific options.
+ * Default provider name.
+ *
+ * Use this as key in `providerOptions` and `providerMetadata` when using the default provider name.
  * @example
  * ```typescript
  * providerOptions: {
@@ -67,23 +68,23 @@ import { z } from "zod";
 export const SAP_AI_PROVIDER_NAME = "sap-ai" as const;
 
 /**
- * Extracts the base provider name from a full provider identifier.
+ * Extracts the provider name from a provider identifier.
  *
- * Following the AI SDK convention, provider identifiers use the format `{name}.{modelType}`
- * (e.g., "openai.chat", "anthropic.messages"). This function extracts the base name
- * for use with `providerOptions` and `providerMetadata`, which use the base name as key.
- * @param provider - The full provider identifier (e.g., "sap-ai.chat", "sap-ai.embedding")
- * @returns The base provider name (e.g., "sap-ai")
+ * Following the AI SDK convention, provider identifiers use the format `{name}.{type}`
+ * (e.g., `"openai.chat"`, `"anthropic.messages"`). This function extracts the provider name
+ * for use with `providerOptions` and `providerMetadata`, which use the provider name as key.
+ * @param providerIdentifier - The provider identifier (e.g., `"sap-ai.chat"`, `"sap-ai.embedding"`)
+ * @returns The provider name (e.g., `"sap-ai"`)
  * @example
  * ```typescript
- * getBaseProviderName("sap-ai.chat") // => "sap-ai"
- * getBaseProviderName("sap-ai-core.embedding") // => "sap-ai-core"
- * getBaseProviderName("sap-ai") // => "sap-ai" (backward compatible)
+ * getProviderName("sap-ai.chat") // => "sap-ai"
+ * getProviderName("sap-ai-core.embedding") // => "sap-ai-core"
+ * getProviderName("sap-ai") // => "sap-ai" (no type suffix)
  * ```
  */
-export function getBaseProviderName(provider: string): string {
-  const dotIndex = provider.indexOf(".");
-  return dotIndex === -1 ? provider : provider.slice(0, dotIndex);
+export function getProviderName(providerIdentifier: string): string {
+  const dotIndex = providerIdentifier.indexOf(".");
+  return dotIndex === -1 ? providerIdentifier : providerIdentifier.slice(0, dotIndex);
 }
 
 /**

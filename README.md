@@ -548,7 +548,7 @@ authentication, model parameters, data masking, content filtering, and more.
 
 **Common Configuration:**
 
-- `name`: Provider base name (default: 'sap-ai').
+- `name`: Provider name (default: `'sap-ai'`). Used as key in `providerOptions`/`providerMetadata`.
 - `resourceGroup`: SAP AI Core resource group (default: 'default')
 - `deploymentId`: Specific deployment ID (auto-resolved if not set)
 - `modelParams`: Temperature, maxTokens, topP, and other generation parameters

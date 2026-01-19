@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   embeddingModelParamsSchema,
-  getBaseProviderName,
+  getProviderName,
   modelParamsSchema,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
@@ -30,31 +30,31 @@ describe("SAP_AI_PROVIDER_NAME", () => {
   });
 });
 
-describe("getBaseProviderName", () => {
-  it("should extract base name from provider.chat format", () => {
-    expect(getBaseProviderName("sap-ai.chat")).toBe("sap-ai");
+describe("getProviderName", () => {
+  it("should extract provider name from identifier with .chat suffix", () => {
+    expect(getProviderName("sap-ai.chat")).toBe("sap-ai");
   });
 
-  it("should extract base name from provider.embedding format", () => {
-    expect(getBaseProviderName("sap-ai.embedding")).toBe("sap-ai");
+  it("should extract provider name from identifier with .embedding suffix", () => {
+    expect(getProviderName("sap-ai.embedding")).toBe("sap-ai");
   });
 
-  it("should extract base name from custom provider names", () => {
-    expect(getBaseProviderName("sap-ai-core.chat")).toBe("sap-ai-core");
-    expect(getBaseProviderName("my-custom-provider.embedding")).toBe("my-custom-provider");
+  it("should extract provider name from custom provider identifiers", () => {
+    expect(getProviderName("sap-ai-core.chat")).toBe("sap-ai-core");
+    expect(getProviderName("my-custom-provider.embedding")).toBe("my-custom-provider");
   });
 
-  it("should return the input unchanged if no dot is present (backward compatible)", () => {
-    expect(getBaseProviderName("sap-ai")).toBe("sap-ai");
-    expect(getBaseProviderName("openai")).toBe("openai");
+  it("should return the input unchanged if no dot is present", () => {
+    expect(getProviderName("sap-ai")).toBe("sap-ai");
+    expect(getProviderName("openai")).toBe("openai");
   });
 
   it("should handle empty string", () => {
-    expect(getBaseProviderName("")).toBe("");
+    expect(getProviderName("")).toBe("");
   });
 
   it("should only split on first dot", () => {
-    expect(getBaseProviderName("sap.ai.chat")).toBe("sap");
+    expect(getProviderName("sap.ai.chat")).toBe("sap");
   });
 });
 

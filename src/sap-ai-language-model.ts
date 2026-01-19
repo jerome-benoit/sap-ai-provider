@@ -45,7 +45,7 @@ interface FunctionToolWithParameters extends LanguageModelV3FunctionTool {
 import { convertToSAPMessages } from "./convert-to-sap-messages";
 import { convertToAISDKError } from "./sap-ai-error";
 import {
-  getBaseProviderName,
+  getProviderName,
   sapAILanguageModelProviderOptions,
   validateModelParamsSettings,
   validateModelParamsWithWarnings,
@@ -372,13 +372,13 @@ export class SAPAILanguageModel implements LanguageModelV3 {
         toolCalls,
       };
 
-      const baseProviderName = getBaseProviderName(this.config.provider);
+      const providerName = getProviderName(this.config.provider);
 
       return {
         content,
         finishReason,
         providerMetadata: {
-          [baseProviderName]: {
+          [providerName]: {
             finishReason: finishReasonRaw ?? "unknown",
             finishReasonMapped: finishReason,
             ...(typeof responseHeaders?.["x-request-id"] === "string"
@@ -540,7 +540,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
       const sdkStream = streamResponse.stream;
       const modelId = this.modelId;
-      const baseProviderName = getBaseProviderName(this.config.provider);
+      const providerName = getProviderName(this.config.provider);
 
       const warningsSnapshot = [...warnings];
 
@@ -768,7 +768,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
             controller.enqueue({
               finishReason: streamState.finishReason,
               providerMetadata: {
-                [baseProviderName]: {
+                [providerName]: {
                   finishReason: streamState.finishReason.raw,
                   responseId,
                 },
@@ -833,9 +833,9 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     orchestrationConfig: OrchestrationModuleConfig;
     warnings: SharedV3Warning[];
   }> {
-    const baseProviderName = getBaseProviderName(this.config.provider);
+    const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
-      provider: baseProviderName,
+      provider: providerName,
       providerOptions: options.providerOptions,
       schema: sapAILanguageModelProviderOptions,
     });

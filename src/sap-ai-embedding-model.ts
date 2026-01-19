@@ -24,7 +24,7 @@ import { OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
 
 import { convertToAISDKError } from "./sap-ai-error.js";
 import {
-  getBaseProviderName,
+  getProviderName,
   sapAIEmbeddingProviderOptions,
   validateEmbeddingModelParamsSettings,
 } from "./sap-ai-provider-options.js";
@@ -176,11 +176,11 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
   async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result> {
     const { abortSignal, providerOptions, values } = options;
 
-    const baseProviderName = getBaseProviderName(this.config.provider);
+    const providerName = getProviderName(this.config.provider);
 
     // Parse and validate provider options with Zod schema
     const sapOptions = await parseProviderOptions({
-      provider: baseProviderName,
+      provider: providerName,
       providerOptions,
       schema: sapAIEmbeddingProviderOptions,
     });
@@ -221,7 +221,7 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       );
 
       const providerMetadata: SharedV3ProviderMetadata = {
-        [baseProviderName]: {
+        [providerName]: {
           model: this.modelId,
         },
       };

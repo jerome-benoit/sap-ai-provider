@@ -148,11 +148,12 @@ export interface SAPAIProvider extends ProviderV3 {
  *   resourceGroup: 'production'
  * });
  *
- * // With custom provider name (for providerOptions and providerMetadata keys)
+ * // With provider name
  * const provider = createSAPAIProvider({
  *   name: 'sap-ai-core',
  *   resourceGroup: 'default'
  * });
+ * console.log(provider('gpt-4o').provider); // => "sap-ai-core.chat"
  *
  * // With custom destination
  * const provider = createSAPAIProvider({
@@ -198,22 +199,25 @@ export interface SAPAIProviderSettings {
   readonly destination?: HttpDestinationOrFetchOptions;
 
   /**
-   * Custom provider name.
+   * Provider name.
    *
-   * This name is used as the key for `providerOptions` and `providerMetadata` in AI SDK calls.
-   * Useful when you want to use a different identifier than the default 'sap-ai'.
+   * Used as the key for `providerOptions` and `providerMetadata` in AI SDK calls.
+   * The provider identifier (exposed via `model.provider`) follows the AI SDK convention
+   * `{name}.{type}` (e.g., `"sap-ai.chat"`, `"sap-ai.embedding"`).
    * @default 'sap-ai'
    * @example
    * ```typescript
-   * // Use custom name for providerOptions
    * const provider = createSAPAIProvider({ name: 'sap-ai-core' });
+   * const model = provider('gpt-4o');
    *
-   * // Then in AI SDK calls:
+   * console.log(model.provider); // => "sap-ai-core.chat"
+   *
+   * // Use provider name in providerOptions:
    * await generateText({
-   *   model: provider('gpt-4o'),
+   *   model,
    *   prompt: 'Hello',
    *   providerOptions: {
-   *     'sap-ai-core': { includeReasoning: true }  // Uses custom name
+   *     'sap-ai-core': { includeReasoning: true }
    *   }
    * });
    * ```

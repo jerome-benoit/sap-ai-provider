@@ -77,7 +77,7 @@ consistently:
     - [Error Handling Strategy](#error-handling-strategy)
   - [`OrchestrationErrorResponse`](#orchestrationerrorresponse)
 - [Utility Functions](#utility-functions)
-  - [`getBaseProviderName(provider)`](#getbaseprovidernameprovider)
+  - [`getProviderName(providerIdentifier)`](#getprovidernameprovideridentifier)
   - [`convertToSAPMessages(prompt)`](#converttosapmessagesprompt)
   - [`buildDpiMaskingProvider(config)`](#builddpimaskingproviderconfig)
   - [`buildAzureContentSafetyFilter(type, config?)`](#buildazurecontentsafetyfiltertype-config)
@@ -696,7 +696,7 @@ Implementation of Vercel AI SDK's `EmbeddingModelV3` interface.
 | ---------------------- | -------- | ------------------------------------------------- |
 | `specificationVersion` | `'v3'`   | API specification version                         |
 | `modelId`              | `string` | Embedding model identifier                        |
-| `provider`             | `string` | Provider name (`'sap-ai'`)                        |
+| `provider`             | `string` | Provider identifier (`'sap-ai.embedding'`)        |
 | `maxEmbeddingsPerCall` | `number` | Maximum values per `doEmbed` call (default: 2048) |
 
 **Methods:**
@@ -975,14 +975,14 @@ Configuration options for the SAP AI Provider.
 
 **Properties:**
 
-| Property                | Type                            | Default     | Description                                                                                                                       |
-| ----------------------- | ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                  | `string`                        | `'sap-ai'`  | Provider base name for `providerOptions`/`providerMetadata` keys. Models use `{name}.chat` or `{name}.embedding` format           |
-| `resourceGroup`         | `string`                        | `'default'` | SAP AI Core resource group                                                                                                        |
-| `deploymentId`          | `string`                        | Auto        | SAP AI Core deployment ID                                                                                                         |
-| `destination`           | `HttpDestinationOrFetchOptions` | -           | Custom destination configuration                                                                                                  |
-| `defaultSettings`       | `SAPAISettings`                 | -           | Default model settings applied to all models                                                                                      |
-| `warnOnAmbiguousConfig` | `boolean`                       | `true`      | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins) |
+| Property                | Type                            | Default     | Description                                                                                                                                |
+| ----------------------- | ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                  | `string`                        | `'sap-ai'`  | Provider name used as key in `providerOptions`/`providerMetadata`. Provider identifier uses `{name}.{type}` format (e.g., `"sap-ai.chat"`) |
+| `resourceGroup`         | `string`                        | `'default'` | SAP AI Core resource group                                                                                                                 |
+| `deploymentId`          | `string`                        | Auto        | SAP AI Core deployment ID                                                                                                                  |
+| `destination`           | `HttpDestinationOrFetchOptions` | -           | Custom destination configuration                                                                                                           |
+| `defaultSettings`       | `SAPAISettings`                 | -           | Default model settings applied to all models                                                                                               |
+| `warnOnAmbiguousConfig` | `boolean`                       | `true`      | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)          |
 
 **Example:**
 
@@ -1000,34 +1000,34 @@ const settings: SAPAIProviderSettings = {
 };
 ```
 
-**Example with custom provider name:**
+**Example with provider name:**
 
 ```typescript
 import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
 import { generateText } from "ai";
 
-// Create provider with custom name
+// Create provider with name
 const provider = createSAPAIProvider({
-  name: "sap-ai-core", // Custom name for providerOptions/providerMetadata
+  name: "sap-ai-core",
   resourceGroup: "production",
 });
 
-// model.provider will be "sap-ai-core.chat"
+// Provider identifier: "sap-ai-core.chat"
 const model = provider("gpt-4o");
+console.log(model.provider); // => "sap-ai-core.chat"
 
-// Use custom name in providerOptions
+// Use provider name in providerOptions
 const result = await generateText({
   model,
   prompt: "Hello",
   providerOptions: {
     "sap-ai-core": {
-      // Uses custom name as key
       includeReasoning: true,
     },
   },
 });
 
-// providerMetadata also uses custom name
+// providerMetadata also uses provider name as key
 console.log(result.providerMetadata?.["sap-ai-core"]);
 ```
 
@@ -1193,7 +1193,7 @@ validated at runtime using Zod schemas.
 
 ### SAP AI Provider Name Constant
 
-The provider identifier constant used in `providerOptions`.
+The default provider name constant. Use as key in `providerOptions` and `providerMetadata`.
 
 **Value:** `"sap-ai"`
 
@@ -1387,14 +1387,14 @@ Implementation of Vercel AI SDK's `LanguageModelV3` interface.
 
 **Properties:**
 
-| Property                      | Type           | Description                    |
-| ----------------------------- | -------------- | ------------------------------ |
-| `specificationVersion`        | `'v3'`         | API specification version      |
-| `defaultObjectGenerationMode` | `'json'`       | Default object generation mode |
-| `supportsImageUrls`           | `true`         | Image URL support flag         |
-| `supportsStructuredOutputs`   | `true`         | Structured output support      |
-| `modelId`                     | `SAPAIModelId` | Current model identifier       |
-| `provider`                    | `string`       | Provider name ('sap-ai')       |
+| Property                      | Type           | Description                           |
+| ----------------------------- | -------------- | ------------------------------------- |
+| `specificationVersion`        | `'v3'`         | API specification version             |
+| `defaultObjectGenerationMode` | `'json'`       | Default object generation mode        |
+| `supportsImageUrls`           | `true`         | Image URL support flag                |
+| `supportsStructuredOutputs`   | `true`         | Structured output support             |
+| `modelId`                     | `SAPAIModelId` | Current model identifier              |
+| `provider`                    | `string`       | Provider identifier (`'sap-ai.chat'`) |
 
 **Methods:**
 
@@ -1656,36 +1656,36 @@ advanced use cases.
 > **Architecture Context:** For message transformation flow and format details,
 > see [Architecture - Message Conversion](./ARCHITECTURE.md#message-conversion).
 
-### `getBaseProviderName(provider)`
+### `getProviderName(providerIdentifier)`
 
-Extracts the base provider name from a full provider identifier.
+Extracts the provider name from a provider identifier.
 
 Following the AI SDK convention, provider identifiers use the format
-`{name}.{modelType}` (e.g., `"openai.chat"`, `"anthropic.messages"`). This
-function extracts the base name for use with `providerOptions` and
-`providerMetadata`, which use the base name as key.
+`{name}.{type}` (e.g., `"openai.chat"`, `"anthropic.messages"`). This
+function extracts the provider name for use with `providerOptions` and
+`providerMetadata`, which use the provider name as key.
 
 **Signature:**
 
 ```typescript
-function getBaseProviderName(provider: string): string;
+function getProviderName(providerIdentifier: string): string;
 ```
 
 **Parameters:**
 
-- `provider`: The full provider identifier (e.g., `"sap-ai.chat"`,
+- `providerIdentifier`: The provider identifier (e.g., `"sap-ai.chat"`,
   `"sap-ai.embedding"`)
 
-**Returns:** The base provider name (e.g., `"sap-ai"`)
+**Returns:** The provider name (e.g., `"sap-ai"`)
 
 **Example:**
 
 ```typescript
-import { getBaseProviderName } from "@mymediset/sap-ai-provider";
+import { getProviderName } from "@mymediset/sap-ai-provider";
 
-getBaseProviderName("sap-ai.chat"); // => "sap-ai"
-getBaseProviderName("sap-ai-core.embedding"); // => "sap-ai-core"
-getBaseProviderName("sap-ai"); // => "sap-ai" (backward compatible)
+getProviderName("sap-ai.chat"); // => "sap-ai"
+getProviderName("sap-ai-core.embedding"); // => "sap-ai-core"
+getProviderName("sap-ai"); // => "sap-ai" (no type suffix)
 ```
 
 **Use Case:**
@@ -1694,7 +1694,7 @@ This function is useful when working with dynamic provider names or when you
 need to access `providerMetadata` using the model's provider identifier:
 
 ```typescript
-import { createSAPAIProvider, getBaseProviderName } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider, getProviderName } from "@mymediset/sap-ai-provider";
 import { generateText } from "ai";
 
 const provider = createSAPAIProvider({ name: "my-sap" });
@@ -1702,9 +1702,9 @@ const model = provider("gpt-4o");
 
 const result = await generateText({ model, prompt: "Hello" });
 
-// Use getBaseProviderName to access metadata with the correct key
-const baseName = getBaseProviderName(model.provider); // "my-sap"
-const metadata = result.providerMetadata?.[baseName];
+// Use getProviderName to access metadata with the correct key
+const providerName = getProviderName(model.provider); // "my-sap"
+const metadata = result.providerMetadata?.[providerName];
 ```
 
 ---

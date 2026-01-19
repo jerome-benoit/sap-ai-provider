@@ -284,49 +284,49 @@ describe("createSAPAIProvider", () => {
   });
 });
 
-describe("custom provider name", () => {
-  describe("language models use {name}.chat pattern", () => {
-    it("should use default provider name 'sap-ai.chat' when name is not specified", () => {
+describe("provider name", () => {
+  describe("language models use {name}.chat provider identifier", () => {
+    it("should use default provider identifier 'sap-ai.chat' when name is not specified", () => {
       const provider = createSAPAIProvider();
       const model = provider("gpt-4o");
       expect(model.provider).toBe("sap-ai.chat");
     });
 
-    it("should use custom provider name with .chat suffix when specified", () => {
+    it("should use provider identifier with .chat suffix when name is specified", () => {
       const provider = createSAPAIProvider({ name: "sap-ai-core" });
       const model = provider("gpt-4o");
       expect(model.provider).toBe("sap-ai-core.chat");
     });
 
-    it("should apply custom name to chat models", () => {
+    it("should apply provider name to chat models", () => {
       const provider = createSAPAIProvider({ name: "my-custom-provider" });
       const model = provider.chat("gpt-4o");
       expect(model.provider).toBe("my-custom-provider.chat");
     });
 
-    it("should apply custom name to languageModel method", () => {
+    it("should apply provider name to languageModel method", () => {
       const provider = createSAPAIProvider({ name: "custom-sap" });
       const model = provider.languageModel("gpt-4o");
       expect(model.provider).toBe("custom-sap.chat");
     });
   });
 
-  describe("embedding models use {name}.embedding pattern", () => {
-    it("should apply custom name to embedding models", () => {
+  describe("embedding models use {name}.embedding provider identifier", () => {
+    it("should apply provider name to embedding models", () => {
       const provider = createSAPAIProvider({ name: "sap-ai-embeddings" });
       const model = provider.embedding("text-embedding-ada-002");
       expect(model.provider).toBe("sap-ai-embeddings.embedding");
     });
 
-    it("should apply custom name to embeddingModel method", () => {
+    it("should apply provider name to embeddingModel method", () => {
       const provider = createSAPAIProvider({ name: "custom-embeddings" });
       const model = provider.embeddingModel("text-embedding-3-small");
       expect(model.provider).toBe("custom-embeddings.embedding");
     });
   });
 
-  describe("works with other provider settings", () => {
-    it("should work with other provider settings", () => {
+  describe("provider name works with other settings", () => {
+    it("should work with defaultSettings and resourceGroup", () => {
       const provider = createSAPAIProvider({
         defaultSettings: {
           modelParams: { temperature: 0.7 },
