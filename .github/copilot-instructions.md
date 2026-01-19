@@ -107,7 +107,7 @@ This should complete in under 15 seconds total and all commands should pass.
 ```
 .
 ├── .github/               # GitHub Actions workflows and configs
-├── examples/              # Example usage files (8 examples)
+├── examples/              # Example usage files (9 examples)
 ├── src/                   # TypeScript source code
 │   ├── index.ts                    # Main exports
 │   ├── sap-ai-provider.ts          # Main provider implementation

@@ -77,6 +77,7 @@ consistently:
     - [Error Handling Strategy](#error-handling-strategy)
   - [`OrchestrationErrorResponse`](#orchestrationerrorresponse)
 - [Utility Functions](#utility-functions)
+  - [`getBaseProviderName(provider)`](#getbaseprovidernameprovider)
   - [`convertToSAPMessages(prompt)`](#converttosapmessagesprompt)
   - [`buildDpiMaskingProvider(config)`](#builddpimaskingproviderconfig)
   - [`buildAzureContentSafetyFilter(type, config?)`](#buildazurecontentsafetyfiltertype-config)
@@ -974,13 +975,14 @@ Configuration options for the SAP AI Provider.
 
 **Properties:**
 
-| Property                | Type                            | Default       | Description                                                                                                                       |
-| ----------------------- | ------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `resourceGroup`         | `string`                        | `'default'`   | SAP AI Core resource group                                                                                                        |
-| `deploymentId`          | `string`                        | Auto-resolved | SAP AI Core deployment ID                                                                                                         |
-| `destination`           | `HttpDestinationOrFetchOptions` | -             | Custom destination configuration                                                                                                  |
-| `defaultSettings`       | `SAPAISettings`                 | -             | Default model settings applied to all models                                                                                      |
-| `warnOnAmbiguousConfig` | `boolean`                       | `true`        | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins) |
+| Property                | Type                            | Default     | Description                                                                                                                       |
+| ----------------------- | ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                  | `string`                        | `'sap-ai'`  | Provider base name for `providerOptions`/`providerMetadata` keys. Models use `{name}.chat` or `{name}.embedding` format           |
+| `resourceGroup`         | `string`                        | `'default'` | SAP AI Core resource group                                                                                                        |
+| `deploymentId`          | `string`                        | Auto        | SAP AI Core deployment ID                                                                                                         |
+| `destination`           | `HttpDestinationOrFetchOptions` | -           | Custom destination configuration                                                                                                  |
+| `defaultSettings`       | `SAPAISettings`                 | -           | Default model settings applied to all models                                                                                      |
+| `warnOnAmbiguousConfig` | `boolean`                       | `true`      | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins) |
 
 **Example:**
 
@@ -996,6 +998,37 @@ const settings: SAPAIProviderSettings = {
     },
   },
 };
+```
+
+**Example with custom provider name:**
+
+```typescript
+import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { generateText } from "ai";
+
+// Create provider with custom name
+const provider = createSAPAIProvider({
+  name: "sap-ai-core", // Custom name for providerOptions/providerMetadata
+  resourceGroup: "production",
+});
+
+// model.provider will be "sap-ai-core.chat"
+const model = provider("gpt-4o");
+
+// Use custom name in providerOptions
+const result = await generateText({
+  model,
+  prompt: "Hello",
+  providerOptions: {
+    "sap-ai-core": {
+      // Uses custom name as key
+      includeReasoning: true,
+    },
+  },
+});
+
+// providerMetadata also uses custom name
+console.log(result.providerMetadata?.["sap-ai-core"]);
 ```
 
 ---
@@ -1622,6 +1655,59 @@ advanced use cases.
 
 > **Architecture Context:** For message transformation flow and format details,
 > see [Architecture - Message Conversion](./ARCHITECTURE.md#message-conversion).
+
+### `getBaseProviderName(provider)`
+
+Extracts the base provider name from a full provider identifier.
+
+Following the AI SDK convention, provider identifiers use the format
+`{name}.{modelType}` (e.g., `"openai.chat"`, `"anthropic.messages"`). This
+function extracts the base name for use with `providerOptions` and
+`providerMetadata`, which use the base name as key.
+
+**Signature:**
+
+```typescript
+function getBaseProviderName(provider: string): string;
+```
+
+**Parameters:**
+
+- `provider`: The full provider identifier (e.g., `"sap-ai.chat"`,
+  `"sap-ai.embedding"`)
+
+**Returns:** The base provider name (e.g., `"sap-ai"`)
+
+**Example:**
+
+```typescript
+import { getBaseProviderName } from "@mymediset/sap-ai-provider";
+
+getBaseProviderName("sap-ai.chat"); // => "sap-ai"
+getBaseProviderName("sap-ai-core.embedding"); // => "sap-ai-core"
+getBaseProviderName("sap-ai"); // => "sap-ai" (backward compatible)
+```
+
+**Use Case:**
+
+This function is useful when working with dynamic provider names or when you
+need to access `providerMetadata` using the model's provider identifier:
+
+```typescript
+import { createSAPAIProvider, getBaseProviderName } from "@mymediset/sap-ai-provider";
+import { generateText } from "ai";
+
+const provider = createSAPAIProvider({ name: "my-sap" });
+const model = provider("gpt-4o");
+
+const result = await generateText({ model, prompt: "Hello" });
+
+// Use getBaseProviderName to access metadata with the correct key
+const baseName = getBaseProviderName(model.provider); // "my-sap"
+const metadata = result.providerMetadata?.[baseName];
+```
+
+---
 
 ### `convertToSAPMessages(prompt)`
 

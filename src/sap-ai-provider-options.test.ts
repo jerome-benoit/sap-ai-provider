@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   embeddingModelParamsSchema,
+  getBaseProviderName,
   modelParamsSchema,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
@@ -26,6 +27,34 @@ import {
 describe("SAP_AI_PROVIDER_NAME", () => {
   it("should have the correct provider name", () => {
     expect(SAP_AI_PROVIDER_NAME).toBe("sap-ai");
+  });
+});
+
+describe("getBaseProviderName", () => {
+  it("should extract base name from provider.chat format", () => {
+    expect(getBaseProviderName("sap-ai.chat")).toBe("sap-ai");
+  });
+
+  it("should extract base name from provider.embedding format", () => {
+    expect(getBaseProviderName("sap-ai.embedding")).toBe("sap-ai");
+  });
+
+  it("should extract base name from custom provider names", () => {
+    expect(getBaseProviderName("sap-ai-core.chat")).toBe("sap-ai-core");
+    expect(getBaseProviderName("my-custom-provider.embedding")).toBe("my-custom-provider");
+  });
+
+  it("should return the input unchanged if no dot is present (backward compatible)", () => {
+    expect(getBaseProviderName("sap-ai")).toBe("sap-ai");
+    expect(getBaseProviderName("openai")).toBe("openai");
+  });
+
+  it("should handle empty string", () => {
+    expect(getBaseProviderName("")).toBe("");
+  });
+
+  it("should only split on first dot", () => {
+    expect(getBaseProviderName("sap.ai.chat")).toBe("sap");
   });
 });
 

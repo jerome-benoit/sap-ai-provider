@@ -24,6 +24,7 @@ export type { OrchestrationErrorResponse } from "./sap-ai-error.js";
  * passed via `providerOptions['sap-ai']` in AI SDK calls.
  */
 export {
+  getBaseProviderName,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
   sapAILanguageModelProviderOptions,

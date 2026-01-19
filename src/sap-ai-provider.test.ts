@@ -30,7 +30,7 @@ describe("createSAPAIProvider", () => {
     const model = provider("gpt-4o");
     expect(model).toBeDefined();
     expect(model.modelId).toBe("gpt-4o");
-    expect(model.provider).toBe("sap-ai");
+    expect(model.provider).toBe("sap-ai.chat");
   });
 
   it("should create model via chat method with optional settings", () => {
@@ -38,7 +38,7 @@ describe("createSAPAIProvider", () => {
     const model = provider.chat("gpt-4o");
     expect(model).toBeDefined();
     expect(model.modelId).toBe("gpt-4o");
-    expect(model.provider).toBe("sap-ai");
+    expect(model.provider).toBe("sap-ai.chat");
 
     // Also works with settings
     const modelWithSettings = provider.chat("gpt-4o", {
@@ -180,7 +180,7 @@ describe("createSAPAIProvider", () => {
       const model = provider.embedding("text-embedding-ada-002");
       expect(model).toBeDefined();
       expect(model.modelId).toBe("text-embedding-ada-002");
-      expect(model.provider).toBe("sap-ai");
+      expect(model.provider).toBe("sap-ai.embedding");
     });
 
     it("should create an embedding model with settings", () => {
@@ -219,7 +219,7 @@ describe("createSAPAIProvider", () => {
       const model = provider.languageModel("gpt-4o");
       expect(model).toBeDefined();
       expect(model.modelId).toBe("gpt-4o");
-      expect(model.provider).toBe("sap-ai");
+      expect(model.provider).toBe("sap-ai.chat");
     });
 
     it("should expose embeddingModel method", () => {
@@ -234,7 +234,7 @@ describe("createSAPAIProvider", () => {
       const model = provider.embeddingModel("text-embedding-ada-002");
       expect(model).toBeDefined();
       expect(model.modelId).toBe("text-embedding-ada-002");
-      expect(model.provider).toBe("sap-ai");
+      expect(model.provider).toBe("sap-ai.embedding");
     });
 
     it("should expose imageModel method", () => {
@@ -284,6 +284,76 @@ describe("createSAPAIProvider", () => {
   });
 });
 
+describe("custom provider name", () => {
+  describe("language models use {name}.chat pattern", () => {
+    it("should use default provider name 'sap-ai.chat' when name is not specified", () => {
+      const provider = createSAPAIProvider();
+      const model = provider("gpt-4o");
+      expect(model.provider).toBe("sap-ai.chat");
+    });
+
+    it("should use custom provider name with .chat suffix when specified", () => {
+      const provider = createSAPAIProvider({ name: "sap-ai-core" });
+      const model = provider("gpt-4o");
+      expect(model.provider).toBe("sap-ai-core.chat");
+    });
+
+    it("should apply custom name to chat models", () => {
+      const provider = createSAPAIProvider({ name: "my-custom-provider" });
+      const model = provider.chat("gpt-4o");
+      expect(model.provider).toBe("my-custom-provider.chat");
+    });
+
+    it("should apply custom name to languageModel method", () => {
+      const provider = createSAPAIProvider({ name: "custom-sap" });
+      const model = provider.languageModel("gpt-4o");
+      expect(model.provider).toBe("custom-sap.chat");
+    });
+  });
+
+  describe("embedding models use {name}.embedding pattern", () => {
+    it("should apply custom name to embedding models", () => {
+      const provider = createSAPAIProvider({ name: "sap-ai-embeddings" });
+      const model = provider.embedding("text-embedding-ada-002");
+      expect(model.provider).toBe("sap-ai-embeddings.embedding");
+    });
+
+    it("should apply custom name to embeddingModel method", () => {
+      const provider = createSAPAIProvider({ name: "custom-embeddings" });
+      const model = provider.embeddingModel("text-embedding-3-small");
+      expect(model.provider).toBe("custom-embeddings.embedding");
+    });
+  });
+
+  describe("works with other provider settings", () => {
+    it("should work with other provider settings", () => {
+      const provider = createSAPAIProvider({
+        defaultSettings: {
+          modelParams: { temperature: 0.7 },
+        },
+        name: "sap-ai-prod",
+        resourceGroup: "production",
+      });
+      const model = provider("gpt-4o");
+      expect(model.provider).toBe("sap-ai-prod.chat");
+    });
+
+    it("should work with deploymentId", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      const provider = createSAPAIProvider({
+        deploymentId: "d65d81e7c077e583",
+        name: "sap-ai-deployment",
+        resourceGroup: "default",
+      });
+      const model = provider("gpt-4o");
+      expect(model.provider).toBe("sap-ai-deployment.chat");
+
+      warnSpy.mockRestore();
+    });
+  });
+});
+
 describe("sapai default provider", () => {
   it("should expose provider and chat entrypoints", () => {
     expect(sapai).toBeDefined();
@@ -297,7 +367,7 @@ describe("sapai default provider", () => {
     const model = sapai("gpt-4o");
     expect(model).toBeDefined();
     expect(model.modelId).toBe("gpt-4o");
-    expect(model.provider).toBe("sap-ai");
+    expect(model.provider).toBe("sap-ai.chat");
   });
 
   describe("embedding models", () => {
@@ -315,7 +385,7 @@ describe("sapai default provider", () => {
       const model = sapai.embedding("text-embedding-ada-002");
       expect(model).toBeDefined();
       expect(model.modelId).toBe("text-embedding-ada-002");
-      expect(model.provider).toBe("sap-ai");
+      expect(model.provider).toBe("sap-ai.embedding");
       expect(model.specificationVersion).toBe("v3");
     });
 
@@ -324,7 +394,7 @@ describe("sapai default provider", () => {
       const model = sapai.textEmbeddingModel("text-embedding-3-small");
       expect(model).toBeDefined();
       expect(model.modelId).toBe("text-embedding-3-small");
-      expect(model.provider).toBe("sap-ai");
+      expect(model.provider).toBe("sap-ai.embedding");
     });
   });
 

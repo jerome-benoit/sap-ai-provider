@@ -45,7 +45,7 @@ interface FunctionToolWithParameters extends LanguageModelV3FunctionTool {
 import { convertToSAPMessages } from "./convert-to-sap-messages";
 import { convertToAISDKError } from "./sap-ai-error";
 import {
-  SAP_AI_PROVIDER_NAME,
+  getBaseProviderName,
   sapAILanguageModelProviderOptions,
   validateModelParamsSettings,
   validateModelParamsWithWarnings,
@@ -372,11 +372,13 @@ export class SAPAILanguageModel implements LanguageModelV3 {
         toolCalls,
       };
 
+      const baseProviderName = getBaseProviderName(this.config.provider);
+
       return {
         content,
         finishReason,
         providerMetadata: {
-          "sap-ai": {
+          [baseProviderName]: {
             finishReason: finishReasonRaw ?? "unknown",
             finishReasonMapped: finishReason,
             ...(typeof responseHeaders?.["x-request-id"] === "string"
@@ -538,6 +540,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
       const sdkStream = streamResponse.stream;
       const modelId = this.modelId;
+      const baseProviderName = getBaseProviderName(this.config.provider);
 
       const warningsSnapshot = [...warnings];
 
@@ -765,7 +768,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
             controller.enqueue({
               finishReason: streamState.finishReason,
               providerMetadata: {
-                "sap-ai": {
+                [baseProviderName]: {
                   finishReason: streamState.finishReason.raw,
                   responseId,
                 },
@@ -830,8 +833,9 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     orchestrationConfig: OrchestrationModuleConfig;
     warnings: SharedV3Warning[];
   }> {
+    const baseProviderName = getBaseProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
-      provider: SAP_AI_PROVIDER_NAME,
+      provider: baseProviderName,
       providerOptions: options.providerOptions,
       schema: sapAILanguageModelProviderOptions,
     });

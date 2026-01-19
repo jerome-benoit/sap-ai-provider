@@ -9,7 +9,7 @@ import {
   SAPAIEmbeddingSettings,
 } from "./sap-ai-embedding-model.js";
 import { SAPAILanguageModel } from "./sap-ai-language-model.js";
-import { validateModelParamsSettings } from "./sap-ai-provider-options.js";
+import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
 import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 /**
@@ -148,6 +148,12 @@ export interface SAPAIProvider extends ProviderV3 {
  *   resourceGroup: 'production'
  * });
  *
+ * // With custom provider name (for providerOptions and providerMetadata keys)
+ * const provider = createSAPAIProvider({
+ *   name: 'sap-ai-core',
+ *   resourceGroup: 'default'
+ * });
+ *
  * // With custom destination
  * const provider = createSAPAIProvider({
  *   destination: {
@@ -190,6 +196,29 @@ export interface SAPAIProviderSettings {
    * ```
    */
   readonly destination?: HttpDestinationOrFetchOptions;
+
+  /**
+   * Custom provider name.
+   *
+   * This name is used as the key for `providerOptions` and `providerMetadata` in AI SDK calls.
+   * Useful when you want to use a different identifier than the default 'sap-ai'.
+   * @default 'sap-ai'
+   * @example
+   * ```typescript
+   * // Use custom name for providerOptions
+   * const provider = createSAPAIProvider({ name: 'sap-ai-core' });
+   *
+   * // Then in AI SDK calls:
+   * await generateText({
+   *   model: provider('gpt-4o'),
+   *   prompt: 'Hello',
+   *   providerOptions: {
+   *     'sap-ai-core': { includeReasoning: true }  // Uses custom name
+   *   }
+   * });
+   * ```
+   */
+  readonly name?: string;
 
   /**
    * SAP AI Core resource group.
@@ -282,6 +311,8 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     validateModelParamsSettings(options.defaultSettings.modelParams);
   }
 
+  const providerName = options.name ?? SAP_AI_PROVIDER_NAME;
+
   const resourceGroup = options.resourceGroup ?? "default";
 
   const warnOnAmbiguousConfig = options.warnOnAmbiguousConfig ?? true;
@@ -335,7 +366,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     return new SAPAILanguageModel(modelId, mergedSettings, {
       deploymentConfig,
       destination: options.destination,
-      provider: "sap-ai",
+      provider: `${providerName}.chat`,
     });
   };
 
@@ -346,7 +377,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     return new SAPAIEmbeddingModel(modelId, settings, {
       deploymentConfig,
       destination: options.destination,
-      provider: "sap-ai",
+      provider: `${providerName}.embedding`,
     });
   };
 

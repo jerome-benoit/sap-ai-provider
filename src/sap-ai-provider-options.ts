@@ -67,6 +67,26 @@ import { z } from "zod";
 export const SAP_AI_PROVIDER_NAME = "sap-ai" as const;
 
 /**
+ * Extracts the base provider name from a full provider identifier.
+ *
+ * Following the AI SDK convention, provider identifiers use the format `{name}.{modelType}`
+ * (e.g., "openai.chat", "anthropic.messages"). This function extracts the base name
+ * for use with `providerOptions` and `providerMetadata`, which use the base name as key.
+ * @param provider - The full provider identifier (e.g., "sap-ai.chat", "sap-ai.embedding")
+ * @returns The base provider name (e.g., "sap-ai")
+ * @example
+ * ```typescript
+ * getBaseProviderName("sap-ai.chat") // => "sap-ai"
+ * getBaseProviderName("sap-ai-core.embedding") // => "sap-ai-core"
+ * getBaseProviderName("sap-ai") // => "sap-ai" (backward compatible)
+ * ```
+ */
+export function getBaseProviderName(provider: string): string {
+  const dotIndex = provider.indexOf(".");
+  return dotIndex === -1 ? provider : provider.slice(0, dotIndex);
+}
+
+/**
  * Zod schema for model generation parameters.
  * @internal
  */
