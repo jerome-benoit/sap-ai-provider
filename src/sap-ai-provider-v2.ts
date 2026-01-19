@@ -52,7 +52,7 @@ export interface SAPAIProviderSettings {
    * Default model settings applied to every model instance created by this provider.
    * Per-call settings provided to the model will override these.
    */
-  defaultSettings?: SAPAISettings;
+  readonly defaultSettings?: SAPAISettings;
 
   /**
    * SAP AI Core deployment ID.
@@ -64,7 +64,7 @@ export interface SAPAIProviderSettings {
    * deploymentId: 'd65d81e7c077e583'
    * ```
    */
-  deploymentId?: string;
+  readonly deploymentId?: string;
 
   /**
    * Custom destination configuration for SAP AI Core.
@@ -80,7 +80,7 @@ export interface SAPAIProviderSettings {
    * }
    * ```
    */
-  destination?: HttpDestinationOrFetchOptions;
+  readonly destination?: HttpDestinationOrFetchOptions;
 
   /**
    * SAP AI Core resource group.
@@ -96,7 +96,7 @@ export interface SAPAIProviderSettings {
    * resourceGroup: 'development' // Development environment
    * ```
    */
-  resourceGroup?: string;
+  readonly resourceGroup?: string;
 
   /**
    * Whether to emit warnings for ambiguous configurations.
@@ -104,7 +104,7 @@ export interface SAPAIProviderSettings {
    * When enabled (default), the provider will warn when mutually-exclusive
    * settings are provided (e.g. both `deploymentId` and `resourceGroup`).
    */
-  warnOnAmbiguousConfig?: boolean;
+  readonly warnOnAmbiguousConfig?: boolean;
 }
 
 /**

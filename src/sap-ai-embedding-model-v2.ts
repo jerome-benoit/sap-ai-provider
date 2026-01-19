@@ -32,9 +32,9 @@ import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
  * @internal
  */
 interface SAPAIEmbeddingConfig {
-  deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
-  destination?: HttpDestinationOrFetchOptions;
-  provider: string;
+  readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
+  readonly destination?: HttpDestinationOrFetchOptions;
+  readonly provider: string;
 }
 
 /**

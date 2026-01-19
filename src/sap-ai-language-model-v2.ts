@@ -40,9 +40,9 @@ import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings";
  * @internal
  */
 interface SAPAIConfig {
-  deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
-  destination?: HttpDestinationOrFetchOptions;
-  provider: string;
+  readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
+  readonly destination?: HttpDestinationOrFetchOptions;
+  readonly provider: string;
 }
 
 /**
