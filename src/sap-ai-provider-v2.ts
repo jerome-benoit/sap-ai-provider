@@ -16,7 +16,7 @@ import type { SAPAIEmbeddingModelId, SAPAIEmbeddingSettings } from "./sap-ai-emb
 
 import { SAPAIEmbeddingModelV2 } from "./sap-ai-embedding-model-v2.js";
 import { SAPAILanguageModelV2 } from "./sap-ai-language-model-v2.js";
-import { validateModelParamsSettings } from "./sap-ai-provider-options.js";
+import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
 import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 /**
@@ -81,6 +81,32 @@ export interface SAPAIProviderSettings {
    * ```
    */
   readonly destination?: HttpDestinationOrFetchOptions;
+
+  /**
+   * Provider name.
+   *
+   * Used as the key for `providerOptions` and `providerMetadata` in AI SDK calls.
+   * The provider identifier (exposed via `model.provider`) follows the AI SDK convention
+   * `{name}.{type}` (e.g., `"sap-ai.chat"`, `"sap-ai.embedding"`).
+   * @default 'sap-ai'
+   * @example
+   * ```typescript
+   * const provider = createSAPAIProvider({ name: 'sap-ai-core' });
+   * const model = provider('gpt-4o');
+   *
+   * console.log(model.provider); // => "sap-ai-core.chat"
+   *
+   * // Use provider name in providerOptions:
+   * await generateText({
+   *   model,
+   *   prompt: 'Hello',
+   *   providerOptions: {
+   *     'sap-ai-core': { includeReasoning: true }
+   *   }
+   * });
+   * ```
+   */
+  readonly name?: string;
 
   /**
    * SAP AI Core resource group.
@@ -160,6 +186,15 @@ export interface SAPAIProviderV2 extends ProviderV2 {
    * @param modelId - The embedding model identifier (e.g., 'text-embedding-ada-002')
    * @param settings - Optional embedding model settings
    * @returns Configured SAP AI embedding model instance (V2)
+   * @example
+   * ```typescript
+   * import { embed } from 'ai';
+   *
+   * const { embedding } = await embed({
+   *   model: provider.embedding('text-embedding-ada-002'),
+   *   value: 'Hello, world!'
+   * });
+   * ```
    */
   embedding(
     modelId: SAPAIEmbeddingModelId,
@@ -185,7 +220,8 @@ export interface SAPAIProviderV2 extends ProviderV2 {
   /**
    * Create a language model instance (V2).
    *
-   * This is the standard method for creating language models.
+   * Standard ProviderV2 method for creating language models.
+   * Equivalent to calling the provider function directly or using `chat()`.
    * @param modelId - The SAP AI Core model identifier
    * @param settings - Optional model configuration settings
    * @returns Configured SAP AI language model instance (V2)
@@ -195,7 +231,8 @@ export interface SAPAIProviderV2 extends ProviderV2 {
   /**
    * Create a text embedding model instance (V2).
    *
-   * Alias for the embedding() method. Provides compatibility with common provider patterns.
+   * Standard ProviderV2 method for creating embedding models.
+   * Equivalent to calling `embedding()`.
    * @param modelId - The embedding model identifier
    * @param settings - Optional embedding model settings
    * @returns Configured SAP AI embedding model instance (V2)
@@ -272,6 +309,8 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     validateModelParamsSettings(options.defaultSettings.modelParams);
   }
 
+  const providerName = options.name ?? SAP_AI_PROVIDER_NAME;
+
   const resourceGroup = options.resourceGroup ?? "default";
 
   const warnOnAmbiguousConfig = options.warnOnAmbiguousConfig ?? true;
@@ -326,7 +365,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     return new SAPAILanguageModelV2(modelId, mergedSettings, {
       deploymentConfig,
       destination: options.destination,
-      provider: "sap-ai",
+      provider: `${providerName}.chat`,
     });
   };
 
@@ -341,7 +380,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     return new SAPAIEmbeddingModelV2(modelId, settings, {
       deploymentConfig,
       destination: options.destination,
-      provider: "sap-ai",
+      provider: `${providerName}.embedding`,
     });
   };
 
@@ -354,8 +393,8 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     return createModel(modelId, settings);
   };
 
-  provider.languageModel = createModel;
   provider.chat = createModel;
+  provider.languageModel = createModel;
   provider.embedding = createEmbeddingModel;
   provider.textEmbeddingModel = createEmbeddingModel;
 
