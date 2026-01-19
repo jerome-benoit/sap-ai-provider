@@ -92,12 +92,18 @@ export interface SAPAIProvider extends ProviderV3 {
   ): SAPAIEmbeddingModel;
 
   /**
-   * Image model creation (not supported).
+   * Image model stub for ProviderV3 interface compliance.
    *
-   * SAP AI Core Orchestration does not support image generation models.
-   * This method always throws a NoSuchModelError.
-   * @param modelId - The model identifier
-   * @throws {NoSuchModelError} Always throws - image models are not supported
+   * SAP AI Core Orchestration Service does not currently support image generation.
+   * This method always throws a `NoSuchModelError` to indicate that image generation
+   * is not available through this provider.
+   * @param modelId - The image model identifier (not used)
+   * @throws {NoSuchModelError} Always throws - image generation is not supported
+   * @example
+   * ```typescript
+   * // This will always throw NoSuchModelError
+   * provider.imageModel('dall-e-3'); // throws NoSuchModelError
+   * ```
    */
   imageModel(modelId: string): never;
 
@@ -359,9 +365,15 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
   provider.embedding = createEmbeddingModel;
   provider.textEmbeddingModel = createEmbeddingModel;
   provider.embeddingModel = createEmbeddingModel;
+
+  /**
+   * Stub for image model - SAP AI Core does not support image generation.
+   * @param modelId - The image model identifier (not used)
+   * @throws {NoSuchModelError} Always throws
+   */
   provider.imageModel = (modelId: string) => {
     throw new NoSuchModelError({
-      message: "SAP AI Core Orchestration does not support image generation models.",
+      message: `SAP AI Core Orchestration Service does not support image generation. Model '${modelId}' is not available.`,
       modelId,
       modelType: "imageModel",
     });

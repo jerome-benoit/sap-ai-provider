@@ -246,13 +246,39 @@ describe("createSAPAIProvider", () => {
 
     it("should throw NoSuchModelError when calling imageModel", () => {
       const provider = createSAPAIProvider();
+
       expect(() => provider.imageModel("dall-e-3")).toThrow(NoSuchModelError);
+    });
+
+    it("should include modelId and modelType in NoSuchModelError", () => {
+      const provider = createSAPAIProvider();
+
       try {
         provider.imageModel("dall-e-3");
+        expect.fail("Should have thrown NoSuchModelError");
       } catch (error) {
         expect(error).toBeInstanceOf(NoSuchModelError);
-        expect((error as NoSuchModelError).modelId).toBe("dall-e-3");
-        expect((error as NoSuchModelError).modelType).toBe("imageModel");
+        const noSuchModelError = error as NoSuchModelError;
+        expect(noSuchModelError.modelId).toBe("dall-e-3");
+        expect(noSuchModelError.modelType).toBe("imageModel");
+      }
+    });
+
+    it("should include descriptive message in NoSuchModelError", () => {
+      const provider = createSAPAIProvider();
+
+      expect(() => provider.imageModel("stable-diffusion")).toThrow(
+        "SAP AI Core Orchestration Service does not support image generation",
+      );
+    });
+
+    it("should throw for any model ID", () => {
+      const provider = createSAPAIProvider();
+
+      const modelIds = ["dall-e-3", "stable-diffusion", "midjourney", "any-model"];
+
+      for (const modelId of modelIds) {
+        expect(() => provider.imageModel(modelId)).toThrow(NoSuchModelError);
       }
     });
   });
@@ -327,6 +353,10 @@ describe("sapai default provider", () => {
 
     it("should throw NoSuchModelError when calling imageModel", () => {
       expect(() => sapai.imageModel("dall-e-3")).toThrow(NoSuchModelError);
+    });
+
+    it("should include modelId in error message", () => {
+      expect(() => sapai.imageModel("dall-e-3")).toThrow("Model 'dall-e-3' is not available");
     });
   });
 });

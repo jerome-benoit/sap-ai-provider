@@ -1,3 +1,12 @@
+/**
+ * SAP AI Language Model implementation.
+ *
+ * This module provides a LanguageModelV3 implementation that bridges
+ * the Vercel AI SDK with SAP AI Core's Orchestration API using the
+ * official SAP AI SDK (@sap-ai-sdk/orchestration).
+ * @module sap-ai-language-model
+ */
+
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { LlmModelParams } from "@sap-ai-sdk/orchestration";
 import type { Template } from "@sap-ai-sdk/orchestration/dist/client/api/schema/template.js";

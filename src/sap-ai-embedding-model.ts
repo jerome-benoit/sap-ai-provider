@@ -1,3 +1,12 @@
+/**
+ * SAP AI Embedding Model implementation.
+ *
+ * This module provides an EmbeddingModelV3 implementation that bridges
+ * the Vercel AI SDK with SAP AI Core's Orchestration API for generating
+ * text embeddings using the official SAP AI SDK (@sap-ai-sdk/orchestration).
+ * @module sap-ai-embedding-model
+ */
+
 import type {
   EmbeddingModelV3,
   EmbeddingModelV3CallOptions,
@@ -153,6 +162,7 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
    * the SAP AI SDK's OrchestrationEmbeddingClient.
    * @param options - The embedding request options
    * @returns Promise resolving to embeddings and usage information
+   * @since 1.0.0
    * @example
    * ```typescript
    * const result = await model.doEmbed({
