@@ -833,6 +833,81 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
+    it("should use settings.responseFormat as fallback when options.responseFormat is not provided", async () => {
+      const model = createModel("gpt-4o", {
+        responseFormat: {
+          json_schema: {
+            description: "Settings-level schema",
+            name: "settings_response",
+            schema: { properties: { value: { type: "string" } }, type: "object" },
+            strict: true,
+          },
+          type: "json_schema",
+        },
+      });
+
+      const prompt = createPrompt("Return JSON");
+
+      await model.doGenerate({ prompt });
+
+      const request = await getLastChatCompletionRequest();
+
+      expect(request.response_format).toEqual({
+        json_schema: {
+          description: "Settings-level schema",
+          name: "settings_response",
+          schema: { properties: { value: { type: "string" } }, type: "object" },
+          strict: true,
+        },
+        type: "json_schema",
+      });
+    });
+
+    it("should prefer options.responseFormat over settings.responseFormat", async () => {
+      const model = createModel("gpt-4o", {
+        responseFormat: {
+          json_schema: {
+            description: "Settings-level schema",
+            name: "settings_response",
+            schema: { properties: { value: { type: "string" } }, type: "object" },
+          },
+          type: "json_schema",
+        },
+      });
+
+      const prompt = createPrompt("Return JSON");
+
+      const optionsSchema = {
+        additionalProperties: false,
+        properties: { answer: { type: "string" as const } },
+        required: ["answer"],
+        type: "object" as const,
+      };
+
+      await model.doGenerate({
+        prompt,
+        responseFormat: {
+          description: "Options-level schema",
+          name: "options_response",
+          schema: optionsSchema,
+          type: "json",
+        },
+      });
+
+      const request = await getLastChatCompletionRequest();
+
+      // Should use options.responseFormat, not settings.responseFormat
+      expect(request.response_format).toEqual({
+        json_schema: {
+          description: "Options-level schema",
+          name: "options_response",
+          schema: optionsSchema,
+          strict: null,
+        },
+        type: "json_schema",
+      });
+    });
+
     it("should warn about unsupported tool types", async () => {
       const model = createModel();
       const prompt = createPrompt("Hello");
@@ -2638,9 +2713,44 @@ describe("SAPAILanguageModel", () => {
           prompt,
           responseFormat: { type: "json" },
         });
-        const warnings = result.warnings;
+        const warnings = result.warnings as { message?: string; type: string }[];
 
         expect(warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(warnings, "responseFormat JSON mode");
+      });
+
+      it("should emit a best-effort warning for settings.responseFormat json", async () => {
+        const model = createModel("gpt-4o", {
+          responseFormat: {
+            json_schema: {
+              name: "test",
+              schema: { type: "object" },
+            },
+            type: "json_schema",
+          },
+        });
+        const prompt = createPrompt("Return JSON");
+
+        const result = await model.doGenerate({ prompt });
+        const warnings = result.warnings as { message?: string; type: string }[];
+
+        expect(warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(warnings, "responseFormat JSON mode");
+      });
+
+      it("should not emit responseFormat warning when responseFormat is text", async () => {
+        const model = createModel("gpt-4o", {
+          responseFormat: { type: "text" },
+        });
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        const warnings = result.warnings as { message?: string; type: string }[];
+
+        const hasResponseFormatWarning = warnings.some(
+          (w) => typeof w.message === "string" && w.message.includes("responseFormat JSON mode"),
+        );
+        expect(hasResponseFormatWarning).toBe(false);
       });
     });
 

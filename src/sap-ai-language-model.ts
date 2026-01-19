@@ -1009,29 +1009,34 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       });
     }
 
-    // Forward JSON mode to model; support varies by deployment
+    // Response format: options (AI SDK call) > settings (model constructor)
+    let responseFormat: SAPResponseFormat | undefined;
     if (options.responseFormat?.type === "json") {
+      // Convert AI SDK format to SAP format
+      responseFormat = options.responseFormat.schema
+        ? {
+            json_schema: {
+              description: options.responseFormat.description,
+              name: options.responseFormat.name ?? "response",
+              schema: options.responseFormat.schema as Record<string, unknown>,
+              strict: null,
+            },
+            type: "json_schema" as const,
+          }
+        : { type: "json_object" as const };
+    } else if (this.settings.responseFormat) {
+      // Use settings-level responseFormat as fallback
+      responseFormat = this.settings.responseFormat as SAPResponseFormat;
+    }
+
+    // Forward JSON mode to model; support varies by deployment
+    if (responseFormat && responseFormat.type !== "text") {
       warnings.push({
         message:
           "responseFormat JSON mode is forwarded to the underlying model; support and schema adherence depend on the model/deployment.",
         type: "other",
       });
     }
-
-    const responseFormat: SAPResponseFormat | undefined =
-      options.responseFormat?.type === "json"
-        ? options.responseFormat.schema
-          ? {
-              json_schema: {
-                description: options.responseFormat.description,
-                name: options.responseFormat.name ?? "response",
-                schema: options.responseFormat.schema as Record<string, unknown>,
-                strict: null,
-              },
-              type: "json_schema" as const,
-            }
-          : { type: "json_object" as const }
-        : undefined;
 
     const orchestrationConfig: OrchestrationModuleConfig = {
       promptTemplating: {
