@@ -53,18 +53,18 @@ export interface SAPAIEmbeddingSettings {
    * Maximum number of embeddings per API call.
    * @default 2048
    */
-  maxEmbeddingsPerCall?: number;
+  readonly maxEmbeddingsPerCall?: number;
 
   /**
    * Additional model parameters passed to the embedding API.
    */
-  modelParams?: EmbeddingModelParams;
+  readonly modelParams?: EmbeddingModelParams;
 
   /**
    * Embedding task type.
    * @default 'text'
    */
-  type?: "document" | "query" | "text";
+  readonly type?: "document" | "query" | "text";
 }
 
 /**
@@ -72,9 +72,9 @@ export interface SAPAIEmbeddingSettings {
  * @internal
  */
 interface SAPAIEmbeddingConfig {
-  deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
-  destination?: HttpDestinationOrFetchOptions;
-  provider: string;
+  readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
+  readonly destination?: HttpDestinationOrFetchOptions;
+  readonly provider: string;
 }
 
 /**

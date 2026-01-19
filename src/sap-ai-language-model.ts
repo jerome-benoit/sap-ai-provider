@@ -39,7 +39,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
  * @internal
  */
 interface FunctionToolWithParameters extends LanguageModelV3FunctionTool {
-  parameters?: unknown;
+  readonly parameters?: unknown;
 }
 
 import { convertToSAPMessages } from "./convert-to-sap-messages";
@@ -57,9 +57,9 @@ import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings";
  * @internal
  */
 interface SAPAIConfig {
-  deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
-  destination?: HttpDestinationOrFetchOptions;
-  provider: string;
+  readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
+  readonly destination?: HttpDestinationOrFetchOptions;
+  readonly provider: string;
 }
 
 /**

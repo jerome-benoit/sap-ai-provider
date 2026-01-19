@@ -107,7 +107,7 @@ export interface SAPAISettings {
    * });
    * ```
    */
-  filtering?: FilteringModule;
+  readonly filtering?: FilteringModule;
 
   /**
    * Grounding module configuration for document-based retrieval (RAG).
@@ -137,7 +137,7 @@ export interface SAPAISettings {
    * });
    * ```
    */
-  grounding?: GroundingModule;
+  readonly grounding?: GroundingModule;
 
   /**
    * Whether to include assistant reasoning parts in the SAP prompt conversion.
@@ -152,7 +152,7 @@ export interface SAPAISettings {
    * const prodModel = provider('gpt-4o'); // includeReasoning defaults to false
    * ```
    */
-  includeReasoning?: boolean;
+  readonly includeReasoning?: boolean;
 
   /**
    * Masking configuration for SAP AI Core orchestration.
@@ -175,24 +175,24 @@ export interface SAPAISettings {
    * });
    * ```
    */
-  masking?: MaskingModule;
+  readonly masking?: MaskingModule;
 
   /**
    * Model generation parameters that control the output.
    */
-  modelParams?: {
+  readonly modelParams?: {
     /**
      * Frequency penalty between -2.0 and 2.0.
      * Positive values penalize tokens based on their frequency.
      * If not specified, the model's default is used (typically 0).
      */
-    frequencyPenalty?: number;
+    readonly frequencyPenalty?: number;
 
     /**
      * Maximum number of tokens to generate.
      * Higher values allow for longer responses but increase latency and cost.
      */
-    maxTokens?: number;
+    readonly maxTokens?: number;
 
     /**
      * Number of completions to generate.
@@ -202,7 +202,7 @@ export interface SAPAISettings {
      * models, the parameter is silently omitted from the request.
      * If not specified, typically defaults to 1 on the model side.
      */
-    n?: number;
+    readonly n?: number;
 
     /**
      * Whether to enable parallel tool calls.
@@ -210,35 +210,35 @@ export interface SAPAISettings {
      *
      * Note: This uses the SAP/OpenAI-style key `parallel_tool_calls`.
      */
-    parallel_tool_calls?: boolean;
+    readonly parallel_tool_calls?: boolean;
 
     /**
      * Presence penalty between -2.0 and 2.0.
      * Positive values penalize tokens that have appeared in the text.
      * If not specified, the model's default is used (typically 0).
      */
-    presencePenalty?: number;
+    readonly presencePenalty?: number;
 
     /**
      * Sampling temperature between 0 and 2.
      * Higher values make output more random, lower values more deterministic.
      * If not specified, the model's default temperature is used.
      */
-    temperature?: number;
+    readonly temperature?: number;
 
     /**
      * Nucleus sampling parameter between 0 and 1.
      * Controls diversity via cumulative probability cutoff.
      * If not specified, the model's default topP is used (typically 1).
      */
-    topP?: number;
+    readonly topP?: number;
   };
 
   /**
    * Specific version of the model to use.
    * If not provided, the latest version will be used.
    */
-  modelVersion?: string;
+  readonly modelVersion?: string;
 
   /**
    * Response format for templating prompt (OpenAI-compatible)
@@ -256,18 +256,18 @@ export interface SAPAISettings {
    * });
    * ```
    */
-  responseFormat?:
+  readonly responseFormat?:
     | {
-        json_schema: {
-          description?: string;
-          name: string;
-          schema?: unknown;
-          strict?: boolean | null;
+        readonly json_schema: {
+          readonly description?: string;
+          readonly name: string;
+          readonly schema?: unknown;
+          readonly strict?: boolean | null;
         };
-        type: "json_schema";
+        readonly type: "json_schema";
       }
-    | { type: "json_object" }
-    | { type: "text" };
+    | { readonly type: "json_object" }
+    | { readonly type: "text" };
 
   /**
    * Tool definitions in SAP AI SDK format
@@ -300,7 +300,7 @@ export interface SAPAISettings {
    * });
    * ```
    */
-  tools?: ChatCompletionTool[];
+  readonly tools?: ChatCompletionTool[];
 
   /**
    * Translation module configuration for input/output translation.
@@ -325,7 +325,7 @@ export interface SAPAISettings {
    * });
    * ```
    */
-  translation?: TranslationModule;
+  readonly translation?: TranslationModule;
 }
 
 /**

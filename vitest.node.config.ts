@@ -6,7 +6,7 @@ export default defineConfig({
       exclude: ["src/**/*.test.ts", "node_modules/**", "dist/**"],
       include: ["src/**/*.ts"],
       provider: "v8",
-      reporter: ["text", "json", "html"],
+      reporter: ["text", "html", "lcov"],
       thresholds: {
         branches: 85,
         functions: 90,

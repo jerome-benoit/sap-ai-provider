@@ -78,7 +78,7 @@ export interface ConvertToSAPMessagesOptions {
    * When false (default), reasoning content is dropped
    * When true, reasoning is preserved as `<think>...</think>` markers
    */
-  includeReasoning?: boolean;
+  readonly includeReasoning?: boolean;
 }
 
 /**
@@ -87,11 +87,11 @@ export interface ConvertToSAPMessagesOptions {
  * @internal
  */
 interface UserContentItem {
-  image_url?: {
-    url: string;
+  readonly image_url?: {
+    readonly url: string;
   };
-  text?: string;
-  type: "image_url" | "text";
+  readonly text?: string;
+  readonly type: "image_url" | "text";
 }
 
 /**
