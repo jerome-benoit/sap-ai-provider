@@ -75,7 +75,7 @@
     "@ai-sdk/provider": "^3.0.4",
     "@ai-sdk/provider-utils": "^4.0.8",
     "@sap-ai-sdk/orchestration": "^2.5.0",
-    "eslint-plugin-jsdoc": "^62.1.0",
+    "eslint-plugin-jsdoc": "^62.2.0",
     "zod": "^4.3.5",
     "zod-to-json-schema": "^3.25.1"
   },
@@ -94,7 +94,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.53.0",
+    "typescript-eslint": "^8.53.1",
     "vitest": "^4.0.17"
   },
   "peerDependencies": {
