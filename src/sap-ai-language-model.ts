@@ -154,7 +154,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Generates a single completion (non-streaming).
-   * Note: Abort signal uses Promise.race; doesn't cancel underlying HTTP request.
+   * Supports request cancellation via AbortSignal at the HTTP transport layer.
    * @param options - The Vercel AI SDK generation call options.
    * @returns The generation result with content, usage, and provider metadata.
    */
@@ -196,39 +196,10 @@ export class SAPAILanguageModel implements LanguageModelV3 {
         })(),
       };
 
-      const response = await (async () => {
-        const completionPromise = client.chatCompletion(requestBody);
-
-        if (options.abortSignal) {
-          return Promise.race([
-            completionPromise,
-            new Promise<never>((_, reject) => {
-              if (options.abortSignal?.aborted) {
-                reject(
-                  new Error(
-                    `Request aborted: ${String(options.abortSignal.reason ?? "unknown reason")}`,
-                  ),
-                );
-                return;
-              }
-
-              options.abortSignal?.addEventListener(
-                "abort",
-                () => {
-                  reject(
-                    new Error(
-                      `Request aborted: ${String(options.abortSignal?.reason ?? "unknown reason")}`,
-                    ),
-                  );
-                },
-                { once: true },
-              );
-            }),
-          ]);
-        }
-
-        return completionPromise;
-      })();
+      const response = await client.chatCompletion(
+        requestBody,
+        options.abortSignal ? { signal: options.abortSignal } : undefined,
+      );
       const responseHeadersRaw = response.rawResponse.headers as
         | Record<string, unknown>
         | undefined;
@@ -333,7 +304,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Generates a streaming completion.
-   * Note: Abort signal uses Promise.race; doesn't cancel underlying HTTP request.
+   * Supports request cancellation via AbortSignal at the HTTP transport layer.
    * @param options - The Vercel AI SDK generation call options.
    * @returns A stream result with async iterable stream parts.
    */

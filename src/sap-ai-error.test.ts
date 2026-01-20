@@ -496,7 +496,7 @@ describe("convertToAISDKError", () => {
   });
 });
 
-describe("SSE Error Handling", () => {
+describe("sse error handling", () => {
   it("should extract SAP error from SSE message (wrapped format)", () => {
     const sapError = {
       error: {
@@ -615,7 +615,7 @@ describe("SSE Error Handling", () => {
   });
 });
 
-describe("SDK-specific Error Handling", () => {
+describe("sdk-specific error handling", () => {
   describe("destination and deployment errors", () => {
     it("should handle destination resolution errors", () => {
       const result = convertToAISDKError(

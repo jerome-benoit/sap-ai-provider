@@ -81,7 +81,6 @@ below.
   - [Verify Configuration](#verify-configuration)
 - [Getting Help](#getting-help)
 - [Known Limitations](#known-limitations)
-  - [AbortSignal Does Not Cancel HTTP Requests](#abortsignal-does-not-cancel-http-requests)
   - [Streaming Response ID Is Client-Generated](#streaming-response-id-is-client-generated)
 - [Related Documentation](#related-documentation)
 
@@ -395,47 +394,6 @@ If issues persist:
 
 This section documents known limitations of the SAP AI Provider that are either
 inherent to the underlying SAP AI SDK or are planned for future resolution.
-
-### AbortSignal Does Not Cancel HTTP Requests
-
-**Symptom:** When using `AbortSignal` to cancel a request, the promise rejects
-but the underlying HTTP request continues executing on SAP AI Core.
-
-**Technical Details:**
-
-The SAP AI SDK's `OrchestrationClient.chatCompletion()` and `stream()` methods
-do not natively accept an `AbortSignal`. The provider implements cancellation
-via `Promise.race()`, which rejects the promise when aborted but does not cancel
-the in-flight HTTP request.
-
-```typescript
-// Current behavior
-const controller = new AbortController();
-
-const result = await generateText({
-  model: provider("gpt-4o"),
-  prompt: "Long task...",
-  abortSignal: controller.signal,
-});
-
-// Calling controller.abort() will:
-// ✅ Reject the promise immediately
-// ❌ NOT cancel the HTTP request to SAP AI Core (request continues on server)
-```
-
-**Impact:**
-
-- Token usage is still incurred for aborted requests
-- Server-side processing continues until completion
-- No impact on response quality or subsequent requests
-
-**Status:** Waiting for SAP AI SDK enhancement. See
-[SAP AI SDK Issue #1429](https://github.com/SAP/ai-sdk-js/issues/1429).
-
-**Workaround:** For cost-sensitive applications, consider implementing
-request-level timeouts at the application layer rather than relying on abort.
-
----
 
 ### Streaming Response ID Is Client-Generated
 

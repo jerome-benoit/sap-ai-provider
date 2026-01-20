@@ -19,7 +19,7 @@ import {
   validateModelParamsWithWarnings,
 } from "./sap-ai-provider-options";
 
-describe("SAP_AI_PROVIDER_NAME", () => {
+describe("sap ai provider name constant", () => {
   it("should have the correct provider name", () => {
     expect(SAP_AI_PROVIDER_NAME).toBe("sap-ai");
   });

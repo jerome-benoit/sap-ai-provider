@@ -30,6 +30,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
           rawResponse?: { headers?: Record<string, unknown> };
         };
     static lastChatCompletionRequest: unknown;
+    static lastChatCompletionRequestConfig: unknown;
 
     static streamChunks:
       | undefined
@@ -56,8 +57,9 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
     static streamSetupError: Error | undefined;
 
-    chatCompletion = vi.fn().mockImplementation((request) => {
+    chatCompletion = vi.fn().mockImplementation((request, requestConfig) => {
       MockOrchestrationClient.lastChatCompletionRequest = request;
+      MockOrchestrationClient.lastChatCompletionRequestConfig = requestConfig;
 
       const errorToThrow = MockOrchestrationClient.chatCompletionError;
       if (errorToThrow) {
@@ -265,6 +267,7 @@ describe("SAPAILanguageModel", () => {
     const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
     return OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
+      lastChatCompletionRequestConfig: unknown;
       setChatCompletionError?: (error: Error) => void;
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
@@ -287,6 +290,11 @@ describe("SAPAILanguageModel", () => {
   const getLastChatCompletionRequest = async () => {
     const MockClient = await getMockClient();
     return MockClient.lastChatCompletionRequest as OrchestrationChatCompletionRequest;
+  };
+
+  const getLastChatCompletionRequestConfig = async () => {
+    const MockClient = await getMockClient();
+    return MockClient.lastChatCompletionRequestConfig as Record<string, unknown> | undefined;
   };
 
   const expectRequestBodyHasMessagesAndNoWarnings = (result: {
@@ -594,6 +602,54 @@ describe("SAPAILanguageModel", () => {
           hasImageParts: true,
           promptMessages: 1,
         });
+      });
+    });
+
+    describe("abort signal support", () => {
+      it("should pass abort signal to chatCompletion via requestConfig", async () => {
+        const model = createModel();
+        const prompt = createPrompt("Hello");
+        const controller = new AbortController();
+
+        await model.doGenerate({ abortSignal: controller.signal, prompt });
+
+        const requestConfig = await getLastChatCompletionRequestConfig();
+        expect(requestConfig).toBeDefined();
+        expect(requestConfig).toHaveProperty("signal", controller.signal);
+      });
+
+      it("should not pass requestConfig when abort signal is not provided", async () => {
+        const model = createModel();
+        const prompt = createPrompt("Hello");
+
+        await model.doGenerate({ prompt });
+
+        const requestConfig = await getLastChatCompletionRequestConfig();
+        expect(requestConfig).toBeUndefined();
+      });
+
+      it("should propagate error when chatCompletion rejects due to abort", async () => {
+        const MockClient = await getMockClient();
+
+        const abortError = new Error("Request aborted") as Error & {
+          isAxiosError: boolean;
+          response?: { headers?: Record<string, string> };
+        };
+        abortError.isAxiosError = true;
+
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(abortError);
+
+        const model = createModel();
+        const prompt = createPrompt("Hello");
+        const controller = new AbortController();
+
+        await expect(
+          model.doGenerate({ abortSignal: controller.signal, prompt }),
+        ).rejects.toThrow();
       });
     });
 

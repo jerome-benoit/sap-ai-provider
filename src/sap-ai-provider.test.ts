@@ -195,7 +195,7 @@ describe("createSAPAIProvider", () => {
     });
   });
 
-  describe("ProviderV3 compliance", () => {
+  describe("provider v3 compliance", () => {
     it("should have specificationVersion 'v3'", () => {
       const provider = createSAPAIProvider();
       expect(provider.specificationVersion).toBe("v3");
@@ -392,7 +392,7 @@ describe("sapai default provider", () => {
     });
   });
 
-  describe("ProviderV3 compliance", () => {
+  describe("provider v3 compliance", () => {
     it("should have specificationVersion 'v3'", () => {
       expect(sapai.specificationVersion).toBe("v3");
     });

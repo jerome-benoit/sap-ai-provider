@@ -18,7 +18,7 @@ const createSystemPrompt = (content: string): LanguageModelV3Prompt => [
 ];
 
 describe("convertToSAPMessages", () => {
-  describe("System messages", () => {
+  describe("system messages", () => {
     it("should convert system message", () => {
       const result = convertToSAPMessages(createSystemPrompt("You are helpful."));
       expect(result).toEqual([{ content: "You are helpful.", role: "system" }]);
@@ -30,7 +30,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("User messages", () => {
+  describe("user messages", () => {
     it("should convert simple text message", () => {
       const result = convertToSAPMessages(createUserPrompt("Hello!"));
       expect(result).toEqual([{ content: "Hello!", role: "user" }]);
@@ -64,7 +64,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Assistant messages", () => {
+  describe("assistant messages", () => {
     it("should convert text message", () => {
       const prompt: LanguageModelV3Prompt = [
         { content: [{ text: "Hello there!", type: "text" }], role: "assistant" },
@@ -81,7 +81,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Reasoning handling", () => {
+  describe("reasoning handling", () => {
     const reasoningPrompt: LanguageModelV3Prompt = [
       {
         content: [
@@ -136,7 +136,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Tool calls", () => {
+  describe("tool calls", () => {
     it("should convert tool call with object input", () => {
       const prompt: LanguageModelV3Prompt = [
         {
@@ -255,7 +255,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Tool results", () => {
+  describe("tool results", () => {
     it("should convert single tool result", () => {
       const prompt: LanguageModelV3Prompt = [
         {
@@ -337,7 +337,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Multi-modal (images)", () => {
+  describe("multi-modal (images)", () => {
     it("should convert image with base64 data", () => {
       const prompt: LanguageModelV3Prompt = [
         {
@@ -427,7 +427,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Full conversation", () => {
+  describe("full conversation", () => {
     it("should convert multi-turn conversation", () => {
       const prompt: LanguageModelV3Prompt = [
         { content: "You are helpful.", role: "system" },
@@ -440,7 +440,7 @@ describe("convertToSAPMessages", () => {
     });
   });
 
-  describe("Error handling", () => {
+  describe("error handling", () => {
     it.each([
       { description: "audio", mediaType: "audio/mp3" },
       { description: "pdf", mediaType: "application/pdf" },

@@ -95,7 +95,7 @@ async function getMockClient(): Promise<MockClientType> {
 describe("SAPAIEmbeddingModel", () => {
   const defaultConfig = { deploymentConfig: { resourceGroup: "default" }, provider: "sap-ai" };
 
-  describe("Model properties", () => {
+  describe("model properties", () => {
     it("should expose correct interface properties", () => {
       const model = new SAPAIEmbeddingModel("text-embedding-3-small", {}, defaultConfig);
       expect(model.specificationVersion).toBe("v3");
@@ -115,7 +115,7 @@ describe("SAPAIEmbeddingModel", () => {
     });
   });
 
-  describe("Constructor validation", () => {
+  describe("constructor validation", () => {
     it("should accept valid modelParams", () => {
       expect(
         () =>
@@ -197,7 +197,7 @@ describe("SAPAIEmbeddingModel", () => {
       );
     });
 
-    it("should pass abortSignal to SAP SDK", async () => {
+    it("should pass abort signal to SAP SDK", async () => {
       const { MockOrchestrationEmbeddingClient } = await getMockClient();
       const abortController = new AbortController();
       const model = new SAPAIEmbeddingModel("text-embedding-ada-002", {}, defaultConfig);
@@ -209,7 +209,7 @@ describe("SAPAIEmbeddingModel", () => {
       );
     });
 
-    it("should not pass requestConfig when no abortSignal", async () => {
+    it("should not pass requestConfig when no abort signal", async () => {
       const { MockOrchestrationEmbeddingClient } = await getMockClient();
       const model = new SAPAIEmbeddingModel("text-embedding-ada-002", {}, defaultConfig);
 
@@ -219,7 +219,7 @@ describe("SAPAIEmbeddingModel", () => {
     });
   });
 
-  describe("Embedding normalization", () => {
+  describe("embedding normalization", () => {
     it("should handle base64-encoded embeddings", async () => {
       const { MockOrchestrationEmbeddingClient } = await getMockClient();
       const floats = new Float32Array([1.0, 2.0, 3.0]);
@@ -236,7 +236,7 @@ describe("SAPAIEmbeddingModel", () => {
     });
   });
 
-  describe("Settings integration", () => {
+  describe("settings integration", () => {
     it.each([
       { description: "default type 'text'", expected: "text", settings: {} },
       {
@@ -339,7 +339,7 @@ describe("SAPAIEmbeddingModel", () => {
     });
   });
 
-  describe("Error handling", () => {
+  describe("error handling", () => {
     it("should convert SAP errors to AI SDK errors", async () => {
       const { MockOrchestrationEmbeddingClient } = await getMockClient();
       MockOrchestrationEmbeddingClient.embedError = new Error("SAP API Error");

@@ -43,10 +43,6 @@ Handler → SAP AI Core API
   - [Templating and Tools (v2)](#templating-and-tools-v2)
   - [Data Masking Module (v2)](#data-masking-module-v2)
   - [Request Cancellation](#request-cancellation)
-    - [Current Limitation](#current-limitation)
-    - [Why This Happens](#why-this-happens)
-    - [Future Enhancement](#future-enhancement)
-    - [Workarounds](#workarounds)
   - [Tool Calling Flow](#tool-calling-flow)
   - [Data Masking Flow (SAP DPI Integration)](#data-masking-flow-sap-dpi-integration)
 - [Authentication System](#authentication-system-1)
@@ -651,57 +647,21 @@ modules: {
 
 ### Request Cancellation
 
-#### Current Limitation
+The provider supports HTTP-level request cancellation via `AbortSignal`.
 
-The provider implements AbortSignal handling using `Promise.race()`:
-
-```typescript
-const abortPromise = options.abortSignal
-  ? new Promise<never>((_, reject) => {
-      options.abortSignal?.addEventListener("abort", () => {
-        reject(new Error("Request aborted by user"));
-      });
-    })
-  : null;
-
-const response = abortPromise ? await Promise.race([apiCall, abortPromise]) : await apiCall;
-```
-
-**Behavior:**
-
-- ✅ Client-side: Promise rejects immediately
-- ❌ Server-side: HTTP request continues processing
-- ❌ Resources: Tokens consumed, costs incurred
-
-#### Why This Happens
-
-The SAP AI SDK's `OrchestrationClient.chatCompletion()` method does not
-currently expose an `AbortSignal` parameter. Without this support, we cannot
-propagate the cancellation to the underlying HTTP client.
-
-#### Future Enhancement
-
-True request cancellation will be possible when SAP AI SDK adds AbortController
-support (tracked in <https://github.com/SAP/ai-sdk-js/issues/1429>). The
-implementation will be updated to:
+**Non-streaming:**
 
 ```typescript
-// Future implementation
-const response = await client.chatCompletion({
-  messages,
-  model,
-  signal: options.abortSignal, // Pass through to SDK
-});
+const response = await client.chatCompletion(requestBody, options.abortSignal ? { signal: options.abortSignal } : undefined);
 ```
 
-#### Workarounds
+**Streaming:**
 
-For production applications:
+```typescript
+const stream = await client.stream(requestBody, options.abortSignal, streamOptions, requestConfig);
+```
 
-1. Set appropriate `maxTokens` limits
-2. Implement application-level timeouts
-3. Use request tracking to monitor abandoned requests
-4. Consider async patterns for long-running generations
+The signal passes through `requestConfig` to the SAP AI SDK, which forwards it to the underlying Axios HTTP client. When aborted, the HTTP connection is closed and server-side processing stops.
 
 ### Tool Calling Flow
 
