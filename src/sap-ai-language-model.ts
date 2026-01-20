@@ -173,36 +173,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
       const client = this.createClient(orchestrationConfig);
 
-      const promptTemplating = orchestrationConfig.promptTemplating as unknown as {
-        prompt: { response_format?: unknown; tools?: unknown };
-      };
-
-      const requestBody = {
-        messages,
-        model: {
-          ...orchestrationConfig.promptTemplating.model,
-        },
-        ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
-        ...(promptTemplating.prompt.response_format
-          ? { response_format: promptTemplating.prompt.response_format }
-          : {}),
-        ...(() => {
-          const masking = orchestrationConfig.masking;
-          return masking && Object.keys(masking).length > 0 ? { masking } : {};
-        })(),
-        ...(() => {
-          const filtering = orchestrationConfig.filtering;
-          return filtering && Object.keys(filtering).length > 0 ? { filtering } : {};
-        })(),
-        ...(() => {
-          const grounding = orchestrationConfig.grounding;
-          return grounding && Object.keys(grounding).length > 0 ? { grounding } : {};
-        })(),
-        ...(() => {
-          const translation = orchestrationConfig.translation;
-          return translation && Object.keys(translation).length > 0 ? { translation } : {};
-        })(),
-      };
+      const requestBody = this.buildRequestBody(messages, orchestrationConfig);
 
       const response = await client.chatCompletion(
         requestBody,
@@ -326,28 +297,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
       const client = this.createClient(orchestrationConfig);
 
-      const promptTemplating = orchestrationConfig.promptTemplating as unknown as {
-        prompt: { response_format?: unknown; tools?: unknown };
-      };
-
-      const requestBody = {
-        messages,
-        model: {
-          ...orchestrationConfig.promptTemplating.model,
-        },
-        ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
-        ...(promptTemplating.prompt.response_format
-          ? { response_format: promptTemplating.prompt.response_format }
-          : {}),
-        ...(() => {
-          const masking = orchestrationConfig.masking;
-          return masking && Object.keys(masking).length > 0 ? { masking } : {};
-        })(),
-        ...(() => {
-          const filtering = orchestrationConfig.filtering;
-          return filtering && Object.keys(filtering).length > 0 ? { filtering } : {};
-        })(),
-      };
+      const requestBody = this.buildRequestBody(messages, orchestrationConfig);
 
       const streamResponse = await client.stream(requestBody, options.abortSignal, {
         promptTemplating: { include_usage: true },
@@ -899,25 +849,60 @@ export class SAPAILanguageModel implements LanguageModelV3 {
           ...(responseFormat ? { response_format: responseFormat } : {}),
         },
       },
-      ...(() => {
-        const masking = this.settings.masking;
-        return masking && Object.keys(masking).length > 0 ? { masking } : {};
-      })(),
-      ...(() => {
-        const filtering = this.settings.filtering;
-        return filtering && Object.keys(filtering).length > 0 ? { filtering } : {};
-      })(),
-      ...(() => {
-        const grounding = this.settings.grounding;
-        return grounding && Object.keys(grounding).length > 0 ? { grounding } : {};
-      })(),
-      ...(() => {
-        const translation = this.settings.translation;
-        return translation && Object.keys(translation).length > 0 ? { translation } : {};
-      })(),
+      ...(this.settings.masking && Object.keys(this.settings.masking).length > 0
+        ? { masking: this.settings.masking }
+        : {}),
+      ...(this.settings.filtering && Object.keys(this.settings.filtering).length > 0
+        ? { filtering: this.settings.filtering }
+        : {}),
+      ...(this.settings.grounding && Object.keys(this.settings.grounding).length > 0
+        ? { grounding: this.settings.grounding }
+        : {}),
+      ...(this.settings.translation && Object.keys(this.settings.translation).length > 0
+        ? { translation: this.settings.translation }
+        : {}),
     };
 
     return { messages, orchestrationConfig, warnings };
+  }
+
+  /**
+   * Builds the request body for SAP AI SDK chat completion or streaming.
+   * @param messages - The chat messages to send.
+   * @param orchestrationConfig - The orchestration configuration.
+   * @returns The request body object.
+   * @internal
+   */
+  private buildRequestBody(
+    messages: ChatMessage[],
+    orchestrationConfig: OrchestrationModuleConfig,
+  ): Record<string, unknown> {
+    const promptTemplating = orchestrationConfig.promptTemplating as unknown as {
+      prompt: { response_format?: unknown; tools?: unknown };
+    };
+
+    return {
+      messages,
+      model: {
+        ...orchestrationConfig.promptTemplating.model,
+      },
+      ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
+      ...(promptTemplating.prompt.response_format
+        ? { response_format: promptTemplating.prompt.response_format }
+        : {}),
+      ...(orchestrationConfig.masking && Object.keys(orchestrationConfig.masking).length > 0
+        ? { masking: orchestrationConfig.masking }
+        : {}),
+      ...(orchestrationConfig.filtering && Object.keys(orchestrationConfig.filtering).length > 0
+        ? { filtering: orchestrationConfig.filtering }
+        : {}),
+      ...(orchestrationConfig.grounding && Object.keys(orchestrationConfig.grounding).length > 0
+        ? { grounding: orchestrationConfig.grounding }
+        : {}),
+      ...(orchestrationConfig.translation && Object.keys(orchestrationConfig.translation).length > 0
+        ? { translation: orchestrationConfig.translation }
+        : {}),
+    };
   }
 
   /**

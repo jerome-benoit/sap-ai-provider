@@ -32,6 +32,12 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
     static lastChatCompletionRequest: unknown;
     static lastChatCompletionRequestConfig: unknown;
 
+    static lastStreamAbortSignal: unknown;
+
+    static lastStreamConfig: unknown;
+
+    static lastStreamRequest: unknown;
+
     static streamChunks:
       | undefined
       | {
@@ -52,9 +58,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
                 total_tokens: number;
               };
         }[];
-
     static streamError: Error | undefined;
-
     static streamSetupError: Error | undefined;
 
     chatCompletion = vi.fn().mockImplementation((request, requestConfig) => {
@@ -104,7 +108,11 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       });
     });
 
-    stream = vi.fn().mockImplementation(() => {
+    stream = vi.fn().mockImplementation((request, abortSignal, config) => {
+      MockOrchestrationClient.lastStreamRequest = request;
+      MockOrchestrationClient.lastStreamAbortSignal = abortSignal;
+      MockOrchestrationClient.lastStreamConfig = config;
+
       if (MockOrchestrationClient.streamSetupError) {
         const error = MockOrchestrationClient.streamSetupError;
         MockOrchestrationClient.streamSetupError = undefined;
@@ -268,6 +276,9 @@ describe("SAPAILanguageModel", () => {
     return OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
       lastChatCompletionRequestConfig: unknown;
+      lastStreamAbortSignal: unknown;
+      lastStreamConfig: unknown;
+      lastStreamRequest: unknown;
       setChatCompletionError?: (error: Error) => void;
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
@@ -295,6 +306,11 @@ describe("SAPAILanguageModel", () => {
   const getLastChatCompletionRequestConfig = async () => {
     const MockClient = await getMockClient();
     return MockClient.lastChatCompletionRequestConfig as Record<string, unknown> | undefined;
+  };
+
+  const getLastStreamRequest = async () => {
+    const MockClient = await getMockClient();
+    return MockClient.lastStreamRequest as OrchestrationChatCompletionRequest;
   };
 
   const expectRequestBodyHasMessagesAndNoWarnings = (result: {
@@ -2220,6 +2236,246 @@ describe("SAPAILanguageModel", () => {
         expectRequestBodyHasMessages(result);
 
         const request = await getLastChatCompletionRequest();
+        expect(request).toHaveProperty("grounding");
+        expect(request.grounding).toEqual(grounding);
+        expect(request).toHaveProperty("translation");
+        expect(request.translation).toEqual(translation);
+        expect(request).toHaveProperty("masking");
+        expect(request.masking).toEqual(masking);
+        expect(request).toHaveProperty("filtering");
+        expect(request.filtering).toEqual(filtering);
+      });
+
+      it("should include masking module in stream request body", async () => {
+        const masking = {
+          masking_providers: [
+            {
+              entities: [{ type: "profile-email" }, { type: "profile-phone" }],
+              method: "anonymization",
+              type: "sap_data_privacy_integration",
+            },
+          ],
+        };
+
+        const model = createModel("gpt-4o", {
+          masking,
+        });
+
+        const prompt = createPrompt("My email is test@example.com");
+
+        const result = await model.doStream({ prompt });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastStreamRequest();
+        expect(request).toHaveProperty("masking");
+        expect(request.masking).toEqual(masking);
+      });
+
+      it("should include filtering module in stream request body", async () => {
+        const filtering = {
+          input: {
+            filters: [
+              {
+                config: {
+                  Hate: 0,
+                  SelfHarm: 0,
+                  Sexual: 0,
+                  Violence: 0,
+                },
+                type: "azure_content_safety",
+              },
+            ],
+          },
+        };
+
+        const model = createModel("gpt-4o", {
+          filtering,
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({ prompt });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastStreamRequest();
+        expect(request).toHaveProperty("filtering");
+        expect(request.filtering).toEqual(filtering);
+      });
+
+      it("should include both masking and filtering in stream request body", async () => {
+        const masking = {
+          masking_providers: [
+            {
+              entities: [{ type: "profile-person" }],
+              method: "pseudonymization",
+              type: "sap_data_privacy_integration",
+            },
+          ],
+        };
+
+        const filtering = {
+          output: {
+            filters: [
+              {
+                config: {
+                  Hate: 2,
+                  SelfHarm: 2,
+                  Sexual: 2,
+                  Violence: 2,
+                },
+                type: "azure_content_safety",
+              },
+            ],
+          },
+        };
+
+        const model = createModel("gpt-4o", {
+          filtering,
+          masking,
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({ prompt });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastStreamRequest();
+        expect(request).toHaveProperty("masking");
+        expect(request.masking).toEqual(masking);
+        expect(request).toHaveProperty("filtering");
+        expect(request.filtering).toEqual(filtering);
+      });
+
+      it("should include grounding module in stream request body", async () => {
+        const grounding = {
+          config: {
+            filters: [
+              {
+                chunk_ids: [],
+                data_repositories: ["*"],
+                document_names: ["product-docs"],
+                id: "vector-store-1",
+              },
+            ],
+            metadata_params: ["file_name"],
+            placeholders: {
+              input: ["?question"],
+              output: "groundingOutput",
+            },
+          },
+          type: "document_grounding_service",
+        };
+
+        const model = createModel("gpt-4o", {
+          grounding,
+        });
+
+        const prompt = createPrompt("What is SAP AI Core?");
+
+        const result = await model.doStream({ prompt });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastStreamRequest();
+        expect(request).toHaveProperty("grounding");
+        expect(request.grounding).toEqual(grounding);
+      });
+
+      it("should include translation module in stream request body", async () => {
+        const translation = {
+          input: {
+            source_language: "de",
+            target_language: "en",
+          },
+          output: {
+            target_language: "de",
+          },
+        };
+
+        const model = createModel("gpt-4o", {
+          translation,
+        });
+
+        const prompt = createPrompt("Was ist SAP AI Core?");
+
+        const result = await model.doStream({ prompt });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastStreamRequest();
+        expect(request).toHaveProperty("translation");
+        expect(request.translation).toEqual(translation);
+      });
+
+      it("should include grounding, translation, masking and filtering together in stream request body", async () => {
+        const grounding = {
+          config: {
+            filters: [
+              {
+                chunk_ids: [],
+                data_repositories: ["*"],
+                document_names: [],
+                id: "vector-store-1",
+              },
+            ],
+            placeholders: {
+              input: ["?question"],
+              output: "groundingOutput",
+            },
+          },
+          type: "document_grounding_service",
+        };
+
+        const translation = {
+          input: {
+            source_language: "fr",
+            target_language: "en",
+          },
+        };
+
+        const masking = {
+          masking_providers: [
+            {
+              entities: [{ type: "profile-email" }],
+              method: "anonymization",
+              type: "sap_data_privacy_integration",
+            },
+          ],
+        };
+
+        const filtering = {
+          input: {
+            filters: [
+              {
+                config: {
+                  Hate: 0,
+                  SelfHarm: 0,
+                  Sexual: 0,
+                  Violence: 0,
+                },
+                type: "azure_content_safety",
+              },
+            ],
+          },
+        };
+
+        const model = createModel("gpt-4o", {
+          filtering,
+          grounding,
+          masking,
+          translation,
+        });
+
+        const prompt = createPrompt("Quelle est SAP AI Core?");
+
+        const result = await model.doStream({ prompt });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastStreamRequest();
         expect(request).toHaveProperty("grounding");
         expect(request.grounding).toEqual(grounding);
         expect(request).toHaveProperty("translation");
