@@ -21,25 +21,18 @@ afterEach(() => {
 });
 
 describe("createSAPAIProvider", () => {
-  it("should create a provider synchronously", () => {
+  it("should create a functional provider instance", () => {
     const provider = createSAPAIProvider();
     expect(provider).toBeDefined();
     expect(typeof provider).toBe("function");
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(provider.chat).toBeDefined();
-    expect(typeof provider.chat).toBe("function");
-  });
-
-  it("should create a model when called", () => {
-    const provider = createSAPAIProvider();
     const model = provider("gpt-4o");
     expect(model).toBeDefined();
     expect(model.modelId).toBe("gpt-4o");
     expect(model.provider).toBe("sap-ai.chat");
   });
 
-  it("should create model via chat method with optional settings", () => {
+  it("should create models via chat method", () => {
     const provider = createSAPAIProvider();
     const model = provider.chat("gpt-4o");
     expect(model).toBeDefined();
@@ -52,24 +45,20 @@ describe("createSAPAIProvider", () => {
     expect(modelWithSettings).toBeDefined();
   });
 
-  it("should accept resource group configuration", () => {
-    const provider = createSAPAIProvider({
+  it("should accept configuration options", () => {
+    const providerWithResourceGroup = createSAPAIProvider({
       resourceGroup: "production",
     });
+    expect(providerWithResourceGroup("gpt-4o")).toBeDefined();
 
-    expect(provider("gpt-4o")).toBeDefined();
-  });
-
-  it("should accept default settings", () => {
-    const provider = createSAPAIProvider({
+    const providerWithDefaults = createSAPAIProvider({
       defaultSettings: {
         modelParams: {
           temperature: 0.5,
         },
       },
     });
-
-    expect(provider("gpt-4o")).toBeDefined();
+    expect(providerWithDefaults("gpt-4o")).toBeDefined();
   });
 
   describe("defaultSettings.modelParams validation", () => {
@@ -254,40 +243,24 @@ describe("createSAPAIProvider", () => {
       expect(model.provider).toBe("sap-ai.embedding");
     });
 
-    it("should throw NoSuchModelError when calling imageModel", () => {
-      const provider = createSAPAIProvider();
-      expect(() => provider.imageModel("dall-e-3")).toThrow(NoSuchModelError);
-    });
-
-    it("should include modelId and modelType in NoSuchModelError", () => {
+    it("should throw NoSuchModelError with detailed information", () => {
       const provider = createSAPAIProvider();
 
-      try {
-        provider.imageModel("dall-e-3");
-        expect.fail("Should have thrown NoSuchModelError");
-      } catch (error) {
-        expect(error).toBeInstanceOf(NoSuchModelError);
-        const noSuchModelError = error as NoSuchModelError;
-        expect(noSuchModelError.modelId).toBe("dall-e-3");
-        expect(noSuchModelError.modelType).toBe("imageModel");
-      }
-    });
+      const testCases = ["dall-e-3", "stable-diffusion", "midjourney"];
 
-    it("should include descriptive message in NoSuchModelError", () => {
-      const provider = createSAPAIProvider();
-
-      expect(() => provider.imageModel("stable-diffusion")).toThrow(
-        "SAP AI Core Orchestration Service does not support image generation",
-      );
-    });
-
-    it("should throw for any model ID", () => {
-      const provider = createSAPAIProvider();
-
-      const modelIds = ["dall-e-3", "stable-diffusion", "midjourney", "any-model"];
-
-      for (const modelId of modelIds) {
-        expect(() => provider.imageModel(modelId)).toThrow(NoSuchModelError);
+      for (const modelId of testCases) {
+        try {
+          provider.imageModel(modelId);
+          expect.fail("Should have thrown NoSuchModelError");
+        } catch (error) {
+          expect(error).toBeInstanceOf(NoSuchModelError);
+          const noSuchModelError = error as NoSuchModelError;
+          expect(noSuchModelError.modelId).toBe(modelId);
+          expect(noSuchModelError.modelType).toBe("imageModel");
+          expect(noSuchModelError.message).toContain(
+            "SAP AI Core Orchestration Service does not support image generation",
+          );
+        }
       }
     });
   });
@@ -295,42 +268,31 @@ describe("createSAPAIProvider", () => {
 
 describe("provider name", () => {
   describe("language models use {name}.chat provider identifier", () => {
-    it("should use default provider identifier 'sap-ai.chat' when name is not specified", () => {
+    it("should use default provider identifier", () => {
       const provider = createSAPAIProvider();
       const model = provider("gpt-4o");
       expect(model.provider).toBe("sap-ai.chat");
     });
 
-    it("should use provider identifier with .chat suffix when name is specified", () => {
+    it("should use custom provider name", () => {
       const provider = createSAPAIProvider({ name: "sap-ai-core" });
-      const model = provider("gpt-4o");
-      expect(model.provider).toBe("sap-ai-core.chat");
-    });
 
-    it("should apply provider name to chat models", () => {
-      const provider = createSAPAIProvider({ name: "my-custom-provider" });
-      const model = provider.chat("gpt-4o");
-      expect(model.provider).toBe("my-custom-provider.chat");
-    });
-
-    it("should apply provider name to languageModel method", () => {
-      const provider = createSAPAIProvider({ name: "custom-sap" });
-      const model = provider.languageModel("gpt-4o");
-      expect(model.provider).toBe("custom-sap.chat");
+      expect(provider("gpt-4o").provider).toBe("sap-ai-core.chat");
+      expect(provider.chat("gpt-4o").provider).toBe("sap-ai-core.chat");
+      expect(provider.languageModel("gpt-4o").provider).toBe("sap-ai-core.chat");
     });
   });
 
   describe("embedding models use {name}.embedding provider identifier", () => {
-    it("should apply provider name to embedding models", () => {
+    it("should use custom provider name for embeddings", () => {
       const provider = createSAPAIProvider({ name: "sap-ai-embeddings" });
-      const model = provider.embedding("text-embedding-ada-002");
-      expect(model.provider).toBe("sap-ai-embeddings.embedding");
-    });
 
-    it("should apply provider name to embeddingModel method", () => {
-      const provider = createSAPAIProvider({ name: "custom-embeddings" });
-      const model = provider.embeddingModel("text-embedding-3-small");
-      expect(model.provider).toBe("custom-embeddings.embedding");
+      expect(provider.embedding("text-embedding-ada-002").provider).toBe(
+        "sap-ai-embeddings.embedding",
+      );
+      expect(provider.embeddingModel("text-embedding-3-small").provider).toBe(
+        "sap-ai-embeddings.embedding",
+      );
     });
   });
 
