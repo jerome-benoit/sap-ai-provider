@@ -1,14 +1,5 @@
 /**
- * SAP AI Embedding Model V2 implementation.
- *
- * This module provides an EmbeddingModelV2 facade that wraps the internal
- * EmbeddingModelV3 implementation and transforms the output to V2 format.
- *
- * This approach allows us to:
- * - Reuse all SAP AI Core business logic from the V3 implementation
- * - Present a V2 API to users (compatible with AI SDK 5.x)
- * - Keep the upstream V3 code unchanged for easy git merges
- * @module sap-ai-embedding-model-v2
+ * SAP AI Embedding Model V2 - Vercel AI SDK EmbeddingModelV2 facade for SAP AI Core Orchestration.
  */
 
 import type {
@@ -27,10 +18,7 @@ import type { SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
 import { convertWarningsV3ToV2 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 
-/**
- * Internal configuration for the SAP AI Embedding Model.
- * @internal
- */
+/** @internal */
 interface SAPAIEmbeddingConfig {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
@@ -38,61 +26,33 @@ interface SAPAIEmbeddingConfig {
 }
 
 /**
- * SAP AI Core Embedding Model implementing the Vercel AI SDK EmbeddingModelV2 interface.
+ * SAP AI Embedding Model V2 implementing Vercel AI SDK EmbeddingModelV2.
  *
- * This class implements the AI SDK's `EmbeddingModelV2` interface (for AI SDK 5.x),
- * providing a bridge between AI SDK 5.x and SAP AI Core's Orchestration API
- * using the official SAP AI SDK (@sap-ai-sdk/orchestration).
- *
- * **Architecture:**
- * This is a thin facade that delegates to the internal V3 implementation
- * (SAPAIEmbeddingModel) and transforms the output to V2 format.
- *
- * **Features:**
- * - Text embedding generation (single and batch)
- * - Multiple embedding types (query, document)
- * - Parallel batch processing
- *
- * **Model Support:**
- * - Azure OpenAI embeddings (text-embedding-ada-002, text-embedding-3-small, text-embedding-3-large)
- * - Anthropic embeddings (if available through SAP AI Core)
- * - Other embedding models available in SAP AI Core
- * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/embeddings Vercel AI SDK Embeddings}
- * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/orchestration SAP AI Core Orchestration}
- * @example
- * ```typescript
- * // Create via provider
- * const provider = createSAPAIProvider();
- *
- * // Single embedding
- * const { embedding } = await embed({
- *   model: provider.textEmbedding('text-embedding-ada-002'),
- *   value: 'Hello, world!'
- * });
- *
- * // Multiple embeddings
- * const { embeddings } = await embedMany({
- *   model: provider.textEmbedding('text-embedding-3-small'),
- *   values: ['Hello', 'World', 'AI']
- * });
- * ```
+ * Facade delegating to V3 implementation with V2 format transformation.
+ * Features: text embedding generation, multiple embedding types, parallel batch processing.
+ * Supports: Azure OpenAI embeddings, other embedding models available in SAP AI Core.
  */
 export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
+  /** Maximum number of embeddings per API call. */
   readonly maxEmbeddingsPerCall: number | undefined;
+  /** The model identifier. */
   readonly modelId: string;
+  /** The provider identifier string. */
   readonly provider: string;
+  /** The Vercel AI SDK specification version. */
   readonly specificationVersion = "v2" as const;
+  /** Whether the model supports parallel API calls. */
   readonly supportsParallelCalls: boolean;
 
-  /** Internal V3 model instance that handles all SAP AI Core logic */
+  /** Internal V3 model instance that handles all SAP AI Core logic. */
   private readonly v3Model: SAPAIEmbeddingModel;
 
   /**
    * Creates a new SAP AI Embedding Model V2 instance.
+   * @param modelId - The model identifier (e.g., 'text-embedding-ada-002').
+   * @param settings - Model configuration settings.
+   * @param config - SAP AI Core deployment and destination configuration.
    * @internal
-   * @param modelId - The embedding model identifier (e.g., 'text-embedding-ada-002')
-   * @param settings - Model-specific configuration settings
-   * @param config - Internal configuration (deployment config, destination, etc.)
    */
   constructor(modelId: string, settings: SAPAIEmbeddingSettings, config: SAPAIEmbeddingConfig) {
     this.v3Model = new SAPAIEmbeddingModel(modelId, settings, config);
@@ -103,21 +63,13 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
   }
 
   /**
-   * Generates embeddings for the given text values.
-   *
-   * Implements `EmbeddingModelV2.doEmbed`, delegating to the internal V3 implementation
-   * and transforming the response to V2 format.
-   *
-   * The main differences between V2 and V3:
-   * - V3 includes a `warnings` array that needs to be converted
-   * - Provider metadata and headers use different type definitions
-   * @param options - Embedding options including values and headers
-   * @param options.values - Array of text values to embed
-   * @param options.abortSignal - Optional abort signal for cancelling the operation
-   * @param options.providerOptions - Optional provider-specific options
-   * @param options.headers - Optional HTTP headers
-   * @returns Promise resolving to embeddings and metadata in V2 format
-   * @since 1.0.0
+   * Generates embeddings for the given text values. Delegates to V3 and transforms result to V2 format.
+   * @param options - The embedding generation options.
+   * @param options.abortSignal - Optional abort signal to cancel the request.
+   * @param options.headers - Optional HTTP headers to include in the request.
+   * @param options.providerOptions - Optional provider-specific options.
+   * @param options.values - The text values to generate embeddings for.
+   * @returns The embedding result with vectors, usage, and provider metadata.
    */
   async doEmbed(options: {
     abortSignal?: AbortSignal;
@@ -180,15 +132,9 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
 }
 
 /**
- * Safely casts V3 provider metadata to V2 format.
- *
- * This cast is safe because SAP AI Core implementation guarantees that
- * provider metadata never contains undefined values (verified in V2_ADAPTER_VERIFICATION.md).
- *
- * V3 type: Record<string, JSONObject> where JSONObject allows undefined
- * V2 type: Record<string, Record<string, JSONValue>> where undefined is not allowed
- * @param v3Metadata - V3 provider metadata
- * @returns V2-compatible provider metadata
+ * Casts V3 provider metadata to V2 format.
+ * @param v3Metadata - The V3 provider metadata to cast.
+ * @returns The V2 provider metadata or undefined.
  * @internal
  */
 function castProviderMetadataV3ToV2(

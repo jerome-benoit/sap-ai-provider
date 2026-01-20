@@ -24,7 +24,7 @@ import {
   convertUsageV3ToV2,
   convertWarningsV3ToV2,
   convertWarningV3ToV2,
-} from "./sap-ai-adapters-v3-to-v2";
+} from "./sap-ai-adapters-v3-to-v2.js";
 
 describe("convertFinishReasonV3ToV2", () => {
   it("should convert 'stop' finish reason", () => {

@@ -3,7 +3,6 @@
  *
  * Vercel AI SDK provider for SAP AI Core.
  * Wraps the SAP AI SDK to provide Vercel AI SDK-compatible interfaces.
- * Wraps the SAP AI SDK to provide AI SDK-compatible interfaces.
  */
 
 /**
@@ -20,6 +19,11 @@ export {
 export { SAPAIEmbeddingModelV2 as SAPAIEmbeddingModel } from "./sap-ai-embedding-model-v2.js";
 
 export type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
+
+/**
+ * Language model class for chat/text completions via SAP AI Core.
+ */
+export { SAPAILanguageModelV2 as SAPAILanguageModel } from "./sap-ai-language-model-v2.js";
 
 /**
  * Custom error classes for Foundation Models API support.
