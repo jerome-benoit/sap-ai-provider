@@ -1,5 +1,7 @@
 /**
  * SAP AI Language Model V2 - Vercel AI SDK LanguageModelV2 facade for SAP AI Core Orchestration.
+ *
+ * This is a facade that delegates to the V3 implementation and transforms responses to V2 format.
  */
 
 import type {
@@ -26,8 +28,11 @@ import {
 import { SAPAILanguageModel as SAPAILanguageModelV3Internal } from "./sap-ai-language-model.js";
 import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
-/** @internal */
-interface SAPAIConfig {
+/**
+ * Internal configuration for SAP AI Language Model V2.
+ * @internal
+ */
+interface SAPAILanguageModelV2Config {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
@@ -67,22 +72,26 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
 
   /**
    * Creates a new SAP AI Language Model V2 instance.
-   * @param modelId - The model identifier (e.g., 'gpt-4', 'claude-3').
-   * @param settings - Model configuration settings.
+   *
+   * This constructor creates a V3 implementation internally and delegates all operations to it.
+   * @param modelId - The model identifier (e.g., 'gpt-4o', 'claude-3-5-sonnet', 'gemini-2.0-flash').
+   * @param settings - Model configuration settings (temperature, max tokens, filtering, etc.).
    * @param config - SAP AI Core deployment and destination configuration.
    * @internal
    */
-  constructor(modelId: SAPAIModelId, settings: SAPAISettings, config: SAPAIConfig) {
+  constructor(modelId: SAPAIModelId, settings: SAPAISettings, config: SAPAILanguageModelV2Config) {
     this.modelId = modelId;
     // Delegate to internal V3 implementation
     this.v3Model = new SAPAILanguageModelV3Internal(modelId, settings, config);
   }
 
   /**
-   * Generates a single completion (non-streaming). Delegates to V3 and transforms result to V2 format.
-   * Note: Abort signal uses Promise.race; doesn't cancel underlying HTTP request.
-   * @param options - The Vercel AI SDK generation call options.
-   * @returns The generation result with content, usage, and provider metadata.
+   * Generates a single completion (non-streaming).
+   *
+   * Delegates to V3 implementation and transforms the result to V2 format.
+   * Supports request cancellation via AbortSignal at the HTTP transport layer.
+   * @param options - The Vercel AI SDK V2 generation call options.
+   * @returns The generation result with content, usage, warnings, and provider metadata.
    */
   async doGenerate(options: LanguageModelV2CallOptions): Promise<{
     content: LanguageModelV2Content[];
@@ -124,8 +133,11 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
   }
 
   /**
-   * Generates a streaming completion. Delegates to V3 and transforms stream to V2 format.
-   * @param options - The Vercel AI SDK generation call options.
+   * Generates a streaming completion.
+   *
+   * Delegates to V3 implementation and transforms the stream to V2 format.
+   * Supports request cancellation via AbortSignal at the HTTP transport layer.
+   * @param options - The Vercel AI SDK V2 generation call options.
    * @returns A stream result with readable stream of V2 stream parts.
    */
   async doStream(options: LanguageModelV2CallOptions): Promise<{

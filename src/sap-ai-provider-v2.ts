@@ -3,6 +3,7 @@ import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import { NoSuchModelError } from "@ai-sdk/provider";
+import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import type { SAPAIEmbeddingModelId, SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
 
@@ -14,6 +15,44 @@ import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 /** Deployment configuration type used by the SAP AI SDK. */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
+
+/**
+ * Configuration settings for the SAP AI Provider.
+ * See {@link createSAPAIProvider} for authentication details.
+ */
+export interface SAPAIProviderSettings {
+  /** Default model settings applied to every model instance. Per-call settings override these. */
+  readonly defaultSettings?: SAPAISettings;
+
+  /** SAP AI Core deployment ID. If not provided, the SDK resolves deployment automatically. */
+  readonly deploymentId?: string;
+
+  /** Custom destination configuration for SAP AI Core. */
+  readonly destination?: HttpDestinationOrFetchOptions;
+
+  /**
+   * Log level for SAP Cloud SDK loggers.
+   * Controls verbosity of internal SAP SDK logging (e.g., authentication, service binding).
+   * Note: SAP_CLOUD_SDK_LOG_LEVEL environment variable takes precedence if set.
+   * @default 'warn'
+   */
+  readonly logLevel?: "debug" | "error" | "info" | "warn";
+
+  /**
+   * Provider name used as key for `providerOptions` and `providerMetadata`.
+   * @default 'sap-ai'
+   */
+  readonly name?: string;
+
+  /**
+   * SAP AI Core resource group for resource isolation and access control.
+   * @default 'default'
+   */
+  readonly resourceGroup?: string;
+
+  /** Whether to emit warnings for ambiguous configurations (e.g. both deploymentId and resourceGroup). */
+  readonly warnOnAmbiguousConfig?: boolean;
+}
 
 /**
  * SAP AI Provider V2 interface for creating and configuring SAP AI Core models.
@@ -43,36 +82,6 @@ export interface SAPAIProviderV2 extends ProviderV2 {
 }
 
 /**
- * Configuration settings for the SAP AI Provider.
- * See {@link createSAPAIProvider} for authentication details.
- */
-export interface SAPAIProviderSettings {
-  /** Default model settings applied to every model instance. Per-call settings override these. */
-  readonly defaultSettings?: SAPAISettings;
-
-  /** SAP AI Core deployment ID. If not provided, the SDK resolves deployment automatically. */
-  readonly deploymentId?: string;
-
-  /** Custom destination configuration for SAP AI Core. */
-  readonly destination?: HttpDestinationOrFetchOptions;
-
-  /**
-   * Provider name used as key for `providerOptions` and `providerMetadata`.
-   * @default 'sap-ai'
-   */
-  readonly name?: string;
-
-  /**
-   * SAP AI Core resource group for resource isolation and access control.
-   * @default 'default'
-   */
-  readonly resourceGroup?: string;
-
-  /** Whether to emit warnings for ambiguous configurations (e.g. both deploymentId and resourceGroup). */
-  readonly warnOnAmbiguousConfig?: boolean;
-}
-
-/**
  * Creates a SAP AI Core provider instance for use with the Vercel AI SDK (V2 compatibility).
  *
  * Uses the official SAP AI SDK (@sap-ai-sdk/orchestration) for authentication
@@ -96,6 +105,11 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     console.warn(
       "createSAPAIProvider: both 'deploymentId' and 'resourceGroup' were provided; using 'deploymentId' and ignoring 'resourceGroup'.",
     );
+  }
+
+  if (!process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
+    const logLevel = options.logLevel ?? "warn";
+    setGlobalLogLevel(logLevel);
   }
 
   const deploymentConfig: DeploymentConfig = options.deploymentId

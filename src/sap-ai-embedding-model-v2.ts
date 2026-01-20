@@ -1,5 +1,7 @@
 /**
  * SAP AI Embedding Model V2 - Vercel AI SDK EmbeddingModelV2 facade for SAP AI Core Orchestration.
+ *
+ * This is a facade that delegates to the V3 implementation and transforms responses to V2 format.
  */
 
 import type {
@@ -18,8 +20,11 @@ import type { SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
 import { convertWarningsV3ToV2 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 
-/** @internal */
-interface SAPAIEmbeddingConfig {
+/**
+ * Internal configuration for SAP AI Embedding Model V2.
+ * @internal
+ */
+interface SAPAIEmbeddingModelV2Config {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
@@ -49,12 +54,18 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
 
   /**
    * Creates a new SAP AI Embedding Model V2 instance.
-   * @param modelId - The model identifier (e.g., 'text-embedding-ada-002').
-   * @param settings - Model configuration settings.
+   *
+   * This constructor creates a V3 implementation internally and delegates all operations to it.
+   * @param modelId - The model identifier (e.g., 'text-embedding-ada-002', 'text-embedding-3-small').
+   * @param settings - Model configuration settings (embedding type, model parameters, etc.).
    * @param config - SAP AI Core deployment and destination configuration.
    * @internal
    */
-  constructor(modelId: string, settings: SAPAIEmbeddingSettings, config: SAPAIEmbeddingConfig) {
+  constructor(
+    modelId: string,
+    settings: SAPAIEmbeddingSettings,
+    config: SAPAIEmbeddingModelV2Config,
+  ) {
     this.v3Model = new SAPAIEmbeddingModel(modelId, settings, config);
     this.provider = this.v3Model.provider;
     this.modelId = this.v3Model.modelId;
@@ -63,7 +74,10 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
   }
 
   /**
-   * Generates embeddings for the given text values. Delegates to V3 and transforms result to V2 format.
+   * Generates embeddings for the given text values.
+   *
+   * Delegates to V3 implementation and transforms the result to V2 format.
+   * Warnings are logged to console instead of being returned (V2 API limitation).
    * @param options - The embedding generation options.
    * @param options.abortSignal - Optional abort signal to cancel the request.
    * @param options.headers - Optional HTTP headers to include in the request.
