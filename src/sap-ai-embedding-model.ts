@@ -88,6 +88,12 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
   private readonly config: SAPAIEmbeddingConfig;
   private readonly settings: SAPAIEmbeddingSettings;
 
+  /**
+   * Creates a new SAP AI Embedding Model V3 instance.
+   * @param modelId - The model identifier (e.g., 'text-embedding-ada-002').
+   * @param settings - Model configuration settings (defaults to {}).
+   * @param config - SAP AI Core deployment and destination configuration.
+   */
   constructor(
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
