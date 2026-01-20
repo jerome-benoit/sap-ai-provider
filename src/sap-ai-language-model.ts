@@ -88,7 +88,7 @@ class StreamIdGenerator {
 }
 
 /**
- * SAP AI Chat Language Model implementing Vercel AI SDK LanguageModelV3.
+ * SAP AI Language Model implementing Vercel AI SDK LanguageModelV3.
  *
  * Features: text generation, tool calling, multi-modal input, data masking, content filtering.
  * Supports: Azure OpenAI, Google Vertex AI, AWS Bedrock, AI Core open source models.

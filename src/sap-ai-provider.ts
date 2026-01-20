@@ -19,16 +19,16 @@ export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
 
 /**
  * SAP AI Provider interface for creating and configuring SAP AI Core models.
- * Extends the standard Vercel AI SDK ProviderV3 interface with SAP-specific functionality.
+ * Extends the Vercel AI SDK ProviderV3 interface with SAP-specific functionality.
  */
 export interface SAPAIProvider extends ProviderV3 {
   /** Creates a language model instance. */
   (modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModel;
 
-  /** Creates a chat model instance (equivalent to calling the provider function directly). */
+  /** Creates a language model instance (custom convenience method). */
   chat(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModel;
 
-  /** Creates an embedding model instance. */
+  /** Creates an embedding model instance (custom convenience method). */
   embedding(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings): SAPAIEmbeddingModel;
 
   /** Creates an embedding model instance (Vercel AI SDK ProviderV3 standard method). */
