@@ -67,6 +67,7 @@ export type {
   FilteringModule,
   FunctionObject,
   GroundingModule,
+  isConfigReference,
   LlmModelDetails,
   LlmModelParams,
   MaskingModule,
@@ -92,7 +93,6 @@ export {
   buildDpiMaskingProvider,
   buildLlamaGuard38BFilter,
   buildTranslationConfig,
-  isConfigReference,
 } from "./sap-ai-settings.js";
 
 /**

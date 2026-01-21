@@ -89,7 +89,6 @@ export {
   buildDpiMaskingProvider,
   buildLlamaGuard38BFilter,
   buildTranslationConfig,
-  isConfigReference,
 } from "@sap-ai-sdk/orchestration";
 
 export type {
@@ -100,6 +99,7 @@ export type {
   DeveloperChatMessage,
   DocumentTranslationApplyToSelector,
   FunctionObject,
+  isConfigReference,
   LlmModelDetails,
   LlmModelParams,
   OrchestrationConfigRef,
