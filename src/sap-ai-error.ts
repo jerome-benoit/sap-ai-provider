@@ -256,11 +256,35 @@ export function convertToAISDKError(
     const statusMatch = /status code (\d+)/i.exec(originalMsg);
     if (statusMatch) {
       const extractedStatus = Number.parseInt(statusMatch[1], 10);
+
+      // Extract response body from axios error for debugging
+      let responseBody: string | undefined;
+      let enhancedMessage = `SAP AI Core request failed: ${originalMsg}`;
+
+      const rootCause = isErrorWithCause(rootError) ? rootError.rootCause : rootError;
+      if (typeof rootCause === "object" && rootCause !== null) {
+        const maybeAxios = rootCause as {
+          isAxiosError?: boolean;
+          response?: { data?: unknown };
+        };
+
+        if (maybeAxios.isAxiosError === true && maybeAxios.response?.data) {
+          try {
+            responseBody = JSON.stringify(maybeAxios.response.data, null, 2);
+            enhancedMessage += `\n\nSAP AI Core Error Response:\n${responseBody}`;
+          } catch (e) {
+            responseBody = String(maybeAxios.response.data);
+            enhancedMessage += `\n\nSAP AI Core Error Response: ${responseBody}`;
+          }
+        }
+      }
+
       return new APICallError({
         cause: error,
         isRetryable: isRetryable(extractedStatus),
-        message: `SAP AI Core request failed: ${originalMsg}`,
+        message: enhancedMessage,
         requestBodyValues: context?.requestBody,
+        responseBody,
         responseHeaders,
         statusCode: extractedStatus,
         url: context?.url ?? "",
