@@ -84,8 +84,9 @@ async function embeddingsExample() {
 
     console.log(`✅ Generated ${String(embeddings.length)} embeddings:`);
     embeddings.forEach((emb, idx) => {
+      const doc = documents[idx] ?? "";
       console.log(
-        `   [${String(idx)}] "${documents[idx].slice(0, 40)}..." → ${String(emb.length)} dimensions`,
+        `   [${String(idx)}] "${doc.slice(0, 40)}..." → ${String(emb.length)} dimensions`,
       );
     });
 
@@ -96,17 +97,21 @@ async function embeddingsExample() {
 
     // Calculate cosine similarity between embeddings
     const cosineSimilarity = (a: number[], b: number[]): number => {
-      const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+      const dotProduct = a.reduce((sum, val, i) => sum + val * (b[i] ?? 0), 0);
       const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
       const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
       return dotProduct / (magnitudeA * magnitudeB);
     };
 
     // Compare each document to the first one
-    console.log(`   Reference: "${documents[0].slice(0, 40)}..."`);
+    const referenceDoc = documents[0] ?? "";
+    const referenceEmb = embeddings[0] ?? [];
+    console.log(`   Reference: "${referenceDoc.slice(0, 40)}..."`);
     for (let i = 1; i < embeddings.length; i++) {
-      const similarity = cosineSimilarity(embeddings[0], embeddings[i]);
-      console.log(`   → "${documents[i].slice(0, 35)}..." similarity: ${similarity.toFixed(4)}`);
+      const currentEmb = embeddings[i] ?? [];
+      const currentDoc = documents[i] ?? "";
+      const similarity = cosineSimilarity(referenceEmb, currentEmb);
+      console.log(`   → "${currentDoc.slice(0, 35)}..." similarity: ${similarity.toFixed(4)}`);
     }
 
     // ========================================

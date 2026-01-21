@@ -474,7 +474,7 @@ describe("validateModelParamsWithWarnings", () => {
       validateModelParamsWithWarnings({ temperature: 3 }, warnings);
 
       expect(warnings.length).toBeGreaterThan(0);
-      expect(warnings[0].type).toBe("other");
+      expect(warnings[0]?.type).toBe("other");
     });
 
     it("should include parameter name in warning message", () => {

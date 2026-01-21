@@ -466,9 +466,9 @@ describe("SAPAILanguageModel", () => {
 
       expect(urls).toHaveProperty("image/*");
       expect(urls["image/*"]).toHaveLength(2);
-      expect(urls["image/*"][0].test("https://example.com/image.png")).toBe(true);
-      expect(urls["image/*"][0].test("http://example.com/image.png")).toBe(false);
-      expect(urls["image/*"][1].test("data:image/png;base64,Zm9v")).toBe(true);
+      expect(urls["image/*"]?.[0]?.test("https://example.com/image.png")).toBe(true);
+      expect(urls["image/*"]?.[0]?.test("http://example.com/image.png")).toBe(false);
+      expect(urls["image/*"]?.[1]?.test("data:image/png;base64,Zm9v")).toBe(true);
     });
 
     describe("model capabilities", () => {
@@ -884,7 +884,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0].type).toBe("unsupported");
+      expect(result.warnings[0]?.type).toBe("unsupported");
     });
 
     it("should prefer call options.tools over settings.tools (and warn)", async () => {
@@ -1249,7 +1249,7 @@ describe("SAPAILanguageModel", () => {
       const parts = await readAllParts(stream);
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-      expect(parts[0].type).toBe("stream-start");
+      expect(parts[0]?.type).toBe("stream-start");
       expect(parts.some((p) => p.type === "response-metadata")).toBe(true);
       const responseMetadata = parts.find((p) => p.type === "response-metadata");
       expect(responseMetadata).toBeDefined();
@@ -1784,7 +1784,7 @@ describe("SAPAILanguageModel", () => {
         expect(textEnds).toHaveLength(1);
         expect(textDeltas.length).toBeGreaterThan(0);
 
-        const blockId = textStarts[0].id;
+        const blockId = textStarts[0]?.id;
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         expect(blockId).toMatch(uuidRegex);
         expect(blockId).not.toBe("0");
@@ -1792,7 +1792,7 @@ describe("SAPAILanguageModel", () => {
         for (const delta of textDeltas) {
           expect(delta.id).toBe(blockId);
         }
-        expect(textEnds[0].id).toBe(blockId);
+        expect(textEnds[0]?.id).toBe(blockId);
 
         const { stream: stream2 } = await model.doStream({ prompt });
         const parts2: LanguageModelV3StreamPart[] = [];
@@ -1810,7 +1810,7 @@ describe("SAPAILanguageModel", () => {
             p.type === "text-start",
         );
 
-        const blockId2 = textStarts2[0].id;
+        const blockId2 = textStarts2[0]?.id;
 
         expect(blockId2).not.toBe(blockId);
         expect(blockId2).toMatch(uuidRegex);

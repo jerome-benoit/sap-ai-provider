@@ -182,10 +182,10 @@ describe("convertToSAPMessages", () => {
         },
       ];
       const result = convertToSAPMessages(prompt);
-      expect(
-        (result[0] as { tool_calls: { function: { arguments: string } }[] }).tool_calls[0].function
-          .arguments,
-      ).toBe('{"location":"Tokyo"}');
+      const message = result[0] as { tool_calls: { function: { arguments: string } }[] };
+      const toolCall = message.tool_calls[0];
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.function.arguments).toBe('{"location":"Tokyo"}');
     });
 
     it("should convert multiple tool calls in single message", () => {
@@ -249,9 +249,12 @@ describe("convertToSAPMessages", () => {
         },
       ];
       const result = convertToSAPMessages(prompt);
-      const args = (result[0] as { tool_calls: { function: { arguments: string } }[] })
-        .tool_calls[0].function.arguments;
-      expect(JSON.parse(args)).toEqual({ query: 'test "quotes" and \\ backslash' });
+      const message = result[0] as { tool_calls: { function: { arguments: string } }[] };
+      const toolCall = message.tool_calls[0];
+      expect(toolCall).toBeDefined();
+      expect(JSON.parse(toolCall?.function.arguments ?? "{}")).toEqual({
+        query: 'test "quotes" and \\ backslash',
+      });
     });
   });
 
@@ -375,9 +378,10 @@ describe("convertToSAPMessages", () => {
         },
       ];
       const result = convertToSAPMessages(prompt);
-      expect(
-        (result[0] as { content: { image_url: { url: string } }[] }).content[1].image_url.url,
-      ).toBe("https://example.com/image.jpg");
+      const message = result[0] as { content: { image_url: { url: string } }[] };
+      const content = message.content[1];
+      expect(content).toBeDefined();
+      expect(content?.image_url.url).toBe("https://example.com/image.jpg");
     });
 
     it("should convert multiple images", () => {
@@ -403,9 +407,10 @@ describe("convertToSAPMessages", () => {
         { content: [{ data, mediaType: "image/png", type: "file" }], role: "user" },
       ];
       const result = convertToSAPMessages(prompt);
-      const url = (result[0] as { content: { image_url: { url: string } }[] }).content[0].image_url
-        .url;
-      expect(url).toMatch(/^data:image\/png;base64,iVBORw==/);
+      const message = result[0] as { content: { image_url: { url: string } }[] };
+      const content = message.content[0];
+      expect(content).toBeDefined();
+      expect(content?.image_url.url).toMatch(/^data:image\/png;base64,iVBORw==/);
     });
 
     it("should convert buffer-like object with toString", () => {
@@ -421,9 +426,10 @@ describe("convertToSAPMessages", () => {
         },
       ];
       const result = convertToSAPMessages(prompt);
-      const url = (result[0] as { content: { image_url: { url: string } }[] }).content[0].image_url
-        .url;
-      expect(url).toBe("data:image/png;base64,aGVsbG8=");
+      const message = result[0] as { content: { image_url: { url: string } }[] };
+      const content = message.content[0];
+      expect(content).toBeDefined();
+      expect(content?.image_url.url).toBe("data:image/png;base64,aGVsbG8=");
     });
   });
 

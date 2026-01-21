@@ -47,10 +47,14 @@ export function convertSAPErrorToAPICallError(
 
   if (Array.isArray(error)) {
     const firstError = error[0];
-    message = firstError.message;
-    code = firstError.code;
-    location = firstError.location;
-    requestId = firstError.request_id;
+    if (firstError) {
+      message = firstError.message;
+      code = firstError.code;
+      location = firstError.location;
+      requestId = firstError.request_id;
+    } else {
+      message = "Unknown SAP AI error";
+    }
   } else {
     message = error.message;
     code = error.code;
@@ -252,7 +256,7 @@ export function convertToAISDKError(
     }
 
     const statusMatch = /status code (\d+)/i.exec(originalErrorMsg);
-    if (statusMatch) {
+    if (statusMatch?.[1]) {
       const extractedStatus = Number.parseInt(statusMatch[1], 10);
       return createAPICallError(
         error,

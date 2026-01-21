@@ -234,10 +234,11 @@ export function convertToSAPMessages(
           }
         }
 
+        const firstPart = contentParts[0];
         const userMessage: UserChatMessage =
-          contentParts.length === 1 && contentParts[0].type === "text"
+          contentParts.length === 1 && firstPart?.type === "text"
             ? {
-                content: contentParts[0].text ?? "",
+                content: firstPart.text ?? "",
                 role: "user",
               }
             : {

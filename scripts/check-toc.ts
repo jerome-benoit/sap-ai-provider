@@ -57,7 +57,7 @@ export function extractHeadings(content: string): Heading[] {
     if (inCodeBlock) continue;
 
     const match = /^(#{1,6})\s+(.+)$/.exec(line);
-    if (match) {
+    if (match?.[1] && match[2]) {
       const level = match[1].length;
       const rawText = match[2];
 
@@ -92,13 +92,17 @@ export function extractTocEntries(content: string): TocEntry[] {
   const entries: TocEntry[] = [];
 
   const tocMatch = /##\s+Table of Contents\s*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i.exec(content);
-  if (!tocMatch) return entries;
+  if (!tocMatch?.[1]) return entries;
 
   const tocSection = tocMatch[1];
   const linkRegex = /\[([^\]]+)\]\(#([^)]+)\)/g;
   let match: null | RegExpExecArray;
   while ((match = linkRegex.exec(tocSection)) !== null) {
-    entries.push({ slug: match[2], text: match[1] });
+    const text = match[1];
+    const slug = match[2];
+    if (text && slug) {
+      entries.push({ slug, text });
+    }
   }
 
   return entries;

@@ -296,7 +296,7 @@ const x = 1;
       const headings = extractHeadings(content);
 
       expect(headings).toHaveLength(1);
-      expect(headings[0].text).toBe("Real Heading");
+      expect(headings[0]?.text).toBe("Real Heading");
     });
   });
 
@@ -305,35 +305,35 @@ const x = 1;
       const content = "## **Bold** Heading";
       const headings = extractHeadings(content);
 
-      expect(headings[0].text).toBe("Bold Heading");
+      expect(headings[0]?.text).toBe("Bold Heading");
     });
 
     it("should remove italic formatting (*text*)", () => {
       const content = "## *Italic* Heading";
       const headings = extractHeadings(content);
 
-      expect(headings[0].text).toBe("Italic Heading");
+      expect(headings[0]?.text).toBe("Italic Heading");
     });
 
     it("should remove inline code (`text`)", () => {
       const content = "## The `code` Example";
       const headings = extractHeadings(content);
 
-      expect(headings[0].text).toBe("The code Example");
+      expect(headings[0]?.text).toBe("The code Example");
     });
 
     it("should remove links but keep text ([text](url))", () => {
       const content = "## See [Documentation](https://example.com)";
       const headings = extractHeadings(content);
 
-      expect(headings[0].text).toBe("See Documentation");
+      expect(headings[0]?.text).toBe("See Documentation");
     });
 
     it("should handle mixed formatting", () => {
       const content = "## **Bold** and *italic* with `code`";
       const headings = extractHeadings(content);
 
-      expect(headings[0].text).toBe("Bold and italic with code");
+      expect(headings[0]?.text).toBe("Bold and italic with code");
     });
   });
 
@@ -347,9 +347,9 @@ const x = 1;
       const headings = extractHeadings(content);
 
       expect(headings).toHaveLength(3);
-      expect(headings[0].slug).toBe("features");
-      expect(headings[1].slug).toBe("features-1");
-      expect(headings[2].slug).toBe("features-2");
+      expect(headings[0]?.slug).toBe("features");
+      expect(headings[1]?.slug).toBe("features-1");
+      expect(headings[2]?.slug).toBe("features-2");
     });
 
     it("should track baseSlug separately from slug", () => {
@@ -416,10 +416,10 @@ const x = 1;
 
       // Known limitation: tracks by baseSlug, not final slug
       expect(headings).toHaveLength(3);
-      expect(headings[0].slug).toBe("example");
-      expect(headings[1].slug).toBe("example-1");
-      expect(headings[2].baseSlug).toBe("example-1");
-      expect(headings[2].slug).toBe("example-1");
+      expect(headings[0]?.slug).toBe("example");
+      expect(headings[1]?.slug).toBe("example-1");
+      expect(headings[2]?.baseSlug).toBe("example-1");
+      expect(headings[2]?.slug).toBe("example-1");
     });
 
     it("should not conflict explicit numbered headings with duplicate suffixes", () => {
@@ -461,7 +461,7 @@ const x = 1;
       const content = "## Error Handling & Reference";
       const headings = extractHeadings(content);
 
-      expect(headings[0].slug).toBe("error-handling--reference");
+      expect(headings[0]?.slug).toBe("error-handling--reference");
     });
   });
 });
@@ -569,7 +569,7 @@ Some regular [link](#not-in-toc) in content.
       const entries = extractTocEntries(content);
 
       expect(entries).toHaveLength(1);
-      expect(entries[0].slug).toBe("features");
+      expect(entries[0]?.slug).toBe("features");
     });
 
     it("should handle ToC entries with special characters in text", () => {
@@ -584,8 +584,8 @@ Some regular [link](#not-in-toc) in content.
       const entries = extractTocEntries(content);
 
       expect(entries).toHaveLength(2);
-      expect(entries[0].text).toBe("Error Handling & Reference");
-      expect(entries[1].text).toBe("`createSAPAIProvider()`");
+      expect(entries[0]?.text).toBe("Error Handling & Reference");
+      expect(entries[1]?.text).toBe("`createSAPAIProvider()`");
     });
   });
 });
