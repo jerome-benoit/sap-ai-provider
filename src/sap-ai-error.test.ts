@@ -366,6 +366,26 @@ describe("convertToAISDKError", () => {
       expect((result as APICallError).isRetryable).toBe(true);
       expect((result as APICallError).statusCode).toBe(503);
     });
+
+    it("should include response body for network errors when available", () => {
+      const axiosError = new Error("Network timeout");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: {
+            code: 503,
+            message: "Service temporarily unavailable",
+          },
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(503);
+      expect(result.responseBody).toBeDefined();
+      expect(result.message).toContain("SAP AI Core Error Response:");
+      expect(result.message).toContain("Service temporarily unavailable");
+    });
   });
 
   describe("generic error handling", () => {
@@ -648,6 +668,26 @@ describe("sdk-specific error handling", () => {
       expect(result.statusCode).toBe(503);
       expect(result.isRetryable).toBe(true);
     });
+
+    it("should include response body for destination errors", () => {
+      const axiosError = new Error("Could not resolve destination");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: {
+            error: "DESTINATION_NOT_FOUND",
+            message: "Destination 'my-dest' does not exist",
+          },
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(400);
+      expect(result.responseBody).toBeDefined();
+      expect(result.message).toContain("SAP AI Core Error Response:");
+      expect(result.message).toContain("DESTINATION_NOT_FOUND");
+    });
   });
 
   describe("content and configuration errors (non-retryable 400)", () => {
@@ -665,6 +705,27 @@ describe("sdk-specific error handling", () => {
 
       expect(result.statusCode).toBe(400);
       expect(result.isRetryable).toBe(false);
+    });
+
+    it("should include response body for configuration errors", () => {
+      const axiosError = new Error("Filtering parameters cannot be empty");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: {
+            code: 400,
+            details: "At least one filter must be specified",
+            message: "Invalid filter configuration",
+          },
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(400);
+      expect(result.responseBody).toBeDefined();
+      expect(result.message).toContain("SAP AI Core Error Response:");
+      expect(result.message).toContain("Invalid filter configuration");
     });
   });
 
@@ -719,6 +780,122 @@ describe("sdk-specific error handling", () => {
 
       expect(result.statusCode).toBe(429);
       expect(result.isRetryable).toBe(true);
+    });
+
+    it("should extract and format axios error response body", () => {
+      const axiosError = new Error("Request failed with status code 400.");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: {
+            code: 400,
+            location: "Input Parameters",
+            message:
+              "400 - Input Parameters: Error validating parameters. Unused parameters: ['question'].",
+            request_id: "258f5390-51f6-93cc-a066-858be2558a64",
+          },
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(400);
+      expect(result.responseBody).toBeDefined();
+      expect(result.message).toContain("SAP AI Core Error Response:");
+      expect(result.message).toContain("request_id");
+      expect(result.message).toContain("258f5390-51f6-93cc-a066-858be2558a64");
+    });
+
+    it("should handle axios error with string response data", () => {
+      const axiosError = new Error("Request failed with status code 500.");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: "Internal Server Error",
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(500);
+      expect(result.responseBody).toBe("Internal Server Error");
+      expect(result.message).toContain("SAP AI Core Error Response:");
+      expect(result.message).toContain("Internal Server Error");
+    });
+
+    it("should truncate large response bodies", () => {
+      const largeData = { error: "x".repeat(3000) };
+      const axiosError = new Error("Request failed with status code 400.");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: largeData,
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(400);
+      expect(result.responseBody).toBeDefined();
+      if (result.responseBody) {
+        expect(result.responseBody.length).toBeLessThanOrEqual(2014); // 2000 + "...[truncated]"
+      }
+      expect(result.responseBody).toContain("...[truncated]");
+      expect(result.message).toContain("...[truncated]");
+    });
+
+    it("should handle JSON.stringify errors gracefully", () => {
+      const circularData: { a: number; self?: unknown } = { a: 1 };
+      circularData.self = circularData; // Create circular reference
+
+      const axiosError = new Error("Request failed with status code 400.");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: circularData,
+        },
+      });
+
+      const result = convertToAISDKError(axiosError) as APICallError;
+
+      expect(result.statusCode).toBe(400);
+      expect(result.responseBody).toBeDefined();
+      expect(result.message).toContain("SAP AI Core Error Response:");
+      // Should fall back to type indication for circular references
+      expect(result.responseBody).toContain("[Unable to serialize: object]");
+    });
+
+    it("should extract axios error nested in ErrorWithCause", () => {
+      const axiosError = new Error("Request failed with status code 401.");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: {
+            code: 401,
+            message: "Unauthorized",
+          },
+        },
+      });
+
+      const outerError = new Error("Request failed with status code 401.");
+      Object.defineProperty(outerError, "name", { value: "ErrorWithCause" });
+      Object.defineProperty(outerError, "rootCause", { get: () => axiosError });
+
+      const result = convertToAISDKError(outerError) as APICallError;
+
+      expect(result.statusCode).toBe(401);
+      expect(result.responseBody).toBeDefined();
+      expect(result.message).toContain("Unauthorized");
+    });
+
+    it("should handle errors without axios response body", () => {
+      const simpleError = new Error("Network timeout");
+
+      const result = convertToAISDKError(simpleError) as APICallError;
+
+      expect(result.statusCode).toBe(503);
+      expect(result.responseBody).toBeUndefined();
+      expect(result.message).not.toContain("SAP AI Core Error Response:");
     });
   });
 });

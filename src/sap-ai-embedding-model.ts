@@ -96,7 +96,7 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
    *
    * This is the main implementation that handles all SAP AI Core embedding logic.
    * @param modelId - The model identifier (e.g., 'text-embedding-ada-002', 'text-embedding-3-small').
-   * @param settings - Model configuration settings (embedding type, model parameters, etc.). Defaults to {}.
+   * @param settings - Model configuration settings (embedding type, model parameters, etc.).
    * @param config - SAP AI Core deployment and destination configuration.
    */
   constructor(

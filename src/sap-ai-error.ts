@@ -171,11 +171,9 @@ export function convertToAISDKError(
     }
   }
 
-  const responseHeaders = context?.responseHeaders ?? getAxiosResponseHeaders(error);
-
   if (rootError instanceof Error) {
     const errorMsg = rootError.message.toLowerCase();
-    const originalMsg = rootError.message;
+    const originalErrorMsg = rootError.message;
 
     if (
       errorMsg.includes("authentication") ||
@@ -187,7 +185,7 @@ export function convertToAISDKError(
     ) {
       return new LoadAPIKeyError({
         message:
-          `SAP AI Core authentication failed: ${originalMsg}\n\n` +
+          `SAP AI Core authentication failed: ${originalErrorMsg}\n\n` +
           `Make sure your AICORE_SERVICE_KEY environment variable is set correctly.\n` +
           `See: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-service-key`,
       });
@@ -199,39 +197,39 @@ export function convertToAISDKError(
       errorMsg.includes("network") ||
       errorMsg.includes("timeout")
     ) {
-      return new APICallError({
-        cause: error,
-        isRetryable: true,
-        message: `Network error connecting to SAP AI Core: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: true,
+          message: `Network error connecting to SAP AI Core: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+        },
+        context,
+      );
     }
 
     if (errorMsg.includes("could not resolve destination")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message:
-          `SAP AI Core destination error: ${originalMsg}\n\n` +
-          `Check your destination configuration or provide a valid destinationName.`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message:
+            `SAP AI Core destination error: ${originalErrorMsg}\n\n` +
+            `Check your destination configuration or provide a valid destinationName.`,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+        },
+        context,
+      );
     }
 
     if (
       errorMsg.includes("failed to resolve deployment") ||
       errorMsg.includes("no deployment matched")
     ) {
-      const modelId = extractModelIdentifier(originalMsg);
+      const modelId = extractModelIdentifier(originalErrorMsg);
       return new NoSuchModelError({
         message:
-          `SAP AI Core deployment error: ${originalMsg}\n\n` +
+          `SAP AI Core deployment error: ${originalErrorMsg}\n\n` +
           `Make sure you have a running orchestration deployment in your AI Core instance.\n` +
           `See: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-deployment-for-orchestration`,
         modelId: modelId ?? "unknown",
@@ -240,43 +238,43 @@ export function convertToAISDKError(
     }
 
     if (errorMsg.includes("filtered by the output filter")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message:
-          `Content was filtered: ${originalMsg}\n\n` +
-          `The model's response was blocked by content safety filters. Try a different prompt.`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message:
+            `Content was filtered: ${originalErrorMsg}\n\n` +
+            `The model's response was blocked by content safety filters. Try a different prompt.`,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+        },
+        context,
+      );
     }
 
-    const statusMatch = /status code (\d+)/i.exec(originalMsg);
+    const statusMatch = /status code (\d+)/i.exec(originalErrorMsg);
     if (statusMatch) {
       const extractedStatus = Number.parseInt(statusMatch[1], 10);
-      return new APICallError({
-        cause: error,
-        isRetryable: isRetryable(extractedStatus),
-        message: `SAP AI Core request failed: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: extractedStatus,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: isRetryable(extractedStatus),
+          message: `SAP AI Core request failed: ${originalErrorMsg}`,
+          statusCode: extractedStatus,
+        },
+        context,
+      );
     }
 
     if (errorMsg.includes("consumed stream")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message: `SAP AI Core stream consumption error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message: `SAP AI Core stream consumption error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.INTERNAL_ERROR,
+        },
+        context,
+      );
     }
 
     if (
@@ -286,15 +284,15 @@ export function convertToAISDKError(
       errorMsg.includes("no body") ||
       errorMsg.includes("invalid sse payload")
     ) {
-      return new APICallError({
-        cause: error,
-        isRetryable: true,
-        message: `SAP AI Core streaming error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: true,
+          message: `SAP AI Core streaming error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.INTERNAL_ERROR,
+        },
+        context,
+      );
     }
 
     if (
@@ -307,39 +305,39 @@ export function convertToAISDKError(
       errorMsg.includes("yaml does not conform") ||
       errorMsg.includes("validation errors")
     ) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message: `SAP AI Core configuration error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.BAD_REQUEST,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message: `SAP AI Core configuration error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.BAD_REQUEST,
+        },
+        context,
+      );
     }
 
     if (errorMsg.includes("buffer is not available as globals")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message: `SAP AI Core environment error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message: `SAP AI Core environment error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.INTERNAL_ERROR,
+        },
+        context,
+      );
     }
 
     if (errorMsg.includes("response stream is undefined")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message: `SAP AI Core response stream error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message: `SAP AI Core response stream error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.INTERNAL_ERROR,
+        },
+        context,
+      );
     }
 
     if (
@@ -347,39 +345,39 @@ export function convertToAISDKError(
       errorMsg.includes("stream is still open") ||
       errorMsg.includes("data is not available yet")
     ) {
-      return new APICallError({
-        cause: error,
-        isRetryable: true,
-        message: `SAP AI Core response processing error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: true,
+          message: `SAP AI Core response processing error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.INTERNAL_ERROR,
+        },
+        context,
+      );
     }
 
     if (errorMsg.includes("failed to fetch the list of deployments")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: true,
-        message: `SAP AI Core deployment retrieval error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: true,
+          message: `SAP AI Core deployment retrieval error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+        },
+        context,
+      );
     }
 
     if (errorMsg.includes("received non-uint8array")) {
-      return new APICallError({
-        cause: error,
-        isRetryable: false,
-        message: `SAP AI Core stream buffer error: ${originalMsg}`,
-        requestBodyValues: context?.requestBody,
-        responseHeaders,
-        statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        url: context?.url ?? "",
-      });
+      return createAPICallError(
+        error,
+        {
+          isRetryable: false,
+          message: `SAP AI Core stream buffer error: ${originalErrorMsg}`,
+          statusCode: HTTP_STATUS.INTERNAL_ERROR,
+        },
+        context,
+      );
     }
   }
 
@@ -394,15 +392,15 @@ export function convertToAISDKError(
     ? `SAP AI Core ${context.operation} failed: ${message}`
     : `SAP AI Core error: ${message}`;
 
-  return new APICallError({
-    cause: error,
-    isRetryable: false,
-    message: fullMessage,
-    requestBodyValues: context?.requestBody,
-    responseHeaders,
-    statusCode: HTTP_STATUS.INTERNAL_ERROR,
-    url: context?.url ?? "",
-  });
+  return createAPICallError(
+    error,
+    {
+      isRetryable: false,
+      message: fullMessage,
+      statusCode: HTTP_STATUS.INTERNAL_ERROR,
+    },
+    context,
+  );
 }
 
 /**
@@ -428,6 +426,58 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
 
   if (entries.length === 0) return undefined;
   return Object.fromEntries(entries) as Record<string, string>;
+}
+
+/**
+ * Creates an APICallError with automatic response extraction and optional message enrichment.
+ * @param error - The original error to extract response data from.
+ * @param options - Error configuration options.
+ * @param options.enrichMessage - Whether to append response body to message.
+ * @param options.isRetryable - Whether the error should be retried.
+ * @param options.message - The error message.
+ * @param options.statusCode - The HTTP status code.
+ * @param context - Optional context for error details.
+ * @param context.operation - The operation that failed.
+ * @param context.requestBody - The original request body.
+ * @param context.responseHeaders - Pre-extracted response headers (if available).
+ * @param context.url - The request URL.
+ * @returns A configured APICallError instance with extracted response data.
+ * @internal
+ */
+function createAPICallError(
+  error: unknown,
+  options: {
+    enrichMessage?: boolean;
+    isRetryable: boolean;
+    message: string;
+    statusCode: number;
+  },
+  context?: {
+    operation?: string;
+    requestBody?: unknown;
+    responseHeaders?: Record<string, string>;
+    url?: string;
+  },
+): APICallError {
+  const responseBody = getAxiosResponseBody(error);
+  const responseHeaders = context?.responseHeaders ?? getAxiosResponseHeaders(error);
+
+  const enrichMessage = options.enrichMessage ?? true;
+  const message =
+    enrichMessage && responseBody
+      ? `${options.message}\n\nSAP AI Core Error Response:\n${responseBody}`
+      : options.message;
+
+  return new APICallError({
+    cause: error,
+    isRetryable: options.isRetryable,
+    message: message,
+    requestBodyValues: context?.requestBody,
+    responseBody,
+    responseHeaders,
+    statusCode: options.statusCode,
+    url: context?.url ?? "",
+  });
 }
 
 /**
@@ -462,24 +512,51 @@ function extractModelIdentifier(message: string, location?: string): string | un
 }
 
 /**
+ * Extracts the root cause from an error, handling ErrorWithCause chains.
+ * @param error - The error to extract the root cause from.
+ * @returns The root cause if it's an axios error, undefined otherwise.
+ * @internal
+ */
+function getAxiosError(
+  error: unknown,
+): undefined | { isAxiosError: true; response?: { data?: unknown; headers?: unknown } } {
+  if (!(error instanceof Error)) return undefined;
+
+  const rootCause = isErrorWithCause(error) ? error.rootCause : error;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- typeof null === "object" in JS
+  if (typeof rootCause !== "object" || rootCause === null) return undefined;
+
+  const maybeAxios = rootCause as {
+    isAxiosError?: boolean;
+    response?: { data?: unknown; headers?: unknown };
+  };
+
+  if (maybeAxios.isAxiosError !== true) return undefined;
+  return maybeAxios as { isAxiosError: true; response?: { data?: unknown; headers?: unknown } };
+}
+
+/**
+ * Extracts and formats axios response body from an error.
+ * @param error - The error to extract response body from.
+ * @returns The formatted response body, or undefined if not available.
+ * @internal
+ */
+function getAxiosResponseBody(error: unknown): string | undefined {
+  const axiosError = getAxiosError(error);
+  if (!axiosError?.response?.data) return undefined;
+  return serializeAxiosResponseData(axiosError.response.data);
+}
+
+/**
  * Extracts response headers from an Axios error.
  * @param error - The error to extract headers from.
  * @returns The response headers, or undefined if not available.
  * @internal
  */
 function getAxiosResponseHeaders(error: unknown): Record<string, string> | undefined {
-  if (!(error instanceof Error)) return undefined;
-
-  const rootCause = isErrorWithCause(error) ? error.rootCause : error;
-  if (typeof rootCause !== "object") return undefined;
-
-  const maybeAxios = rootCause as {
-    isAxiosError?: boolean;
-    response?: { headers?: unknown };
-  };
-
-  if (maybeAxios.isAxiosError !== true) return undefined;
-  return normalizeHeaders(maybeAxios.response?.headers);
+  const axiosError = getAxiosError(error);
+  if (!axiosError) return undefined;
+  return normalizeHeaders(axiosError.response?.headers);
 }
 
 /**
@@ -558,6 +635,33 @@ function isRetryable(statusCode: number): boolean {
     statusCode === HTTP_STATUS.RATE_LIMIT ||
     (statusCode >= HTTP_STATUS.INTERNAL_ERROR && statusCode < 600)
   );
+}
+
+/**
+ * Serializes and truncates axios response data for error messages.
+ * @param data - The response data to serialize.
+ * @param maxLength - Maximum length before truncation.
+ * @returns Serialized and truncated string, or undefined if data is undefined.
+ * @internal
+ */
+function serializeAxiosResponseData(data: unknown, maxLength = 2000): string | undefined {
+  if (data === undefined) return undefined;
+
+  let serialized: string;
+  try {
+    if (typeof data === "string") {
+      serialized = data;
+    } else {
+      serialized = JSON.stringify(data, null, 2);
+    }
+  } catch {
+    serialized = `[Unable to serialize: ${typeof data}]`;
+  }
+
+  if (serialized.length > maxLength) {
+    return serialized.slice(0, maxLength) + "...[truncated]";
+  }
+  return serialized;
 }
 
 /**

@@ -52,7 +52,7 @@ interface UserContentItem {
 /**
  * Converts Vercel AI SDK prompt format to SAP AI SDK ChatMessage format.
  * @param prompt - The Vercel AI SDK prompt to convert.
- * @param options - Optional conversion settings.
+ * @param options - Conversion settings.
  * @returns Array of SAP AI SDK compatible ChatMessage objects.
  * @throws {UnsupportedFunctionalityError} When unsupported message types are encountered.
  * @example
