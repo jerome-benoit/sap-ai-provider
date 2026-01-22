@@ -28,6 +28,14 @@ describe("convertToSAPMessages", () => {
       const result = convertToSAPMessages([{ content: "", role: "system" }]);
       expect(result).toEqual([{ content: "", role: "system" }]);
     });
+
+    it("should handle large system messages without truncation (100KB+)", () => {
+      const largeContent = "S".repeat(100000) + "[SYSTEM_END]";
+      const prompt: LanguageModelV3Prompt = [{ content: largeContent, role: "system" }];
+      const result = convertToSAPMessages(prompt);
+      expect((result[0] as { content: string }).content).toBe(largeContent);
+      expect((result[0] as { content: string }).content).toContain("[SYSTEM_END]");
+    });
   });
 
   describe("user messages", () => {
@@ -62,6 +70,50 @@ describe("convertToSAPMessages", () => {
       const result = convertToSAPMessages([{ content: [], role: "user" }]);
       expect(result).toEqual([{ content: [], role: "user" }]);
     });
+
+    it("should handle large user text messages without truncation (100KB+)", () => {
+      const largeText = "A".repeat(100000) + "[END_MARKER]";
+      const prompt: LanguageModelV3Prompt = [
+        { content: [{ text: largeText, type: "text" }], role: "user" },
+      ];
+      const result = convertToSAPMessages(prompt);
+      expect((result[0] as { content: string }).content).toBe(largeText);
+      expect((result[0] as { content: string }).content).toHaveLength(
+        100000 + "[END_MARKER]".length,
+      );
+    });
+
+    it("should preserve Unicode characters in large text without corruption", () => {
+      const unicodeMix =
+        "中文".repeat(10000) +
+        "😀🎉🚀".repeat(5000) +
+        "éèêë".repeat(10000) +
+        "مرحبا".repeat(5000) +
+        "[UNICODE_END]";
+
+      const prompt: LanguageModelV3Prompt = [
+        { content: [{ text: unicodeMix, type: "text" }], role: "user" },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const content = (result[0] as { content: string }).content;
+
+      expect(content).toBe(unicodeMix);
+      expect(content).toContain("中文");
+      expect(content).toContain("😀");
+      expect(content).toContain("éèêë");
+      expect(content).toContain("مرحبا");
+      expect(content).toContain("[UNICODE_END]");
+    });
+
+    it.each([0, 1, 1024, 2048, 4096, 8192, 16384, 32768, 65536])(
+      "should handle content at boundary size %i without truncation",
+      (size) => {
+        const text = "X".repeat(size);
+        const prompt: LanguageModelV3Prompt = [{ content: [{ text, type: "text" }], role: "user" }];
+        const result = convertToSAPMessages(prompt);
+        expect((result[0] as { content: string }).content).toHaveLength(size);
+      },
+    );
   });
 
   describe("assistant messages", () => {
@@ -78,6 +130,39 @@ describe("convertToSAPMessages", () => {
     it("should handle empty content array", () => {
       const result = convertToSAPMessages([{ content: [], role: "assistant" }]);
       expect(result).toEqual([{ content: "", role: "assistant", tool_calls: undefined }]);
+    });
+
+    it("should handle large assistant text messages without truncation (100KB+)", () => {
+      const largeText = "B".repeat(100000) + "[ASSISTANT_END]";
+      const prompt: LanguageModelV3Prompt = [
+        { content: [{ text: largeText, type: "text" }], role: "assistant" },
+      ];
+      const result = convertToSAPMessages(prompt);
+      expect((result[0] as { content: string }).content).toBe(largeText);
+      expect((result[0] as { content: string }).content).toContain("[ASSISTANT_END]");
+    });
+
+    it("should concatenate multiple large text parts without truncation", () => {
+      const part1 = "X".repeat(50000) + "[PART1]";
+      const part2 = "Y".repeat(50000) + "[PART2]";
+      const part3 = "Z".repeat(50000) + "[PART3]";
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: part1, type: "text" },
+            { text: part2, type: "text" },
+            { text: part3, type: "text" },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const content = (result[0] as { content: string }).content;
+      expect(content).toBe(part1 + part2 + part3);
+      expect(content).toContain("[PART1]");
+      expect(content).toContain("[PART2]");
+      expect(content).toContain("[PART3]");
+      expect(content).toHaveLength(150000 + 7 * 3);
     });
   });
 
@@ -133,6 +218,27 @@ describe("convertToSAPMessages", () => {
       ];
       const result = convertToSAPMessages(prompt, { includeReasoning });
       expect(result[0]).toEqual({ content: "Answer", role: "assistant", tool_calls: undefined });
+    });
+
+    it("should handle large reasoning text without truncation when enabled", () => {
+      const largeReasoning = "R".repeat(100000) + "[REASONING_END]";
+      const normalText = "Final answer";
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: largeReasoning, type: "reasoning" },
+            { text: normalText, type: "text" },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { includeReasoning: true });
+      const content = (result[0] as { content: string }).content;
+
+      expect(content).toBe(`<think>${largeReasoning}</think>${normalText}`);
+      expect(content).toContain("[REASONING_END]");
+      expect(content).toContain("Final answer");
     });
   });
 
@@ -256,6 +362,109 @@ describe("convertToSAPMessages", () => {
         query: 'test "quotes" and \\ backslash',
       });
     });
+
+    it("should handle tool calls with large JSON arguments without truncation (50KB+)", () => {
+      const largeArray = Array.from({ length: 1000 }, (_, i) => ({
+        data: "D".repeat(50),
+        id: i,
+        marker: i === 999 ? "LAST_ITEM" : `item_${String(i)}`,
+      }));
+      const largeArgs = { finalMarker: "TOOL_END", items: largeArray };
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              input: largeArgs,
+              toolCallId: "call_large",
+              toolName: "process_large",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { tool_calls: { function: { arguments: string } }[] };
+      const toolCall = message.tool_calls[0];
+      expect(toolCall).toBeDefined();
+      const argsString = toolCall?.function.arguments ?? "";
+
+      const parsed = JSON.parse(argsString) as {
+        finalMarker: string;
+        items: { marker: string }[];
+      };
+      expect(parsed.items).toHaveLength(1000);
+      expect(parsed.finalMarker).toBe("TOOL_END");
+      const lastItem = parsed.items[999];
+      expect(lastItem).toBeDefined();
+      expect(lastItem?.marker).toBe("LAST_ITEM");
+    });
+
+    it("should preserve large string input as-is when valid JSON", () => {
+      const largeObject = { data: "E".repeat(50000), marker: "STRING_JSON_END" };
+      const largeJsonString = JSON.stringify(largeObject);
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              input: largeJsonString,
+              toolCallId: "call_string",
+              toolName: "process_string",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { tool_calls: { function: { arguments: string } }[] };
+      const toolCall = message.tool_calls[0];
+      expect(toolCall).toBeDefined();
+      const argsString = toolCall?.function.arguments ?? "";
+
+      expect(argsString).toBe(largeJsonString);
+      const parsed = JSON.parse(argsString) as { data: string; marker: string };
+      expect(parsed.marker).toBe("STRING_JSON_END");
+    });
+
+    it("should handle special JSON characters in large tool arguments", () => {
+      const specialContent = {
+        backslashes: "\\".repeat(10000),
+        marker: "SPECIAL_END",
+        newlines: "\n".repeat(10000),
+        quotes: '"'.repeat(10000),
+        tabs: "\t".repeat(10000),
+        unicode: "\u0000\u001f\u007f".repeat(1000),
+      };
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              input: specialContent,
+              toolCallId: "call_special",
+              toolName: "process_special",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { tool_calls: { function: { arguments: string } }[] };
+      const toolCall = message.tool_calls[0];
+      expect(toolCall).toBeDefined();
+      const argsString = toolCall?.function.arguments ?? "";
+
+      const parsed = JSON.parse(argsString) as typeof specialContent;
+      expect(parsed.quotes).toHaveLength(10000);
+      expect(parsed.backslashes).toHaveLength(10000);
+      expect(parsed.newlines).toHaveLength(10000);
+      expect(parsed.tabs).toHaveLength(10000);
+      expect(parsed.marker).toBe("SPECIAL_END");
+    });
   });
 
   describe("tool results", () => {
@@ -337,6 +546,39 @@ describe("convertToSAPMessages", () => {
         type: "json",
         value: { nested: { array: [1, 2, { deep: true }], null_value: null } },
       });
+    });
+
+    it("should handle tool results with large JSON output without truncation (100KB+)", () => {
+      const largeOutput = {
+        type: "json" as const,
+        value: {
+          items: Array.from({ length: 2000 }, (_, i) => ({
+            content: "F".repeat(50),
+            id: i,
+          })),
+          resultMarker: "RESULT_END",
+        },
+      };
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              output: largeOutput,
+              toolCallId: "call_result",
+              toolName: "get_data",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const content = (result[0] as { content: string }).content;
+      const parsed = JSON.parse(content) as typeof largeOutput;
+
+      expect(parsed.value.items).toHaveLength(2000);
+      expect(parsed.value.resultMarker).toBe("RESULT_END");
     });
   });
 
@@ -430,6 +672,54 @@ describe("convertToSAPMessages", () => {
       const content = message.content[0];
       expect(content).toBeDefined();
       expect(content?.image_url.url).toBe("data:image/png;base64,aGVsbG8=");
+    });
+
+    it("should handle large base64 image data without truncation (1MB+)", () => {
+      const largeBase64 = "A".repeat(1000000) + "END";
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: "Analyze this image", type: "text" },
+            { data: largeBase64, mediaType: "image/png", type: "file" },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { content: { image_url?: { url: string }; type: string }[] };
+      const imageContent = message.content.find((c) => c.type === "image_url");
+
+      expect(imageContent).toBeDefined();
+      const imageUrl = imageContent?.image_url?.url;
+      expect(imageUrl).toBeDefined();
+      expect(imageUrl).toBe(`data:image/png;base64,${largeBase64}`);
+      expect(imageUrl).toContain("END");
+    });
+
+    it("should handle large Uint8Array image data without truncation", () => {
+      const size = 100000;
+      const largeData = new Uint8Array(size);
+      for (let i = 0; i < size; i++) {
+        largeData[i] = i % 256;
+      }
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ data: largeData, mediaType: "image/jpeg", type: "file" }],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { content: { image_url: { url: string } }[] };
+      const content = message.content[0];
+      expect(content).toBeDefined();
+      const url = content?.image_url.url ?? "";
+
+      expect(url).toMatch(/^data:image\/jpeg;base64,/);
+      const base64Part = url.replace("data:image/jpeg;base64,", "");
+      const decoded = Buffer.from(base64Part, "base64");
+      expect(decoded).toHaveLength(size);
     });
   });
 

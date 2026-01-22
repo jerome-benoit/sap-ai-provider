@@ -1110,6 +1110,82 @@ describe("SAPAILanguageModel", () => {
       expect(result.response?.body).toHaveProperty("tokenUsage");
       expect(result.response?.body).toHaveProperty("finishReason");
     });
+
+    it("should handle large non-streaming responses without truncation (100KB+)", async () => {
+      const MockClient = await getMockClient();
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+
+      const largeContent = "B".repeat(100000) + "[END_MARKER]";
+
+      MockClient.setChatCompletionResponse(
+        createMockChatResponse({
+          content: largeContent,
+          finishReason: "stop",
+          usage: { completion_tokens: 25000, prompt_tokens: 10, total_tokens: 25010 },
+        }),
+      );
+
+      const model = createModel();
+      const prompt = createPrompt("Generate a very long response");
+
+      const result = await model.doGenerate({ prompt });
+
+      const textContent = result.content.find(
+        (c): c is { text: string; type: "text" } => c.type === "text",
+      );
+      expect(textContent).toBeDefined();
+      const text = textContent?.text ?? "";
+      expect(text).toBe(largeContent);
+      expect(text).toHaveLength(100000 + "[END_MARKER]".length);
+      expect(text).toContain("[END_MARKER]");
+    });
+
+    it("should handle tool calls with large JSON arguments without truncation", async () => {
+      const MockClient = await getMockClient();
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+
+      const largeArgs = JSON.stringify({
+        finalMarker: "COMPLETE",
+        items: Array.from({ length: 500 }, (_, i) => ({
+          content: "C".repeat(100),
+          id: i,
+        })),
+      });
+
+      MockClient.setChatCompletionResponse(
+        createMockChatResponse({
+          content: null,
+          finishReason: "tool_calls",
+          toolCalls: [{ function: { arguments: largeArgs, name: "large_tool" }, id: "call_large" }],
+          usage: { completion_tokens: 10000, prompt_tokens: 10, total_tokens: 10010 },
+        }),
+      );
+
+      const model = createModel();
+      const prompt = createPrompt("Call a tool");
+
+      const result = await model.doGenerate({ prompt });
+
+      const toolCallContent = result.content.filter(
+        (c): c is { input: string; toolCallId: string; toolName: string; type: "tool-call" } =>
+          c.type === "tool-call",
+      );
+      expect(toolCallContent).toHaveLength(1);
+      const firstToolCall = toolCallContent[0];
+      expect(firstToolCall).toBeDefined();
+      expect(firstToolCall?.toolName).toBe("large_tool");
+
+      const parsedArgs = JSON.parse(firstToolCall?.input ?? "{}") as {
+        finalMarker: string;
+        items: { id: number }[];
+      };
+      expect(parsedArgs.items).toHaveLength(500);
+      expect(parsedArgs.finalMarker).toBe("COMPLETE");
+    });
   });
 
   describe("doStream", () => {
@@ -1561,6 +1637,217 @@ describe("SAPAILanguageModel", () => {
 
       const textDeltas = parts.filter((p) => p.type === "text-delta");
       expect(textDeltas.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("should handle large streaming responses without truncation (120KB across 12 chunks)", async () => {
+      const chunkSize = 10000;
+      const numChunks = 12;
+      const chunks = Array.from({ length: numChunks }, (_, i) => {
+        const isLast = i === numChunks - 1;
+        const content =
+          i === numChunks - 1 ? "D".repeat(chunkSize) + "[STREAM_END]" : "D".repeat(chunkSize);
+        return createMockStreamChunk({
+          deltaContent: content,
+          finishReason: isLast ? "stop" : null,
+          usage: isLast
+            ? { completion_tokens: 30000, prompt_tokens: 10, total_tokens: 30010 }
+            : undefined,
+        });
+      });
+
+      await setStreamChunks(chunks);
+
+      const model = createModel();
+      const prompt = createPrompt("Generate a very long streaming response");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllParts(stream);
+
+      const textDeltas = parts.filter((p) => p.type === "text-delta");
+
+      const fullText = textDeltas.map((td) => (td as { delta: string }).delta).join("");
+      expect(fullText).toHaveLength(
+        chunkSize * (numChunks - 1) + chunkSize + "[STREAM_END]".length,
+      );
+      expect(fullText).toContain("[STREAM_END]");
+      expect(fullText.startsWith("D".repeat(100))).toBe(true);
+    });
+
+    it("should handle streaming tool calls with large JSON arguments without truncation (~50KB)", async () => {
+      const largeArgs = JSON.stringify({
+        items: Array.from({ length: 400 }, (_, i) => ({
+          data: "E".repeat(100),
+          id: i,
+        })),
+        marker: "TOOL_COMPLETE",
+      });
+
+      const argPart1 = largeArgs.slice(0, Math.floor(largeArgs.length / 3));
+      const argPart2 = largeArgs.slice(
+        Math.floor(largeArgs.length / 3),
+        Math.floor((2 * largeArgs.length) / 3),
+      );
+      const argPart3 = largeArgs.slice(Math.floor((2 * largeArgs.length) / 3));
+
+      await setStreamChunks([
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: argPart1, name: "large_stream_tool" },
+              id: "call_large_stream",
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: argPart2 },
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: argPart3 },
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 12000, prompt_tokens: 10, total_tokens: 12010 },
+        }),
+      ]);
+
+      const model = createModel();
+      const prompt = createPrompt("Call a tool with large arguments");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllParts(stream);
+
+      const toolCallPart = parts.find(
+        (p): p is { input: string; toolCallId: string; toolName: string; type: "tool-call" } =>
+          p.type === "tool-call",
+      );
+
+      expect(toolCallPart).toBeDefined();
+      expect(toolCallPart?.toolName).toBe("large_stream_tool");
+      expect(toolCallPart?.toolCallId).toBe("call_large_stream");
+
+      const parsedArgs = JSON.parse(toolCallPart?.input ?? "{}") as {
+        items: { id: number }[];
+        marker: string;
+      };
+      expect(parsedArgs.items).toHaveLength(400);
+      expect(parsedArgs.marker).toBe("TOOL_COMPLETE");
+    });
+
+    it("should handle multiple concurrent tool calls with large arguments", async () => {
+      const largeArgs1 = JSON.stringify({
+        id: "first",
+        query: "F".repeat(5000),
+      });
+      const largeArgs2 = JSON.stringify({
+        id: "second",
+        query: "G".repeat(5000),
+      });
+
+      await setStreamChunks([
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: largeArgs1.slice(0, 3000), name: "tool_one" },
+              id: "call_1",
+              index: 0,
+            },
+            {
+              function: { arguments: largeArgs2.slice(0, 3000), name: "tool_two" },
+              id: "call_2",
+              index: 1,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: largeArgs1.slice(3000) },
+              index: 0,
+            },
+            {
+              function: { arguments: largeArgs2.slice(3000) },
+              index: 1,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 3000, prompt_tokens: 10, total_tokens: 3010 },
+        }),
+      ]);
+
+      const model = createModel();
+      const prompt = createPrompt("Call multiple tools");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllParts(stream);
+
+      const toolCalls = parts.filter(
+        (p): p is { input: string; toolCallId: string; toolName: string; type: "tool-call" } =>
+          p.type === "tool-call",
+      );
+
+      expect(toolCalls).toHaveLength(2);
+
+      const tool1 = toolCalls.find((tc) => tc.toolName === "tool_one");
+      const tool2 = toolCalls.find((tc) => tc.toolName === "tool_two");
+
+      expect(tool1).toBeDefined();
+      expect(tool2).toBeDefined();
+
+      const parsed1 = JSON.parse(tool1?.input ?? "{}") as { id: string; query: string };
+      const parsed2 = JSON.parse(tool2?.input ?? "{}") as { id: string; query: string };
+
+      expect(parsed1.id).toBe("first");
+      expect(parsed1.query).toHaveLength(5000);
+      expect(parsed2.id).toBe("second");
+      expect(parsed2.query).toHaveLength(5000);
+    });
+
+    it("should handle Unicode and multi-byte characters in large streams without corruption", async () => {
+      const unicodeContent =
+        "Hello 世界! 🌍🌎🌏 Привет мир! مرحبا بالعالم " +
+        "日本語テスト " +
+        "한국어 테스트 " +
+        "🎉".repeat(100) +
+        " [UNICODE_END]";
+
+      await setStreamChunks([
+        createMockStreamChunk({
+          deltaContent: unicodeContent.slice(0, 50),
+        }),
+        createMockStreamChunk({
+          deltaContent: unicodeContent.slice(50, 150),
+        }),
+        createMockStreamChunk({
+          deltaContent: unicodeContent.slice(150),
+          finishReason: "stop",
+          usage: { completion_tokens: 500, prompt_tokens: 10, total_tokens: 510 },
+        }),
+      ]);
+
+      const model = createModel();
+      const prompt = createPrompt("Generate Unicode content");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllParts(stream);
+
+      const textDeltas = parts.filter((p) => p.type === "text-delta");
+
+      const fullText = textDeltas.map((td) => (td as { delta: string }).delta).join("");
+      expect(fullText).toBe(unicodeContent);
+      expect(fullText).toContain("世界");
+      expect(fullText).toContain("🌍");
+      expect(fullText).toContain("Привет");
+      expect(fullText).toContain("مرحبا");
+      expect(fullText).toContain("[UNICODE_END]");
     });
 
     describe("error handling", () => {
