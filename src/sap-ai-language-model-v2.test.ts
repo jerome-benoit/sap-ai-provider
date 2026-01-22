@@ -223,5 +223,37 @@ describe("SAPAILanguageModelV2", () => {
         expect(finish.usage).toHaveProperty("totalTokens");
       }
     });
+
+    it("should propagate errors from V3 doGenerate", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockError = new Error("V3 generation failed");
+      const mockDoGenerate = vi.fn().mockRejectedValue(mockError);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).v3Model.doGenerate = mockDoGenerate;
+
+      await expect(
+        model.doGenerate({
+          prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+        }),
+      ).rejects.toThrow("V3 generation failed");
+    });
+
+    it("should propagate errors from V3 doStream", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockError = new Error("V3 streaming failed");
+      const mockDoStream = vi.fn().mockRejectedValue(mockError);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).v3Model.doStream = mockDoStream;
+
+      await expect(
+        model.doStream({
+          prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+        }),
+      ).rejects.toThrow("V3 streaming failed");
+    });
   });
 });

@@ -90,6 +90,18 @@ describe("SAPAIEmbeddingModelV2", () => {
         values: ["Test"],
       });
     });
+
+    it("should propagate errors from V3 doEmbed", async () => {
+      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
+
+      const mockError = new Error("V3 embedding failed");
+      const mockDoEmbed = vi.fn().mockRejectedValue(mockError);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).v3Model.doEmbed = mockDoEmbed;
+
+      await expect(model.doEmbed({ values: ["Test"] })).rejects.toThrow("V3 embedding failed");
+    });
   });
 
   describe("V2 Warning Handling", () => {
