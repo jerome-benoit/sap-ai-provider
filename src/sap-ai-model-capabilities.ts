@@ -100,58 +100,31 @@ const DEFAULT_CAPABILITIES: SAPAIModelCapabilities = {
  * @internal
  */
 const VENDOR_CAPABILITIES: Record<SAPAIModelVendor, Partial<SAPAIModelCapabilities>> = {
-  aicore: {
-    // SAP AI Core open source models (e.g., Llama, Falcon)
-    supportsStructuredOutputs: false,
-    vendor: "aicore",
-  },
-  amazon: {
-    // Amazon Bedrock models (Nova, Titan)
-    supportsN: false,
-    vendor: "amazon",
-  },
-  anthropic: {
-    // Anthropic Claude models
-    supportsN: false,
-    vendor: "anthropic",
-  },
-  azure: {
-    // Azure OpenAI models (GPT-4, GPT-4o, etc.)
-    vendor: "azure",
-  },
-  google: {
-    // Google Vertex AI models (Gemini)
-    vendor: "google",
-  },
-  meta: {
-    // Meta Llama models
-    supportsStructuredOutputs: false,
-    vendor: "meta",
-  },
-  mistral: {
-    // Mistral AI models
-    vendor: "mistral",
-  },
+  aicore: { supportsStructuredOutputs: false },
+  amazon: { supportsN: false },
+  anthropic: { supportsN: false },
+  azure: {},
+  google: {},
+  meta: { supportsStructuredOutputs: false },
+  mistral: {},
 };
 
 /**
  * Model-specific capability overrides for known model patterns.
  * These take precedence over vendor defaults.
+ *
+ * Patterns are evaluated in array order (first match wins).
+ * More specific patterns should precede general ones.
  * @internal
  */
 const MODEL_SPECIFIC_CAPABILITIES: {
   capabilities: Partial<SAPAIModelCapabilities>;
   pattern: RegExp;
 }[] = [
-  // Claude 2.x models have limited tool calling support
   {
-    capabilities: {
-      supportsParallelToolCalls: false,
-      supportsStructuredOutputs: false,
-    },
+    capabilities: { supportsParallelToolCalls: false, supportsStructuredOutputs: false },
     pattern: /^anthropic--claude-2/,
   },
-  // Amazon Titan models have limited capabilities
   {
     capabilities: {
       supportsImageInputs: false,
@@ -161,7 +134,6 @@ const MODEL_SPECIFIC_CAPABILITIES: {
     },
     pattern: /^amazon--titan/,
   },
-  // Llama 2 models have limited capabilities
   {
     capabilities: {
       supportsImageInputs: false,
@@ -170,26 +142,16 @@ const MODEL_SPECIFIC_CAPABILITIES: {
     },
     pattern: /^(meta--llama-2|aicore--llama-2)/,
   },
-  // Llama 3.1+ models support tools
   {
-    capabilities: {
-      supportsImageInputs: false,
-      supportsToolCalls: true,
-    },
-    pattern: /^(meta--llama-3\.[1-9]|aicore--llama-3\.[1-9])/,
+    capabilities: { supportsImageInputs: false, supportsToolCalls: true },
+    pattern: /^(meta--llama-3\.[1-9][0-9]*|aicore--llama-3\.[1-9][0-9]*)/,
   },
-  // Gemini 1.0 has limited structured output support
   {
-    capabilities: {
-      supportsStructuredOutputs: false,
-    },
+    capabilities: { supportsStructuredOutputs: false },
     pattern: /^google--gemini-1\.0/,
   },
-  // Mistral Small/Tiny have limited capabilities
   {
-    capabilities: {
-      supportsStructuredOutputs: false,
-    },
+    capabilities: { supportsStructuredOutputs: false },
     pattern: /^mistral--(mistral-small|mistral-tiny)/,
   },
 ];
@@ -223,10 +185,10 @@ export function getModelVendor(modelId: string): "unknown" | SAPAIModelVendor {
 /**
  * Gets the capability information for a specific SAP AI Core model.
  *
- * Capabilities are determined by:
- * 1. Model-specific patterns (highest priority)
- * 2. Vendor defaults
- * 3. Global defaults (lowest priority)
+ * Capabilities are built up by applying overrides in this order:
+ * 1. Global defaults (base capabilities)
+ * 2. Vendor defaults (override globals)
+ * 3. Model-specific patterns (highest priority, override vendor defaults)
  * @param modelId - The full model identifier (e.g., "anthropic--claude-3.5-sonnet").
  * @returns The model's capabilities.
  * @example
@@ -241,35 +203,20 @@ export function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabiliti
   const vendor = getModelVendor(modelId);
   const normalizedModelId = modelId.toLowerCase();
 
-  // Start with defaults
   let capabilities: SAPAIModelCapabilities = { ...DEFAULT_CAPABILITIES };
 
-  // Apply vendor-specific overrides
   if (vendor !== "unknown") {
-    capabilities = {
-      ...capabilities,
-      ...VENDOR_CAPABILITIES[vendor],
-    };
+    capabilities = { ...capabilities, ...VENDOR_CAPABILITIES[vendor] };
   }
 
-  // Apply model-specific overrides (highest priority)
   for (const { capabilities: modelCapabilities, pattern } of MODEL_SPECIFIC_CAPABILITIES) {
     if (pattern.test(normalizedModelId)) {
-      capabilities = {
-        ...capabilities,
-        ...modelCapabilities,
-      };
-      break; // First match wins
+      capabilities = { ...capabilities, ...modelCapabilities };
+      break;
     }
   }
 
-  // Ensure vendor is set
-  capabilities = {
-    ...capabilities,
-    vendor,
-  };
-
-  return capabilities;
+  return { ...capabilities, vendor };
 }
 
 /**

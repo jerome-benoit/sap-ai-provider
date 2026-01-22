@@ -76,7 +76,6 @@ describe("sap-ai-model-capabilities", () => {
 
         expect(capabilities.supportsN).toBe(false);
         expect(capabilities.vendor).toBe("amazon");
-        // Other capabilities should be enabled
         expect(capabilities.supportsToolCalls).toBe(true);
         expect(capabilities.supportsStreaming).toBe(true);
       });
@@ -138,10 +137,10 @@ describe("sap-ai-model-capabilities", () => {
           (modelId) => {
             const capabilities = getSAPAIModelCapabilities(modelId);
 
-            expect(capabilities.supportsN).toBe(false); // From vendor
-            expect(capabilities.supportsParallelToolCalls).toBe(false); // Model override
-            expect(capabilities.supportsStructuredOutputs).toBe(false); // Model override
-            expect(capabilities.supportsToolCalls).toBe(true); // Not disabled
+            expect(capabilities.supportsN).toBe(false);
+            expect(capabilities.supportsParallelToolCalls).toBe(false);
+            expect(capabilities.supportsStructuredOutputs).toBe(false);
+            expect(capabilities.supportsToolCalls).toBe(true);
           },
         );
       });
@@ -177,15 +176,36 @@ describe("sap-ai-model-capabilities", () => {
       });
 
       describe("Llama 3.1+ models", () => {
-        it.each(["meta--llama-3.1-70b", "meta--llama-3.2-90b", "aicore--llama-3.1-8b"])(
-          "should support tools for %s",
-          (modelId) => {
-            const capabilities = getSAPAIModelCapabilities(modelId);
+        it.each([
+          "meta--llama-3.1-70b",
+          "meta--llama-3.2-90b",
+          "aicore--llama-3.1-8b",
+          "meta--llama-3.10-70b",
+          "meta--llama-3.11-128b",
+          "aicore--llama-3.15-70b",
+        ])("should support tools for %s", (modelId) => {
+          const capabilities = getSAPAIModelCapabilities(modelId);
 
-            expect(capabilities.supportsToolCalls).toBe(true);
-            expect(capabilities.supportsImageInputs).toBe(false); // Still no vision
-          },
-        );
+          expect(capabilities.supportsToolCalls).toBe(true);
+          expect(capabilities.supportsImageInputs).toBe(false);
+          expect(capabilities.supportsStructuredOutputs).toBe(false);
+        });
+      });
+
+      describe("Llama 3.0 models", () => {
+        it.each([
+          "meta--llama-3.0-70b",
+          "meta--llama-3.0-8b",
+          "aicore--llama-3.0-70b-chat",
+          "meta--llama-3-70b",
+          "aicore--llama-3-8b",
+        ])("should fall to vendor defaults for %s", (modelId) => {
+          const capabilities = getSAPAIModelCapabilities(modelId);
+
+          expect(capabilities.supportsStructuredOutputs).toBe(false);
+          expect(capabilities.supportsImageInputs).toBe(true);
+          expect(capabilities.supportsToolCalls).toBe(true);
+        });
       });
 
       describe("Gemini 1.0 models", () => {
@@ -195,7 +215,7 @@ describe("sap-ai-model-capabilities", () => {
             const capabilities = getSAPAIModelCapabilities(modelId);
 
             expect(capabilities.supportsStructuredOutputs).toBe(false);
-            expect(capabilities.supportsN).toBe(true); // Vendor default
+            expect(capabilities.supportsN).toBe(true);
           },
         );
 

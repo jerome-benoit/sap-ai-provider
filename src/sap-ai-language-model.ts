@@ -164,7 +164,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Whether the model supports image URLs in prompts.
-   * Dynamically determined based on the model vendor and type.
    * @returns True if image URLs are supported.
    */
   get supportsImageUrls(): boolean {
@@ -173,7 +172,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Whether the model supports generating multiple completions (n parameter).
-   * Amazon Bedrock and Anthropic models do not support this parameter.
    * @returns True if multiple completions are supported.
    */
   get supportsMultipleCompletions(): boolean {
@@ -182,7 +180,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Whether the model supports parallel tool calls in a single response.
-   * Dynamically determined based on the model vendor and type.
    * @returns True if parallel tool calls are supported.
    */
   get supportsParallelToolCalls(): boolean {
@@ -191,7 +188,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Whether the model supports streaming responses.
-   * Dynamically determined based on the model vendor and type.
    * @returns True if streaming is supported.
    */
   get supportsStreaming(): boolean {
@@ -199,8 +195,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   }
 
   /**
-   * Whether the model supports structured JSON outputs (json_schema response format).
-   * Dynamically determined based on the model vendor and type.
+   * Whether the model supports structured JSON outputs.
    * @returns True if structured outputs are supported.
    */
   get supportsStructuredOutputs(): boolean {
@@ -209,7 +204,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Whether the model supports tool/function calling.
-   * Dynamically determined based on the model vendor and type.
    * @returns True if tool calls are supported.
    */
   get supportsToolCalls(): boolean {

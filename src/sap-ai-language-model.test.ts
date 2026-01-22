@@ -472,127 +472,30 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("model capabilities", () => {
-      // Dynamic capabilities are now determined by model vendor and type
-      // See sap-ai-model-capabilities.ts for the full mapping
-
-      it.each([
-        // Full capabilities for Azure, Google, Mistral, and unknown models
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: true,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: true,
-            supportsToolCalls: true,
-          },
-          modelId: "azure--gpt-4o",
-        },
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: true,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: true,
-            supportsToolCalls: true,
-          },
-          modelId: "google--gemini-2.0-flash",
-        },
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: true,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: true,
-            supportsToolCalls: true,
-          },
-          modelId: "mistral--mistral-large",
-        },
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: true,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: true,
-            supportsToolCalls: true,
-          },
-          modelId: "unknown-future-model",
-        },
-        // Amazon models: supportsN = false
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: false,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: true,
-            supportsToolCalls: true,
-          },
-          modelId: "amazon--nova-pro",
-        },
-        // Anthropic models: supportsN = false
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: false,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: true,
-            supportsToolCalls: true,
-          },
-          modelId: "anthropic--claude-3.5-sonnet",
-        },
-        // Claude 2.x: additional limitations
-        {
-          expected: {
-            supportsImageUrls: true,
-            supportsMultipleCompletions: false,
-            supportsParallelToolCalls: false,
-            supportsStreaming: true,
-            supportsStructuredOutputs: false,
-            supportsToolCalls: true,
-          },
-          modelId: "anthropic--claude-2.1",
-        },
-        // Amazon Titan: very limited capabilities
-        {
-          expected: {
-            supportsImageUrls: false,
-            supportsMultipleCompletions: false,
-            supportsParallelToolCalls: false,
-            supportsStreaming: true,
-            supportsStructuredOutputs: false,
-            supportsToolCalls: false,
-          },
-          modelId: "amazon--titan-text-express",
-        },
-        // Meta Llama 3.1+: no structured outputs but supports tools
-        {
-          expected: {
-            supportsImageUrls: false,
-            supportsMultipleCompletions: true,
-            supportsParallelToolCalls: true,
-            supportsStreaming: true,
-            supportsStructuredOutputs: false,
-            supportsToolCalls: true,
-          },
-          modelId: "meta--llama-3.1-70b",
-        },
-      ])("should have correct capabilities for model $modelId", ({ expected, modelId }) => {
-        const model = createModel(modelId);
-        expect(model).toMatchObject(expected);
-      });
-
-      it("should expose capabilities getter for programmatic access", () => {
+      it("should delegate capability getters to capabilities object", () => {
         const model = createModel("amazon--nova-pro");
 
-        // The capabilities getter provides access to the full capability object
-        expect(model.capabilities).toBeDefined();
-        expect(model.capabilities.supportsN).toBe(false);
-        expect(model.capabilities.vendor).toBe("amazon");
+        expect(model.supportsImageUrls).toBe(model.capabilities.supportsImageInputs);
+        expect(model.supportsMultipleCompletions).toBe(model.capabilities.supportsN);
+        expect(model.supportsParallelToolCalls).toBe(model.capabilities.supportsParallelToolCalls);
+        expect(model.supportsStreaming).toBe(model.capabilities.supportsStreaming);
+        expect(model.supportsStructuredOutputs).toBe(model.capabilities.supportsStructuredOutputs);
+        expect(model.supportsToolCalls).toBe(model.capabilities.supportsToolCalls);
+      });
+
+      it("should cache capabilities after first access", () => {
+        const model = createModel("azure--gpt-4o");
+
+        const caps1 = model.capabilities;
+        const caps2 = model.capabilities;
+
+        expect(caps1).toBe(caps2);
+      });
+
+      it("should expose vendor in capabilities", () => {
+        const model = createModel("anthropic--claude-3.5-sonnet");
+
+        expect(model.capabilities.vendor).toBe("anthropic");
       });
     });
   });
