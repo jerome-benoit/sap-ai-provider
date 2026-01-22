@@ -360,7 +360,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       const providerName = getProviderName(this.config.provider);
 
       const warningsSnapshot = [...warnings];
-      const warningsOut: SharedV3Warning[] = [...warningsSnapshot];
 
       const transformedStream = new ReadableStream<LanguageModelV3StreamPart>({
         cancel(reason) {
@@ -493,14 +492,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
                       });
                     }
 
-                    if (!tc.toolName) {
-                      warningsOut.push({
-                        message:
-                          "Received tool-call delta without a tool name. Emitting tool-call with an empty tool name.",
-                        type: "other",
-                      });
-                    }
-
                     tc.didEmitCall = true;
                     controller.enqueue({ id: tc.id, type: "tool-input-end" });
                     controller.enqueue({
@@ -533,14 +524,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
                   id: tc.id,
                   toolName: tc.toolName ?? "",
                   type: "tool-input-start",
-                });
-              }
-
-              if (!tc.toolName) {
-                warningsOut.push({
-                  message:
-                    "Received tool-call delta without a tool name. Emitting tool-call with an empty tool name.",
-                  type: "other",
                 });
               }
 
