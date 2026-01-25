@@ -1,5 +1,5 @@
 {
-  "name": "@jerome-benoit/sap-ai-provider",
+  "name": "@jerome-benoit/sap-ai-provider-v2",
   "version": "4.4.6",
   "type": "module",
   "description": "SAP AI Provider for Vercel AI SDK (powered by @sap-ai-sdk/orchestration and @sap-ai-sdk/foundation-models)",
