@@ -18,7 +18,7 @@ automatically:
 Configure the provider using `createSAPAIProvider(options)`:
 
 ```typescript
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 // Default configuration (auto-detects authentication)
 const provider = createSAPAIProvider();
