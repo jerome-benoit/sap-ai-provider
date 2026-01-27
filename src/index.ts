@@ -6,7 +6,7 @@
  */
 
 /**
- * Utility functions for escaping `{{` patterns in orchestration content.
+ * Utility functions for escaping template delimiters (`{{`, `{%`, `{#`) in orchestration content.
  */
 export {
   escapeOrchestrationPlaceholders,

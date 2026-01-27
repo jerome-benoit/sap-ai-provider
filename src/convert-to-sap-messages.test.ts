@@ -952,11 +952,21 @@ describe("convertToSAPMessages", () => {
     });
 
     describe("convertToSAPMessages with escapeTemplatePlaceholders", () => {
-      it("should not escape by default (backward compatibility)", () => {
+      it("should escape by default", () => {
         const prompt: LanguageModelV3Prompt = [
           { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
         ];
         const result = convertToSAPMessages(prompt);
+        const content = (result[0] as { content: string }).content;
+        expect(content).not.toContain("{{");
+        expect(content).toContain(ZERO_WIDTH_SPACE);
+      });
+
+      it("should not escape when explicitly disabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: false });
         expect((result[0] as { content: string }).content).toContain("{{?question}}");
       });
 

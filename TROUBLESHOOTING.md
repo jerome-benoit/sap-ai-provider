@@ -175,44 +175,32 @@ request, incompatible features
 - "Unused parameters: ['variable']"
 - Template parsing errors when using AI coding agents
 
-**Cause:** SAP AI Core's orchestration API uses Jinja2 templating syntax
+**Cause:** SAP AI Core's orchestration API uses template syntax
 (`{{variable}}`, `{{?variable}}`, `{% if %}`, `{# comment #}`) for prompt templating. When tool results or
 message content from AI coding agents (OpenCode, Cursor, Cline, etc.) contains
 these patterns, the API incorrectly interprets them as template directives.
 
 **Solution:**
 
-Enable the `escapeTemplatePlaceholders` option to automatically escape these
-patterns:
+The `escapeTemplatePlaceholders` option is **enabled by default** since v4.2.8,
+which should prevent this issue. If you still encounter it, verify that you
+haven't explicitly disabled escaping:
 
 ```typescript
-// Option 1: At provider creation (applies to all models)
+// Escaping is enabled by default - no configuration needed
+const provider = createSAPAIProvider();
+
+// If you need to disable escaping (e.g., to use SAP orchestration templating)
 const provider = createSAPAIProvider({
   defaultSettings: {
-    escapeTemplatePlaceholders: true,
-  },
-});
-
-// Option 2: Per-model settings
-const model = provider("gpt-4o", {
-  escapeTemplatePlaceholders: true,
-});
-
-// Option 3: Per-call via providerOptions
-const result = await generateText({
-  model: provider("gpt-4o"),
-  prompt: "Your prompt here",
-  providerOptions: {
-    "sap-ai": {
-      escapeTemplatePlaceholders: true,
-    },
+    escapeTemplatePlaceholders: false, // Opt-out of automatic escaping
   },
 });
 ```
 
 **How it works:**
 
-The option inserts a zero-width space (U+200B) between Jinja2 opening delimiters
+The option inserts a zero-width space (U+200B) between template opening delimiters
 (`{{` becomes `{\u200B{`, `{%` becomes `{\u200B%`, `{#` becomes `{\u200B#`),
 breaking the pattern while keeping content visually unchanged. JSON structures
 with `}}` (closing braces) are preserved.

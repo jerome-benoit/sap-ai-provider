@@ -27,8 +27,8 @@ import { Buffer } from "node:buffer";
 /** Options for converting Vercel AI SDK prompts to SAP AI SDK messages. */
 export interface ConvertToSAPMessagesOptions {
   /**
-   * Escape Jinja2 delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
-   * @default false
+   * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
+   * @default true
    */
   readonly escapeTemplatePlaceholders?: boolean;
 
@@ -40,16 +40,22 @@ export interface ConvertToSAPMessagesOptions {
 }
 
 /**
- * Zero-width space used to break Jinja2 delimiters in orchestration content.
+ * Zero-width space used to break template delimiters in orchestration content.
  * @internal
  */
 const ZERO_WIDTH_SPACE = "\u200B";
 
 /**
- * Regex matching all Jinja2 opening delimiters: `{{`, `{%`, `{#`.
+ * Regex matching template opening delimiters: `{{`, `{%`, `{#`.
  * @internal
  */
 const JINJA2_DELIMITERS_PATTERN = /\{([{%#])/g;
+
+/**
+ * Regex matching escaped template delimiters for unescaping.
+ * @internal
+ */
+const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%#])`, "g");
 
 /**
  * Multi-modal content item for user messages.
@@ -84,7 +90,7 @@ export function convertToSAPMessages(
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const includeReasoning = options.includeReasoning ?? false;
-  const escapeTemplatePlaceholders = options.escapeTemplatePlaceholders ?? false;
+  const escapeTemplatePlaceholders = options.escapeTemplatePlaceholders ?? true;
 
   /**
    * Conditionally escapes text content based on the escapeTemplatePlaceholders option.
@@ -291,7 +297,7 @@ export function convertToSAPMessages(
 }
 
 /**
- * Escapes Jinja2 delimiters (`{{`, `{%`, `{#`) by inserting zero-width spaces.
+ * Escapes template delimiters (`{{`, `{%`, `{#`) by inserting zero-width spaces.
  * @param text - The text content to escape.
  * @returns Text with delimiters escaped (e.g., `{{` → `{\u200B{`).
  */
@@ -308,11 +314,11 @@ export function escapeOrchestrationPlaceholders(text: string): string {
 }
 
 /**
- * Reverses escaping by removing zero-width spaces from Jinja2 delimiters.
+ * Reverses escaping by removing zero-width spaces from template delimiters.
  * @param text - The escaped text content.
  * @returns Original text with `{{`, `{%`, `{#` restored.
  */
 export function unescapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
-  return text.replace(new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%#])`, "g"), "{$1");
+  return text.replace(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
 }

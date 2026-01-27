@@ -19,8 +19,8 @@ export type SAPAIModelId = ChatModel;
  */
 export interface SAPAISettings {
   /**
-   * Escape `{{` patterns in content to prevent SAP orchestration template conflicts.
-   * @default false
+   * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
+   * @default true
    */
   readonly escapeTemplatePlaceholders?: boolean;
 

@@ -641,7 +641,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders:
-        sapOptions?.escapeTemplatePlaceholders ?? this.settings.escapeTemplatePlaceholders ?? false,
+        sapOptions?.escapeTemplatePlaceholders ?? this.settings.escapeTemplatePlaceholders ?? true,
       includeReasoning: sapOptions?.includeReasoning ?? this.settings.includeReasoning ?? false,
     });
 
