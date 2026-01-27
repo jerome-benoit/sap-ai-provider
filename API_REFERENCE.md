@@ -1056,7 +1056,6 @@ Model-specific configuration options.
 ```typescript
 const settings: SAPAISettings = {
   modelVersion: "latest",
-  // escapeTemplatePlaceholders: true, // Enabled by default
   modelParams: {
     temperature: 0.3,
     maxTokens: 2000,

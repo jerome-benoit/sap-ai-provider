@@ -126,7 +126,7 @@ export function validateModelParamsWithWarnings(
 export const sapAILanguageModelProviderOptions = lazySchema(() =>
   zodSchema(
     z.object({
-      /** Escape `{{` patterns in content to prevent orchestration template conflicts. */
+      /** Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts. */
       escapeTemplatePlaceholders: z.boolean().optional(),
       /** Whether to include assistant reasoning parts in the response. */
       includeReasoning: z.boolean().optional(),
