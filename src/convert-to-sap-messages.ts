@@ -171,8 +171,6 @@ export function convertToSAPMessages(
       case "tool": {
         for (const part of message.content) {
           if (part.type === "tool-result") {
-            // Tool results are a primary source of placeholder conflicts
-            // (e.g., AI agents returning content with {{?variable}} syntax)
             const serializedOutput = JSON.stringify(part.output);
             const toolMessage: ToolChatMessage = {
               content: maybeEscape(serializedOutput),

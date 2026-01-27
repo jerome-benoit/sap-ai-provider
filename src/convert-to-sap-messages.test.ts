@@ -896,7 +896,7 @@ describe("convertToSAPMessages", () => {
         expect(result).toBe(`{${ZERO_WIDTH_SPACE}{${ZERO_WIDTH_SPACE}{nested}}}`);
       });
 
-      it("should handle edge case: {{%", () => {
+      it("should handle overlapping delimiters ({{%)", () => {
         const input = "{{%mixed";
         const result = escapeOrchestrationPlaceholders(input);
         // Both {{ and {% delimiters overlap - the loop escapes {{ first,
@@ -952,7 +952,7 @@ describe("convertToSAPMessages", () => {
     });
 
     describe("convertToSAPMessages with escapeTemplatePlaceholders", () => {
-      it("should escape by default", () => {
+      it("should escape template placeholders by default", () => {
         const prompt: LanguageModelV3Prompt = [
           { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
         ];
@@ -962,7 +962,7 @@ describe("convertToSAPMessages", () => {
         expect(content).toContain(ZERO_WIDTH_SPACE);
       });
 
-      it("should not escape when explicitly disabled", () => {
+      it("should preserve placeholders when escaping disabled", () => {
         const prompt: LanguageModelV3Prompt = [
           { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
         ];
@@ -970,7 +970,7 @@ describe("convertToSAPMessages", () => {
         expect((result[0] as { content: string }).content).toContain("{{?question}}");
       });
 
-      it("should escape user message text when enabled", () => {
+      it("should escape user message text", () => {
         const prompt: LanguageModelV3Prompt = [
           { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
         ];
@@ -980,7 +980,7 @@ describe("convertToSAPMessages", () => {
         expect(content).toContain(ZERO_WIDTH_SPACE);
       });
 
-      it("should escape system message content when enabled", () => {
+      it("should escape system message content", () => {
         const prompt: LanguageModelV3Prompt = [
           { content: "You are using {{model}} as your LLM", role: "system" },
         ];
@@ -989,7 +989,7 @@ describe("convertToSAPMessages", () => {
         expect(content).not.toContain("{{");
       });
 
-      it("should escape assistant message text when enabled", () => {
+      it("should escape assistant message text", () => {
         const prompt: LanguageModelV3Prompt = [
           { content: [{ text: "Try using {{?input}}", type: "text" }], role: "assistant" },
         ];
@@ -998,7 +998,7 @@ describe("convertToSAPMessages", () => {
         expect(content).not.toContain("{{");
       });
 
-      it("should escape tool result content when enabled", () => {
+      it("should escape tool result content", () => {
         const prompt: LanguageModelV3Prompt = [
           {
             content: [
@@ -1022,7 +1022,7 @@ describe("convertToSAPMessages", () => {
         expect(() => JSON.parse(content) as unknown).not.toThrow();
       });
 
-      it("should escape tool call arguments when enabled", () => {
+      it("should escape tool call arguments", () => {
         const prompt: LanguageModelV3Prompt = [
           {
             content: [
@@ -1044,7 +1044,7 @@ describe("convertToSAPMessages", () => {
         expect(() => JSON.parse(args) as unknown).not.toThrow();
       });
 
-      it("should escape reasoning content when both options enabled", () => {
+      it("should escape reasoning content when included", () => {
         const prompt: LanguageModelV3Prompt = [
           {
             content: [
