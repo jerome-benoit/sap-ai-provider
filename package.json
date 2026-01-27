@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.5",
-    "@ai-sdk/provider-utils": "^4.0.9",
+    "@ai-sdk/provider-utils": "^4.0.10",
     "@sap-ai-sdk/orchestration": "^2.5.0",
     "zod": "^4.3.6"
   },
@@ -85,14 +85,14 @@
     "eslint": "^9.39.2",
     "eslint-plugin-jsdoc": "^62.4.1",
     "eslint-plugin-perfectionist": "^5.4.0",
-    "globals": "^17.1.0",
+    "globals": "^17.2.0",
     "markdown-link-check": "^3.14.2",
     "markdownlint-cli": "^0.47.0",
     "prettier": "^3.8.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.53.1",
+    "typescript-eslint": "^8.54.0",
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
