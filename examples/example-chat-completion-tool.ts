@@ -28,7 +28,7 @@ import type { ChatCompletionTool } from "../src/index";
 // This example uses relative imports for local development within this repo:
 import { createSAPAIProvider } from "../src/index";
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider, ChatCompletionTool } from "@mymediset/sap-ai-provider";
+// import { createSAPAIProvider, ChatCompletionTool } from "@jerome-benoit/sap-ai-provider";
 // ============================================================================
 
 // Define tool schemas in SAP AI SDK format (proper JSON Schema)

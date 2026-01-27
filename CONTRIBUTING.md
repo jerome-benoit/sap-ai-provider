@@ -278,7 +278,7 @@ authentication setup.
 
   ```typescript
   // NOTE: This example uses relative imports for local development
-  // In your project, use: import { ... } from "@mymediset/sap-ai-provider"
+  // In your project, use: import { ... } from "@jerome-benoit/sap-ai-provider"
   ```
 
 **5. Documentation Verification**
@@ -350,7 +350,7 @@ file contains:
 ## Report Bugs
 
 We use GitHub issues to track bugs. Report a bug by
-[opening a new issue](https://github.com/BITASIA/sap-ai-provider/issues/new?template=bug_report.md).
+[opening a new issue](https://github.com/jerome-benoit/sap-ai-provider/issues/new?template=bug_report.md).
 
 **Great Bug Reports** include:
 
@@ -363,7 +363,7 @@ We use GitHub issues to track bugs. Report a bug by
 ## Request Features
 
 Request features by
-[opening a feature request](https://github.com/BITASIA/sap-ai-provider/issues/new?template=feature_report.md).
+[opening a feature request](https://github.com/jerome-benoit/sap-ai-provider/issues/new?template=feature_report.md).
 
 **Good Feature Requests** include:
 
@@ -399,7 +399,7 @@ Apache License 2.0.
 - 📖 Read the documentation: [README](./README.md),
   [API Reference](./API_REFERENCE.md)
 - 🐛 Report issues or ask questions:
-  [Issue Tracker](https://github.com/BITASIA/sap-ai-provider/issues)
+  [Issue Tracker](https://github.com/jerome-benoit/sap-ai-provider/issues)
 - 👥 Join the community and share your experience
 
 ## Recognition

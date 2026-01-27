@@ -112,7 +112,7 @@ features.
 #### 1. Update Package
 
 ```bash
-npm install @mymediset/sap-ai-provider@^4.0.0
+npm install @jerome-benoit/sap-ai-provider@^4.0.0
 ```
 
 #### 2. Update Type Imports (If Using Direct Provider Access)
@@ -286,7 +286,7 @@ The following V3 capabilities are not currently supported by SAP AI Core:
 If you encounter issues, you can stay on v3.x:
 
 ```bash
-npm install @mymediset/sap-ai-provider@^3.0.0
+npm install @jerome-benoit/sap-ai-provider@^3.0.0
 ```
 
 Version 3.x will receive security updates for 6 months after v4.0.0 release.
@@ -388,7 +388,7 @@ types.**
 #### 1. Update Package
 
 ```bash
-npm install @mymediset/sap-ai-provider@3.0.0
+npm install @jerome-benoit/sap-ai-provider@3.0.0
 ```
 
 #### 2. Update Error Handling
@@ -396,7 +396,7 @@ npm install @mymediset/sap-ai-provider@3.0.0
 **Before (v2.x):**
 
 ```typescript
-import { SAPAIError } from "@mymediset/sap-ai-provider";
+import { SAPAIError } from "@jerome-benoit/sap-ai-provider";
 
 try {
   const result = await generateText({ model, prompt });
@@ -498,7 +498,7 @@ exponential backoff.
 #### 1. Update Package
 
 ```bash
-npm install @mymediset/sap-ai-provider@latest ai@latest
+npm install @jerome-benoit/sap-ai-provider@latest ai@latest
 ```
 
 #### 2. Update Authentication
@@ -619,7 +619,7 @@ Automatically anonymize or pseudonymize sensitive information (emails, phone
 numbers, names) using SAP's Data Privacy Integration:
 
 ```typescript
-import { buildDpiMaskingProvider } from "@mymediset/sap-ai-provider";
+import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
 
 const dpiConfig = buildDpiMaskingProvider({
   method: "anonymization",
@@ -637,7 +637,7 @@ Filter harmful content using Azure Content Safety or Llama Guard for
 input/output safety:
 
 ```typescript
-import { buildAzureContentSafetyFilter } from "@mymediset/sap-ai-provider";
+import { buildAzureContentSafetyFilter } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider({
   defaultSettings: {
@@ -780,7 +780,7 @@ createSAPAIProvider({
 
 ### Upgrading from 2.x to 3.x
 
-- [ ] Update package: `npm install @mymediset/sap-ai-provider@3.0.0`
+- [ ] Update package: `npm install @jerome-benoit/sap-ai-provider@3.0.0`
 - [ ] Replace `SAPAIError` imports with `APICallError` from `@ai-sdk/provider`
 - [ ] Update error handling code to use `error.statusCode` instead of
       `error.code`
@@ -793,7 +793,7 @@ createSAPAIProvider({
 
 ### Upgrading from 1.x to 2.x
 
-- [ ] Update packages: `npm install @mymediset/sap-ai-provider@latest ai@latest`
+- [ ] Update packages: `npm install @jerome-benoit/sap-ai-provider@latest ai@latest`
 - [ ] Set `AICORE_SERVICE_KEY` environment variable (remove `serviceKey` from
       code)
 - [ ] Remove `await` from `createSAPAIProvider()` calls (now synchronous)
@@ -842,7 +842,7 @@ If you need to rollback to a previous version:
 ### Rollback to 2.x
 
 ```bash
-npm install @mymediset/sap-ai-provider@2.1.0
+npm install @jerome-benoit/sap-ai-provider@2.1.0
 ```
 
 > **Note:** Version 2.x exports `SAPAIError` class for error handling.
@@ -850,7 +850,7 @@ npm install @mymediset/sap-ai-provider@2.1.0
 ### Rollback to 1.x
 
 ```bash
-npm install @mymediset/sap-ai-provider@1.0.3 ai@5
+npm install @jerome-benoit/sap-ai-provider@1.0.3 ai@5
 ```
 
 > **Note:** Version 1.x uses a different authentication approach and async
@@ -859,7 +859,7 @@ npm install @mymediset/sap-ai-provider@1.0.3 ai@5
 ### Verify Installation
 
 ```bash
-npm list @mymediset/sap-ai-provider
+npm list @jerome-benoit/sap-ai-provider
 ```
 
 ### Clear Cache
@@ -882,7 +882,7 @@ If you encounter issues during migration:
    - [Troubleshooting](./README.md#troubleshooting) section
 
 2. **Search Issues:**
-   - [GitHub Issues](https://github.com/BITASIA/sap-ai-provider/issues)
+   - [GitHub Issues](https://github.com/jerome-benoit/sap-ai-provider/issues)
 
 3. **Create New Issue:**
    - Include: Version numbers, error messages, code samples

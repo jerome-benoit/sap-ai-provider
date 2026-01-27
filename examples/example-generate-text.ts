@@ -16,7 +16,7 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 // ============================================================================
 
 // ============================================================================

@@ -63,7 +63,7 @@ AICORE_SERVICE_KEY='{"serviceurls":{"AI_API_URL":"https://..."},"clientid":"..."
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 // Authentication is automatic via AICORE_SERVICE_KEY
 const provider = createSAPAIProvider();
@@ -90,7 +90,7 @@ When deployed on SAP BTP with service bindings, authentication is **fully
 automatic** via `VCAP_SERVICES`:
 
 ```typescript
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 // No environment variables needed - uses VCAP_SERVICES binding
 const provider = createSAPAIProvider();

@@ -18,6 +18,12 @@ export type SAPAIModelId = ChatModel;
  * Controls model parameters, data masking, content filtering, and tool usage.
  */
 export interface SAPAISettings {
+  /**
+   * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
+   * @default true
+   */
+  readonly escapeTemplatePlaceholders?: boolean;
+
   /** Filtering configuration for input and output content safety. */
   readonly filtering?: FilteringModule;
 

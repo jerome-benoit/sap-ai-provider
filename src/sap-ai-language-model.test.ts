@@ -552,10 +552,14 @@ describe("SAPAILanguageModel", () => {
       expect(result.response?.headers).toMatchObject({
         "x-request-id": "test-request-id",
       });
-      expect(result.providerMetadata?.["sap-ai"]).toMatchObject({
-        finishReason: "stop",
-        finishReasonMapped: { raw: "stop", unified: "stop" },
-        requestId: "test-request-id",
+      expect(result.providerMetadata).toEqual({
+        "sap-ai": {
+          finishReason: "stop",
+          finishReasonMapped: { raw: "stop", unified: "stop" },
+          requestId: "test-request-id",
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          version: expect.any(String),
+        },
       });
     });
 
@@ -1330,15 +1334,15 @@ describe("SAPAILanguageModel", () => {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
       expect(parts[0]?.type).toBe("stream-start");
-      expect(parts.some((p) => p.type === "response-metadata")).toBe(true);
       const responseMetadata = parts.find((p) => p.type === "response-metadata");
-      expect(responseMetadata).toBeDefined();
-      expect(responseMetadata).toMatchObject({ modelId: "gpt-4o", type: "response-metadata" });
-      if (responseMetadata?.type === "response-metadata") {
-        expect(responseMetadata.id).toBeDefined();
-        expect(typeof responseMetadata.id).toBe("string");
-        expect(responseMetadata.id).toMatch(uuidRegex);
-      }
+      expect(responseMetadata).toEqual({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        id: expect.stringMatching(uuidRegex),
+        modelId: "gpt-4o",
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        timestamp: expect.any(Date),
+        type: "response-metadata",
+      });
       expect(parts.some((p) => p.type === "text-delta")).toBe(true);
       expect(parts.some((p) => p.type === "finish")).toBe(true);
 
@@ -1346,10 +1350,15 @@ describe("SAPAILanguageModel", () => {
       expect(finishPart).toBeDefined();
       if (finishPart?.type === "finish") {
         expect(finishPart.finishReason).toEqual({ raw: "stop", unified: "stop" });
-        expect(finishPart.providerMetadata?.["sap-ai"]).toBeDefined();
-        expect(finishPart.providerMetadata?.["sap-ai"]?.responseId).toBeDefined();
-        expect(typeof finishPart.providerMetadata?.["sap-ai"]?.responseId).toBe("string");
-        expect(finishPart.providerMetadata?.["sap-ai"]?.responseId).toMatch(uuidRegex);
+        expect(finishPart.providerMetadata).toEqual({
+          "sap-ai": {
+            finishReason: "stop",
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            responseId: expect.stringMatching(uuidRegex),
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            version: expect.any(String),
+          },
+        });
       }
     });
 
@@ -1382,8 +1391,8 @@ describe("SAPAILanguageModel", () => {
       const rawParts = parts.filter((p) => p.type === "raw");
 
       expect(rawParts).toHaveLength(2);
-      expect(rawParts[0]).toMatchObject({ rawValue: rawData1, type: "raw" });
-      expect(rawParts[1]).toMatchObject({ rawValue: rawData2, type: "raw" });
+      expect(rawParts[0]).toEqual({ rawValue: rawData1, type: "raw" });
+      expect(rawParts[1]).toEqual({ rawValue: rawData2, type: "raw" });
     });
 
     it("should not emit raw chunks when includeRawChunks is false or omitted", async () => {
@@ -1891,8 +1900,9 @@ describe("SAPAILanguageModel", () => {
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
-        expect(toolCall).toMatchObject({
+        expect(toolCall).toEqual({
           input: '{"x":1}',
+          toolCallId: "call_nameless",
           toolName: "",
           type: "tool-call",
         });
@@ -2144,7 +2154,8 @@ describe("SAPAILanguageModel", () => {
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
-        expect(toolCall).toMatchObject({
+        expect(toolCall).toEqual({
+          input: '{"q":"test"}',
           toolCallId: "call_unflushed",
           toolName: "get_info",
           type: "tool-call",
@@ -2239,8 +2250,9 @@ describe("SAPAILanguageModel", () => {
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
-        expect(toolCall).toMatchObject({
+        expect(toolCall).toEqual({
           input: '{"partial":"value"}',
+          toolCallId: "call_no_start",
           toolName: "delayed_name",
           type: "tool-call",
         });

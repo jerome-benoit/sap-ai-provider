@@ -1,6 +1,6 @@
 # SAP AI Core Provider for Vercel AI SDK
 
-[![npm](https://img.shields.io/npm/v/@mymediset/sap-ai-provider/latest?label=npm&color=blue)](https://www.npmjs.com/package/@mymediset/sap-ai-provider)
+[![npm](https://img.shields.io/npm/v/@jerome-benoit/sap-ai-provider/latest?label=npm&color=blue)](https://www.npmjs.com/package/@jerome-benoit/sap-ai-provider)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-6.0+-black.svg)](https://sdk.vercel.ai/docs)
 [![Language Model](https://img.shields.io/badge/Language%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
@@ -75,12 +75,12 @@ familiar Vercel AI SDK interface.
 ## Quick Start
 
 ```bash
-npm install @mymediset/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai
 ```
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 import { generateText } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
@@ -112,7 +112,7 @@ try {
 
 | Task                | Code Pattern                                                     | Documentation                                                 |
 | ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Install**         | `npm install @mymediset/sap-ai-provider ai`                      | [Installation](#installation)                                 |
+| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai`                  | [Installation](#installation)                                 |
 | **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                               | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
 | **Create Provider** | `createSAPAIProvider()` or use `sapai`                           | [Provider Creation](#provider-creation)                       |
 | **Text Generation** | `generateText({ model: provider("gpt-4o"), prompt })`            | [Basic Usage](#text-generation)                               |
@@ -127,17 +127,17 @@ try {
 **Requirements:** Node.js 18+ and Vercel AI SDK 6.0+
 
 ```bash
-npm install @mymediset/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai
 ```
 
 Or with other package managers:
 
 ```bash
 # Yarn
-yarn add @mymediset/sap-ai-provider ai
+yarn add @jerome-benoit/sap-ai-provider ai
 
 # pnpm
-pnpm add @mymediset/sap-ai-provider ai
+pnpm add @jerome-benoit/sap-ai-provider ai
 ```
 
 ## Provider Creation
@@ -148,7 +148,7 @@ You can create an SAP AI provider in two ways:
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider({
   resourceGroup: "production",
@@ -160,7 +160,7 @@ const provider = createSAPAIProvider({
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { sapai } from "@mymediset/sap-ai-provider";
+import { sapai } from "@jerome-benoit/sap-ai-provider";
 import { generateText } from "ai";
 
 // Use directly with auto-detected configuration
@@ -250,7 +250,7 @@ for await (const delta of result.textStream) {
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 import { generateText } from "ai";
 
 const provider = createSAPAIProvider();
@@ -282,7 +282,7 @@ search, and similarity matching.
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 import { embed, embedMany } from "ai";
 
 const provider = createSAPAIProvider();
@@ -415,7 +415,7 @@ Use SAP's Data Privacy Integration to mask sensitive data:
 [API Reference - Data Masking](./API_REFERENCE.md#builddpimaskingproviderconfig)
 
 ```typescript
-import { buildDpiMaskingProvider } from "@mymediset/sap-ai-provider";
+import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
 
 const dpiConfig = buildDpiMaskingProvider({
   method: "anonymization",
@@ -429,7 +429,7 @@ const dpiConfig = buildDpiMaskingProvider({
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { buildAzureContentSafetyFilter, createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { buildAzureContentSafetyFilter, createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider({
   defaultSettings: {
@@ -735,7 +735,7 @@ instructions.**
 ## Important Note
 
 > **Third-Party Provider**: This SAP AI Core provider
-> (`@mymediset/sap-ai-provider`) is developed and maintained by mymediset, not
+> (`@jerome-benoit/sap-ai-provider`) is developed and maintained by jerome-benoit, not
 > by SAP SE. While it uses the official SAP AI SDK and integrates with SAP AI
 > Core services, it is not an official SAP product.
 
@@ -762,7 +762,7 @@ for details.
 
 ### Community
 
-- 🐛 [Issue Tracker](https://github.com/BITASIA/sap-ai-provider/issues) - Report
+- 🐛 [Issue Tracker](https://github.com/jerome-benoit/sap-ai-provider/issues) - Report
   bugs, request features, and ask questions
 
 ### Related Projects

@@ -1,9 +1,17 @@
 /**
- * `@mymediset/sap-ai-provider`
+ * `@jerome-benoit/sap-ai-provider`
  *
  * Vercel AI SDK provider for SAP AI Core.
  * Wraps the SAP AI SDK to provide Vercel AI SDK-compatible interfaces.
  */
+
+/**
+ * Utility functions for escaping template delimiters (`{{`, `{%`, `{#`) in orchestration content.
+ */
+export {
+  escapeOrchestrationPlaceholders,
+  unescapeOrchestrationPlaceholders,
+} from "./convert-to-sap-messages.js";
 
 /**
  * Embedding model class for generating vector embeddings via SAP AI Core.

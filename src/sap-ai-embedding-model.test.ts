@@ -163,7 +163,10 @@ describe("SAPAIEmbeddingModel", () => {
       ]);
       expect(result.usage?.tokens).toBe(8);
       expect(result.warnings).toEqual([]);
-      expect(result.providerMetadata?.["sap-ai"]).toEqual({ model: "text-embedding-ada-002" });
+      expect(result.providerMetadata).toEqual({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        "sap-ai": { model: "text-embedding-ada-002", version: expect.any(String) },
+      });
     });
 
     it("should sort embeddings by index when returned out of order", async () => {

@@ -5,17 +5,18 @@ Provider.
 
 ## Quick Reference
 
-| Issue                 | Section                                                               |
-| --------------------- | --------------------------------------------------------------------- |
-| 401 Unauthorized      | [Authentication Issues](#problem-authentication-failed-or-401-errors) |
-| 403 Forbidden         | [Authentication Issues](#problem-403-forbidden)                       |
-| 404 Not Found         | [Model and Deployment Issues](#problem-404-modeldeployment-not-found) |
-| 400 Bad Request       | [API Errors](#problem-400-bad-request)                                |
-| 429 Rate Limit        | [API Errors](#problem-429-rate-limit-exceeded)                        |
-| 500-504 Server Errors | [API Errors](#problem-500502503504-server-errors)                     |
-| Tools not called      | [Tool Calling Issues](#problem-tools-not-being-called)                |
-| Stream issues         | [Streaming Issues](#problem-streaming-not-working-or-incomplete)      |
-| Slow responses        | [Performance Issues](#problem-slow-response-times)                    |
+| Issue                 | Section                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| 401 Unauthorized      | [Authentication Issues](#problem-authentication-failed-or-401-errors)              |
+| 403 Forbidden         | [Authentication Issues](#problem-403-forbidden)                                    |
+| 404 Not Found         | [Model and Deployment Issues](#problem-404-modeldeployment-not-found)              |
+| 400 Bad Request       | [API Errors](#problem-400-bad-request)                                             |
+| 400 Template errors   | [Problem: Template Placeholder Conflicts](#problem-template-placeholder-conflicts) |
+| 429 Rate Limit        | [API Errors](#problem-429-rate-limit-exceeded)                                     |
+| 500-504 Server Errors | [API Errors](#problem-500502503504-server-errors)                                  |
+| Tools not called      | [Tool Calling Issues](#problem-tools-not-being-called)                             |
+| Stream issues         | [Streaming Issues](#problem-streaming-not-working-or-incomplete)                   |
+| Slow responses        | [Performance Issues](#problem-slow-response-times)                                 |
 
 ## Common Problems (Top 5)
 
@@ -60,6 +61,7 @@ below.
 - [API Errors](#api-errors)
   - [Parsing SAP Error Metadata (v3.0.0+)](#parsing-sap-error-metadata-v300)
   - [Problem: 400 Bad Request](#problem-400-bad-request)
+  - [Problem: Template Placeholder Conflicts](#problem-template-placeholder-conflicts)
   - [Problem: 429 Rate Limit Exceeded](#problem-429-rate-limit-exceeded)
   - [Problem: 500/502/503/504 Server Errors](#problem-500502503504-server-errors)
 - [Model and Deployment Issues](#model-and-deployment-issues)
@@ -164,6 +166,54 @@ request, incompatible features
 - Validate configuration against TypeScript types
 - Check API Reference for valid parameter ranges
 - Enable verbose logging to see exact request
+
+### Problem: Template Placeholder Conflicts
+
+**Symptoms:** HTTP 400 with error messages like:
+
+- `"Unused parameters: [...]"`
+- Template parsing errors when message content contains `{{`, `{%`, or `{#`
+
+**Cause:** SAP AI Core's orchestration API uses template syntax
+(`{{variable}}`, `{{?variable}}`, `{% if %}`, `{# comment #}`) for prompt templating. When tool results or
+message content contains these patterns, the API incorrectly interprets them as template directives.
+
+**Solutions:**
+
+The `escapeTemplatePlaceholders` option is **enabled by default**,
+which should prevent this issue. If you still encounter it, verify that you
+haven't explicitly disabled escaping:
+
+```typescript
+// Escaping is enabled by default - no configuration needed
+const provider = createSAPAIProvider();
+
+// If you need to disable escaping (e.g., to use SAP orchestration templating)
+const provider = createSAPAIProvider({
+  defaultSettings: {
+    escapeTemplatePlaceholders: false, // Opt-out of automatic escaping
+  },
+});
+```
+
+**How it works:**
+
+The option inserts a zero-width space (U+200B) between template opening delimiters
+(`{{` becomes `{\u200B{`, `{%` becomes `{\u200B%`, `{#` becomes `{\u200B#`),
+breaking the pattern while keeping content visually unchanged. JSON structures
+with `}}` (closing braces) are preserved.
+
+**Manual escaping utilities:**
+
+```typescript
+import { escapeOrchestrationPlaceholders, unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+
+const escaped = escapeOrchestrationPlaceholders("Use {{?question}} to prompt");
+// Result: "Use {\u200B{?question}} to prompt"
+
+const restored = unescapeOrchestrationPlaceholders(escaped);
+// Result: "Use {{?question}} to prompt"
+```
 
 ### Problem: 429 Rate Limit Exceeded
 
@@ -340,7 +390,7 @@ You can control the verbosity:
 #### Option 1: Via provider configuration (recommended)
 
 ```typescript
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider({
   logLevel: "warn", // 'error' | 'warn' | 'info' | 'debug' (default: 'warn')
@@ -386,7 +436,7 @@ Start simple, add features gradually:
 ```typescript
 import "dotenv/config"; // Load environment variables
 import { generateText } from "ai";
-import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider();
 const result = await generateText({
@@ -418,7 +468,7 @@ If issues persist:
 2. **Review examples:** Compare your code with `examples/` directory
 
 3. **Open an issue:**
-   [GitHub Issues](https://github.com/BITASIA/sap-ai-provider/issues) - Include
+   [GitHub Issues](https://github.com/jerome-benoit/sap-ai-provider/issues) - Include
    error messages, code snippets (redact credentials)
 4. **SAP Support:** For SAP AI Core service issues -
    [SAP AI Core Docs](https://help.sap.com/docs/ai-core)

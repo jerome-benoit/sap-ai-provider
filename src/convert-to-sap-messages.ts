@@ -24,18 +24,38 @@ import { Buffer } from "node:buffer";
  * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/orchestration SAP AI Core Orchestration}
  */
 
-/**
- * Options for converting Vercel AI SDK prompts to SAP AI SDK messages.
- */
+/** Options for converting Vercel AI SDK prompts to SAP AI SDK messages. */
 export interface ConvertToSAPMessagesOptions {
   /**
-   * Whether to include assistant reasoning parts in the converted messages.
-   *
-   * When false (default), reasoning content is dropped.
-   * When true, reasoning is preserved as `<think>...</think>` markers.
+   * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
+   * @default true
+   */
+  readonly escapeTemplatePlaceholders?: boolean;
+
+  /**
+   * Include assistant reasoning parts as `<think>...</think>` markers.
+   * @default false
    */
   readonly includeReasoning?: boolean;
 }
+
+/**
+ * Zero-width space used to break template delimiters in orchestration content.
+ * @internal
+ */
+const ZERO_WIDTH_SPACE = "\u200B";
+
+/**
+ * Regex matching template opening delimiters: `{{`, `{%`, `{#`.
+ * @internal
+ */
+const JINJA2_DELIMITERS_PATTERN = /\{([{%#])/g;
+
+/**
+ * Regex matching escaped template delimiters for unescaping.
+ * @internal
+ */
+const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%#])`, "g");
 
 /**
  * Multi-modal content item for user messages.
@@ -70,6 +90,15 @@ export function convertToSAPMessages(
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const includeReasoning = options.includeReasoning ?? false;
+  const escapeTemplatePlaceholders = options.escapeTemplatePlaceholders ?? true;
+
+  /**
+   * Conditionally escapes text content based on the escapeTemplatePlaceholders option.
+   * @param text - The text to potentially escape.
+   * @returns The escaped or original text.
+   */
+  const maybeEscape = (text: string): string =>
+    escapeTemplatePlaceholders ? escapeOrchestrationPlaceholders(text) : text;
 
   for (const message of prompt) {
     switch (message.role) {
@@ -85,12 +114,12 @@ export function convertToSAPMessages(
           switch (part.type) {
             case "reasoning": {
               if (includeReasoning && part.text) {
-                text += `<think>${part.text}</think>`;
+                text += `<think>${maybeEscape(part.text)}</think>`;
               }
               break;
             }
             case "text": {
-              text += part.text;
+              text += maybeEscape(part.text);
               break;
             }
             case "tool-call": {
@@ -107,9 +136,10 @@ export function convertToSAPMessages(
                 argumentsJson = JSON.stringify(part.input);
               }
 
+              // Escape tool call arguments if needed (they may contain placeholder syntax)
               toolCalls.push({
                 function: {
-                  arguments: argumentsJson,
+                  arguments: maybeEscape(argumentsJson),
                   name: part.toolName,
                 },
                 id: part.toolCallId,
@@ -131,7 +161,7 @@ export function convertToSAPMessages(
 
       case "system": {
         const systemMessage: SystemChatMessage = {
-          content: message.content,
+          content: maybeEscape(message.content),
           role: "system",
         };
         messages.push(systemMessage);
@@ -141,8 +171,9 @@ export function convertToSAPMessages(
       case "tool": {
         for (const part of message.content) {
           if (part.type === "tool-result") {
+            const serializedOutput = JSON.stringify(part.output);
             const toolMessage: ToolChatMessage = {
-              content: JSON.stringify(part.output),
+              content: maybeEscape(serializedOutput),
               role: "tool",
               tool_call_id: part.toolCallId,
             };
@@ -221,7 +252,7 @@ export function convertToSAPMessages(
             }
             case "text": {
               contentParts.push({
-                text: part.text,
+                text: maybeEscape(part.text),
                 type: "text",
               });
               break;
@@ -261,4 +292,31 @@ export function convertToSAPMessages(
   }
 
   return messages;
+}
+
+/**
+ * Escapes template delimiters (`{{`, `{%`, `{#`) by inserting zero-width spaces.
+ * @param text - The text content to escape.
+ * @returns Text with delimiters escaped (e.g., `{{` → `{\u200B{`).
+ */
+export function escapeOrchestrationPlaceholders(text: string): string {
+  if (!text) return text;
+  // Loop to handle overlapping patterns like {{{ where {{ appears twice
+  let result = text;
+  let previous: string;
+  do {
+    previous = result;
+    result = result.replace(JINJA2_DELIMITERS_PATTERN, `{${ZERO_WIDTH_SPACE}$1`);
+  } while (result !== previous);
+  return result;
+}
+
+/**
+ * Reverses escaping by removing zero-width spaces from template delimiters.
+ * @param text - The escaped text content.
+ * @returns Original text with `{{`, `{%`, `{#` restored.
+ */
+export function unescapeOrchestrationPlaceholders(text: string): string {
+  if (!text) return text;
+  return text.replace(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
 }

@@ -22,7 +22,7 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
 import { embed, embedMany } from "ai";
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider } from "@mymediset/sap-ai-provider";
+// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 // ============================================================================
 
 // ============================================================================

@@ -27,6 +27,7 @@ import {
   sapAIEmbeddingProviderOptions,
   validateEmbeddingModelParamsSettings,
 } from "./sap-ai-provider-options.js";
+import { VERSION } from "./version.js";
 
 /** Default maximum embeddings per API call (OpenAI limit). */
 const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
@@ -161,6 +162,7 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       const providerMetadata: SharedV3ProviderMetadata = {
         [providerName]: {
           model: this.modelId,
+          version: VERSION,
         },
       };
 
