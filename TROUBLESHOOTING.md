@@ -11,7 +11,7 @@ Provider.
 | 403 Forbidden         | [Authentication Issues](#problem-403-forbidden)                       |
 | 404 Not Found         | [Model and Deployment Issues](#problem-404-modeldeployment-not-found) |
 | 400 Bad Request       | [API Errors](#problem-400-bad-request)                                |
-| 400 Unused parameters | [Template Placeholder Conflicts](#template-placeholder-conflicts)     |
+| 400 Template errors   | [Template Placeholder Conflicts](#template-placeholder-conflicts)     |
 | 429 Rate Limit        | [API Errors](#problem-429-rate-limit-exceeded)                        |
 | 500-504 Server Errors | [API Errors](#problem-500502503504-server-errors)                     |
 | Tools not called      | [Tool Calling Issues](#problem-tools-not-being-called)                |
@@ -171,9 +171,8 @@ request, incompatible features
 
 **Symptoms:** HTTP 400 with error messages like:
 
-- "Unused parameters: ['question']"
-- "Unused parameters: ['variable']"
-- Template parsing errors when using AI coding agents
+- `"Unused parameters: [...]"`
+- Template parsing errors when message content contains `{{`, `{%`, or `{#`
 
 **Cause:** SAP AI Core's orchestration API uses template syntax
 (`{{variable}}`, `{{?variable}}`, `{% if %}`, `{# comment #}`) for prompt templating. When tool results or

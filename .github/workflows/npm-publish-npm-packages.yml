@@ -59,5 +59,7 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
             echo "Publishing as 'latest' tag for stable version $VERSION"
           fi
+      - name: Simulate npm publish
+        run: npm publish --dry-run --tag ${{ steps.tag.outputs.tag }}
       - name: Publish to npm
         run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}

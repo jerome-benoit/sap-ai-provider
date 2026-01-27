@@ -1065,7 +1065,6 @@ describe("convertToSAPMessages", () => {
       });
 
       it("should handle complex AI agent tool content with placeholder syntax", () => {
-        // This simulates the exact scenario from GitHub issue #1479
         // AI coding agents often have tool schemas with {{?variable}} syntax
         const prompt: LanguageModelV3Prompt = [
           {
@@ -1076,21 +1075,21 @@ describe("convertToSAPMessages", () => {
                   value: {
                     schema: {
                       properties: {
-                        questions: {
+                        items: {
                           items: {
                             properties: {
-                              question: { description: "Complete question", type: "string" },
+                              variable1: { description: "First variable", type: "string" },
                             },
                           },
                           type: "array",
                         },
                       },
                     },
-                    template: "Use {{?question}} to prompt the user",
+                    template: "Use {{?variable2}} to prompt the user",
                   },
                 },
-                toolCallId: "call_question_tool",
-                toolName: "question",
+                toolCallId: "call_tool_123",
+                toolName: "process",
                 type: "tool-result",
               },
             ],
@@ -1101,7 +1100,7 @@ describe("convertToSAPMessages", () => {
         const content = (result[0] as { content: string }).content;
 
         // Verify placeholders are escaped (only opening braces)
-        expect(content).not.toContain("{{?question}}");
+        expect(content).not.toContain("{{?variable2}}");
         expect(content).not.toContain("{{");
 
         // Verify it's still valid JSON that can be parsed
