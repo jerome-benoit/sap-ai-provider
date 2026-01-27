@@ -8,7 +8,11 @@ import { InvalidPromptError } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 
-import { convertToSAPMessages } from "./convert-to-sap-messages";
+import {
+  convertToSAPMessages,
+  escapeOrchestrationPlaceholders,
+  unescapeOrchestrationPlaceholders,
+} from "./convert-to-sap-messages";
 
 const createUserPrompt = (text: string): LanguageModelV3Prompt => [
   { content: [{ text, type: "text" }], role: "user" },
@@ -797,6 +801,263 @@ describe("convertToSAPMessages", () => {
       ] as unknown as LanguageModelV3Prompt;
       expect(() => convertToSAPMessages(prompt)).toThrow(InvalidPromptError);
       expect(() => convertToSAPMessages(prompt)).toThrow("Unsupported role: unsupported_role");
+    });
+  });
+
+  describe("template placeholder escaping", () => {
+    const ZERO_WIDTH_SPACE = "\u200B";
+
+    describe("escapeOrchestrationPlaceholders", () => {
+      it("should escape opening double braces", () => {
+        const input = "Use {{variable}} in your prompt";
+        const result = escapeOrchestrationPlaceholders(input);
+        // Only {{ is escaped, }} is left as-is to preserve JSON compatibility
+        expect(result).toBe(`Use {${ZERO_WIDTH_SPACE}{variable}} in your prompt`);
+        expect(result).not.toContain("{{");
+      });
+
+      it("should escape optional placeholder syntax", () => {
+        const input = "Question: {{?question}}";
+        const result = escapeOrchestrationPlaceholders(input);
+        expect(result).toBe(`Question: {${ZERO_WIDTH_SPACE}{?question}}`);
+      });
+
+      it("should escape multiple placeholders", () => {
+        const input = "{{a}} and {{b}} and {{?c}}";
+        const result = escapeOrchestrationPlaceholders(input);
+        expect(result).not.toContain("{{");
+        // Only opening braces are escaped, so 3 zero-width spaces (one per {{)
+        expect(result.match(new RegExp(ZERO_WIDTH_SPACE, "g"))).toHaveLength(3);
+      });
+
+      it("should handle text without placeholders", () => {
+        const input = "Normal text without any braces";
+        expect(escapeOrchestrationPlaceholders(input)).toBe(input);
+      });
+
+      it("should handle single braces (no escaping needed)", () => {
+        const input = "JSON object: { key: value }";
+        expect(escapeOrchestrationPlaceholders(input)).toBe(input);
+      });
+
+      it("should handle empty string", () => {
+        expect(escapeOrchestrationPlaceholders("")).toBe("");
+      });
+
+      it("should handle nested braces and preserve JSON structure", () => {
+        const input = "{{{nested}}}";
+        const result = escapeOrchestrationPlaceholders(input);
+        // Only {{ sequences are escaped; }} is left alone to preserve JSON
+        expect(result).not.toContain("{{");
+        // Should still contain }} since we don't escape closing braces
+        expect(result).toContain("}}");
+      });
+
+      it("should preserve JSON object structure", () => {
+        const input = '{"outer": {"inner": "value"}}';
+        const result = escapeOrchestrationPlaceholders(input);
+        // No {{ in JSON, so nothing should be escaped
+        expect(result).toBe(input);
+        // JSON should remain valid
+        expect(() => JSON.parse(result)).not.toThrow();
+      });
+    });
+
+    describe("unescapeOrchestrationPlaceholders", () => {
+      it("should restore original placeholder syntax", () => {
+        const original = "Use {{variable}} in your prompt";
+        const escaped = escapeOrchestrationPlaceholders(original);
+        const restored = unescapeOrchestrationPlaceholders(escaped);
+        expect(restored).toBe(original);
+      });
+
+      it("should restore multiple placeholders", () => {
+        const original = "{{a}} and {{b}} and {{?c}}";
+        const escaped = escapeOrchestrationPlaceholders(original);
+        const restored = unescapeOrchestrationPlaceholders(escaped);
+        expect(restored).toBe(original);
+      });
+
+      it("should handle text without escaped placeholders", () => {
+        const input = "Normal text";
+        expect(unescapeOrchestrationPlaceholders(input)).toBe(input);
+      });
+
+      it("should handle empty string", () => {
+        expect(unescapeOrchestrationPlaceholders("")).toBe("");
+      });
+    });
+
+    describe("convertToSAPMessages with escapeTemplatePlaceholders", () => {
+      it("should not escape by default (backward compatibility)", () => {
+        const prompt: LanguageModelV3Prompt = [
+          { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
+        ];
+        const result = convertToSAPMessages(prompt);
+        expect((result[0] as { content: string }).content).toContain("{{?question}}");
+      });
+
+      it("should escape user message text when enabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          { content: [{ text: "Use {{?question}} to ask", type: "text" }], role: "user" },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const content = (result[0] as { content: string }).content;
+        expect(content).not.toContain("{{");
+        expect(content).toContain(ZERO_WIDTH_SPACE);
+      });
+
+      it("should escape system message content when enabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          { content: "You are using {{model}} as your LLM", role: "system" },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const content = (result[0] as { content: string }).content;
+        expect(content).not.toContain("{{");
+      });
+
+      it("should escape assistant message text when enabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          { content: [{ text: "Try using {{?input}}", type: "text" }], role: "assistant" },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const content = (result[0] as { content: string }).content;
+        expect(content).not.toContain("{{");
+      });
+
+      it("should escape tool result content when enabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [
+              {
+                output: {
+                  type: "json" as const,
+                  value: { template: "{{?question}}", syntax: "Use {{variable}}" },
+                },
+                toolCallId: "call_123",
+                toolName: "get_schema",
+                type: "tool-result",
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const content = (result[0] as { content: string }).content;
+        expect(content).not.toContain("{{");
+        // Verify it's still valid JSON
+        expect(() => JSON.parse(content)).not.toThrow();
+      });
+
+      it("should escape tool call arguments when enabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [
+              {
+                input: { template: "{{?variable}}" },
+                toolCallId: "call_123",
+                toolName: "process",
+                type: "tool-call",
+              },
+            ],
+            role: "assistant",
+          },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const message = result[0] as { tool_calls: { function: { arguments: string } }[] };
+        const args = message.tool_calls[0]?.function.arguments ?? "";
+        expect(args).not.toContain("{{");
+        // JSON structure (with }}) should still be valid
+        expect(() => JSON.parse(args)).not.toThrow();
+      });
+
+      it("should escape reasoning content when both options enabled", () => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [
+              { text: "Thinking about {{placeholder}}...", type: "reasoning" },
+              { text: "Final answer", type: "text" },
+            ],
+            role: "assistant",
+          },
+        ];
+        const result = convertToSAPMessages(prompt, {
+          escapeTemplatePlaceholders: true,
+          includeReasoning: true,
+        });
+        const content = (result[0] as { content: string }).content;
+        expect(content).toContain("<think>");
+        expect(content).not.toContain("{{placeholder}}");
+        expect(content).toContain(ZERO_WIDTH_SPACE);
+      });
+
+      it("should handle complex AI agent tool content with placeholder syntax", () => {
+        // This simulates the exact scenario from GitHub issue #1479
+        // AI coding agents often have tool schemas with {{?variable}} syntax
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [
+              {
+                output: {
+                  type: "json" as const,
+                  value: {
+                    schema: {
+                      properties: {
+                        questions: {
+                          items: {
+                            properties: {
+                              question: { description: "Complete question", type: "string" },
+                            },
+                          },
+                          type: "array",
+                        },
+                      },
+                    },
+                    template: "Use {{?question}} to prompt the user",
+                  },
+                },
+                toolCallId: "call_question_tool",
+                toolName: "question",
+                type: "tool-result",
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const content = (result[0] as { content: string }).content;
+
+        // Verify placeholders are escaped (only opening braces)
+        expect(content).not.toContain("{{?question}}");
+        expect(content).not.toContain("{{");
+
+        // Verify it's still valid JSON that can be parsed
+        expect(() => JSON.parse(content)).not.toThrow();
+      });
+
+      it("should not modify multi-modal content parts (images)", () => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [
+              { text: "Check {{?image}}", type: "text" },
+              { data: "base64data", mediaType: "image/png", type: "file" },
+            ],
+            role: "user",
+          },
+        ];
+        const result = convertToSAPMessages(prompt, { escapeTemplatePlaceholders: true });
+        const message = result[0] as {
+          content: { image_url?: { url: string }; text?: string; type: string }[];
+        };
+
+        // Text should be escaped
+        const textPart = message.content.find((c) => c.type === "text");
+        expect(textPart?.text).not.toContain("{{");
+
+        // Image URL should be unchanged
+        const imagePart = message.content.find((c) => c.type === "image_url");
+        expect(imagePart?.image_url?.url).toBe("data:image/png;base64,base64data");
+      });
     });
   });
 });

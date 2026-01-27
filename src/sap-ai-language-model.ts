@@ -640,6 +640,8 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     const warnings: SharedV3Warning[] = [];
 
     const messages = convertToSAPMessages(options.prompt, {
+      escapeTemplatePlaceholders:
+        sapOptions?.escapeTemplatePlaceholders ?? this.settings.escapeTemplatePlaceholders ?? false,
       includeReasoning: sapOptions?.includeReasoning ?? this.settings.includeReasoning ?? false,
     });
 

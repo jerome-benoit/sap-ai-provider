@@ -11,6 +11,7 @@ Provider.
 | 403 Forbidden         | [Authentication Issues](#problem-403-forbidden)                       |
 | 404 Not Found         | [Model and Deployment Issues](#problem-404-modeldeployment-not-found) |
 | 400 Bad Request       | [API Errors](#problem-400-bad-request)                                |
+| 400 Unused parameters | [Template Placeholder Conflicts](#template-placeholder-conflicts)     |
 | 429 Rate Limit        | [API Errors](#problem-429-rate-limit-exceeded)                        |
 | 500-504 Server Errors | [API Errors](#problem-500502503504-server-errors)                     |
 | Tools not called      | [Tool Calling Issues](#problem-tools-not-being-called)                |
@@ -60,6 +61,7 @@ below.
 - [API Errors](#api-errors)
   - [Parsing SAP Error Metadata (v3.0.0+)](#parsing-sap-error-metadata-v300)
   - [Problem: 400 Bad Request](#problem-400-bad-request)
+  - [Template Placeholder Conflicts](#template-placeholder-conflicts)
   - [Problem: 429 Rate Limit Exceeded](#problem-429-rate-limit-exceeded)
   - [Problem: 500/502/503/504 Server Errors](#problem-500502503504-server-errors)
 - [Model and Deployment Issues](#model-and-deployment-issues)
@@ -164,6 +166,67 @@ request, incompatible features
 - Validate configuration against TypeScript types
 - Check API Reference for valid parameter ranges
 - Enable verbose logging to see exact request
+
+### Template Placeholder Conflicts
+
+**Symptoms:** HTTP 400 with error messages like:
+
+- "Unused parameters: ['question']"
+- "Unused parameters: ['variable']"
+- Template parsing errors when using AI coding agents
+
+**Cause:** SAP AI Core's orchestration API uses Mustache-like placeholder syntax
+(`{{variable}}` and `{{?variable}}`) for prompt templating. When tool results or
+message content from AI coding agents (OpenCode, Cursor, Cline, etc.) contains
+these patterns, the API incorrectly interprets them as template placeholders.
+
+**Solution:**
+
+Enable the `escapeTemplatePlaceholders` option to automatically escape these
+patterns:
+
+```typescript
+// Option 1: At provider creation (applies to all models)
+const provider = createSAPAIProvider({
+  defaultSettings: {
+    escapeTemplatePlaceholders: true,
+  },
+});
+
+// Option 2: Per-model settings
+const model = provider("gpt-4o", {
+  escapeTemplatePlaceholders: true,
+});
+
+// Option 3: Per-call via providerOptions
+const result = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "Your prompt here",
+  providerOptions: {
+    "sap-ai": {
+      escapeTemplatePlaceholders: true,
+    },
+  },
+});
+```
+
+**How it works:**
+
+The option inserts a zero-width space (U+200B) between double braces (`{{`
+becomes `{\u200B{`), breaking the pattern while keeping content visually
+unchanged. JSON structures with `}}` (closing braces) are preserved.
+
+**Manual escaping utilities:**
+
+```typescript
+import { escapeOrchestrationPlaceholders, unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+
+const escaped = escapeOrchestrationPlaceholders("Use {{?question}} to prompt");
+// Result: "Use {\u200B{?question}} to prompt"
+
+const restored = unescapeOrchestrationPlaceholders(escaped);
+// Result: "Use {{?question}} to prompt"
+```
 
 ### Problem: 429 Rate Limit Exceeded
 

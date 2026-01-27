@@ -95,6 +95,14 @@ export {
 } from "./sap-ai-settings.js";
 
 /**
+ * Utility functions for escaping `{{` patterns in orchestration content.
+ */
+export {
+  escapeOrchestrationPlaceholders,
+  unescapeOrchestrationPlaceholders,
+} from "./convert-to-sap-messages.js";
+
+/**
  * Response classes from the SAP AI SDK for orchestration results.
  */
 export {
