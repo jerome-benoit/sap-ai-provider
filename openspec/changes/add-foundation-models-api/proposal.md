@@ -13,7 +13,7 @@ Currently, our provider only supports the Orchestration API, limiting users who 
 - Simpler, faster direct model access
 - Foundation Models-specific parameters (logprobs, deterministic seeding)
 - To avoid Orchestration Service overhead
-- Azure OpenAI On Your Data (`data_sources`) integration
+- Azure OpenAI On Your Data (`dataSources`) integration
 
 ## What Changes
 
@@ -35,7 +35,9 @@ Currently, our provider only supports the Orchestration API, limiting users who 
 - `translation` - Input/output translation
 - `escapeTemplatePlaceholders: true` - Template delimiter escaping (only meaningful for Jinja2)
 
-#### Foundation Models-Only Options (silently ignored with Orchestration API)
+#### Foundation Models-Only Options
+
+**`modelParams` fields** (silently ignored with Orchestration API):
 
 - `modelParams.logprobs` - Return log probabilities
 - `modelParams.top_logprobs` - Number of top log probs (0-20)
@@ -43,7 +45,12 @@ Currently, our provider only supports the Orchestration API, limiting users who 
 - `modelParams.seed` - Deterministic sampling
 - `modelParams.stop` - Stop sequences
 - `modelParams.user` - End-user identifier for monitoring
-- `dataSources` - Azure OpenAI On Your Data (future)
+
+**`dataSources` Option** (rejected with Orchestration API):
+
+- `dataSources` - Azure OpenAI On Your Data
+  - **Foundation Models API**: Enables Azure OpenAI On Your Data integration
+  - **Orchestration API**: Throws `UnsupportedFeatureError`
 
 #### Common Options (both APIs)
 

@@ -170,46 +170,61 @@ function mergeSettingsForApi(api: SAPAIApiType, modelSettings: SAPAISettings, in
 
 ### Strategy Pattern with Lazy Loading and Late Binding
 
+Strategies are **stateless** - they hold only a reference to the SDK client class, not tenant-specific
+configuration. All configuration (credentials, deployment, destination) flows through method parameters.
+
 ```typescript
 interface LanguageModelAPIStrategy {
-  doGenerate(settings: EffectiveSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult>;
+  // config contains tenant-specific info (deploymentId, destination, resourceGroup)
+  // settings contains merged model settings
+  // options contains Vercel AI SDK call options
+  doGenerate(config: SAPAILanguageModelConfig, settings: EffectiveSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult>;
 
-  doStream(settings: EffectiveSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult>;
+  doStream(config: SAPAILanguageModelConfig, settings: EffectiveSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult>;
 }
 
 interface EmbeddingModelAPIStrategy {
-  doEmbed(settings: EffectiveEmbeddingSettings, options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result>;
+  doEmbed(config: SAPAIEmbeddingModelConfig, settings: EffectiveEmbeddingSettings, options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result>;
 }
 ```
 
 ### Lazy Loading with Caching
 
-To avoid re-importing on every call, we cache the strategy instances per API type:
+To avoid re-importing on every call, we cache the strategy instances per API type.
+
+**CRITICAL SECURITY DESIGN**: Strategies MUST be **stateless** and MUST NOT capture provider/tenant-specific
+configuration (credentials, endpoints, deploymentId, destination). All such configuration MUST be passed
+to each `doGenerate`/`doStream`/`doEmbed` call. This prevents cross-tenant credential leakage in multi-tenant
+or multi-account setups.
 
 ```typescript
 // Module-level cache for strategy PROMISES (not results) - prevents race conditions
 // CRITICAL: Cache the Promise synchronously before any await to prevent duplicate imports
+// SECURITY: Cache key is API type only - strategies are stateless, config passed per-call
 const strategyPromiseCache = new Map<SAPAIApiType, Promise<LanguageModelAPIStrategy>>();
 
-function getOrCreateStrategy(api: SAPAIApiType, config: SAPAILanguageModelConfig): Promise<LanguageModelAPIStrategy> {
+function getOrCreateStrategy(api: SAPAIApiType): Promise<LanguageModelAPIStrategy> {
   // Cache key is just the API type - strategies are stateless and API-specific
-  // The config is passed to each doGenerate/doStream call, not stored in the strategy
+  // IMPORTANT: Provider/tenant-specific config MUST be passed to each doGenerate/doStream
+  // call and MUST NOT be captured in the strategy instance itself.
   if (!strategyPromiseCache.has(api)) {
     // IMPORTANT: Set the promise SYNCHRONOUSLY before any await
     // This prevents race conditions where concurrent requests both create strategies
-    strategyPromiseCache.set(api, createLanguageModelStrategy(api, config));
+    strategyPromiseCache.set(api, createLanguageModelStrategy(api));
   }
   return strategyPromiseCache.get(api)!;
 }
 
-async function createLanguageModelStrategy(api: SAPAIApiType, config: SAPAILanguageModelConfig): Promise<LanguageModelAPIStrategy> {
+async function createLanguageModelStrategy(api: SAPAIApiType): Promise<LanguageModelAPIStrategy> {
   try {
     if (api === "foundation-models") {
       const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
-      return new FoundationModelsLanguageModelStrategy(config, AzureOpenAiChatClient);
+      // Strategy MUST NOT capture tenant-specific config; it receives config per call instead.
+      return new FoundationModelsLanguageModelStrategy(AzureOpenAiChatClient);
     }
     const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
-    return new OrchestrationLanguageModelStrategy(config, OrchestrationClient);
+    // Strategy MUST NOT capture tenant-specific config; it receives config per call instead.
+    return new OrchestrationLanguageModelStrategy(OrchestrationClient);
   } catch (error) {
     // If import fails, remove from cache so next attempt can retry
     strategyPromiseCache.delete(api);
@@ -231,6 +246,8 @@ async function createLanguageModelStrategy(api: SAPAIApiType, config: SAPAILangu
 2. **Error recovery**: If the import fails, we delete the cached Promise so subsequent requests can retry. This handles transient errors gracefully.
 
 3. **Memory efficiency**: We only keep one Promise per API type, and Promises resolve to the same strategy instance.
+
+4. **Security**: Strategies are stateless - they only hold a reference to the SDK client class, not credentials or deployment config. All tenant-specific configuration flows through method parameters.
 
 ### Strategy Lifecycle
 
@@ -386,7 +403,7 @@ interface FoundationModelsModelParams extends CommonModelParams {
 Validation happens at **invocation time** after the final API is resolved:
 
 ```typescript
-function validateSettings(api: SAPAIApiType, settings: EffectiveSettings, invocationOptions?: SAPAIProviderOptions): void {
+function validateSettings(api: SAPAIApiType, settings: EffectiveSettings, modelSettings: SAPAIModelSettings, invocationOptions?: SAPAIProviderOptions): void {
   if (api === "foundation-models") {
     // Check model-level Orchestration-only features
     if (settings.filtering) {
@@ -402,13 +419,20 @@ function validateSettings(api: SAPAIApiType, settings: EffectiveSettings, invoca
       throw new UnsupportedFeatureError("Translation", api, "orchestration");
     }
 
-    // Check escapeTemplatePlaceholders - only error if EXPLICITLY set to true
-    // Note: After merge, settings.escapeTemplatePlaceholders contains the merged value
-    // We check the merged value, not the original invocationOptions separately
-    if (settings.escapeTemplatePlaceholders === true) {
+    // Check escapeTemplatePlaceholders - only error if EXPLICITLY set for FM context
+    // We must distinguish between:
+    // 1. Value inherited from provider defaults (should NOT error - see "API-specific settings apply after merge" scenario)
+    // 2. Value explicitly set at model or invocation level for FM (SHOULD error)
+    //
+    // Solution: Pass raw (unmerged) modelSettings and invocationOptions separately to check
+    // explicit usage, rather than relying solely on merged settings.
+    const explicitlySetAtInvocation = invocationOptions?.escapeTemplatePlaceholders === true;
+    const explicitlySetAtModel = modelSettings.escapeTemplatePlaceholders === true && modelSettings.api === "foundation-models";
+
+    if (explicitlySetAtInvocation || explicitlySetAtModel) {
       throw new UnsupportedFeatureError("Template placeholder escaping", api, "orchestration");
     }
-    // Note: escapeTemplatePlaceholders === false or undefined is allowed with FM (no-op)
+    // Note: escapeTemplatePlaceholders inherited from defaults or explicitly false/undefined is allowed with FM (no-op)
   }
 
   if (api === "orchestration") {
