@@ -319,7 +319,7 @@ describe("provider name", () => {
 });
 
 describe("API selection", () => {
-  describe("9.10 API selection at provider level", () => {
+  describe("provider-level selection", () => {
     it("should default to orchestration API when no api option is specified", () => {
       const provider = createSAPAIProvider();
       const model = provider("gpt-4o");
@@ -340,7 +340,7 @@ describe("API selection", () => {
     });
   });
 
-  describe("9.11 API selection at model level (override)", () => {
+  describe("model-level selection (override)", () => {
     it("should allow model-level api to override provider-level api", () => {
       const provider = createSAPAIProvider({ api: "orchestration" });
       const model = provider("gpt-4o", { api: "foundation-models" });
@@ -372,7 +372,7 @@ describe("API selection", () => {
     });
   });
 
-  describe("9.13 mixed API usage within same provider", () => {
+  describe("mixed API usage within same provider", () => {
     it("should allow different models to use different APIs", () => {
       const provider = createSAPAIProvider();
 
@@ -398,7 +398,7 @@ describe("API selection", () => {
     });
   });
 
-  describe("9.14 API resolution precedence", () => {
+  describe("API resolution precedence", () => {
     it("should use provider-level API as fallback when model-level is not set", () => {
       const provider = createSAPAIProvider({ api: "foundation-models" });
       const model = provider("gpt-4o"); // No model-level api
