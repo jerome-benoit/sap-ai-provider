@@ -21,9 +21,16 @@ export { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 export type { SAPAIEmbeddingModelId, SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
 
 /**
- * Error handling types for SAP AI Core error responses.
+ * Error handling types and classes for SAP AI Core error responses.
  */
 export type { OrchestrationErrorResponse } from "./sap-ai-error.js";
+
+/**
+ * Custom error classes for Foundation Models API support.
+ * - `UnsupportedFeatureError`: Thrown when a feature is used with an incompatible API.
+ * - `ApiSwitchError`: Thrown when attempting to switch APIs at invocation time with conflicting settings.
+ */
+export { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
  * Language model class for chat/text completions via SAP AI Core.
@@ -53,12 +60,35 @@ export type {
  */
 export { createSAPAIProvider, sapai } from "./sap-ai-provider.js";
 
-export type { DeploymentConfig, SAPAIProvider, SAPAIProviderSettings } from "./sap-ai-provider.js";
+export type { DeploymentConfig, SAPAIProvider } from "./sap-ai-provider.js";
 
 /**
  * Model settings types and model identifier type definitions.
  */
-export type { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
+export type {
+  // API types
+  SAPAIApiType,
+  // Model params interfaces
+  CommonModelParams,
+  FoundationModelsEmbeddingParams,
+  FoundationModelsModelParams,
+  OrchestrationModelParams,
+  // Model settings discriminated unions
+  FoundationModelsModelSettings,
+  OrchestrationModelSettings,
+  SAPAIModelSettings,
+  // Default settings discriminated unions (for provider factory)
+  FoundationModelsDefaultSettings,
+  OrchestrationDefaultSettings,
+  SAPAIDefaultSettingsConfig,
+  // Response format
+  ResponseFormat,
+  // Data sources
+  AzureOpenAiAzureChatExtensionConfiguration,
+  // Legacy types (backward compatibility)
+  SAPAIModelId,
+  SAPAISettings,
+} from "./sap-ai-settings.js";
 
 /**
  * SAP AI SDK types and utilities.

@@ -122,11 +122,23 @@ export function validateModelParamsWithWarnings(
   }
 }
 
+/**
+ * Zod schema for SAP AI API type selection.
+ * @internal
+ */
+export const sapAIApiTypeSchema = z.enum(["orchestration", "foundation-models"]);
+
 /** Zod schema for SAP AI language model provider options passed via `providerOptions['sap-ai']` object. */
 export const sapAILanguageModelProviderOptions = lazySchema(() =>
   zodSchema(
     z.object({
-      /** Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts. */
+      /**
+       * Override API selection at invocation time.
+       * - `'orchestration'`: Use SAP AI Core Orchestration API (default)
+       * - `'foundation-models'`: Use SAP AI Core Foundation Models API
+       */
+      api: sapAIApiTypeSchema.optional(),
+      /** Escape template delimiters (`{​{`, `{​%`, `{​#`) to prevent SAP orchestration template conflicts. */
       escapeTemplatePlaceholders: z.boolean().optional(),
       /** Whether to include assistant reasoning parts in the response. */
       includeReasoning: z.boolean().optional(),
@@ -145,6 +157,12 @@ export type SAPAILanguageModelProviderOptions = InferSchema<
 export const sapAIEmbeddingProviderOptions = lazySchema(() =>
   zodSchema(
     z.object({
+      /**
+       * Override API selection at invocation time.
+       * - `'orchestration'`: Use SAP AI Core Orchestration API (default)
+       * - `'foundation-models'`: Use SAP AI Core Foundation Models API
+       */
+      api: sapAIApiTypeSchema.optional(),
       /** Additional model parameters for this call. */
       modelParams: embeddingModelParamsSchema.optional(),
       /** Embedding task type: 'text' (default), 'query', or 'document'. */

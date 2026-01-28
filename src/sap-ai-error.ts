@@ -696,3 +696,81 @@ function tryExtractSAPErrorFromMessage(message: string): unknown {
 }
 
 export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
+
+// ============================================================================
+// Foundation Models API Support - Custom Error Classes
+// ============================================================================
+
+import type { SAPAIApiType } from "./sap-ai-settings.js";
+
+/**
+ * Error thrown when a feature is used with an incompatible API.
+ *
+ * @example
+ * ```typescript
+ * // Thrown when using content filtering with Foundation Models API
+ * throw new UnsupportedFeatureError("Content filtering", "foundation-models", "orchestration");
+ * // Error message: "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
+ * ```
+ */
+export class UnsupportedFeatureError extends Error {
+  /**
+   * Creates a new UnsupportedFeatureError.
+   * @param feature - The name of the unsupported feature (e.g., "Content filtering").
+   * @param api - The API being used where the feature is not supported.
+   * @param suggestedApi - The API that supports this feature.
+   */
+  constructor(
+    public readonly feature: string,
+    public readonly api: SAPAIApiType,
+    public readonly suggestedApi: SAPAIApiType,
+  ) {
+    const apiName = api === "foundation-models" ? "Foundation Models" : "Orchestration";
+    const suggestedApiName =
+      suggestedApi === "foundation-models" ? "Foundation Models" : "Orchestration";
+    super(`${feature} is not supported with ${apiName} API. Use ${suggestedApiName} API instead.`);
+    this.name = "UnsupportedFeatureError";
+  }
+}
+
+/**
+ * Error thrown when attempting to switch APIs at invocation time with conflicting model settings.
+ *
+ * This error occurs when:
+ * - A model was created with API-specific features (e.g., filtering for Orchestration)
+ * - An attempt is made to switch to a different API at invocation time via providerOptions
+ * - The model's configured features are incompatible with the target API
+ *
+ * @example
+ * ```typescript
+ * // Model configured with filtering (Orchestration-only)
+ * const model = provider("gpt-4o", { filtering: { ... } });
+ *
+ * // Attempt to switch to Foundation Models at invocation time
+ * await generateText({
+ *   model,
+ *   providerOptions: { "sap-ai": { api: "foundation-models" } },
+ *   prompt: "Hello",
+ * });
+ * // Throws: ApiSwitchError("orchestration", "foundation-models", "filtering")
+ * ```
+ */
+export class ApiSwitchError extends Error {
+  /**
+   * Creates a new ApiSwitchError.
+   * @param fromApi - The API the model was configured with.
+   * @param toApi - The API being switched to at invocation time.
+   * @param conflictingFeature - The feature that prevents the API switch.
+   */
+  constructor(
+    public readonly fromApi: SAPAIApiType,
+    public readonly toApi: SAPAIApiType,
+    public readonly conflictingFeature: string,
+  ) {
+    super(
+      `Cannot switch from ${fromApi} to ${toApi} API at invocation time because the model was ` +
+        `configured with ${conflictingFeature}. Create a new model instance instead.`,
+    );
+    this.name = "ApiSwitchError";
+  }
+}
