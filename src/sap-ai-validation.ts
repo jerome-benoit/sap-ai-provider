@@ -329,8 +329,14 @@ export function validateSettings(options: ValidateSettingsOptions): void {
   }
 
   // 2. Validate API switch if applicable
-  if (modelApi !== undefined && invocationSettings?.api !== undefined) {
-    validateApiSwitch(modelApi, api, modelSettings);
+  // Treat modelApi === undefined as "orchestration" (the default) when checking for API switches,
+  // so that models with orchestration-only features get proper ApiSwitchError messages
+  // when user tries to switch to foundation-models at invocation time.
+  if (invocationSettings?.api !== undefined) {
+    const effectiveModelApi = modelApi ?? "orchestration";
+    if (effectiveModelApi !== invocationSettings.api) {
+      validateApiSwitch(effectiveModelApi, invocationSettings.api, modelSettings);
+    }
   }
 
   // 3. Validate API-specific options

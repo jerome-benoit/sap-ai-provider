@@ -569,6 +569,57 @@ describe("validateSettings", () => {
     }).toThrow(ApiSwitchError);
   });
 
+  it("should throw ApiSwitchError when modelApi is undefined but model has orchestration features and invocation switches to foundation-models", () => {
+    // When modelApi is undefined (the default), it should be treated as "orchestration".
+    // If the model has orchestration-only features like filtering, and the invocation
+    // tries to switch to foundation-models, we should get ApiSwitchError (not just
+    // UnsupportedFeatureError) because the error message should mention the API switch context.
+    expect(() => {
+      validateSettings({
+        api: "orchestration", // effective API from provider
+        invocationSettings: {
+          api: "foundation-models", // user tries to switch at invocation time
+        },
+        modelApi: undefined, // default - should be treated as "orchestration"
+        modelSettings: mockSettings({ filtering: { input: {} } }), // orchestration-only feature
+      });
+    }).toThrow(ApiSwitchError);
+
+    // Verify the error message mentions the API switch context
+    try {
+      validateSettings({
+        api: "orchestration",
+        invocationSettings: {
+          api: "foundation-models",
+        },
+        modelApi: undefined,
+        modelSettings: mockSettings({ filtering: { input: {} } }),
+      });
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiSwitchError);
+      const error = e as ApiSwitchError;
+      expect(error.message).toContain("orchestration");
+      expect(error.message).toContain("foundation-models");
+      expect(error.conflictingFeature).toBe("filtering");
+    }
+  });
+
+  it("should not throw when modelApi is undefined and invocation explicitly sets orchestration (no API switch)", () => {
+    // When modelApi is undefined (the default), it should be treated as "orchestration".
+    // If invocation also specifies orchestration, there's no API switch (orch -> orch).
+    // The effective API is orchestration, so orchestration-only features are fine.
+    expect(() => {
+      validateSettings({
+        api: "orchestration", // effective API after resolution (invocation takes precedence)
+        invocationSettings: {
+          api: "orchestration", // user explicitly uses orchestration
+        },
+        modelApi: undefined, // default - treated as "orchestration"
+        modelSettings: mockSettings({ filtering: { input: {} } }), // orchestration-only feature is fine
+      });
+    }).not.toThrow();
+  });
+
   it("should validate invocation-level escapeTemplatePlaceholders", () => {
     expect(() => {
       validateSettings({
