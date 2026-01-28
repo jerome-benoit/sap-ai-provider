@@ -12,7 +12,7 @@ import {
 } from "./sap-ai-embedding-model.js";
 import { SAPAILanguageModel } from "./sap-ai-language-model.js";
 import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
-import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
+import { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 /** Deployment configuration type used by the SAP AI SDK. */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
@@ -61,6 +61,15 @@ export interface SAPAIProvider extends ProviderV3 {
  * See {@link createSAPAIProvider} for authentication details.
  */
 export interface SAPAIProviderSettings {
+  /**
+   * SAP AI Core API to use for all models created by this provider.
+   * Can be overridden at model creation time or per-call via providerOptions.
+   * - `'orchestration'` (default): SAP AI Core Orchestration API - supports filtering, grounding, masking, translation
+   * - `'foundation-models'`: SAP AI Core Foundation Models API - supports dataSources, logprobs, seed, etc.
+   * @default 'orchestration'
+   */
+  readonly api?: SAPAIApiType;
+
   /** Default model settings applied to every model instance. Per-call settings override these. */
   readonly defaultSettings?: SAPAISettings;
 
@@ -129,10 +138,15 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     ? { deploymentId: options.deploymentId }
     : { resourceGroup };
 
+  // Provider-level API setting (defaults to 'orchestration')
+  const providerApi = options.api ?? "orchestration";
+
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
     const mergedSettings: SAPAISettings = {
       ...options.defaultSettings,
       ...settings,
+      // Model-level api takes precedence over provider-level
+      api: settings.api ?? options.defaultSettings?.api ?? providerApi,
       filtering: settings.filtering ?? options.defaultSettings?.filtering,
       masking: settings.masking ?? options.defaultSettings?.masking,
       modelParams: deepMerge(
@@ -146,6 +160,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
       deploymentConfig,
       destination: options.destination,
       provider: `${providerName}.chat`,
+      providerApi,
     });
   };
 
@@ -153,10 +168,17 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
   ): SAPAIEmbeddingModel => {
-    return new SAPAIEmbeddingModel(modelId, settings, {
+    // Merge embedding settings with provider-level api
+    const mergedSettings: SAPAIEmbeddingSettings = {
+      ...settings,
+      api: settings.api ?? providerApi,
+    };
+
+    return new SAPAIEmbeddingModel(modelId, mergedSettings, {
       deploymentConfig,
       destination: options.destination,
       provider: `${providerName}.embedding`,
+      providerApi,
     });
   };
 
