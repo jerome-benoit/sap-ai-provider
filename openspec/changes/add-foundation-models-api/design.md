@@ -234,7 +234,7 @@ async function createLanguageModelStrategy(api: SAPAIApiType, config: SAPAILangu
 
 ### Strategy Lifecycle
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           API Selection Flow                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤

@@ -72,7 +72,7 @@ Currently, our provider only supports the Orchestration API, limiting users who 
 
 New `UnsupportedFeatureError` class with clear, actionable messages:
 
-```
+```text
 "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
 ```
 
@@ -92,8 +92,8 @@ New `UnsupportedFeatureError` class with clear, actionable messages:
 
 ## References
 
-- GitHub Issue: https://github.com/jerome-benoit/sap-ai-provider/issues/22
-- SAP AI SDK Documentation: https://sap.github.io/ai-sdk/
+- GitHub Issue: <https://github.com/jerome-benoit/sap-ai-provider/issues/22>
+- SAP AI SDK Documentation: <https://sap.github.io/ai-sdk/>
 - `@sap-ai-sdk/foundation-models@2.5.0`:
   - `AzureOpenAiChatClient` - Chat completions
   - `AzureOpenAiEmbeddingClient` - Embeddings
