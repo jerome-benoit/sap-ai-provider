@@ -630,7 +630,6 @@ async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3Ge
 1. **Strategy caching invalidation**: Should we invalidate cache when deployment config changes?
 2. **`modelParams.normalize` for embeddings**: Verify if Foundation Models API supports this parameter
 3. **Tool calling format strict mode**: Should we expose Azure's `strict` parameter for tool definitions?
-4. **`data_sources` Azure On Your Data**: Full support or defer to future release?
 
 ## Migration Plan
 
