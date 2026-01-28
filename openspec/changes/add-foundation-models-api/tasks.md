@@ -37,16 +37,17 @@
 - [ ] 2.5 Implement `validateInputs()` function for invalid API values
   - Throw validation error listing valid API values for invalid input
   - Treat `undefined` as unset (apply precedence rules)
-- [ ] 2.6 Implement `validateSettings(api, settings, invocationOptions)` main validation function
+- [ ] 2.6 Implement `validateSettings(api, settings, modelSettings, invocationOptions)` main validation function
+  - Takes 4 params to distinguish inherited vs explicit values for escapeTemplatePlaceholders
 - [ ] 2.7 Add unit tests for all validation scenarios (Orchestration options with FM, FM options with Orch, escapeTemplatePlaceholders cases, API switch validation, invalid inputs)
 
 ## 3. Strategy Pattern Infrastructure
 
 - [ ] 3.1 Define `LanguageModelAPIStrategy` interface
-  - `doGenerate(settings, options): Promise<DoGenerateResult>`
-  - `doStream(settings, options): Promise<DoStreamResult>`
+  - `doGenerate(config, settings, options): Promise<DoGenerateResult>` (config contains tenant-specific info)
+  - `doStream(config, settings, options): Promise<DoStreamResult>`
 - [ ] 3.2 Define `EmbeddingModelAPIStrategy` interface
-  - `doEmbed(settings, options): Promise<DoEmbedResult>`
+  - `doEmbed(config, settings, options): Promise<DoEmbedResult>`
 - [ ] 3.3 Define `StrategyConfig` type (deploymentConfig, destination, modelId, settings)
 - [ ] 3.4 Implement `createLanguageModelStrategy(api, config)` factory with lazy loading
 - [ ] 3.5 Implement `createEmbeddingModelStrategy(api, config)` factory with lazy loading
