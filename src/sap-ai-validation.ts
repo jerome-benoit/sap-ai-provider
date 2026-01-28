@@ -1,3 +1,9 @@
+/**
+ * Validation functions for SAP AI API-specific features.
+ *
+ * Ensures that API-specific options are used correctly and provides clear error messages
+ * for API-specific feature misconfigurations.
+ */
 import type {
   FoundationModelsModelSettings,
   OrchestrationModelSettings,
@@ -5,11 +11,33 @@ import type {
   SAPAIModelSettings,
 } from "./sap-ai-settings.js";
 
-/**
- * Validation functions for SAP AI API-specific features.
- * Ensures that API-specific options are used correctly and provides clear error messages.
- */
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Type guard to check if settings are for Foundation Models API.
+ * @param settings - The settings to check
+ * @returns True if settings are for Foundation Models API
+ */
+export function isFoundationModelsSettings(
+  settings: SAPAIModelSettings,
+): settings is FoundationModelsModelSettings {
+  return settings.api === "foundation-models";
+}
+
+/**
+ * Type guard to check if settings are for Orchestration API.
+ * @param settings - The settings to check
+ * @returns True if settings are for Orchestration API (api is undefined or "orchestration")
+ */
+export function isOrchestrationSettings(
+  settings: SAPAIModelSettings,
+): settings is OrchestrationModelSettings {
+  return settings.api === undefined || settings.api === "orchestration";
+}
 
 // ============================================================================
 // Feature Validation Functions
@@ -111,7 +139,10 @@ export function validateOrchestrationOnlyOptions(settings: SAPAIModelSettings | 
 // API Switch Validation
 // ============================================================================
 
-/** Features that are specific to Orchestration API */
+/**
+ * Features that are specific to Orchestration API.
+ * @internal
+ */
 const ORCHESTRATION_ONLY_FEATURES = [
   "filtering",
   "grounding",
@@ -120,7 +151,10 @@ const ORCHESTRATION_ONLY_FEATURES = [
   "tools",
 ] as const;
 
-/** Features that are specific to Foundation Models API */
+/**
+ * Features that are specific to Foundation Models API.
+ * @internal
+ */
 const FOUNDATION_MODELS_ONLY_FEATURES = ["dataSources"] as const;
 
 /**
@@ -169,7 +203,10 @@ export function validateApiSwitch(
 // Input Validation
 // ============================================================================
 
-/** Valid API type values */
+/**
+ * Valid API type values.
+ * @internal
+ */
 const VALID_API_TYPES: readonly SAPAIApiType[] = ["orchestration", "foundation-models"];
 
 /**

@@ -7,7 +7,6 @@
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3Content,
-  LanguageModelV3FinishReason,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
@@ -46,6 +45,7 @@ import {
 import {
   buildSAPToolParameters,
   createAISDKRequestBodySummary,
+  createInitialStreamState,
   type FunctionToolWithParameters,
   isZodSchema,
   mapFinishReason,
@@ -58,6 +58,18 @@ import { VERSION } from "./version.js";
 // ============================================================================
 // Internal Types
 // ============================================================================
+
+/**
+ * Extended prompt templating structure with tools and response_format.
+ * The SAP SDK type doesn't expose these properties, but they are set when building the config.
+ * @internal
+ */
+interface ExtendedPromptTemplating {
+  prompt: {
+    response_format?: unknown;
+    tools?: unknown;
+  };
+}
 
 /**
  * Extended model parameters for SAP Orchestration API.
@@ -277,27 +289,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
 
       let textBlockId: null | string = null;
 
-      const streamState = {
-        activeText: false,
-        finishReason: {
-          raw: undefined,
-          unified: "other" as const,
-        } as LanguageModelV3FinishReason,
-        isFirstChunk: true,
-        usage: {
-          inputTokens: {
-            cacheRead: undefined,
-            cacheWrite: undefined,
-            noCache: undefined as number | undefined,
-            total: undefined as number | undefined,
-          },
-          outputTokens: {
-            reasoning: undefined,
-            text: undefined as number | undefined,
-            total: undefined as number | undefined,
-          },
-        },
-      };
+      const streamState = createInitialStreamState();
 
       const toolCallsInProgress = new Map<
         number,
@@ -796,9 +788,8 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     messages: ChatMessage[],
     orchestrationConfig: OrchestrationModuleConfig,
   ): Record<string, unknown> {
-    const promptTemplating = orchestrationConfig.promptTemplating as unknown as {
-      prompt: { response_format?: unknown; tools?: unknown };
-    };
+    // Cast to extended type - the SDK type doesn't expose tools/response_format but we set them
+    const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
 
     return {
       messages,

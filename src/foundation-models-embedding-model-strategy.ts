@@ -67,6 +67,8 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
    * @param options - The call options including values to embed and abort signal.
    * @param maxEmbeddingsPerCall - Maximum number of embeddings allowed per call.
    * @returns The embedding result with vectors, usage, and metadata.
+   * @throws {TooManyEmbeddingValuesForCallError} If values exceed maxEmbeddingsPerCall.
+   * @throws {AISDKError} If the SAP AI SDK call fails.
    */
   async doEmbed(
     config: EmbeddingModelStrategyConfig,

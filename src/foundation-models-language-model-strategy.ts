@@ -7,7 +7,6 @@
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3Content,
-  LanguageModelV3FinishReason,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
@@ -38,6 +37,7 @@ import {
   buildModelDeployment,
   buildSAPToolParameters,
   createAISDKRequestBodySummary,
+  createInitialStreamState,
   type FunctionToolWithParameters,
   isZodSchema,
   mapFinishReason,
@@ -50,46 +50,6 @@ import { VERSION } from "./version.js";
 // ============================================================================
 // Internal Types
 // ============================================================================
-
-/**
- * Applies parameter overrides from AI SDK options and provider options.
- * @param modelParams - The model parameters to modify in place.
- * @param options - AI SDK call options containing standard parameters.
- * @param providerModelParams - Provider-specific model parameters for overrides.
- * @internal
- */
-function applyParameterOverrides(
-  modelParams: Record<string, unknown>,
-  options: Record<string, unknown>,
-  providerModelParams: Record<string, unknown> | undefined,
-): void {
-  for (const mapping of PARAM_MAPPINGS) {
-    const { camelCaseKey, optionKey, outputKey } = mapping;
-
-    // Remove camelCase key if present (will be replaced with snake_case)
-    if (camelCaseKey && camelCaseKey in modelParams) {
-      const value = modelParams[camelCaseKey];
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete modelParams[camelCaseKey];
-      if (value !== undefined && !(outputKey in modelParams)) {
-        modelParams[outputKey] = value;
-      }
-    }
-
-    // Provider options override
-    if (providerModelParams && outputKey in providerModelParams) {
-      modelParams[outputKey] = providerModelParams[outputKey];
-    }
-
-    // AI SDK call options override (highest priority)
-    if (optionKey && optionKey in options) {
-      const value = options[optionKey];
-      if (value !== undefined) {
-        modelParams[outputKey] = value;
-      }
-    }
-  }
-}
 
 /**
  * Parameter mappings for override resolution and camelCase conversion.
@@ -283,27 +243,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
 
       let textBlockId: null | string = null;
 
-      const streamState = {
-        activeText: false,
-        finishReason: {
-          raw: undefined,
-          unified: "other" as const,
-        } as LanguageModelV3FinishReason,
-        isFirstChunk: true,
-        usage: {
-          inputTokens: {
-            cacheRead: undefined,
-            cacheWrite: undefined,
-            noCache: undefined as number | undefined,
-            total: undefined as number | undefined,
-          },
-          outputTokens: {
-            reasoning: undefined,
-            text: undefined as number | undefined,
-            total: undefined as number | undefined,
-          },
-        },
-      };
+      const streamState = createInitialStreamState();
 
       const toolCallsInProgress = new Map<
         number,
@@ -803,3 +743,43 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Applies parameter overrides from AI SDK options and provider options.
+ * @param modelParams - The model parameters to modify in place.
+ * @param options - AI SDK call options containing standard parameters.
+ * @param providerModelParams - Provider-specific model parameters for overrides.
+ * @internal
+ */
+function applyParameterOverrides(
+  modelParams: Record<string, unknown>,
+  options: Record<string, unknown>,
+  providerModelParams: Record<string, unknown> | undefined,
+): void {
+  for (const mapping of PARAM_MAPPINGS) {
+    const { camelCaseKey, optionKey, outputKey } = mapping;
+
+    // Remove camelCase key if present (will be replaced with snake_case)
+    if (camelCaseKey && camelCaseKey in modelParams) {
+      const value = modelParams[camelCaseKey];
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete modelParams[camelCaseKey];
+      if (value !== undefined && !(outputKey in modelParams)) {
+        modelParams[outputKey] = value;
+      }
+    }
+
+    // Provider options override
+    if (providerModelParams && outputKey in providerModelParams) {
+      modelParams[outputKey] = providerModelParams[outputKey];
+    }
+
+    // AI SDK call options override (highest priority)
+    if (optionKey && optionKey in options) {
+      const value = options[optionKey];
+      if (value !== undefined) {
+        modelParams[outputKey] = value;
+      }
+    }
+  }
+}

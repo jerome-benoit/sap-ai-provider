@@ -64,6 +64,37 @@ export type SAPToolParameters = Record<string, unknown> & {
 };
 
 // ============================================================================
+// Stream State
+// ============================================================================
+
+/**
+ * State object for tracking streaming response processing.
+ * @internal
+ */
+export interface StreamState {
+  /** Whether a text block is currently active. */
+  activeText: boolean;
+  /** The finish reason for the response. */
+  finishReason: LanguageModelV3FinishReason;
+  /** Whether this is the first chunk in the stream. */
+  isFirstChunk: boolean;
+  /** Token usage tracking. */
+  usage: {
+    inputTokens: {
+      cacheRead: number | undefined;
+      cacheWrite: number | undefined;
+      noCache: number | undefined;
+      total: number | undefined;
+    };
+    outputTokens: {
+      reasoning: number | undefined;
+      text: number | undefined;
+      total: number | undefined;
+    };
+  };
+}
+
+// ============================================================================
 // Stream ID Generation
 // ============================================================================
 
@@ -218,8 +249,47 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
   };
 }
 
+// ============================================================================
+// Stream State Functions
+// ============================================================================
+
 /**
- * Checks if an object has a callable parse method (for Zod detection).
+ * Creates the initial stream state for processing streaming responses.
+ *
+ * Provides consistent initial state across both Orchestration and Foundation Models strategies.
+ * @returns The initial stream state object.
+ * @internal
+ */
+export function createInitialStreamState(): StreamState {
+  return {
+    activeText: false,
+    finishReason: {
+      raw: undefined,
+      unified: "other" as const,
+    },
+    isFirstChunk: true,
+    usage: {
+      inputTokens: {
+        cacheRead: undefined,
+        cacheWrite: undefined,
+        noCache: undefined,
+        total: undefined,
+      },
+      outputTokens: {
+        reasoning: undefined,
+        text: undefined,
+        total: undefined,
+      },
+    },
+  };
+}
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Checks if an object has a callable parse method.
  * @param obj - The object to check for a parse method.
  * @returns True if the object has a callable parse method.
  * @internal
@@ -245,6 +315,10 @@ export function isZodSchema(obj: unknown): obj is ZodType {
   const record = obj as Record<string, unknown>;
   return "_def" in record && "parse" in record && hasCallableParse(record);
 }
+
+// ============================================================================
+// Finish Reason Mapping
+// ============================================================================
 
 /**
  * Maps provider finish reasons to Vercel AI SDK LanguageModelV3FinishReason.

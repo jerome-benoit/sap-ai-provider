@@ -139,7 +139,7 @@ const languageModelStrategyCache = new Map<SAPAIApiType, Promise<LanguageModelAP
 const embeddingModelStrategyCache = new Map<SAPAIApiType, Promise<EmbeddingModelAPIStrategy>>();
 
 // ============================================================================
-// SDK Import Error Handling
+// Testing Utilities
 // ============================================================================
 
 /**
@@ -150,10 +150,6 @@ export function clearStrategyCaches(): void {
   languageModelStrategyCache.clear();
   embeddingModelStrategyCache.clear();
 }
-
-// ============================================================================
-// Language Model Strategy Factory
-// ============================================================================
 
 /**
  * Gets the current size of the embedding model strategy cache.
@@ -176,7 +172,7 @@ export function getLanguageModelStrategyCacheSize(): number {
 }
 
 // ============================================================================
-// Embedding Model Strategy Factory
+// Strategy Factories
 // ============================================================================
 
 /**
@@ -241,7 +237,7 @@ export function getOrCreateLanguageModelStrategy(
 }
 
 // ============================================================================
-// Testing Utilities
+// Internal Factory Functions
 // ============================================================================
 
 /**

@@ -65,6 +65,8 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
    * @param options - The Vercel AI SDK embedding call options.
    * @param maxEmbeddingsPerCall - Maximum number of embeddings allowed per call.
    * @returns A Promise resolving to the embedding result.
+   * @throws {TooManyEmbeddingValuesForCallError} If values exceed maxEmbeddingsPerCall.
+   * @throws {AISDKError} If the SAP AI SDK call fails.
    */
   async doEmbed(
     config: EmbeddingModelStrategyConfig,
