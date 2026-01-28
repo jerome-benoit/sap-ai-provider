@@ -66,27 +66,27 @@ export type { DeploymentConfig, SAPAIProvider } from "./sap-ai-provider.js";
  * Model settings types and model identifier type definitions.
  */
 export type {
-  // API types
-  SAPAIApiType,
+  // Data sources (Azure "On Your Data" extensions) - extracted from SDK type
+  AzureOpenAiChatExtensionConfiguration,
   // Model params interfaces
   CommonModelParams,
-  FoundationModelsEmbeddingParams,
-  FoundationModelsModelParams,
-  OrchestrationModelParams,
-  // Model settings discriminated unions
-  FoundationModelsModelSettings,
-  OrchestrationModelSettings,
-  SAPAIModelSettings,
   // Default settings discriminated unions (for provider factory)
   FoundationModelsDefaultSettings,
+  FoundationModelsEmbeddingParams,
+  FoundationModelsModelParams,
+  // Model settings discriminated unions
+  FoundationModelsModelSettings,
   OrchestrationDefaultSettings,
-  SAPAIDefaultSettingsConfig,
+  OrchestrationModelParams,
+  OrchestrationModelSettings,
   // Response format
   ResponseFormat,
-  // Data sources
-  AzureOpenAiAzureChatExtensionConfiguration,
+  // API types
+  SAPAIApiType,
+  SAPAIDefaultSettingsConfig,
   // Legacy types (backward compatibility)
   SAPAIModelId,
+  SAPAIModelSettings,
   SAPAISettings,
 } from "./sap-ai-settings.js";
 
@@ -142,6 +142,13 @@ export {
   OrchestrationStreamChunkResponse,
   OrchestrationStreamResponse,
 } from "./sap-ai-settings.js";
+
+/**
+ * Validation utilities for API selection and feature compatibility.
+ * - `resolveApi`: Resolves API type from provider/model/invocation precedence chain.
+ * - `validateSettings`: Validates settings are compatible with the selected API.
+ */
+export { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
 /**
  * Package version, injected at build time.

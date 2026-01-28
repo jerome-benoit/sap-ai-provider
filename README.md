@@ -7,9 +7,9 @@
 [![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
 
 A community provider for SAP AI Core that integrates seamlessly with the Vercel
-AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** package, this
-provider enables you to use SAP's enterprise-grade AI models through the
-familiar Vercel AI SDK interface.
+AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** and
+**@sap-ai-sdk/foundation-models** packages, this provider enables you to use
+SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 
 ## Table of Contents
 
@@ -71,6 +71,8 @@ familiar Vercel AI SDK interface.
 - ⚡ **Language Model V3** - Latest Vercel AI SDK specification with enhanced
   streaming
 - 📊 **Text Embeddings** - Generate vector embeddings for RAG and semantic search
+- 🔀 **Dual API Support** - Choose between Orchestration or Foundation Models API
+  per provider, model, or call
 
 ## Quick Start
 
@@ -155,6 +157,42 @@ const provider = createSAPAIProvider({
   deploymentId: "your-deployment-id", // Optional
 });
 ```
+
+### API Selection
+
+The provider supports two SAP AI Core APIs:
+
+- **Orchestration API** (default): Full-featured API with data masking, content
+  filtering, document grounding, and translation
+- **Foundation Models API**: Direct model access with additional parameters like
+  `logprobs`, `seed`, and `logit_bias`
+
+```typescript
+// Provider-level API selection
+const provider = createSAPAIProvider({
+  api: "foundation-models", // All models use Foundation Models API
+});
+
+// Model-level API override
+const model = provider("gpt-4o", {
+  api: "orchestration", // Override for this model only
+});
+
+// Per-call API override via providerOptions
+const result = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "Hello",
+  providerOptions: {
+    "sap-ai": {
+      api: "foundation-models", // Override for this call only
+    },
+  },
+});
+```
+
+> **Note:** The Foundation Models API does not support orchestration features
+> (masking, filtering, grounding, translation). Attempting to use these features
+> with Foundation Models API will throw an `UnsupportedFeatureError`.
 
 ### Option 2: Default Instance (Quick Start)
 

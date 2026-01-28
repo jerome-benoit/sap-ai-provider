@@ -9,8 +9,12 @@ consistently:
 
 - **SAP AI Core** - The SAP BTP service that provides AI model hosting and
   orchestration (the cloud service)
-- **SAP AI SDK** - The official `@sap-ai-sdk/orchestration` npm package used for
-  API communication
+- **SAP AI SDK** - The official SAP npm packages (`@sap-ai-sdk/orchestration`
+  and `@sap-ai-sdk/foundation-models`) used for API communication
+- **Orchestration API** - SAP AI Core's full-featured API with data masking,
+  content filtering, document grounding, and translation capabilities
+- **Foundation Models API** - SAP AI Core's direct model access API with
+  additional parameters like `logprobs`, `seed`, and `logit_bias`
 - **SAP AI Core Provider** or **this provider** - This npm package
   (`@jerome-benoit/sap-ai-provider`)
 - **Tool calling** - The capability of models to invoke external functions
@@ -974,15 +978,16 @@ Configuration options for the SAP AI Provider.
 
 **Properties:**
 
-| Property                | Type                                     | Default     | Description                                                                                                                                          |
-| ----------------------- | ---------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                  | `string`                                 | `'sap-ai'`  | Provider name used as key in `providerOptions`/`providerMetadata`. Provider identifier uses `{name}.{type}` format (e.g., `"sap-ai.chat"`)           |
-| `resourceGroup`         | `string`                                 | `'default'` | SAP AI Core resource group                                                                                                                           |
-| `deploymentId`          | `string`                                 | Auto        | SAP AI Core deployment ID                                                                                                                            |
-| `destination`           | `HttpDestinationOrFetchOptions`          | -           | Custom destination configuration                                                                                                                     |
-| `defaultSettings`       | `SAPAISettings`                          | -           | Default model settings applied to all models                                                                                                         |
-| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`    | Log level for SAP Cloud SDK internal logging (authentication, service binding). Can be overridden via `SAP_CLOUD_SDK_LOG_LEVEL` environment variable |
-| `warnOnAmbiguousConfig` | `boolean`                                | `true`      | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)                    |
+| Property                | Type                                     | Default           | Description                                                                                                                                          |
+| ----------------------- | ---------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                  | `string`                                 | `'sap-ai'`        | Provider name used as key in `providerOptions`/`providerMetadata`. Provider identifier uses `{name}.{type}` format (e.g., `"sap-ai.chat"`)           |
+| `api`                   | `'orchestration' \| 'foundation-models'` | `'orchestration'` | SAP AI Core API to use. Orchestration provides full features (masking, filtering, grounding); Foundation Models provides direct model access         |
+| `resourceGroup`         | `string`                                 | `'default'`       | SAP AI Core resource group                                                                                                                           |
+| `deploymentId`          | `string`                                 | Auto              | SAP AI Core deployment ID                                                                                                                            |
+| `destination`           | `HttpDestinationOrFetchOptions`          | -                 | Custom destination configuration                                                                                                                     |
+| `defaultSettings`       | `SAPAISettings`                          | -                 | Default model settings applied to all models                                                                                                         |
+| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Log level for SAP Cloud SDK internal logging (authentication, service binding). Can be overridden via `SAP_CLOUD_SDK_LOG_LEVEL` environment variable |
+| `warnOnAmbiguousConfig` | `boolean`                                | `true`            | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)                    |
 
 **Example:**
 
@@ -1031,6 +1036,79 @@ const result = await generateText({
 // providerMetadata also uses provider name as key
 console.log(result.providerMetadata?.["sap-ai-core"]);
 ```
+
+---
+
+### API Comparison: Orchestration vs Foundation Models
+
+The SAP AI Core Provider supports two APIs. Use this feature matrix to choose
+the right API for your use case.
+
+#### Feature Matrix
+
+| Feature                         | Orchestration | Foundation Models | Notes                                          |
+| ------------------------------- | :-----------: | :---------------: | ---------------------------------------------- |
+| **Chat Completions**            |      ✅       |        ✅         | Both APIs support chat completions             |
+| **Streaming**                   |      ✅       |        ✅         | Both APIs support streaming responses          |
+| **Tool Calling**                |      ✅       |        ✅         | Both APIs support tool calling                 |
+| **Embeddings**                  |      ✅       |        ✅         | Both APIs support embeddings                   |
+| **Structured Output (JSON)**    |      ✅       |        ✅         | Both APIs support JSON mode and schemas        |
+| **Data Masking (DPI)**          |      ✅       |        ❌         | Anonymize/pseudonymize PII via SAP DPI         |
+| **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters      |
+| **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration           |
+| **Translation**                 |      ✅       |        ❌         | SAP Document Translation service               |
+| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for Jinja2 safety |
+| **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                   |
+| **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB   |
+| **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters          |
+| **Deterministic Sampling**      |      ❌       |        ✅         | `seed` parameter for reproducible outputs      |
+| **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation         |
+| **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities     |
+| **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring          |
+
+#### When to Use Each API
+
+**Use Orchestration API (default) when:**
+
+- ✅ You need data masking/anonymization for PII protection
+- ✅ You need content filtering for safety compliance
+- ✅ You need document grounding with SAP AI Core vector stores
+- ✅ You need input/output translation
+- ✅ You want the full SAP AI Core feature set
+
+**Use Foundation Models API when:**
+
+- ✅ You need `logprobs` for token probability analysis
+- ✅ You need `seed` for deterministic/reproducible outputs
+- ✅ You need Azure "On Your Data" (`dataSources`) integration
+- ✅ You want direct model access without orchestration overhead
+- ✅ You need fine-grained control with `logit_bias` or `stop` sequences
+
+#### Switching APIs
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+
+// Provider-level: all models use this API by default
+const provider = createSAPAIProvider({ api: "foundation-models" });
+
+// Model-level: override for specific model
+const model = provider("gpt-4o", { api: "orchestration" });
+
+// Invocation-level: override per-call
+const result = await generateText({
+  model,
+  prompt: "Hello",
+  providerOptions: {
+    "sap-ai": { api: "foundation-models" },
+  },
+});
+```
+
+> **Note:** API-specific features cannot be mixed. Using `filtering` with
+> Foundation Models API throws `UnsupportedFeatureError`. See
+> [Error Types](#error-types) for details.
 
 ---
 
@@ -1104,6 +1182,53 @@ Fine-grained model behavior parameters.
 | `presencePenalty`     | `number`  | -2 to 2 | `0`            | Presence penalty                                       |
 | `n`                   | `number`  | 1-10    | `1`            | Number of completions (not supported by Amazon models) |
 | `parallel_tool_calls` | `boolean` | -       | Model-specific | Enable parallel tool execution (OpenAI models)         |
+
+#### Foundation Models-Only Parameters
+
+The following parameters are only available when using the Foundation Models API
+(`api: "foundation-models"`). They provide advanced control over model behavior
+not exposed through the Orchestration API.
+
+| Property       | Type                     | Default | Description                                                   |
+| -------------- | ------------------------ | ------- | ------------------------------------------------------------- |
+| `logprobs`     | `boolean`                | `false` | Return log probabilities of output tokens                     |
+| `top_logprobs` | `number`                 | -       | Number of most likely tokens (0-20) at each position          |
+| `seed`         | `number`                 | -       | Random seed for deterministic sampling (reproducible outputs) |
+| `stop`         | `string \| string[]`     | -       | Stop sequences where generation halts                         |
+| `logit_bias`   | `Record<string, number>` | -       | Modify likelihood of specific tokens (-100 to 100)            |
+| `user`         | `string`                 | -       | Unique end-user identifier for abuse monitoring               |
+
+**Example with Foundation Models parameters:**
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+
+const provider = createSAPAIProvider({ api: "foundation-models" });
+
+const result = await generateText({
+  model: provider("gpt-4o", {
+    modelParams: {
+      temperature: 0.7,
+      maxTokens: 1000,
+      // Foundation Models-only parameters
+      seed: 42, // Reproducible outputs
+      logprobs: true, // Get token probabilities
+      top_logprobs: 5, // Top 5 tokens at each position
+      stop: ["\n\n", "END"], // Stop on double newline or "END"
+      user: "user-123", // Track for abuse monitoring
+    },
+  }),
+  prompt: "Write a haiku about programming",
+});
+
+// Access log probabilities from response (if model supports it)
+console.log("Response:", result.text);
+```
+
+> **Note:** Using these parameters with Orchestration API (`api: "orchestration"`)
+> will have no effect as they are passed through but ignored by the Orchestration
+> service.
 
 ---
 
@@ -1546,6 +1671,83 @@ Properties:
 Properties:
 
 - `message`: Error description with setup instructions
+
+**`UnsupportedFeatureError`** - Thrown when using API-specific features with the
+wrong API
+
+Properties:
+
+- `name`: `"UnsupportedFeatureError"`
+- `feature`: The unsupported feature name (e.g., `"Content filtering"`)
+- `api`: The API being used where the feature is not supported
+- `suggestedApi`: The API that supports this feature
+
+Example:
+
+```typescript
+import { UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
+
+try {
+  // Using filtering with Foundation Models API
+  const model = provider("gpt-4o", {
+    api: "foundation-models",
+    filtering: {
+      /* ... */
+    }, // Not supported!
+  });
+} catch (error) {
+  if (error instanceof UnsupportedFeatureError) {
+    console.error(error.message);
+    // "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
+    console.error("Feature:", error.feature); // "Content filtering"
+    console.error("Current API:", error.api); // "foundation-models"
+    console.error("Suggested API:", error.suggestedApi); // "orchestration"
+  }
+}
+```
+
+**`ApiSwitchError`** - Thrown when switching APIs at invocation time conflicts
+with model-level settings
+
+Properties:
+
+- `name`: `"ApiSwitchError"`
+- `fromApi`: The API the model was configured with
+- `toApi`: The API being switched to at invocation time
+- `conflictingFeature`: The feature that prevents the switch
+
+Example:
+
+```typescript
+import { ApiSwitchError } from "@jerome-benoit/sap-ai-provider";
+
+// Model configured with Orchestration-only feature
+const model = provider("gpt-4o", {
+  filtering: {
+    /* ... */
+  },
+});
+
+try {
+  // Attempt to switch to Foundation Models at invocation time
+  await generateText({
+    model,
+    prompt: "Hello",
+    providerOptions: {
+      "sap-ai": { api: "foundation-models" },
+    },
+  });
+} catch (error) {
+  if (error instanceof ApiSwitchError) {
+    console.error(error.message);
+    // "Cannot switch from orchestration to foundation-models API at invocation time
+    //  because the model was configured with filtering. Create a new model instance instead."
+    console.error("From:", error.fromApi); // "orchestration"
+    console.error("To:", error.toApi); // "foundation-models"
+    console.error("Conflict:", error.conflictingFeature); // "filtering"
+  }
+}
+```
 
 #### SAP-Specific Error Details
 

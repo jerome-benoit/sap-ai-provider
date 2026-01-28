@@ -9,6 +9,82 @@ The SAP AI SDK provides two distinct APIs for AI model access:
 
 This design document specifies the detailed architecture for supporting both APIs while maintaining backward compatibility.
 
+## SDK Dependencies
+
+### Required Packages
+
+Both SAP AI SDK packages are **runtime dependencies** (not peer dependencies) to ensure type availability and consistent versioning:
+
+```json
+{
+  "dependencies": {
+    "@sap-ai-sdk/orchestration": "^2.5.0",
+    "@sap-ai-sdk/foundation-models": "^2.5.0"
+  }
+}
+```
+
+### Type Reuse Strategy
+
+**Principle**: Maximize reuse of types from both SDKs instead of creating custom/placeholder types.
+
+#### From `@sap-ai-sdk/orchestration`
+
+Already used for Orchestration API types:
+
+- `FilteringModule`, `GroundingModule`, `MaskingModule`, `TranslationModule`
+- `ChatCompletionTool`, `ChatModel`
+- `OrchestrationClient`, `OrchestrationEmbeddingClient`
+
+#### From `@sap-ai-sdk/foundation-models`
+
+Used for Foundation Models API types:
+
+| SDK Type                                           | Usage                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------- |
+| `AzureOpenAiChatClient`                            | Chat completions client                                               |
+| `AzureOpenAiEmbeddingClient`                       | Embeddings client                                                     |
+| `AzureOpenAiChatCompletionParameters`              | Request parameters (extends `AzureOpenAiCreateChatCompletionRequest`) |
+| `AzureOpenAiEmbeddingParameters`                   | Embedding request parameters                                          |
+| `AzureOpenAiAzureChatExtensionConfiguration`       | Data sources ("On Your Data")                                         |
+| `AzureOpenAiChatCompletionRequestMessage`          | Message union type                                                    |
+| `AzureOpenAiChatCompletionRequestSystemMessage`    | System message                                                        |
+| `AzureOpenAiChatCompletionRequestUserMessage`      | User message                                                          |
+| `AzureOpenAiChatCompletionRequestAssistantMessage` | Assistant message                                                     |
+| `AzureOpenAiChatCompletionRequestToolMessage`      | Tool result message                                                   |
+| `AzureOpenAiChatCompletionTool`                    | Tool definition                                                       |
+| `AzureOpenAiFunctionObject`                        | Function definition                                                   |
+| `AzureOpenAiChatCompletionResponse`                | Response wrapper                                                      |
+| `AzureOpenAiEmbeddingResponse`                     | Embedding response wrapper                                            |
+| `AzureOpenAiChatCompletionStreamResponse`          | Streaming response                                                    |
+
+#### Type Re-exports
+
+Re-export SDK types for user convenience:
+
+```typescript
+// src/sap-ai-settings.ts - Foundation Models types
+export type { AzureOpenAiAzureChatExtensionConfiguration, AzureOpenAiChatCompletionParameters, AzureOpenAiEmbeddingParameters, AzureOpenAiChatCompletionTool, AzureOpenAiFunctionObject } from "@sap-ai-sdk/foundation-models";
+```
+
+### Lazy Loading Consideration
+
+Although both packages are dependencies, they are imported **dynamically** at runtime to avoid loading unused code:
+
+```typescript
+// Only loaded when api === "foundation-models"
+const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
+
+// Only loaded when api === "orchestration" (default)
+const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
+```
+
+This ensures:
+
+- Zero bundle impact when using only one API
+- Types are available at compile time from both packages
+- Runtime code is loaded on-demand
+
 ## Goals / Non-Goals
 
 ### Goals
@@ -336,15 +412,19 @@ type SAPAIProviderSettings = OrchestrationProviderSettings | FoundationModelsPro
 ### Discriminated Union for Model Settings
 
 ```typescript
+// Import SDK types
+import type { FilteringModule, GroundingModule, MaskingModule, TranslationModule, ChatCompletionTool } from "@sap-ai-sdk/orchestration";
+import type { AzureOpenAiAzureChatExtensionConfiguration } from "@sap-ai-sdk/foundation-models";
+
 interface OrchestrationModelSettings {
   api?: "orchestration";
   // === Orchestration-Only Options ===
   escapeTemplatePlaceholders?: boolean;
-  filtering?: FilteringModule;
-  grounding?: GroundingModule;
-  masking?: MaskingModule;
-  translation?: TranslationModule;
-  tools?: ChatCompletionTool[];
+  filtering?: FilteringModule; // From @sap-ai-sdk/orchestration
+  grounding?: GroundingModule; // From @sap-ai-sdk/orchestration
+  masking?: MaskingModule; // From @sap-ai-sdk/orchestration
+  translation?: TranslationModule; // From @sap-ai-sdk/orchestration
+  tools?: ChatCompletionTool[]; // From @sap-ai-sdk/orchestration
   // === Common Options ===
   modelParams?: OrchestrationModelParams;
   modelVersion?: string;
@@ -355,7 +435,7 @@ interface OrchestrationModelSettings {
 interface FoundationModelsModelSettings {
   api: "foundation-models";
   // === Foundation Models-Only Options ===
-  dataSources?: AzureOpenAiAzureChatExtensionConfiguration[];
+  dataSources?: AzureOpenAiAzureChatExtensionConfiguration[]; // From @sap-ai-sdk/foundation-models
   // === Common Options ===
   modelParams?: FoundationModelsModelParams;
   modelVersion?: string;
@@ -368,31 +448,41 @@ type SAPAIModelSettings = OrchestrationModelSettings | FoundationModelsModelSett
 
 ### Model Parameters by API
 
+Model parameters leverage the SDK types where possible. The `AzureOpenAiCreateChatCompletionRequest` from Foundation Models SDK defines all available parameters.
+
 ```typescript
-// Common parameters (both APIs)
+// Common parameters (both APIs) - subset of AzureOpenAiCreateChatCompletionRequest
 interface CommonModelParams {
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  n?: number;
+  temperature?: number; // Maps to AzureOpenAiCreateChatCompletionRequest.temperature
+  maxTokens?: number; // Maps to AzureOpenAiCreateChatCompletionRequest.max_tokens
+  topP?: number; // Maps to AzureOpenAiCreateChatCompletionRequest.top_p
+  frequencyPenalty?: number; // Maps to AzureOpenAiCreateChatCompletionRequest.frequency_penalty
+  presencePenalty?: number; // Maps to AzureOpenAiCreateChatCompletionRequest.presence_penalty
+  n?: number; // Maps to AzureOpenAiCreateChatCompletionRequest.n
   parallel_tool_calls?: boolean;
+  [key: string]: unknown; // Index signature for deep merge compatibility
 }
 
-// Orchestration-specific parameters
+// Orchestration-specific parameters (no additional params exposed by SAP SDK)
 interface OrchestrationModelParams extends CommonModelParams {
   // No additional params currently exposed
 }
 
-// Foundation Models-specific parameters
+// Foundation Models-specific parameters - aligned with AzureOpenAiCreateChatCompletionRequest
 interface FoundationModelsModelParams extends CommonModelParams {
-  logit_bias?: Record<string, number>;
-  logprobs?: boolean;
-  top_logprobs?: number;
-  seed?: number;
-  stop?: string | string[];
-  user?: string;
+  logit_bias?: Record<string, number>; // AzureOpenAiCreateChatCompletionRequest.logit_bias
+  logprobs?: boolean; // AzureOpenAiCreateChatCompletionRequest.logprobs
+  top_logprobs?: number; // AzureOpenAiCreateChatCompletionRequest.top_logprobs
+  seed?: number; // AzureOpenAiCreateChatCompletionRequest.seed
+  stop?: string | string[]; // AzureOpenAiCreateChatCompletionRequest.stop
+  user?: string; // AzureOpenAiCreateChatCompletionRequest.user
+}
+
+// Embedding parameters - aligned with AzureOpenAiEmbeddingParameters
+interface FoundationModelsEmbeddingParams {
+  dimensions?: number; // AzureOpenAiEmbeddingParameters.dimensions
+  encoding_format?: "float" | "base64"; // AzureOpenAiEmbeddingParameters.encoding_format
+  user?: string; // AzureOpenAiEmbeddingParameters.user
 }
 ```
 
@@ -512,26 +602,42 @@ function validateApiSwitch(resolvedApi: SAPAIApiType, modelSettings: SAPAIModelS
 
 ## Message Format Conversion
 
+### Unified Message Conversion (Key Finding)
+
+**Both SDKs use structurally identical message formats.** After exhaustive type comparison:
+
+| Message Type     | Orchestration SDK                              | Foundation Models SDK                         | Compatible? |
+| ---------------- | ---------------------------------------------- | --------------------------------------------- | ----------- |
+| SystemMessage    | `{ role: 'system', content }`                  | Same + `name?` + `& Record<string, any>`      | ✅ Yes      |
+| UserMessage      | `{ role: 'user', content }`                    | Same + `name?` + `& Record<string, any>`      | ✅ Yes      |
+| AssistantMessage | `{ role: 'assistant', content?, tool_calls? }` | Same + `name?`, `function_call?` (deprecated) | ✅ Yes      |
+| ToolMessage      | `{ role: 'tool', tool_call_id, content }`      | Same + `& Record<string, any>`                | ✅ Yes      |
+
+**Only differences** (no runtime impact):
+
+1. FM SDK adds `& Record<string, any>` for extensibility
+2. FM SDK has optional `name?: string` on messages (not used)
+3. FM SDK has stricter `detail?: 'auto' | 'low' | 'high'` vs Orch `detail?: string`
+
+**Result: Single `convertToSAPMessages()` function works for both APIs.**
+
 ### Key Difference: escapeTemplatePlaceholders
 
 The `escapeTemplatePlaceholders` option ONLY applies to Orchestration API:
 
 ```typescript
+// UNIFIED approach - single existing function for both APIs
 function convertMessages(prompt: LanguageModelV3Prompt, api: SAPAIApiType, options: { escapeTemplatePlaceholders?: boolean; includeReasoning?: boolean }) {
-  if (api === "orchestration") {
-    return convertToSAPMessages(prompt, {
-      // Default true for Orchestration (Jinja2 templates)
-      escapeTemplatePlaceholders: options.escapeTemplatePlaceholders ?? true,
-      includeReasoning: options.includeReasoning ?? false,
-    });
-  } else {
-    return convertToAzureMessages(prompt, {
-      // NEVER escape for Foundation Models (no Jinja2)
-      includeReasoning: options.includeReasoning ?? false,
-    });
-  }
+  // Single implementation - existing convertToSAPMessages() from src/convert-to-sap-messages.ts
+  return convertToSAPMessages(prompt, {
+    // Default true for Orchestration (Jinja2 templates), false for FM (no Jinja2)
+    escapeTemplatePlaceholders: api === "orchestration" ? (options.escapeTemplatePlaceholders ?? true) : false, // FM never escapes - validated elsewhere
+    includeReasoning: options.includeReasoning ?? false,
+  });
 }
 ```
+
+No separate `convertToAzureMessages()` function needed - the existing `convertToSAPMessages()` produces output compatible with both APIs.
 
 ## Error Handling
 

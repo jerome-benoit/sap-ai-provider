@@ -138,7 +138,7 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
        * - `'foundation-models'`: Use SAP AI Core Foundation Models API
        */
       api: sapAIApiTypeSchema.optional(),
-      /** Escape template delimiters (`{​{`, `{​%`, `{​#`) to prevent SAP orchestration template conflicts. */
+      /** Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts. */
       escapeTemplatePlaceholders: z.boolean().optional(),
       /** Whether to include assistant reasoning parts in the response. */
       includeReasoning: z.boolean().optional(),
