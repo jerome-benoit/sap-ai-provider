@@ -472,26 +472,30 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("model capabilities", () => {
-      const expectedCapabilities = {
-        supportsImageUrls: true,
-        supportsMultipleCompletions: true,
-        supportsParallelToolCalls: true,
-        supportsStreaming: true,
-        supportsStructuredOutputs: true,
-        supportsToolCalls: true,
-      };
+      it("should delegate capability getters to capabilities object", () => {
+        const model = createModel("amazon--nova-pro");
 
-      it.each([
-        "any-model",
-        "gpt-4o",
-        "anthropic--claude-3.5-sonnet",
-        "gemini-2.0-flash",
-        "amazon--nova-pro",
-        "mistralai--mistral-large-instruct",
-        "unknown-future-model",
-      ])("should have consistent capabilities for model %s", (modelId) => {
-        const model = createModel(modelId);
-        expect(model).toMatchObject(expectedCapabilities);
+        expect(model.supportsImageUrls).toBe(model.capabilities.supportsImageInputs);
+        expect(model.supportsMultipleCompletions).toBe(model.capabilities.supportsN);
+        expect(model.supportsParallelToolCalls).toBe(model.capabilities.supportsParallelToolCalls);
+        expect(model.supportsStreaming).toBe(model.capabilities.supportsStreaming);
+        expect(model.supportsStructuredOutputs).toBe(model.capabilities.supportsStructuredOutputs);
+        expect(model.supportsToolCalls).toBe(model.capabilities.supportsToolCalls);
+      });
+
+      it("should cache capabilities after first access", () => {
+        const model = createModel("azure--gpt-4o");
+
+        const caps1 = model.capabilities;
+        const caps2 = model.capabilities;
+
+        expect(caps1).toBe(caps2);
+      });
+
+      it("should expose vendor in capabilities", () => {
+        const model = createModel("anthropic--claude-3.5-sonnet");
+
+        expect(model.capabilities.vendor).toBe("anthropic");
       });
     });
   });
