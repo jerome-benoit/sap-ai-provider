@@ -29,15 +29,6 @@ See **`.cursor/rules/`** directory for modular topic-specific rules:
 - `typescript-style.mdc` - TypeScript conventions
 - `usage-and-examples.mdc` - Usage patterns
 
-### OpenSpec Workflows
-
-See **`openspec/AGENTS.md`** for spec-driven development instructions including:
-
-- Creating change proposals
-- Writing spec deltas
-- Validation and archiving
-- OpenSpec CLI commands
-
 ## For Human Developers
 
 - **Project documentation:** [README](./README.md)
