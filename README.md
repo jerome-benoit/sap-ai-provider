@@ -706,6 +706,7 @@ features:
 | `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen   |
 | `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation |
 | `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity  |
+| `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed     |
 
 **Running Examples:**
 
