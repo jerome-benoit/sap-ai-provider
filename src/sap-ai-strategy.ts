@@ -246,27 +246,21 @@ export function getOrCreateLanguageModelStrategy(
  * Performs lazy loading of the appropriate SDK package.
  * @param api - The API type to create a strategy for.
  * @returns A Promise resolving to the embedding model strategy.
- * @throws {Error} If the SDK package cannot be loaded.
  * @internal
  */
 async function createEmbeddingModelStrategy(api: SAPAIApiType): Promise<EmbeddingModelAPIStrategy> {
-  try {
-    if (api === "foundation-models") {
-      // Lazy load Foundation Models SDK
-      const { AzureOpenAiEmbeddingClient } = await import("@sap-ai-sdk/foundation-models");
-      const { FoundationModelsEmbeddingModelStrategy } =
-        await import("./foundation-models-embedding-model-strategy.js");
-      return new FoundationModelsEmbeddingModelStrategy(AzureOpenAiEmbeddingClient);
-    }
-
-    // Default: Orchestration API
-    const { OrchestrationEmbeddingClient } = await import("@sap-ai-sdk/orchestration");
-    const { OrchestrationEmbeddingModelStrategy } =
-      await import("./orchestration-embedding-model-strategy.js");
-    return new OrchestrationEmbeddingModelStrategy(OrchestrationEmbeddingClient);
-  } catch (error) {
-    throw createSDKImportError(api, error);
+  if (api === "foundation-models") {
+    const { AzureOpenAiEmbeddingClient } = await import("@sap-ai-sdk/foundation-models");
+    const { FoundationModelsEmbeddingModelStrategy } =
+      await import("./foundation-models-embedding-model-strategy.js");
+    return new FoundationModelsEmbeddingModelStrategy(AzureOpenAiEmbeddingClient);
   }
+
+  // Default: Orchestration API
+  const { OrchestrationEmbeddingClient } = await import("@sap-ai-sdk/orchestration");
+  const { OrchestrationEmbeddingModelStrategy } =
+    await import("./orchestration-embedding-model-strategy.js");
+  return new OrchestrationEmbeddingModelStrategy(OrchestrationEmbeddingClient);
 }
 
 /**
@@ -275,55 +269,19 @@ async function createEmbeddingModelStrategy(api: SAPAIApiType): Promise<Embeddin
  * Performs lazy loading of the appropriate SDK package.
  * @param api - The API type to create a strategy for.
  * @returns A Promise resolving to the language model strategy.
- * @throws {Error} If the SDK package cannot be loaded.
  * @internal
  */
 async function createLanguageModelStrategy(api: SAPAIApiType): Promise<LanguageModelAPIStrategy> {
-  try {
-    if (api === "foundation-models") {
-      // Lazy load Foundation Models SDK
-      const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
-      const { FoundationModelsLanguageModelStrategy } =
-        await import("./foundation-models-language-model-strategy.js");
-      return new FoundationModelsLanguageModelStrategy(AzureOpenAiChatClient);
-    }
-
-    // Default: Orchestration API
-    const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
-    const { OrchestrationLanguageModelStrategy } =
-      await import("./orchestration-language-model-strategy.js");
-    return new OrchestrationLanguageModelStrategy(OrchestrationClient);
-  } catch (error) {
-    throw createSDKImportError(api, error);
-  }
-}
-
-/**
- * Creates a user-friendly error message for SDK import failures.
- * @param api - The API type that failed to load.
- * @param originalError - The original import error.
- * @returns A new Error with installation instructions.
- * @internal
- */
-function createSDKImportError(api: SAPAIApiType, originalError: unknown): Error {
-  const packageName =
-    api === "foundation-models" ? "@sap-ai-sdk/foundation-models" : "@sap-ai-sdk/orchestration";
-
-  const isModuleNotFound =
-    originalError instanceof Error &&
-    (originalError.message.includes("Cannot find module") ||
-      originalError.message.includes("MODULE_NOT_FOUND"));
-
-  if (isModuleNotFound) {
-    return new Error(
-      `Failed to load ${packageName}. Please install it: npm install ${packageName}`,
-    );
+  if (api === "foundation-models") {
+    const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
+    const { FoundationModelsLanguageModelStrategy } =
+      await import("./foundation-models-language-model-strategy.js");
+    return new FoundationModelsLanguageModelStrategy(AzureOpenAiChatClient);
   }
 
-  // Re-throw original error if it's not a module loading issue
-  if (originalError instanceof Error) {
-    return originalError;
-  }
-
-  return new Error(`Failed to load ${packageName}: ${String(originalError)}`);
+  // Default: Orchestration API
+  const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
+  const { OrchestrationLanguageModelStrategy } =
+    await import("./orchestration-language-model-strategy.js");
+  return new OrchestrationLanguageModelStrategy(OrchestrationClient);
 }
