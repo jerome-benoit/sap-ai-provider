@@ -8,10 +8,6 @@ import type {
   TranslationModule,
 } from "@sap-ai-sdk/orchestration";
 
-// ============================================================================
-// API Types
-// ============================================================================
-
 /**
  * Azure OpenAI chat extension configuration for "On Your Data" scenarios.
  * Extracted directly from the SDK's AzureOpenAiChatCompletionParameters type.
@@ -47,10 +43,6 @@ export interface CommonModelParams {
   readonly topP?: number;
 }
 
-// ============================================================================
-// Types Derived from SDK (maximizing reuse)
-// ============================================================================
-
 /**
  * Default settings configuration when using Foundation Models API.
  * Used for type-safe provider defaultSettings with Foundation Models API.
@@ -74,10 +66,6 @@ export interface FoundationModelsEmbeddingParams {
   /** A unique identifier representing your end-user for abuse monitoring. */
   readonly user?: string;
 }
-
-// ============================================================================
-// Model Parameters (API-specific)
-// ============================================================================
 
 /**
  * Model parameters for Foundation Models API.
@@ -153,10 +141,6 @@ export interface OrchestrationDefaultSettings {
  */
 export type OrchestrationModelParams = CommonModelParams;
 
-// ============================================================================
-// Model Settings (Discriminated Unions)
-// ============================================================================
-
 /**
  * Model settings when using Orchestration API.
  * Includes all orchestration-only features: filtering, grounding, masking, translation.
@@ -224,10 +208,6 @@ export type ResponseFormat = AzureOpenAiChatCompletionParameters["response_forma
  */
 export type SAPAIApiType = "foundation-models" | "orchestration";
 
-// ============================================================================
-// Default Settings (for Provider Factory)
-// ============================================================================
-
 /**
  * Union type for API-specific default settings configuration.
  */
@@ -276,18 +256,10 @@ export interface SAPAIEmbeddingSettings {
  */
 export type SAPAIModelId = ChatModel;
 
-// ============================================================================
-// Legacy Settings Interface (Backward Compatibility)
-// ============================================================================
-
 /**
  * Union type for model settings - supports both APIs.
  */
 export type SAPAIModelSettings = FoundationModelsModelSettings | OrchestrationModelSettings;
-
-// ============================================================================
-// Re-exports from SAP AI SDK - Foundation Models
-// ============================================================================
 
 /**
  * Re-export Azure OpenAI types from `@sap-ai-sdk/foundation-models` for convenience.
@@ -305,10 +277,6 @@ export type {
   AzureOpenAiFunctionObject,
 } from "@sap-ai-sdk/foundation-models";
 
-// ============================================================================
-// Re-exports from SAP AI SDK - Orchestration
-// ============================================================================
-
 /** SAP AI SDK types re-exported for convenience and direct usage. */
 export type {
   FilteringModule,
@@ -324,10 +292,6 @@ export {
   buildLlamaGuard38BFilter,
   buildTranslationConfig,
 } from "@sap-ai-sdk/orchestration";
-
-// ============================================================================
-// Embedding Model Settings
-// ============================================================================
 
 /**
  * Settings for configuring SAP AI Core model behavior.

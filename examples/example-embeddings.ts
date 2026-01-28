@@ -21,14 +21,10 @@
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
 import { embed, embedMany } from "ai";
+
+// This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
-
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
 import { createSAPAIProvider } from "../src/index";
 
 /**
@@ -46,9 +42,6 @@ async function embeddingsExample() {
   try {
     const provider = createSAPAIProvider();
 
-    // ========================================
-    // Single Embedding
-    // ========================================
     console.log("🔢 Generating single embedding...\n");
 
     const { embedding } = await embed({
@@ -65,9 +58,6 @@ async function embeddingsExample() {
         .join(", ")}...]`,
     );
 
-    // ========================================
-    // Batch Embeddings
-    // ========================================
     console.log("\n🔢 Generating batch embeddings...\n");
 
     const documents = [
@@ -90,9 +80,6 @@ async function embeddingsExample() {
       );
     });
 
-    // ========================================
-    // Similarity Calculation (Demo)
-    // ========================================
     console.log("\n📐 Calculating cosine similarities...\n");
 
     // Calculate cosine similarity between embeddings
@@ -114,9 +101,6 @@ async function embeddingsExample() {
       console.log(`   → "${currentDoc.slice(0, 35)}..." similarity: ${similarity.toFixed(4)}`);
     }
 
-    // ========================================
-    // Different Embedding Types
-    // ========================================
     console.log("\n🏷️  Testing embedding types...\n");
 
     // Document embedding (for storage/indexing)

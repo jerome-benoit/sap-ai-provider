@@ -26,19 +26,11 @@ import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provide
 import { buildModelDeployment, normalizeEmbedding } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
-// ============================================================================
-// AzureOpenAiEmbeddingClient type - we receive this from the factory
-// ============================================================================
-
 /**
  * Type for the AzureOpenAiEmbeddingClient class constructor.
  * @internal
  */
 type AzureOpenAiEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
-
-// ============================================================================
-// Foundation Models Embedding Model Strategy
-// ============================================================================
 
 /**
  * Foundation Models Embedding Model Strategy.
@@ -94,23 +86,13 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
       });
     }
 
-    // Settings already typed as SAPAIEmbeddingSettings with embedding-specific properties
-
     try {
       const client = this.createClient(config);
-
-      // Build request parameters
       const request = this.buildRequest(values, settings, sapOptions);
-
       const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
-      // Get embeddings from response - FM API returns number[][] directly
       const embeddingData = response.getEmbeddings();
-
-      // Get token usage from raw response data
       const tokenUsage = response._data.usage;
-
-      // FM API returns embeddings already in order (array of number[])
       const embeddings: EmbeddingModelV3Embedding[] = embeddingData.map((embedding) =>
         normalizeEmbedding(embedding),
       );
@@ -155,7 +137,6 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
       input: values,
     };
 
-    // Apply settings from model configuration
     const modelParams = settings.modelParams as FoundationModelsEmbeddingParams | undefined;
     if (modelParams) {
       if (modelParams.user !== undefined) {
@@ -169,7 +150,6 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
       }
     }
 
-    // Apply per-call overrides from provider options
     if (sapOptions?.modelParams) {
       const callParams = sapOptions.modelParams;
       if (callParams.user !== undefined) {
@@ -198,8 +178,6 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
   private createClient(
     config: EmbeddingModelStrategyConfig,
   ): InstanceType<AzureOpenAiEmbeddingClientClass> {
-    // Create client with model deployment configuration
-    // The Foundation Models SDK uses ModelDeployment for routing
     const modelDeployment = buildModelDeployment(config);
     return new this.ClientClass(modelDeployment, config.destination);
   }

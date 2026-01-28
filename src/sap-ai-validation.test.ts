@@ -28,10 +28,6 @@ function mockSettings(partial: Record<string, unknown>): SAPAIModelSettings {
   return partial as SAPAIModelSettings;
 }
 
-// ============================================================================
-// resolveApi Tests
-// ============================================================================
-
 describe("resolveApi", () => {
   describe("precedence chain", () => {
     it("should return invocationApi when all levels are set (highest priority)", () => {
@@ -83,10 +79,6 @@ describe("resolveApi", () => {
     });
   });
 });
-
-// ============================================================================
-// validateOrchestrationOnlyOptions Tests
-// ============================================================================
 
 describe("validateOrchestrationOnlyOptions", () => {
   it("should pass with undefined settings", () => {
@@ -182,16 +174,11 @@ describe("validateOrchestrationOnlyOptions", () => {
       grounding: { type: "document_grounding_service" },
     });
 
-    // Should throw for filtering since it's checked first
     expect(() => {
       validateOrchestrationOnlyOptions(settings);
     }).toThrow(/Content filtering/);
   });
 });
-
-// ============================================================================
-// validateFoundationModelsOnlyOptions Tests
-// ============================================================================
 
 describe("validateFoundationModelsOnlyOptions", () => {
   it("should pass with undefined settings", () => {
@@ -247,16 +234,11 @@ describe("validateFoundationModelsOnlyOptions", () => {
       dataSources: [],
     });
 
-    // Empty array is still !== undefined, so it will throw
     expect(() => {
       validateFoundationModelsOnlyOptions(settings);
     }).toThrow(UnsupportedFeatureError);
   });
 });
-
-// ============================================================================
-// validateEscapeTemplatePlaceholders Tests
-// ============================================================================
 
 describe("validateEscapeTemplatePlaceholders", () => {
   describe("with Foundation Models API", () => {
@@ -302,10 +284,6 @@ describe("validateEscapeTemplatePlaceholders", () => {
     });
   });
 });
-
-// ============================================================================
-// validateApiSwitch Tests
-// ============================================================================
 
 describe("validateApiSwitch", () => {
   it("should pass when APIs are the same (no switch)", () => {
@@ -433,10 +411,6 @@ describe("validateApiSwitch", () => {
   });
 });
 
-// ============================================================================
-// validateApiInput Tests
-// ============================================================================
-
 describe("validateApiInput", () => {
   it("should pass for 'orchestration'", () => {
     expect(() => {
@@ -495,10 +469,6 @@ describe("validateApiInput", () => {
     }).toThrow(/42/);
   });
 });
-
-// ============================================================================
-// validateSettings (Main Function) Tests
-// ============================================================================
 
 describe("validateSettings", () => {
   it("should pass with valid Orchestration settings", () => {
@@ -570,10 +540,6 @@ describe("validateSettings", () => {
   });
 
   it("should throw ApiSwitchError when modelApi is undefined but model has orchestration features and invocation switches to foundation-models", () => {
-    // When modelApi is undefined (the default), it should be treated as "orchestration".
-    // If the model has orchestration-only features like filtering, and the invocation
-    // tries to switch to foundation-models, we should get ApiSwitchError (not just
-    // UnsupportedFeatureError) because the error message should mention the API switch context.
     expect(() => {
       validateSettings({
         api: "orchestration", // effective API from provider
@@ -585,7 +551,6 @@ describe("validateSettings", () => {
       });
     }).toThrow(ApiSwitchError);
 
-    // Verify the error message mentions the API switch context
     try {
       validateSettings({
         api: "orchestration",
@@ -605,9 +570,6 @@ describe("validateSettings", () => {
   });
 
   it("should not throw when modelApi is undefined and invocation explicitly sets orchestration (no API switch)", () => {
-    // When modelApi is undefined (the default), it should be treated as "orchestration".
-    // If invocation also specifies orchestration, there's no API switch (orch -> orch).
-    // The effective API is orchestration, so orchestration-only features are fine.
     expect(() => {
       validateSettings({
         api: "orchestration", // effective API after resolution (invocation takes precedence)
@@ -659,10 +621,6 @@ describe("validateSettings", () => {
     }).toThrow(/Invalid API type/);
   });
 });
-
-// ============================================================================
-// getEffectiveEscapeTemplatePlaceholders Tests
-// ============================================================================
 
 describe("getEffectiveEscapeTemplatePlaceholders", () => {
   describe("with Foundation Models API", () => {

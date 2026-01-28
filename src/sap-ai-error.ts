@@ -715,10 +715,6 @@ function isRetryable(statusCode: number): boolean {
 
 export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
-// ============================================================================
-// Foundation Models API Support - Custom Error Classes
-// ============================================================================
-
 /**
  * Serializes and truncates axios response data for error messages.
  * @param data - The response data to serialize.

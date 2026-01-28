@@ -13,10 +13,6 @@ import type {
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { ZodType } from "zod";
 
-// ============================================================================
-// Shared Types (alphabetically ordered)
-// ============================================================================
-
 /**
  * Base configuration for model deployment resolution.
  * Shared fields used by buildModelDeployment helper.
@@ -63,10 +59,6 @@ export type SAPToolParameters = Record<string, unknown> & {
   type: "object";
 };
 
-// ============================================================================
-// Stream State
-// ============================================================================
-
 /**
  * State object for tracking streaming response processing.
  * @internal
@@ -94,10 +86,6 @@ export interface StreamState {
   };
 }
 
-// ============================================================================
-// Stream ID Generation
-// ============================================================================
-
 /**
  * Generates unique IDs for streaming response parts.
  *
@@ -121,10 +109,6 @@ export class StreamIdGenerator {
     return crypto.randomUUID();
   }
 }
-
-// ============================================================================
-// Helper Functions (alphabetically ordered)
-// ============================================================================
 
 /**
  * Builds a ModelDeployment object for the Foundation Models SDK.
@@ -249,10 +233,6 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
   };
 }
 
-// ============================================================================
-// Stream State Functions
-// ============================================================================
-
 /**
  * Creates the initial stream state for processing streaming responses.
  *
@@ -284,10 +264,6 @@ export function createInitialStreamState(): StreamState {
   };
 }
 
-// ============================================================================
-// Type Guards
-// ============================================================================
-
 /**
  * Checks if an object has a callable parse method.
  * @param obj - The object to check for a parse method.
@@ -315,10 +291,6 @@ export function isZodSchema(obj: unknown): obj is ZodType {
   const record = obj as Record<string, unknown>;
   return "_def" in record && "parse" in record && hasCallableParse(record);
 }
-
-// ============================================================================
-// Finish Reason Mapping
-// ============================================================================
 
 /**
  * Maps provider finish reasons to Vercel AI SDK LanguageModelV3FinishReason.
@@ -361,10 +333,6 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
       return { raw, unified: "other" };
   }
 }
-
-// ============================================================================
-// Tool Parameters
-// ============================================================================
 
 /**
  * Converts SAP AI SDK embedding (number[] or base64) to Vercel AI SDK format.

@@ -29,14 +29,8 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { embed, generateText, streamText } from "ai";
 
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
+// NOTE: In production, use: import { createSAPAIProvider, UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
 import { createSAPAIProvider, UnsupportedFeatureError } from "../src/index";
-// In YOUR production project, use the published package instead:
-// import { createSAPAIProvider, UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
 
 /**
  * Demonstrates Foundation Models API features
@@ -51,9 +45,6 @@ async function foundationModelsExample() {
   }
 
   try {
-    // ========================================
-    // Provider-level API selection
-    // ========================================
     console.log("1. Provider-level API Selection\n");
 
     // Create a provider that defaults to Foundation Models API
@@ -73,9 +64,6 @@ async function foundationModelsExample() {
       `${String(result1.usage.inputTokens)} input + ${String(result1.usage.outputTokens)} output`,
     );
 
-    // ========================================
-    // Model-level API selection
-    // ========================================
     console.log("\n2. Model-level API Selection\n");
 
     // Create a default provider (uses Orchestration by default)
@@ -91,9 +79,6 @@ async function foundationModelsExample() {
 
     console.log("   Response:", result2.text);
 
-    // ========================================
-    // Logprobs (Foundation Models only)
-    // ========================================
     console.log("\n3. Logprobs - Token Probability Analysis\n");
 
     const result3 = await generateText({
@@ -114,9 +99,6 @@ async function foundationModelsExample() {
     // Note: logprobs are returned in the raw response body
     console.log("   (Logprobs data available in raw API response)");
 
-    // ========================================
-    // Seed for Deterministic Output
-    // ========================================
     console.log("\n4. Seed - Deterministic Output\n");
 
     const seedValue = 12345;
@@ -145,9 +127,6 @@ async function foundationModelsExample() {
     console.log(`   Second call (seed=${String(seedValue)}):`, result4b.text);
     console.log("   Same output?", result4a.text === result4b.text ? "Yes" : "No");
 
-    // ========================================
-    // Stop Sequences
-    // ========================================
     console.log("\n5. Stop Sequences\n");
 
     const result5 = await generateText({
@@ -163,9 +142,6 @@ async function foundationModelsExample() {
 
     console.log("   Response (stopped at '.' or '!'):", result5.text);
 
-    // ========================================
-    // Streaming with Foundation Models
-    // ========================================
     console.log("\n6. Streaming with Foundation Models\n");
 
     const stream = streamText({
@@ -182,9 +158,6 @@ async function foundationModelsExample() {
     }
     console.log("\n");
 
-    // ========================================
-    // Embeddings with Foundation Models
-    // ========================================
     console.log("7. Embeddings with Foundation Models\n");
 
     const { embedding } = await embed({
@@ -200,9 +173,6 @@ async function foundationModelsExample() {
         .join(", ")}...]`,
     );
 
-    // ========================================
-    // Call-level API Override
-    // ========================================
     console.log("\n8. Call-level API Override\n");
 
     // Even with a provider defaulting to Orchestration,
@@ -226,9 +196,6 @@ async function foundationModelsExample() {
     console.log("   Response:", result8.text);
     console.log("   (Used Foundation Models API despite provider default)");
 
-    // ========================================
-    // Feature Validation Demo
-    // ========================================
     console.log("\n9. Feature Validation\n");
 
     // Note: UnsupportedFeatureError is thrown at runtime when you try

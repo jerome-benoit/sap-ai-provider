@@ -13,10 +13,6 @@ import type {
 
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
-// ============================================================================
-// Type Guards
-// ============================================================================
-
 /**
  * Type guard to check if settings are for Foundation Models API.
  * @param settings - The settings to check
@@ -38,10 +34,6 @@ export function isOrchestrationSettings(
 ): settings is OrchestrationModelSettings {
   return settings.api === undefined || settings.api === "orchestration";
 }
-
-// ============================================================================
-// Feature Validation Functions
-// ============================================================================
 
 /**
  * Validates escapeTemplatePlaceholders option based on API type.
@@ -66,9 +58,6 @@ export function validateEscapeTemplatePlaceholders(
       "orchestration",
     );
   }
-  // All other cases are valid:
-  // - FM API with false or undefined -> no escaping (correct)
-  // - Orchestration API with any value -> escaping handled by conversion function
 }
 
 /**
@@ -93,10 +82,6 @@ export function validateFoundationModelsOnlyOptions(
     );
   }
 }
-
-// ============================================================================
-// escapeTemplatePlaceholders Validation
-// ============================================================================
 
 /**
  * Validates that Orchestration-only options are not used with Foundation Models API.
@@ -134,10 +119,6 @@ export function validateOrchestrationOnlyOptions(settings: SAPAIModelSettings | 
     );
   }
 }
-
-// ============================================================================
-// API Switch Validation
-// ============================================================================
 
 /**
  * Features that are specific to Orchestration API.
@@ -199,10 +180,6 @@ export function validateApiSwitch(
   }
 }
 
-// ============================================================================
-// Input Validation
-// ============================================================================
-
 /**
  * Valid API type values.
  * @internal
@@ -258,10 +235,6 @@ export function getEffectiveEscapeTemplatePlaceholders(
   return true;
 }
 
-// ============================================================================
-// Main Validation Function
-// ============================================================================
-
 /**
  * Resolves the effective API type using the full precedence chain.
  *
@@ -301,10 +274,6 @@ export function validateApiInput(api: unknown): void {
   }
 }
 
-// ============================================================================
-// Utility: Get Effective escapeTemplatePlaceholders Value
-// ============================================================================
-
 /**
  * Main validation function that performs all API-specific validations.
  * Call this before creating a strategy or making an API call.
@@ -322,16 +291,12 @@ export function validateApiInput(api: unknown): void {
 export function validateSettings(options: ValidateSettingsOptions): void {
   const { api, invocationSettings, modelApi, modelSettings } = options;
 
-  // 1. Validate API input
   validateApiInput(api);
   if (invocationSettings?.api !== undefined) {
     validateApiInput(invocationSettings.api);
   }
 
-  // 2. Validate API switch if applicable
-  // Treat modelApi === undefined as "orchestration" (the default) when checking for API switches,
-  // so that models with orchestration-only features get proper ApiSwitchError messages
-  // when user tries to switch to foundation-models at invocation time.
+  // Treat modelApi === undefined as "orchestration" (the default) when checking for API switches
   if (invocationSettings?.api !== undefined) {
     const effectiveModelApi = modelApi ?? "orchestration";
     if (effectiveModelApi !== invocationSettings.api) {
@@ -339,20 +304,15 @@ export function validateSettings(options: ValidateSettingsOptions): void {
     }
   }
 
-  // 3. Validate API-specific options
   if (api === "foundation-models") {
     validateOrchestrationOnlyOptions(modelSettings);
   } else {
     validateFoundationModelsOnlyOptions(modelSettings);
   }
 
-  // 4. Validate escapeTemplatePlaceholders
-  // Check both model-level and invocation-level settings
   const modelEscape = (modelSettings as OrchestrationModelSettings | undefined)
     ?.escapeTemplatePlaceholders;
   const invocationEscape = invocationSettings?.escapeTemplatePlaceholders;
-
-  // Invocation-level takes precedence if explicitly set
   const effectiveEscape = invocationEscape ?? modelEscape;
   validateEscapeTemplatePlaceholders(api, effectiveEscape);
 }

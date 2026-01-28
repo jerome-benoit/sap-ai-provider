@@ -14,14 +14,10 @@
 // Load environment variables
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+
+// This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
-
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
 import { createSAPAIProvider } from "../src/index";
 
 /**

@@ -20,10 +20,6 @@ import type {
   SAPAIModelSettings,
 } from "./sap-ai-settings.js";
 
-// ============================================================================
-// Strategy Configuration Types
-// ============================================================================
-
 /**
  * Strategy interface for embedding model operations.
  *
@@ -63,10 +59,6 @@ export interface EmbeddingModelStrategyConfig {
   /** The provider identifier string. */
   readonly provider: string;
 }
-
-// ============================================================================
-// Strategy Interfaces
-// ============================================================================
 
 /**
  * Strategy interface for language model operations.
@@ -119,10 +111,6 @@ export interface LanguageModelStrategyConfig {
   readonly provider: string;
 }
 
-// ============================================================================
-// Strategy Caching
-// ============================================================================
-
 /**
  * Module-level cache for language model strategy Promises.
  *
@@ -137,10 +125,6 @@ const languageModelStrategyCache = new Map<SAPAIApiType, Promise<LanguageModelAP
  * @internal
  */
 const embeddingModelStrategyCache = new Map<SAPAIApiType, Promise<EmbeddingModelAPIStrategy>>();
-
-// ============================================================================
-// Testing Utilities
-// ============================================================================
 
 /**
  * Clears all strategy caches. Used for testing purposes only.
@@ -170,10 +154,6 @@ export function getEmbeddingModelStrategyCacheSize(): number {
 export function getLanguageModelStrategyCacheSize(): number {
   return languageModelStrategyCache.size;
 }
-
-// ============================================================================
-// Strategy Factories
-// ============================================================================
 
 /**
  * Gets or creates a cached embedding model strategy for the given API type.
@@ -235,10 +215,6 @@ export function getOrCreateLanguageModelStrategy(
 
   return strategyPromise;
 }
-
-// ============================================================================
-// Internal Factory Functions
-// ============================================================================
 
 /**
  * Creates an embedding model strategy for the given API type.

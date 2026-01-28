@@ -47,10 +47,6 @@ import {
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
-// ============================================================================
-// Internal Types
-// ============================================================================
-
 /**
  * Parameter mappings for override resolution and camelCase conversion.
  * Foundation Models API supports additional parameters like logprobs, seed, stop, user.
@@ -68,7 +64,6 @@ const PARAM_MAPPINGS: readonly ParamMapping[] = [
   { camelCaseKey: "presencePenalty", optionKey: "presencePenalty", outputKey: "presence_penalty" },
   { camelCaseKey: "seed", optionKey: "seed", outputKey: "seed" },
   { camelCaseKey: "parallel_tool_calls", outputKey: "parallel_tool_calls" },
-  // FM-specific parameters
   { camelCaseKey: "logprobs", outputKey: "logprobs" },
   { camelCaseKey: "topLogprobs", outputKey: "top_logprobs" },
   { camelCaseKey: "logitBias", outputKey: "logit_bias" },
@@ -81,10 +76,6 @@ const PARAM_MAPPINGS: readonly ParamMapping[] = [
  * @internal
  */
 type AzureOpenAiChatClientClass = typeof AzureOpenAiChatClient;
-
-// ============================================================================
-// Foundation Models Language Model Strategy
-// ============================================================================
 
 /**
  * Foundation Models Language Model Strategy.
@@ -264,7 +255,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
 
       const transformedStream = new ReadableStream<LanguageModelV3StreamPart>({
         cancel() {
-          // Stream cancellation is handled by the underlying SDK
+          // No cleanup needed - SDK handles stream cancellation internally
         },
         async start(controller) {
           controller.enqueue({
@@ -528,7 +519,6 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
 
     const warnings: SharedV3Warning[] = [];
 
-    // Cast settings to access foundation-models-specific properties with proper types
     const fmSettings = settings as {
       dataSources?: unknown[];
       escapeTemplatePlaceholders?: boolean;
@@ -537,8 +527,6 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       responseFormat?: unknown;
     };
 
-    // Foundation Models API does NOT use template escaping by default
-    // escapeTemplatePlaceholders must be explicitly false or undefined for FM
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders:
         sapOptions?.escapeTemplatePlaceholders ?? fmSettings.escapeTemplatePlaceholders ?? false,
@@ -612,7 +600,6 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
         .filter((t): t is AzureOpenAiChatCompletionTool => t !== null);
     }
 
-    // Build model parameters with proper merging
     const modelParams: Record<string, unknown> = deepMerge(
       fmSettings.modelParams ?? {},
       sapOptions?.modelParams ?? {},
@@ -647,7 +634,6 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       });
     }
 
-    // Build response format
     let responseFormat: AzureOpenAiChatCompletionParameters["response_format"];
     if (options.responseFormat?.type === "json") {
       responseFormat = options.responseFormat.schema
@@ -674,7 +660,6 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       });
     }
 
-    // Build the request
     const request: AzureOpenAiChatCompletionParameters = {
       messages: messages as AzureOpenAiChatCompletionParameters["messages"],
       ...(modelParams.max_tokens !== undefined
@@ -706,7 +691,6 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
         : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
-      // Add data_sources for Azure Chat Extensions if configured
       ...(fmSettings.dataSources &&
       Array.isArray(fmSettings.dataSources) &&
       fmSettings.dataSources.length > 0
@@ -729,20 +713,10 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
   private createClient(
     config: LanguageModelStrategyConfig,
   ): InstanceType<AzureOpenAiChatClientClass> {
-    // Build ModelDeployment for Foundation Models SDK
-    // The SDK expects either:
-    // - { deploymentId, resourceGroup? } for direct deployment access
-    // - { modelName, modelVersion?, resourceGroup? } for model-based resolution
-    // - string (modelName) for simple model lookup
     const modelDeployment = buildModelDeployment(config);
-
     return new this.ClientClass(modelDeployment, config.destination);
   }
 }
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 /**
  * Applies parameter overrides from AI SDK options and provider options.
@@ -759,7 +733,6 @@ function applyParameterOverrides(
   for (const mapping of PARAM_MAPPINGS) {
     const { camelCaseKey, optionKey, outputKey } = mapping;
 
-    // Remove camelCase key if present (will be replaced with snake_case)
     if (camelCaseKey && camelCaseKey in modelParams) {
       const value = modelParams[camelCaseKey];
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -769,12 +742,10 @@ function applyParameterOverrides(
       }
     }
 
-    // Provider options override
     if (providerModelParams && outputKey in providerModelParams) {
       modelParams[outputKey] = providerModelParams[outputKey];
     }
 
-    // AI SDK call options override (highest priority)
     if (optionKey && optionKey in options) {
       const value = options[optionKey];
       if (value !== undefined) {

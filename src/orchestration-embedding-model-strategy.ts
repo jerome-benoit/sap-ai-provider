@@ -24,19 +24,11 @@ import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provide
 import { normalizeEmbedding } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
-// ============================================================================
-// OrchestrationEmbeddingClient type - we receive this from the factory
-// ============================================================================
-
 /**
  * Type for the OrchestrationEmbeddingClient class constructor.
  * @internal
  */
 type OrchestrationEmbeddingClientClass = typeof OrchestrationEmbeddingClient;
-
-// ============================================================================
-// Orchestration Embedding Model Strategy
-// ============================================================================
 
 /**
  * Orchestration Embedding Model Strategy.
@@ -91,8 +83,6 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
         values,
       });
     }
-
-    // Settings already typed as SAPAIEmbeddingSettings with embedding-specific properties
 
     const embeddingType = sapOptions?.type ?? settings.type ?? "text";
 

@@ -55,10 +55,6 @@ import {
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
-// ============================================================================
-// Internal Types
-// ============================================================================
-
 /**
  * Extended prompt templating structure with tools and response_format.
  * The SAP SDK type doesn't expose these properties, but they are set when building the config.
@@ -113,10 +109,6 @@ const PARAM_MAPPINGS: readonly ParamMapping[] = [
  * @internal
  */
 type OrchestrationClientClass = typeof OrchestrationClient;
-
-// ============================================================================
-// Orchestration Language Model Strategy
-// ============================================================================
 
 /**
  * Orchestration Language Model Strategy.
@@ -310,7 +302,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
 
       const transformedStream = new ReadableStream<LanguageModelV3StreamPart>({
         cancel() {
-          // Stream cancellation is handled by the underlying SDK
+          // No cleanup needed - SDK handles stream cancellation internally
         },
         async start(controller) {
           controller.enqueue({
@@ -575,7 +567,6 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
 
     const warnings: SharedV3Warning[] = [];
 
-    // Cast settings to access orchestration-specific properties with proper types
     const orchSettings = settings as {
       escapeTemplatePlaceholders?: boolean;
       filtering?: FilteringModule;
@@ -788,7 +779,6 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     messages: ChatMessage[],
     orchestrationConfig: OrchestrationModuleConfig,
   ): Record<string, unknown> {
-    // Cast to extended type - the SDK type doesn't expose tools/response_format but we set them
     const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
 
     return {
@@ -829,10 +819,6 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     return new this.ClientClass(orchConfig, config.deploymentConfig, config.destination);
   }
 }
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 /**
  * Applies parameter overrides from AI SDK options and modelParams, with camelCase → snake_case conversion.
