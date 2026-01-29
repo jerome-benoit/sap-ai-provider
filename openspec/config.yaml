@@ -16,7 +16,7 @@ context: |
   ### Key Dependencies
   - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, zod
   - Peer: ai (Vercel AI SDK), zod
-  - SAP SDKs: @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models (optional)
+  - SAP SDKs: @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models
 
   ### Architecture Patterns
   - Implements Vercel AI SDK ProviderV3 interface
