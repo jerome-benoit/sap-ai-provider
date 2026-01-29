@@ -2124,6 +2124,72 @@ const client = new OrchestrationClient({
 
 ---
 
+### Re-exported SAP AI SDK Types
+
+The following types are re-exported from `@sap-ai-sdk/orchestration` for advanced
+usage scenarios. Refer to the
+[SAP AI SDK documentation](https://github.com/SAP/ai-sdk-js) for complete type
+definitions.
+
+**Chat Message Types:**
+
+| Type                   | Description                           |
+| ---------------------- | ------------------------------------- |
+| `ChatMessage`          | Union type for all chat message types |
+| `AssistantChatMessage` | Message from the assistant            |
+| `DeveloperChatMessage` | System/developer instructions         |
+| `SystemChatMessage`    | System message (alias for developer)  |
+| `ToolChatMessage`      | Tool/function call result message     |
+| `UserChatMessage`      | Message from the user                 |
+
+**Configuration Types:**
+
+| Type                        | Description                             |
+| --------------------------- | --------------------------------------- |
+| `ChatCompletionRequest`     | Full chat completion request structure  |
+| `ChatCompletionTool`        | Tool definition for function calling    |
+| `FunctionObject`            | Function schema within a tool           |
+| `LlmModelDetails`           | Model configuration details             |
+| `LlmModelParams`            | Model-specific parameters               |
+| `OrchestrationConfigRef`    | Reference to a stored configuration     |
+| `OrchestrationModuleConfig` | Full orchestration module configuration |
+| `PromptTemplatingModule`    | Prompt template configuration           |
+
+**Module Configuration Types:**
+
+| Type                                 | Description                      |
+| ------------------------------------ | -------------------------------- |
+| `FilteringModule`                    | Content filtering configuration  |
+| `GroundingModule`                    | Document grounding configuration |
+| `MaskingModule`                      | Data masking configuration       |
+| `TranslationModule`                  | Translation module configuration |
+| `TranslationInputParameters`         | Input translation settings       |
+| `TranslationOutputParameters`        | Output translation settings      |
+| `TranslationTargetLanguage`          | Target language specification    |
+| `TranslationApplyToCategory`         | Translation scope selector       |
+| `DocumentTranslationApplyToSelector` | Document translation selector    |
+
+**Example:**
+
+```typescript
+import type { ChatMessage, FilteringModule, GroundingModule } from "@jerome-benoit/sap-ai-provider";
+
+// Type-safe module configuration
+const filtering: FilteringModule = {
+  input: {
+    /* ... */
+  },
+  output: {
+    /* ... */
+  },
+};
+```
+
+> **Note:** These types are re-exported for convenience. They originate from
+> `@sap-ai-sdk/orchestration` and follow SAP AI SDK conventions.
+
+---
+
 ### `DeploymentConfig`
 
 Type for configuring deployment resolution behavior.
