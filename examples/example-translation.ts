@@ -4,7 +4,7 @@
  * SAP AI Provider - Translation Example
  *
  * This example demonstrates input and output translation using the
- * SAP AI Core Orchestration service's translation module.
+ * SAP AI Core Orchestration API's translation module.
  *
  * Translation allows you to:
  * - **Input Translation**: Translate user queries from one language to another

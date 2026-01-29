@@ -144,7 +144,7 @@ export function applyParameterOverrides(
 }
 
 /**
- * Builds a ModelDeployment object for the Foundation Models SDK.
+ * Builds a ModelDeployment object for the Foundation Models API SDK.
  *
  * The SDK expects either:
  * - `{ deploymentId, resourceGroup? }` for direct deployment access

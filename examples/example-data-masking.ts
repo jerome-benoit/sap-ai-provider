@@ -4,7 +4,7 @@
  * SAP AI Provider - Data Masking Example (DPI)
  *
  * This example demonstrates data masking/anonymization using
- * SAP Data Privacy Integration (DPI) through the orchestration service.
+ * SAP Data Privacy Integration (DPI) through the Orchestration API.
  *
  * Authentication:
  * - On SAP BTP: Automatically uses service binding (VCAP_SERVICES)

@@ -39,7 +39,7 @@ export interface SAPAIProvider extends ProviderV3 {
 
   /**
    * Image model stub - always throws NoSuchModelError.
-   * SAP AI Core Orchestration Service does not support image generation.
+   * SAP AI Core does not support image generation.
    */
   imageModel(modelId: string): never;
 
@@ -200,7 +200,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
 
   provider.imageModel = (modelId: string) => {
     throw new NoSuchModelError({
-      message: `SAP AI Core Orchestration Service does not support image generation. Model '${modelId}' is not available.`,
+      message: `SAP AI Core does not support image generation. Model '${modelId}' is not available.`,
       modelId,
       modelType: "imageModel",
     });

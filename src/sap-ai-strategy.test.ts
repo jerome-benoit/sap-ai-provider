@@ -73,7 +73,7 @@ describe("sapAiStrategy", () => {
 
   describe("getOrCreateLanguageModelStrategy", () => {
     describe("lazy loading", () => {
-      it("loads orchestration SDK on first request", async () => {
+      it("loads Orchestration API SDK on first request", async () => {
         const strategy = await getOrCreateLanguageModelStrategy("orchestration");
         expect(strategy).toBeDefined();
         expect(strategy.doGenerate).toBeInstanceOf(Function);
@@ -202,7 +202,7 @@ describe("sapAiStrategy", () => {
 
   describe("getOrCreateEmbeddingModelStrategy", () => {
     describe("lazy loading", () => {
-      it("loads orchestration SDK on first request", async () => {
+      it("loads Orchestration API SDK on first request", async () => {
         const strategy = await getOrCreateEmbeddingModelStrategy("orchestration");
         expect(strategy).toBeDefined();
         expect(strategy.doEmbed).toBeInstanceOf(Function);

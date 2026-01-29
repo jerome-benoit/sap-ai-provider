@@ -4,7 +4,7 @@
  * SAP AI Provider - Document Grounding (RAG) Example
  *
  * This example demonstrates document grounding (Retrieval-Augmented Generation)
- * using the SAP AI Core Orchestration service's document grounding module.
+ * using the SAP AI Core Orchestration API's document grounding module.
  *
  * Document grounding allows you to ground LLM responses in your own documents
  * stored in a vector database, ensuring answers are based on your specific

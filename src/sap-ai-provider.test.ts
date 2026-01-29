@@ -251,7 +251,7 @@ describe("createSAPAIProvider", () => {
           expect(noSuchModelError.modelId).toBe(modelId);
           expect(noSuchModelError.modelType).toBe("imageModel");
           expect(noSuchModelError.message).toContain(
-            "SAP AI Core Orchestration Service does not support image generation",
+            "SAP AI Core does not support image generation",
           );
         }
       }
