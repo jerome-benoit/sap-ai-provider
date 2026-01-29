@@ -215,17 +215,11 @@ automatic configuration from environment variables or service bindings.
 
 ## Authentication
 
-Authentication is handled automatically by the SAP AI SDK using the
-`AICORE_SERVICE_KEY` environment variable.
+Authentication is handled automatically by the SAP AI SDK via the
+`AICORE_SERVICE_KEY` environment variable (local) or `VCAP_SERVICES` (SAP BTP).
 
-**Quick Setup:**
-
-1. Create a `.env` file: `cp .env.example .env`
-2. Add your SAP AI Core service key JSON to `AICORE_SERVICE_KEY`
-3. Import in code: `import "dotenv/config";`
-
-**For complete setup instructions, SAP BTP deployment, troubleshooting, and
-advanced scenarios, see the [Environment Setup Guide](./ENVIRONMENT_SETUP.md).**
+**→ [Environment Setup Guide](./ENVIRONMENT_SETUP.md)** - Complete setup
+instructions, SAP BTP deployment, and troubleshooting.
 
 ## Basic Usage
 
@@ -365,8 +359,6 @@ service, including:
 - **Anthropic Claude**: anthropic--claude-3.5-sonnet, anthropic--claude-4-opus
 - **Google Gemini**: gemini-2.5-pro, gemini-2.0-flash
 
-⚠️ **Important:** Google Gemini models have a 1 tool limit per request.
-
 - **Amazon Nova**: amazon--nova-pro, amazon--nova-lite
 - **Open Source**: mistralai--mistral-large-instruct,
   meta--llama3.1-70b-instruct
@@ -424,10 +416,9 @@ const result = await generateText({
 
 **Run it:** `npx tsx examples/example-chat-completion-tool.ts`
 
-⚠️ **Important:** Gemini models support only 1 tool per request. For multi-tool
-applications, use GPT-4o, Claude, or Amazon Nova models. See
-[API Reference - Tool Calling](./API_REFERENCE.md#tool-calling-function-calling)
-for complete model comparison.
+⚠️ **Model Limitations:** Some models have tool calling restrictions. See
+[API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
+for the complete comparison table.
 
 ### Multi-modal Input (Images)
 
@@ -610,48 +601,16 @@ examples, see
 
 ## Error Handling
 
-The provider uses standard Vercel AI SDK error types for consistent error
-handling.
+The provider uses standard Vercel AI SDK error types (`APICallError`,
+`LoadAPIKeyError`, `NoSuchModelError` from `@ai-sdk/provider`) for consistent
+error handling across providers.
 
-**Quick Example:**
+**Documentation:**
 
-```typescript
-import { generateText } from "ai";
-import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-
-const provider = createSAPAIProvider();
-
-try {
-  const result = await generateText({
-    model: provider("gpt-4o"),
-    prompt: "Hello world",
-  });
-} catch (error) {
-  if (error instanceof LoadAPIKeyError) {
-    // 401/403: Authentication or permission issue
-    console.error("Authentication issue:", error.message);
-  } else if (error instanceof NoSuchModelError) {
-    // 404: Model or deployment not found
-    console.error("Model not found:", error.modelId);
-  } else if (error instanceof APICallError) {
-    // Other API errors (400, 429, 5xx, etc.)
-    console.error("API error:", error.statusCode, error.message);
-    // SAP-specific metadata in responseBody
-    const sapError = JSON.parse(error.responseBody ?? "{}");
-    console.error("Request ID:", sapError.error?.request_id);
-  }
-}
-```
-
-**Complete reference:**
-
-- **[API Reference - Error Handling](./API_REFERENCE.md#error-handling-examples)** -
-  Complete examples with all error properties
-- **[API Reference - HTTP Status Codes](./API_REFERENCE.md#http-status-code-reference)** -
-  Status code reference table
-- **[Troubleshooting Guide](./TROUBLESHOOTING.md)** - Detailed solutions for
-  each error type
+- **[API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference)** -
+  Complete examples, error types, and SAP-specific metadata
+- **[Troubleshooting Guide](./TROUBLESHOOTING.md)** - Solutions for common errors
+  (401, 404, 429, 5xx)
 
 ## Troubleshooting
 
@@ -688,13 +647,9 @@ Error code reference table:
 
 ## Security
 
-- Do not commit `.env` or credentials; use environment variables and secrets
-  managers.
-- Treat `AICORE_SERVICE_KEY` as sensitive; avoid logging it or including in
-  crash reports.
-- Mask PII with DPI: configure `masking.masking_providers` using
-  `buildDpiMaskingProvider()`.
-- Validate and sanitize tool outputs before executing any side effects.
+Follow security best practices when handling credentials. See
+[Environment Setup - Security Best Practices](./ENVIRONMENT_SETUP.md#security-best-practices)
+for detailed guidance on credential management, key rotation, and secure deployment.
 
 ## Debug Mode
 

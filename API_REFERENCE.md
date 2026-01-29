@@ -231,7 +231,7 @@ models depends on:
 
 - `gemini-2.0-flash`, `gemini-2.0-flash-lite` - Fast inference
 - `gemini-2.5-flash`, `gemini-2.5-pro` - Latest Gemini
-- ⚠️ **Important**: Gemini models support **only 1 tool per request**
+- ⚠️ Gemini models have [tool calling limitations](#model-specific-tool-limitations)
 
 **Anthropic (AWS Bedrock):**
 
@@ -281,13 +281,9 @@ Or use **SAP AI Launchpad UI**:
 
 **⚠️ Important Model Limitations:**
 
-- **Gemini models** (all versions): Support **only 1 tool per request**. For
-  applications requiring multiple tools, use OpenAI models (gpt-4o, gpt-4.1) or
-  Claude models instead.
 - **Amazon models**: Do not support the `n` parameter (number of completions).
-- See
-  [cURL API Testing Guide - Tool Calling](./CURL_API_TESTING_GUIDE.md#tool-calling-example)
-  for complete model capabilities comparison.
+- **Tool calling**: See [Model-Specific Tool Limitations](#model-specific-tool-limitations)
+  for complete capabilities comparison by model.
 
 ### Model Capabilities Comparison
 

@@ -39,7 +39,8 @@ Complete OAuth2 authentication → API call → Tool calling flow.
 
 ## Prerequisites
 
-- SAP AI Core instance + service key (from BTP cockpit)
+- SAP AI Core instance + service key (from BTP cockpit) - see
+  [Environment Setup](./ENVIRONMENT_SETUP.md) for credential configuration
 - `curl` and `base64` utilities
 
 ---
@@ -180,16 +181,8 @@ execution, error handling, and best practices, see
 
 ### ⚠️ Model-Specific Limitations
 
-| Model                | Multiple Tools Support | Notes                                |
-| -------------------- | ---------------------- | ------------------------------------ |
-| **gpt-4o**           | ✅ Yes                 | Full support for multiple tools      |
-| **gpt-4.1-mini**     | ✅ Yes                 | Full support for multiple tools      |
-| **gemini-2.0-flash** | ⚠️ Limited             | Only 1 tool per request              |
-| **gemini-1.5-pro**   | ⚠️ Limited             | Only 1 tool per request              |
-| **claude-3-sonnet**  | ✅ Yes                 | Multiple tools, sequential execution |
-
-**Gemini Note**: Multiple tools supported in future. Currently: 1 tool per
-request.
+For complete model capabilities and tool calling support, see
+[API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations).
 
 ---
 
@@ -485,11 +478,8 @@ curl --request POST \
 
 ## Security Best Practices
 
-1. Never commit credentials (use `.gitignore` + env vars)
-2. Rotate credentials regularly
-3. Use HTTPS only (curl verifies SSL by default)
-4. Store tokens securely (12h validity, don't log)
-5. Limit token scope (dedicated keys per app)
+See [Environment Setup - Security Best Practices](./ENVIRONMENT_SETUP.md#security-best-practices)
+for detailed guidance on credential management, key rotation, and secure deployment.
 
 ---
 

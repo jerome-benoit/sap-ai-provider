@@ -124,39 +124,12 @@ For a complete error code reference, see
 
 ### Parsing SAP Error Metadata (v3.0.0+)
 
-> **Architecture Details:** For OAuth2 authentication flow and token management,
-> see
-> [Architecture - Authentication System](./ARCHITECTURE.md#authentication-system).
+**v3.0.0 Breaking Change:** `SAPAIError` removed. Use standard Vercel AI SDK
+error types from `@ai-sdk/provider`.
 
-**v3.0.0 Breaking Change:** `SAPAIError` removed. Use `APICallError`,
-`LoadAPIKeyError`, or `NoSuchModelError` from `@ai-sdk/provider`.
-
-**Quick example:**
-
-```typescript
-import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
-
-try {
-  const result = await generateText({ model, prompt });
-} catch (error) {
-  if (error instanceof LoadAPIKeyError) {
-    // 401/403: Authentication issue
-    console.error("Auth error:", error.message);
-  } else if (error instanceof NoSuchModelError) {
-    // 404: Model not found
-    console.error("Model not found:", error.modelId);
-  } else if (error instanceof APICallError) {
-    // Other API errors
-    console.error("Status:", error.statusCode);
-    const sapError = JSON.parse(error.responseBody ?? "{}");
-    console.error("Request ID:", sapError.error?.request_id);
-  }
-}
-```
-
-**For complete error handling with all error properties and SAP metadata
-fields**, see
-[API Reference - Error Handling Examples](./API_REFERENCE.md#error-handling-examples).
+For complete error handling examples with all error types and SAP-specific
+metadata fields, see
+[API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference).
 
 ### Problem: 400 Bad Request
 
@@ -418,9 +391,9 @@ for complete feature comparison.
 2. **Make prompt explicit:** "What's the weather in Tokyo? Use the weather tool
    to check."
 
-3. **Check compatibility:** Gemini supports only 1 tool per request. Use
-   `gpt-4o` for multiple tools.
-   [Model limitations](./CURL_API_TESTING_GUIDE.md#tool-calling-example)
+3. **Check compatibility:** See
+   [Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
+   for supported models and restrictions.
 
 ### Problem: Tool execution errors
 
