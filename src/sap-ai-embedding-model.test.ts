@@ -461,6 +461,12 @@ describe("SAPAIEmbeddingModel", () => {
       MockAzureOpenAiEmbeddingClient.embedResponse = undefined;
     });
 
+    /**
+     * Creates a Foundation Models embedding model for testing.
+     * @param modelId - The model identifier.
+     * @param settings - Additional model settings.
+     * @returns A configured SAPAIEmbeddingModel instance.
+     */
     function createFMModel(
       modelId = "text-embedding-ada-002",
       settings: Record<string, unknown> = {},

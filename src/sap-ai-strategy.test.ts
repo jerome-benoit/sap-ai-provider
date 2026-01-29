@@ -21,7 +21,7 @@ import {
   getOrCreateLanguageModelStrategy,
 } from "./sap-ai-strategy.js";
 
-describe("sap-ai-strategy", () => {
+describe("sapAiStrategy", () => {
   // Clear caches before each test to ensure isolation
   beforeEach(() => {
     clearStrategyCaches();
