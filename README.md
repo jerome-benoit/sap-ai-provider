@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@jerome-benoit/sap-ai-provider/latest?label=npm&color=blue)](https://www.npmjs.com/package/@jerome-benoit/sap-ai-provider)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-6.0+-black.svg)](https://sdk.vercel.ai/docs)
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5.0+-black.svg)](https://sdk.vercel.ai/docs)
 [![Language Model](https://img.shields.io/badge/Language%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
 [![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
 
@@ -126,7 +126,7 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 18+ and Vercel AI SDK 6.0+
+**Requirements:** Node.js 18+ and Vercel AI SDK 5.0+ or 6.0+
 
 ```bash
 npm install @jerome-benoit/sap-ai-provider ai
@@ -691,7 +691,7 @@ npx tsx examples/example-generate-text.ts
 ### Upgrading from v3.x to v4.x
 
 Version 4.0 migrates from **LanguageModelV2** to **LanguageModelV3**
-specification (AI SDK 6.0+). **See the
+specification (AI SDK 5.0+). **See the
 [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for
 complete upgrade instructions.**
 

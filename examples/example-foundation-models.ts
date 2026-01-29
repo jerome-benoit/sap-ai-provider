@@ -86,7 +86,7 @@ async function foundationModelsExample() {
         api: "foundation-models",
         modelParams: {
           logprobs: true,
-          max_tokens: 5,
+          maxTokens: 5,
           top_logprobs: 3, // Get top 3 alternative tokens
         },
       }),

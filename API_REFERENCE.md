@@ -2782,14 +2782,14 @@ injected at build time.
 import { VERSION } from "@jerome-benoit/sap-ai-provider";
 
 console.log(`Using SAP AI Provider v${VERSION}`);
-// Output: "Using SAP AI Provider v4.0.0" (example)
+// Output: "Using SAP AI Provider vX.Y.Z"
 ```
 
 For the current package version, see [package.json](./package.json).
 
 ### Dependencies
 
-- **Vercel AI SDK:** v6.0+ (`ai` package)
+- **Vercel AI SDK:** v5.0+ or v6.0+ (`ai` package)
 - **SAP AI SDK:** ^2.5.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
 - **Node.js:** >= 18
 
