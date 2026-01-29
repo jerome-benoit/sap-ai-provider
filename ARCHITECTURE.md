@@ -957,7 +957,7 @@ flag.
 
 ### User-Facing Error Handling (v3.0.0+)
 
-This provider converts all SAP Orchestration errors to standard Vercel AI SDK
+This provider converts all SAP AI Core errors to standard Vercel AI SDK
 error types:
 
 - **401/403 (Authentication)** → `LoadAPIKeyError`
@@ -993,8 +993,8 @@ See `src/sap-ai-settings.ts` for complete type definitions.
 
 ### Request/Response Schemas
 
-All API interactions use types from `@sap-ai-sdk/orchestration` and are
-validated for type safety. Key types include:
+All API interactions use types from `@sap-ai-sdk/orchestration` and
+`@sap-ai-sdk/foundation-models`, validated for type safety. Key types include:
 
 - `ChatCompletionRequest`: Orchestration config and input parameters
 - `OrchestrationResponse`: API responses with module results

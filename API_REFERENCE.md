@@ -200,8 +200,8 @@ try {
 
 ### Supported Models
 
-The SAP AI Core Provider supports all models available through SAP AI Core's
-Orchestration service via the `@sap-ai-sdk/orchestration` package.
+The SAP AI Core Provider supports all models available through SAP AI Core
+via the `@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models` packages.
 
 > **Note:** The models listed below are representative examples. Actual model
 > availability depends on your SAP AI Core tenant configuration, region, and
@@ -624,8 +624,7 @@ search, similarity matching, and clustering.
 ### Overview
 
 The SAP AI Provider implements the Vercel AI SDK's `EmbeddingModelV3` interface,
-enabling you to generate embeddings using models available through SAP AI Core's
-Orchestration service.
+enabling you to generate embeddings using models available through SAP AI Core.
 
 Key features:
 
@@ -2550,7 +2549,7 @@ For the current package version, see [package.json](./package.json).
 ### Dependencies
 
 - **Vercel AI SDK:** v6.0+ (`ai` package)
-- **SAP AI SDK:** ^2.5.0 (`@sap-ai-sdk/orchestration`)
+- **SAP AI SDK:** ^2.5.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
 - **Node.js:** >= 18
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the
