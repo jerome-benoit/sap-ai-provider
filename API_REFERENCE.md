@@ -1545,6 +1545,181 @@ detailed feature matrix.
 
 ---
 
+### API-Specific Settings Types
+
+The following types provide type-safe configuration for each API. They are
+discriminated union types that TypeScript can narrow based on the `api` field.
+
+#### `OrchestrationModelSettings`
+
+Settings for the Orchestration API (default).
+
+**Type:**
+
+```typescript
+export interface OrchestrationModelSettings {
+  readonly api?: "orchestration";
+  readonly escapeTemplatePlaceholders?: boolean; // Default: true
+  readonly filtering?: FilteringModule;
+  readonly grounding?: GroundingModule;
+  readonly includeReasoning?: boolean;
+  readonly masking?: MaskingModule;
+  readonly modelParams?: OrchestrationModelParams;
+  readonly modelVersion?: string;
+  readonly responseFormat?: ResponseFormat;
+  readonly tools?: ChatCompletionTool[];
+  readonly translation?: TranslationModule;
+}
+```
+
+**Orchestration-Only Features:**
+
+- `filtering` - Content safety filtering (Azure Content Safety, LlamaGuard)
+- `grounding` - Document-based RAG via SAP HANA Vector Engine
+- `masking` - Data anonymization via SAP DPI
+- `translation` - Input/output translation
+- `escapeTemplatePlaceholders` - Prevent template syntax conflicts
+
+#### `FoundationModelsModelSettings`
+
+Settings for the Foundation Models API.
+
+**Type:**
+
+```typescript
+export interface FoundationModelsModelSettings {
+  readonly api: "foundation-models"; // Required discriminant
+  readonly dataSources?: AzureOpenAiChatExtensionConfiguration[];
+  readonly includeReasoning?: boolean;
+  readonly modelParams?: FoundationModelsModelParams;
+  readonly modelVersion?: string;
+  readonly responseFormat?: ResponseFormat;
+}
+```
+
+**Foundation Models-Only Features:**
+
+- `dataSources` - Azure OpenAI "On Your Data" (Azure AI Search, Cosmos DB)
+- Advanced `modelParams`: `logprobs`, `seed`, `logit_bias`, `stop`, `top_logprobs`, `user`
+
+#### `SAPAIModelSettings`
+
+Union type that accepts either API's settings:
+
+```typescript
+export type SAPAIModelSettings = OrchestrationModelSettings | FoundationModelsModelSettings;
+```
+
+---
+
+### Model Parameters Types
+
+#### `CommonModelParams`
+
+Parameters shared by both APIs:
+
+```typescript
+export interface CommonModelParams {
+  readonly frequencyPenalty?: number; // -2.0 to 2.0
+  readonly maxTokens?: number;
+  readonly n?: number; // Not supported by Amazon/Anthropic
+  readonly parallel_tool_calls?: boolean;
+  readonly presencePenalty?: number; // -2.0 to 2.0
+  readonly temperature?: number; // 0 to 2
+  readonly topP?: number; // 0 to 1
+}
+```
+
+#### `OrchestrationModelParams`
+
+Orchestration API model parameters (same as `CommonModelParams`):
+
+```typescript
+export type OrchestrationModelParams = CommonModelParams;
+```
+
+#### `FoundationModelsModelParams`
+
+Foundation Models API parameters with additional options:
+
+```typescript
+export interface FoundationModelsModelParams extends CommonModelParams {
+  readonly logit_bias?: Record<string, number>; // Token likelihood modification
+  readonly logprobs?: boolean; // Return log probabilities
+  readonly seed?: number; // Deterministic sampling
+  readonly stop?: string | string[]; // Stop sequences
+  readonly top_logprobs?: number; // 0-20, requires logprobs=true
+  readonly user?: string; // End-user identifier
+}
+```
+
+#### `FoundationModelsEmbeddingParams`
+
+Embedding-specific parameters for Foundation Models API:
+
+```typescript
+export interface FoundationModelsEmbeddingParams {
+  readonly dimensions?: number; // Output embedding dimensions
+  readonly encoding_format?: "base64" | "float";
+  readonly user?: string; // End-user identifier
+}
+```
+
+---
+
+### Default Settings Configuration Types
+
+These types enable type-safe provider-level default settings.
+
+#### `OrchestrationDefaultSettings`
+
+```typescript
+export interface OrchestrationDefaultSettings {
+  readonly api?: "orchestration";
+  readonly settings?: OrchestrationModelSettings;
+}
+```
+
+#### `FoundationModelsDefaultSettings`
+
+```typescript
+export interface FoundationModelsDefaultSettings {
+  readonly api: "foundation-models"; // Required discriminant
+  readonly settings?: FoundationModelsModelSettings;
+}
+```
+
+#### `SAPAIDefaultSettingsConfig`
+
+Union type for provider `defaultSettings`:
+
+```typescript
+export type SAPAIDefaultSettingsConfig = OrchestrationDefaultSettings | FoundationModelsDefaultSettings;
+```
+
+**Example usage:**
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import type { FoundationModelsDefaultSettings } from "@jerome-benoit/sap-ai-provider";
+
+// Type-safe Foundation Models configuration
+const config: FoundationModelsDefaultSettings = {
+  api: "foundation-models",
+  settings: {
+    api: "foundation-models",
+    modelParams: { seed: 42, logprobs: true },
+  },
+};
+
+const provider = createSAPAIProvider({
+  api: config.api,
+  defaultSettings: config.settings,
+});
+```
+
+---
+
 ### `DpiEntities`
 
 Standard entity types recognized by SAP DPI.
