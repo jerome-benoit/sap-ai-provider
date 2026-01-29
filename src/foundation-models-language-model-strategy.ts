@@ -34,6 +34,7 @@ import {
   validateModelParamsWithWarnings,
 } from "./sap-ai-provider-options.js";
 import {
+  applyParameterOverrides,
   buildModelDeployment,
   buildSAPToolParameters,
   createAISDKRequestBodySummary,
@@ -603,6 +604,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       options as Record<string, unknown>,
       sapOptions?.modelParams as Record<string, unknown> | undefined,
       fmSettings.modelParams as Record<string, unknown> | undefined,
+      PARAM_MAPPINGS,
     );
 
     if (options.stopSequences && options.stopSequences.length > 0) {
@@ -685,36 +687,5 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
   ): InstanceType<AzureOpenAiChatClientClass> {
     const modelDeployment = buildModelDeployment(config);
     return new this.ClientClass(modelDeployment, config.destination);
-  }
-}
-
-/**
- * Applies parameter overrides from AI SDK options and modelParams, with camelCase → snake_case conversion.
- * @param modelParams - The model parameters object to modify.
- * @param options - The AI SDK options containing override values.
- * @param sapModelParams - Additional SAP model parameters from provider options.
- * @param settingsModelParams - Model parameters from settings configuration.
- * @internal
- */
-function applyParameterOverrides(
-  modelParams: Record<string, unknown>,
-  options: Record<string, unknown>,
-  sapModelParams: Record<string, unknown> | undefined,
-  settingsModelParams: Record<string, unknown> | undefined,
-): void {
-  for (const mapping of PARAM_MAPPINGS) {
-    const value =
-      (mapping.optionKey ? options[mapping.optionKey] : undefined) ??
-      (mapping.camelCaseKey ? sapModelParams?.[mapping.camelCaseKey] : undefined) ??
-      (mapping.camelCaseKey ? settingsModelParams?.[mapping.camelCaseKey] : undefined);
-
-    if (value !== undefined) {
-      modelParams[mapping.outputKey] = value;
-    }
-
-    if (mapping.camelCaseKey && mapping.camelCaseKey !== mapping.outputKey) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete modelParams[mapping.camelCaseKey];
-    }
   }
 }

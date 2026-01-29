@@ -111,6 +111,39 @@ export class StreamIdGenerator {
 }
 
 /**
+ * Applies parameter overrides from AI SDK options and modelParams.
+ * @param modelParams - The model parameters object to modify.
+ * @param options - AI SDK call options.
+ * @param sapModelParams - Provider options model params.
+ * @param settingsModelParams - Settings model params.
+ * @param mappings - Parameter mappings for this strategy.
+ * @internal
+ */
+export function applyParameterOverrides(
+  modelParams: Record<string, unknown>,
+  options: Record<string, unknown>,
+  sapModelParams: Record<string, unknown> | undefined,
+  settingsModelParams: Record<string, unknown> | undefined,
+  mappings: readonly ParamMapping[],
+): void {
+  for (const mapping of mappings) {
+    const value =
+      (mapping.optionKey ? options[mapping.optionKey] : undefined) ??
+      (mapping.camelCaseKey ? sapModelParams?.[mapping.camelCaseKey] : undefined) ??
+      (mapping.camelCaseKey ? settingsModelParams?.[mapping.camelCaseKey] : undefined);
+
+    if (value !== undefined) {
+      modelParams[mapping.outputKey] = value;
+    }
+
+    if (mapping.camelCaseKey && mapping.camelCaseKey !== mapping.outputKey) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete modelParams[mapping.camelCaseKey];
+    }
+  }
+}
+
+/**
  * Builds a ModelDeployment object for the Foundation Models SDK.
  *
  * The SDK expects either:
