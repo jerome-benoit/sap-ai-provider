@@ -11,7 +11,9 @@ type APIType = "foundation-models" | "orchestration";
 
 interface FMConstructorCall {
   destination: unknown;
-  modelDeployment: { deploymentConfiguration: unknown; model: string };
+  modelDeployment:
+    | { deploymentId: string }
+    | { modelName: string; modelVersion?: string; resourceGroup?: string };
 }
 interface FMEmbedCall {
   request: {
@@ -29,7 +31,9 @@ interface FMEmbeddingResponse {
 }
 
 interface OrchestrationConstructorCall {
-  config: { embeddings: { model: { name: string; params?: Record<string, unknown> } } };
+  config: {
+    embeddings: { model: { name: string; params?: Record<string, unknown>; version?: string } };
+  };
   deploymentConfig: unknown;
   destination: unknown;
 }
@@ -75,7 +79,9 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       );
 
     constructor(
-      config: { embeddings: { model: { name: string; params?: Record<string, unknown> } } },
+      config: {
+        embeddings: { model: { name: string; params?: Record<string, unknown>; version?: string } };
+      },
       deploymentConfig: unknown,
       destination: unknown,
     ) {
@@ -125,7 +131,9 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       );
 
     constructor(
-      modelDeployment: { deploymentConfiguration: unknown; model: string },
+      modelDeployment:
+        | { deploymentId: string }
+        | { modelName: string; modelVersion?: string; resourceGroup?: string },
       destination: unknown,
     ) {
       MockAzureOpenAiEmbeddingClient.lastConstructorCall = {
@@ -693,4 +701,50 @@ describe("SAPAIEmbeddingModel", () => {
       });
     });
   });
+
+  describe.each<APIType>(["orchestration", "foundation-models"])(
+    "modelVersion propagation (%s API)",
+    (api) => {
+      beforeEach(async () => {
+        await resetMockStateForApi(api);
+      });
+
+      it("should include modelVersion when configured", async () => {
+        const modelVersion = "2024-05-13";
+        const model = createModelForApi(api, "text-embedding-ada-002", { modelVersion });
+
+        await model.doEmbed({ values: ["Test"] });
+
+        if (api === "foundation-models") {
+          const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+          const constructorCall = MockAzureOpenAiEmbeddingClient.lastConstructorCall;
+          expect(constructorCall).toBeDefined();
+          expect(constructorCall?.modelDeployment).toHaveProperty("modelVersion", modelVersion);
+        } else {
+          const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
+          expect(
+            MockOrchestrationEmbeddingClient.lastConstructorCall?.config.embeddings.model,
+          ).toHaveProperty("version", modelVersion);
+        }
+      });
+
+      it("should not include modelVersion when not configured", async () => {
+        const model = createModelForApi(api, "text-embedding-ada-002");
+
+        await model.doEmbed({ values: ["Test"] });
+
+        if (api === "foundation-models") {
+          const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+          const constructorCall = MockAzureOpenAiEmbeddingClient.lastConstructorCall;
+          expect(constructorCall).toBeDefined();
+          expect(constructorCall?.modelDeployment).not.toHaveProperty("modelVersion");
+        } else {
+          const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
+          expect(
+            MockOrchestrationEmbeddingClient.lastConstructorCall?.config.embeddings.model,
+          ).not.toHaveProperty("version");
+        }
+      });
+    },
+  );
 });

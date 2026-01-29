@@ -115,7 +115,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
     try {
       const { request, warnings } = await this.buildRequest(config, settings, options);
 
-      const client = this.createClient(config);
+      const client = this.createClient(config, settings.modelVersion);
 
       const response = await client.run(
         request,
@@ -224,7 +224,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
     try {
       const { request, warnings } = await this.buildRequest(config, settings, options);
 
-      const client = this.createClient(config);
+      const client = this.createClient(config, settings.modelVersion);
 
       const streamResponse = await client.stream(request, options.abortSignal);
 
@@ -679,13 +679,15 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
   /**
    * Creates an SAP AI SDK AzureOpenAiChatClient with the given configuration.
    * @param config - The strategy configuration containing deployment info.
+   * @param modelVersion - Optional model version for deployment resolution.
    * @returns A new AzureOpenAiChatClient instance.
    * @internal
    */
   private createClient(
     config: LanguageModelStrategyConfig,
+    modelVersion?: string,
   ): InstanceType<AzureOpenAiChatClientClass> {
-    const modelDeployment = buildModelDeployment(config);
+    const modelDeployment = buildModelDeployment(config, modelVersion);
     return new this.ClientClass(modelDeployment, config.destination);
   }
 }

@@ -113,7 +113,7 @@ export interface FoundationModelsModelSettings {
   /** Model generation parameters that control the output. */
   readonly modelParams?: FoundationModelsModelParams;
 
-  /** Specific version of the model to use (defaults to latest). */
+  /** Specific version of the model to use. */
   readonly modelVersion?: string;
 
   /** Response format for structured output (OpenAI-compatible). */
@@ -169,7 +169,7 @@ export interface OrchestrationModelSettings {
   /** Model generation parameters that control the output. */
   readonly modelParams?: OrchestrationModelParams;
 
-  /** Specific version of the model to use (defaults to latest). */
+  /** Specific version of the model to use. */
   readonly modelVersion?: string;
 
   /** Response format for structured output (OpenAI-compatible). */
@@ -231,6 +231,9 @@ export interface SAPAIEmbeddingSettings {
    * For Foundation Models API, this is FoundationModelsEmbeddingParams.
    */
   readonly modelParams?: FoundationModelsEmbeddingParams | Record<string, unknown>;
+
+  /** Specific version of the model to use. */
+  readonly modelVersion?: string;
 
   /** Index signature for compatibility with Record<string, unknown>. */
   readonly [key: string]: unknown;
@@ -326,7 +329,7 @@ export interface SAPAISettings {
   /** Model generation parameters that control the output. */
   readonly modelParams?: CommonModelParams;
 
-  /** Specific version of the model to use (defaults to latest). */
+  /** Specific version of the model to use. */
   readonly modelVersion?: string;
 
   /** Response format for structured output (OpenAI-compatible). */

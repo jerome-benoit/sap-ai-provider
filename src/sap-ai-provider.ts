@@ -137,12 +137,8 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
   // Provider-level API setting (defaults to 'orchestration')
   const providerApi = options.api ?? "orchestration";
 
-  // Foundation Models API uses model-based deployment resolution; ignore deploymentId
-  const effectiveDeploymentId =
-    providerApi === "foundation-models" ? undefined : options.deploymentId;
-
-  const deploymentConfig: DeploymentConfig = effectiveDeploymentId
-    ? { deploymentId: effectiveDeploymentId }
+  const deploymentConfig: DeploymentConfig = options.deploymentId
+    ? { deploymentId: options.deploymentId }
     : { resourceGroup };
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {

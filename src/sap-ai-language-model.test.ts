@@ -7,9 +7,10 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SAPAILanguageModel } from "./sap-ai-language-model";
+import { clearStrategyCaches } from "./sap-ai-strategy.js";
 
 vi.mock("@sap-ai-sdk/orchestration", () => {
   class MockOrchestrationClient {
@@ -456,14 +457,31 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
 type APIType = "foundation-models" | "orchestration";
 
 describe("SAPAILanguageModel", () => {
+  const orchestrationConfig = {
+    deploymentConfig: { resourceGroup: "default" },
+    provider: "sap-ai",
+  };
+
+  const foundationModelsConfig = {
+    deploymentConfig: { resourceGroup: "default" },
+    provider: "sap-ai",
+    providerApi: "foundation-models" as const,
+  };
+
+  const getConfigForApi = (api: APIType) =>
+    api === "foundation-models" ? foundationModelsConfig : orchestrationConfig;
+
+  const createModelForApi = (
+    api: APIType,
+    modelId = "gpt-4o",
+    settings: Record<string, unknown> = {},
+  ) => new SAPAILanguageModel(modelId, settings, getConfigForApi(api));
+
   const createOrchModel = (modelId = "gpt-4o", settings: unknown = {}) => {
     return new SAPAILanguageModel(
       modelId,
       settings as ConstructorParameters<typeof SAPAILanguageModel>[1],
-      {
-        deploymentConfig: { resourceGroup: "default" },
-        provider: "sap-ai",
-      },
+      orchestrationConfig,
     );
   };
 
@@ -478,17 +496,6 @@ describe("SAPAILanguageModel", () => {
         provider: "sap-ai",
       },
     );
-  };
-
-  const createModelForApi = (
-    api: APIType,
-    modelId = "gpt-4o",
-    settings: Record<string, unknown> = {},
-  ) => {
-    if (api === "foundation-models") {
-      return createFMModel(modelId, settings);
-    }
-    return createOrchModel(modelId, settings);
   };
 
   const createPrompt = (text: string): LanguageModelV3Prompt => [
@@ -591,6 +598,59 @@ describe("SAPAILanguageModel", () => {
       throw new Error("mock missing setStreamChunks");
     }
     MockClient.setStreamChunks(chunks);
+  };
+
+  const resetMockStateForApi = async (api: APIType) => {
+    clearStrategyCaches();
+    if (api === "foundation-models") {
+      const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
+      const client = AzureOpenAiChatClient as unknown as {
+        chatCompletionError: Error | undefined;
+        chatCompletionResponse: unknown;
+        lastConstructorCall: unknown;
+        lastRunRequest: unknown;
+        lastRunRequestConfig: unknown;
+        lastStreamAbortSignal: unknown;
+        lastStreamRequest: unknown;
+        streamChunks: unknown;
+        streamError: Error | undefined;
+        streamSetupError: Error | undefined;
+      };
+      client.chatCompletionError = undefined;
+      client.chatCompletionResponse = undefined;
+      client.lastConstructorCall = undefined;
+      client.lastRunRequest = undefined;
+      client.lastRunRequestConfig = undefined;
+      client.lastStreamAbortSignal = undefined;
+      client.lastStreamRequest = undefined;
+      client.streamChunks = undefined;
+      client.streamError = undefined;
+      client.streamSetupError = undefined;
+    } else {
+      const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
+      const client = OrchestrationClient as unknown as {
+        chatCompletionError: Error | undefined;
+        chatCompletionResponse: unknown;
+        lastChatCompletionRequest: unknown;
+        lastChatCompletionRequestConfig: unknown;
+        lastStreamAbortSignal: unknown;
+        lastStreamConfig: unknown;
+        lastStreamRequest: unknown;
+        streamChunks: unknown;
+        streamError: Error | undefined;
+        streamSetupError: Error | undefined;
+      };
+      client.chatCompletionError = undefined;
+      client.chatCompletionResponse = undefined;
+      client.lastChatCompletionRequest = undefined;
+      client.lastChatCompletionRequestConfig = undefined;
+      client.lastStreamAbortSignal = undefined;
+      client.lastStreamConfig = undefined;
+      client.lastStreamRequest = undefined;
+      client.streamChunks = undefined;
+      client.streamError = undefined;
+      client.streamSetupError = undefined;
+    }
   };
 
   type FMChatCompletionRequest = Record<string, unknown> & {
@@ -784,6 +844,10 @@ describe("SAPAILanguageModel", () => {
   describe.each<APIType>(["orchestration", "foundation-models"])(
     "model properties (%s API)",
     (api) => {
+      beforeEach(async () => {
+        await resetMockStateForApi(api);
+      });
+
       it("should have correct specification version", () => {
         const model = createModelForApi(api);
         expect(model.specificationVersion).toBe("v3");
@@ -851,6 +915,10 @@ describe("SAPAILanguageModel", () => {
   describe.each<APIType>(["orchestration", "foundation-models"])(
     "constructor validation (%s API)",
     (api) => {
+      beforeEach(async () => {
+        await resetMockStateForApi(api);
+      });
+
       it.each([
         { name: "valid modelParams", params: { maxTokens: 1000, temperature: 0.7, topP: 0.9 } },
         { name: "empty modelParams", params: {} },
@@ -883,6 +951,10 @@ describe("SAPAILanguageModel", () => {
   );
 
   describe.each<APIType>(["orchestration", "foundation-models"])("doGenerate (%s API)", (api) => {
+    beforeEach(async () => {
+      await resetMockStateForApi(api);
+    });
+
     it("should generate text response", async () => {
       const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
@@ -1488,6 +1560,10 @@ describe("SAPAILanguageModel", () => {
   });
 
   describe.each<APIType>(["orchestration", "foundation-models"])("doStream (%s API)", (api) => {
+    beforeEach(async () => {
+      await resetMockStateForApi(api);
+    });
+
     /**
      * Reads all parts from a language model stream.
      * @param stream - The stream to read from.
@@ -3016,37 +3092,49 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
-    describe("model version (orchestration only)", () => {
-      it("should pass model version to orchestration config", async () => {
-        const model = createOrchModel("gpt-4o", {
-          modelVersion: "2024-05-13",
+    describe.each<APIType>(["orchestration", "foundation-models"])(
+      "modelVersion propagation (%s API)",
+      (api) => {
+        beforeEach(async () => {
+          await resetMockStateForApi(api);
         });
 
-        const prompt = createPrompt("Hello");
+        it("should include modelVersion when configured", async () => {
+          const modelVersion = "2024-05-13";
+          const model = createModelForApi(api, "gpt-4o", { modelVersion });
 
-        const result = await model.doGenerate({ prompt });
+          const prompt = createPrompt("Hello");
+          await model.doGenerate({ prompt });
 
-        expectRequestBodyHasMessages(result);
+          if (api === "foundation-models") {
+            const mockClient = await getMockFMClient();
+            const constructorCall = mockClient.lastConstructorCall;
+            expect(constructorCall).toBeDefined();
+            expect(constructorCall?.modelDeployment).toHaveProperty("modelVersion", modelVersion);
+          } else {
+            const request = await getLastOrchRequest();
+            expect(request.model?.version).toBe(modelVersion);
+          }
+        });
 
-        const request = await getLastOrchRequest();
+        it("should not include modelVersion when not configured", async () => {
+          const model = createModelForApi(api, "gpt-4o");
 
-        expect(request.model?.version).toBe("2024-05-13");
-      });
+          const prompt = createPrompt("Hello");
+          await model.doGenerate({ prompt });
 
-      it("should use 'latest' as default version", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastOrchRequest();
-
-        expect(request.model?.version).toBe("latest");
-      });
-    });
+          if (api === "foundation-models") {
+            const mockClient = await getMockFMClient();
+            const constructorCall = mockClient.lastConstructorCall;
+            expect(constructorCall).toBeDefined();
+            expect(constructorCall?.modelDeployment).not.toHaveProperty("modelVersion");
+          } else {
+            const request = await getLastOrchRequest();
+            expect(request.model?.version).toBeUndefined();
+          }
+        });
+      },
+    );
 
     describe.each([
       { api: "orchestration" as APIType, apiName: "Orchestration" },
@@ -3212,6 +3300,10 @@ describe("SAPAILanguageModel", () => {
     describe.each<APIType>(["orchestration", "foundation-models"])(
       "unknown parameter preservation (%s API)",
       (api) => {
+        beforeEach(async () => {
+          await resetMockStateForApi(api);
+        });
+
         it("should preserve unknown parameters from settings.modelParams", async () => {
           const model = createModelForApi(api, "gpt-4o", {
             modelParams: {
@@ -3873,6 +3965,10 @@ describe("SAPAILanguageModel", () => {
     describe.each<APIType>(["orchestration", "foundation-models"])(
       "tool schema edge cases (%s API)",
       (api) => {
+        beforeEach(async () => {
+          await resetMockStateForApi(api);
+        });
+
         it.each([
           {
             description: "Tool with array schema",
@@ -3920,13 +4016,36 @@ describe("SAPAILanguageModel", () => {
   });
 
   describe("Foundation Models deployment resolution", () => {
-    it("should use modelName for deployment resolution even when deploymentId is configured", async () => {
+    it("should use deploymentId for deployment resolution when configured", async () => {
+      const modelId = "gpt-4o-test";
+      const deploymentId = "my-deployment-id";
+      const model = new SAPAILanguageModel(
+        modelId,
+        { api: "foundation-models" },
+        {
+          deploymentConfig: { deploymentId },
+          provider: "sap-ai",
+        },
+      );
+
+      const prompt = createPrompt("Hello");
+      await model.doGenerate({ prompt });
+
+      const mockClient = await getMockFMClient();
+      const constructorCall = mockClient.lastConstructorCall;
+
+      expect(constructorCall).toBeDefined();
+      expect(constructorCall?.modelDeployment).toHaveProperty("deploymentId", deploymentId);
+      expect(constructorCall?.modelDeployment).not.toHaveProperty("modelName");
+    });
+
+    it("should use modelName for deployment resolution when no deploymentId is configured", async () => {
       const modelId = "gpt-4o-test";
       const model = new SAPAILanguageModel(
         modelId,
         { api: "foundation-models" },
         {
-          deploymentConfig: { deploymentId: "should-be-ignored" },
+          deploymentConfig: { resourceGroup: "default" },
           provider: "sap-ai",
         },
       );

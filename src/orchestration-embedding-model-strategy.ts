@@ -91,6 +91,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
         config,
         settings.modelParams as Record<string, unknown> | undefined,
         sapOptions?.modelParams,
+        settings.modelVersion,
       );
 
       const response = await client.embed(
@@ -133,6 +134,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
    * @param config - The embedding model strategy configuration.
    * @param settingsModelParams - Model parameters from settings.
    * @param perCallModelParams - Per-call model parameters to merge with settings.
+   * @param modelVersion - Optional model version to use.
    * @returns A configured SAP AI SDK embedding client instance.
    * @internal
    */
@@ -140,6 +142,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
     config: EmbeddingModelStrategyConfig,
     settingsModelParams?: Record<string, unknown>,
     perCallModelParams?: Record<string, unknown>,
+    modelVersion?: string,
   ): OrchestrationEmbeddingClient {
     const mergedParams = deepMerge(settingsModelParams ?? {}, perCallModelParams ?? {});
     const hasParams = Object.keys(mergedParams).length > 0;
@@ -148,6 +151,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
       model: {
         name: config.modelId,
         ...(hasParams ? { params: mergedParams } : {}),
+        ...(modelVersion ? { version: modelVersion } : {}),
       },
     };
 
