@@ -12,7 +12,7 @@ see [API Reference](./API_REFERENCE.md).
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
 - Implements Vercel AI SDK's `ProviderV3` interface
-- Uses SAP AI SDK (`@sap-ai-sdk/orchestration`) for OAuth2 auth
+- Uses SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`) for API communication
 - Transforms messages bidirectionally (AI SDK ↔ SAP format)
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
 
@@ -894,7 +894,7 @@ sequenceDiagram
 
 ### OAuth2 Flow
 
-Authentication is handled automatically by `@sap-ai-sdk/orchestration`:
+Authentication is handled automatically by the SAP AI SDK packages:
 
 - **Local**: `AICORE_SERVICE_KEY` environment variable
 - **SAP BTP**: `VCAP_SERVICES` service binding

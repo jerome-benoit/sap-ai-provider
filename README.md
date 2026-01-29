@@ -349,8 +349,7 @@ For complete embedding API documentation, see
 
 ## Supported Models
 
-This provider supports all models available through SAP AI Core Orchestration
-service, including:
+This provider supports all models available through SAP AI Core, including:
 
 **Popular models:**
 
