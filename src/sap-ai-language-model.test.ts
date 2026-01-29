@@ -231,8 +231,227 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
   };
 });
 
+vi.mock("@sap-ai-sdk/foundation-models", () => {
+  class MockAzureOpenAiChatClient {
+    static chatCompletionError: Error | undefined;
+    static chatCompletionResponse:
+      | undefined
+      | {
+          getContent: () => null | string;
+          getFinishReason: () => string;
+          getTokenUsage: () => {
+            completion_tokens: number;
+            prompt_tokens: number;
+            total_tokens: number;
+          };
+          getToolCalls: () =>
+            | undefined
+            | { function: { arguments: string; name: string }; id: string }[];
+          rawResponse?: { headers?: Record<string, unknown> };
+        };
+    static lastRunRequest: unknown;
+    static lastRunRequestConfig: unknown;
+
+    static lastStreamAbortSignal: unknown;
+
+    static lastStreamRequest: unknown;
+
+    static streamChunks:
+      | undefined
+      | {
+          getDeltaContent: () => null | string;
+          getDeltaToolCalls: () =>
+            | undefined
+            | {
+                function?: { arguments?: string; name?: string };
+                id?: string;
+                index: number;
+              }[];
+          getFinishReason: () => null | string | undefined;
+          getTokenUsage: () =>
+            | undefined
+            | {
+                completion_tokens: number;
+                prompt_tokens: number;
+                total_tokens: number;
+              };
+        }[];
+    static streamError: Error | undefined;
+    static streamSetupError: Error | undefined;
+
+    run = vi.fn().mockImplementation((request, requestConfig) => {
+      MockAzureOpenAiChatClient.lastRunRequest = request;
+      MockAzureOpenAiChatClient.lastRunRequestConfig = requestConfig;
+
+      const errorToThrow = MockAzureOpenAiChatClient.chatCompletionError;
+      if (errorToThrow) {
+        MockAzureOpenAiChatClient.chatCompletionError = undefined;
+        throw errorToThrow;
+      }
+
+      if (MockAzureOpenAiChatClient.chatCompletionResponse) {
+        const response = MockAzureOpenAiChatClient.chatCompletionResponse;
+        MockAzureOpenAiChatClient.chatCompletionResponse = undefined;
+        return Promise.resolve(response);
+      }
+
+      const messages = (request as { messages?: unknown[] }).messages;
+      const hasImage =
+        messages?.some(
+          (msg) =>
+            typeof msg === "object" &&
+            msg !== null &&
+            "content" in msg &&
+            Array.isArray((msg as { content?: unknown }).content),
+        ) ?? false;
+
+      if (hasImage) {
+        throw new Error("boom");
+      }
+
+      return Promise.resolve({
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getTokenUsage: () => ({
+          completion_tokens: 5,
+          prompt_tokens: 10,
+          total_tokens: 15,
+        }),
+        getToolCalls: () => undefined,
+        rawResponse: {
+          headers: {
+            "x-request-id": "test-request-id",
+          },
+        },
+      });
+    });
+
+    stream = vi.fn().mockImplementation((request, abortSignal) => {
+      MockAzureOpenAiChatClient.lastStreamRequest = request;
+      MockAzureOpenAiChatClient.lastStreamAbortSignal = abortSignal;
+
+      if (MockAzureOpenAiChatClient.streamSetupError) {
+        const error = MockAzureOpenAiChatClient.streamSetupError;
+        MockAzureOpenAiChatClient.streamSetupError = undefined;
+        throw error;
+      }
+
+      const chunks =
+        MockAzureOpenAiChatClient.streamChunks ??
+        ([
+          {
+            getDeltaContent: () => "Hello",
+            getDeltaToolCalls: () => undefined,
+            getFinishReason: () => null,
+            getTokenUsage: () => undefined,
+          },
+          {
+            getDeltaContent: () => "!",
+            getDeltaToolCalls: () => undefined,
+            getFinishReason: () => "stop",
+            getTokenUsage: () => ({
+              completion_tokens: 5,
+              prompt_tokens: 10,
+              total_tokens: 15,
+            }),
+          },
+        ] as const);
+
+      let lastFinishReason: null | string | undefined;
+      let lastTokenUsage:
+        | undefined
+        | {
+            completion_tokens: number;
+            prompt_tokens: number;
+            total_tokens: number;
+          };
+
+      for (const chunk of chunks) {
+        const fr = chunk.getFinishReason();
+        if (fr !== null && fr !== undefined) {
+          lastFinishReason = fr;
+        }
+        const tu = chunk.getTokenUsage();
+        if (tu) {
+          lastTokenUsage = tu;
+        }
+      }
+
+      const errorToThrow = MockAzureOpenAiChatClient.streamError;
+
+      return {
+        getFinishReason: () => lastFinishReason,
+        getTokenUsage: () =>
+          lastTokenUsage ?? {
+            completion_tokens: 5,
+            prompt_tokens: 10,
+            total_tokens: 15,
+          },
+        stream: {
+          *[Symbol.asyncIterator]() {
+            for (const chunk of chunks) {
+              yield chunk;
+            }
+            if (errorToThrow) {
+              throw errorToThrow;
+            }
+          },
+        },
+      };
+    });
+
+    static setChatCompletionError(error: Error) {
+      MockAzureOpenAiChatClient.chatCompletionError = error;
+    }
+
+    static setChatCompletionResponse(
+      response: typeof MockAzureOpenAiChatClient.chatCompletionResponse,
+    ) {
+      MockAzureOpenAiChatClient.chatCompletionResponse = response;
+    }
+
+    static setStreamChunks(
+      chunks: {
+        getDeltaContent: () => null | string;
+        getDeltaToolCalls: () =>
+          | undefined
+          | {
+              function?: { arguments?: string; name?: string };
+              id?: string;
+              index: number;
+            }[];
+        getFinishReason: () => null | string | undefined;
+        getTokenUsage: () =>
+          | undefined
+          | {
+              completion_tokens: number;
+              prompt_tokens: number;
+              total_tokens: number;
+            };
+      }[],
+    ) {
+      MockAzureOpenAiChatClient.streamChunks = chunks;
+      MockAzureOpenAiChatClient.streamError = undefined;
+    }
+
+    static setStreamError(error: Error) {
+      MockAzureOpenAiChatClient.streamError = error;
+    }
+
+    static setStreamSetupError(error: Error) {
+      MockAzureOpenAiChatClient.streamSetupError = error;
+    }
+  }
+
+  return {
+    AzureOpenAiChatClient: MockAzureOpenAiChatClient,
+  };
+});
+
+type APIType = "foundation-models" | "orchestration";
+
 describe("SAPAILanguageModel", () => {
-  const createModel = (modelId = "gpt-4o", settings: unknown = {}) => {
+  const createOrchModel = (modelId = "gpt-4o", settings: unknown = {}) => {
     return new SAPAILanguageModel(
       modelId,
       settings as ConstructorParameters<typeof SAPAILanguageModel>[1],
@@ -241,6 +460,30 @@ describe("SAPAILanguageModel", () => {
         provider: "sap-ai",
       },
     );
+  };
+
+  const createFMModel = (modelId = "gpt-4o", settings: Record<string, unknown> = {}) => {
+    return new SAPAILanguageModel(
+      modelId,
+      { api: "foundation-models", ...settings } as ConstructorParameters<
+        typeof SAPAILanguageModel
+      >[1],
+      {
+        deploymentConfig: { deploymentId: "test-deployment" },
+        provider: "sap-ai",
+      },
+    );
+  };
+
+  const createModelForApi = (
+    api: APIType,
+    modelId = "gpt-4o",
+    settings: Record<string, unknown> = {},
+  ) => {
+    if (api === "foundation-models") {
+      return createFMModel(modelId, settings);
+    }
+    return createOrchModel(modelId, settings);
   };
 
   const createPrompt = (text: string): LanguageModelV3Prompt => [
@@ -263,17 +506,21 @@ describe("SAPAILanguageModel", () => {
     }
   };
 
-  const setStreamChunks = async (chunks: unknown[]) => {
-    const MockClient = await getMockClient();
-    if (!MockClient.setStreamChunks) {
-      throw new Error("mock missing setStreamChunks");
-    }
-    MockClient.setStreamChunks(chunks);
-  };
+  interface MockClientInterface {
+    lastRequest: unknown;
+    lastRequestConfig: unknown;
+    lastStreamAbortSignal: unknown;
+    lastStreamRequest: unknown;
+    setChatCompletionError?: (error: Error) => void;
+    setChatCompletionResponse?: (response: unknown) => void;
+    setStreamChunks?: (chunks: unknown[]) => void;
+    setStreamError?: (error: Error) => void;
+    setStreamSetupError?: (error: Error) => void;
+  }
 
-  const getMockClient = async () => {
+  const getMockOrchClient = async () => {
     const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
-    return OrchestrationClient as unknown as {
+    const client = OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
       lastChatCompletionRequestConfig: unknown;
       lastStreamAbortSignal: unknown;
@@ -285,6 +532,106 @@ describe("SAPAILanguageModel", () => {
       setStreamError?: (error: Error) => void;
       setStreamSetupError?: (error: Error) => void;
     };
+    return {
+      lastRequest: client.lastChatCompletionRequest,
+      lastRequestConfig: client.lastChatCompletionRequestConfig,
+      lastStreamAbortSignal: client.lastStreamAbortSignal,
+      lastStreamRequest: client.lastStreamRequest,
+      setChatCompletionError: client.setChatCompletionError,
+      setChatCompletionResponse: client.setChatCompletionResponse,
+      setStreamChunks: client.setStreamChunks,
+      setStreamError: client.setStreamError,
+      setStreamSetupError: client.setStreamSetupError,
+    } as MockClientInterface;
+  };
+
+  const getMockFMClient = async () => {
+    const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
+    const client = AzureOpenAiChatClient as unknown as {
+      lastRunRequest: unknown;
+      lastRunRequestConfig: unknown;
+      lastStreamAbortSignal: unknown;
+      lastStreamRequest: unknown;
+      setChatCompletionError?: (error: Error) => void;
+      setChatCompletionResponse?: (response: unknown) => void;
+      setStreamChunks?: (chunks: unknown[]) => void;
+      setStreamError?: (error: Error) => void;
+      setStreamSetupError?: (error: Error) => void;
+    };
+    return {
+      lastRequest: client.lastRunRequest,
+      lastRequestConfig: client.lastRunRequestConfig,
+      lastStreamAbortSignal: client.lastStreamAbortSignal,
+      lastStreamRequest: client.lastStreamRequest,
+      setChatCompletionError: client.setChatCompletionError,
+      setChatCompletionResponse: client.setChatCompletionResponse,
+      setStreamChunks: client.setStreamChunks,
+      setStreamError: client.setStreamError,
+      setStreamSetupError: client.setStreamSetupError,
+    } as MockClientInterface;
+  };
+
+  const getMockClientForApi = async (api: APIType): Promise<MockClientInterface> => {
+    if (api === "foundation-models") {
+      return getMockFMClient();
+    }
+    return getMockOrchClient();
+  };
+
+  const setStreamChunksForApi = async (api: APIType, chunks: unknown[]) => {
+    const MockClient = await getMockClientForApi(api);
+    if (!MockClient.setStreamChunks) {
+      throw new Error("mock missing setStreamChunks");
+    }
+    MockClient.setStreamChunks(chunks);
+  };
+
+  type FMChatCompletionRequest = Record<string, unknown> & {
+    frequency_penalty?: number;
+    max_tokens?: number;
+    messages?: unknown;
+    model?: string;
+    presence_penalty?: number;
+    response_format?: unknown;
+    temperature?: number;
+    tools?: unknown;
+    top_p?: number;
+  };
+
+  const getLastFMRequest = async (): Promise<FMChatCompletionRequest> => {
+    const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
+    const client = AzureOpenAiChatClient as unknown as {
+      lastRunRequest: unknown;
+    };
+    return client.lastRunRequest as FMChatCompletionRequest;
+  };
+
+  const getLastFMStreamRequest = async (): Promise<FMChatCompletionRequest> => {
+    const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
+    const client = AzureOpenAiChatClient as unknown as {
+      lastStreamRequest: unknown;
+    };
+    return client.lastStreamRequest as FMChatCompletionRequest;
+  };
+
+  const getLastRequestForApi = async (
+    api: APIType,
+  ): Promise<FMChatCompletionRequest | OrchestrationChatCompletionRequest> => {
+    if (api === "foundation-models") {
+      return getLastFMRequest();
+    }
+    return getLastOrchRequest();
+  };
+
+  const getModelParamFromRequest = (
+    api: APIType,
+    request: FMChatCompletionRequest | OrchestrationChatCompletionRequest,
+    key: string,
+  ): unknown => {
+    if (api === "foundation-models") {
+      return (request as FMChatCompletionRequest)[key];
+    }
+    return (request as OrchestrationChatCompletionRequest).model?.params?.[key];
   };
 
   type OrchestrationChatCompletionRequest = Record<string, unknown> & {
@@ -298,18 +645,13 @@ describe("SAPAILanguageModel", () => {
     tools?: unknown;
   };
 
-  const getLastChatCompletionRequest = async () => {
-    const MockClient = await getMockClient();
-    return MockClient.lastChatCompletionRequest as OrchestrationChatCompletionRequest;
+  const getLastOrchRequest = async () => {
+    const MockClient = await getMockOrchClient();
+    return MockClient.lastRequest as OrchestrationChatCompletionRequest;
   };
 
-  const getLastChatCompletionRequestConfig = async () => {
-    const MockClient = await getMockClient();
-    return MockClient.lastChatCompletionRequestConfig as Record<string, unknown> | undefined;
-  };
-
-  const getLastStreamRequest = async () => {
-    const MockClient = await getMockClient();
+  const getLastOrchStreamRequest = async () => {
+    const MockClient = await getMockOrchClient();
     return MockClient.lastStreamRequest as OrchestrationChatCompletionRequest;
   };
 
@@ -432,102 +774,110 @@ describe("SAPAILanguageModel", () => {
     };
   };
 
-  describe("model properties", () => {
-    it("should have correct specification version", () => {
-      const model = createModel();
-      expect(model.specificationVersion).toBe("v3");
-    });
+  describe.each<APIType>(["orchestration", "foundation-models"])(
+    "model properties (%s API)",
+    (api) => {
+      it("should have correct specification version", () => {
+        const model = createModelForApi(api);
+        expect(model.specificationVersion).toBe("v3");
+      });
 
-    it("should have correct model ID", () => {
-      const model = createModel("gpt-4o");
-      expect(model.modelId).toBe("gpt-4o");
-    });
+      it("should have correct model ID", () => {
+        const model = createModelForApi(api, "gpt-4o");
+        expect(model.modelId).toBe("gpt-4o");
+      });
 
-    it("should have correct provider", () => {
-      const model = createModel();
-      expect(model.provider).toBe("sap-ai");
-    });
-
-    it.each([
-      {
-        expected: false,
-        name: "should not support HTTP URLs",
-        url: "http://example.com/image.png",
-      },
-      { expected: true, name: "should support data URLs", url: "data:image/png;base64,Zm9v" },
-    ])("$name", ({ expected, url }) => {
-      const model = createModel();
-      expect(model.supportsUrl(new URL(url))).toBe(expected);
-    });
-
-    it("should have supportedUrls getter for image types", () => {
-      const model = createModel();
-      const urls = model.supportedUrls;
-
-      expect(urls).toHaveProperty("image/*");
-      expect(urls["image/*"]).toHaveLength(2);
-      expect(urls["image/*"]?.[0]?.test("https://example.com/image.png")).toBe(true);
-      expect(urls["image/*"]?.[0]?.test("http://example.com/image.png")).toBe(false);
-      expect(urls["image/*"]?.[1]?.test("data:image/png;base64,Zm9v")).toBe(true);
-    });
-
-    describe("model capabilities", () => {
-      const expectedCapabilities = {
-        supportsImageUrls: true,
-        supportsMultipleCompletions: true,
-        supportsParallelToolCalls: true,
-        supportsStreaming: true,
-        supportsStructuredOutputs: true,
-        supportsToolCalls: true,
-      };
+      it("should have correct provider", () => {
+        const model = createModelForApi(api);
+        expect(model.provider).toBe("sap-ai");
+      });
 
       it.each([
-        "any-model",
-        "gpt-4o",
-        "anthropic--claude-3.5-sonnet",
-        "gemini-2.0-flash",
-        "amazon--nova-pro",
-        "mistralai--mistral-large-instruct",
-        "unknown-future-model",
-      ])("should have consistent capabilities for model %s", (modelId) => {
-        const model = createModel(modelId);
-        expect(model).toMatchObject(expectedCapabilities);
+        {
+          expected: false,
+          name: "should not support HTTP URLs",
+          url: "http://example.com/image.png",
+        },
+        { expected: true, name: "should support data URLs", url: "data:image/png;base64,Zm9v" },
+      ])("$name", ({ expected, url }) => {
+        const model = createModelForApi(api);
+        expect(model.supportsUrl(new URL(url))).toBe(expected);
       });
-    });
-  });
 
-  describe("constructor validation", () => {
-    it.each([
-      { name: "valid modelParams", params: { maxTokens: 1000, temperature: 0.7, topP: 0.9 } },
-      { name: "empty modelParams", params: {} },
-      { name: "no modelParams", params: undefined },
-    ])("should accept $name", ({ params }) => {
-      expect(() => createModel("gpt-4o", params ? { modelParams: params } : {})).not.toThrow();
-    });
+      it("should have supportedUrls getter for image types", () => {
+        const model = createModelForApi(api);
+        const urls = model.supportedUrls;
 
-    it.each([
-      { name: "temperature too high", params: { temperature: 3 } },
-      { name: "temperature negative", params: { temperature: -1 } },
-      { name: "topP out of range", params: { topP: 1.5 } },
-      { name: "non-positive maxTokens", params: { maxTokens: 0 } },
-      { name: "non-integer maxTokens", params: { maxTokens: 100.5 } },
-      { name: "frequencyPenalty out of range", params: { frequencyPenalty: -3 } },
-      { name: "presencePenalty out of range", params: { presencePenalty: 2.5 } },
-    ])("should throw on $name", ({ params }) => {
-      expect(() => createModel("gpt-4o", { modelParams: params })).toThrow();
-    });
+        expect(urls).toHaveProperty("image/*");
+        expect(urls["image/*"]).toHaveLength(2);
+        expect(urls["image/*"]?.[0]?.test("https://example.com/image.png")).toBe(true);
+        expect(urls["image/*"]?.[0]?.test("http://example.com/image.png")).toBe(false);
+        expect(urls["image/*"]?.[1]?.test("data:image/png;base64,Zm9v")).toBe(true);
+      });
 
-    it.each([
-      { name: "non-positive n", params: { n: 0 } },
-      { name: "non-boolean parallel_tool_calls", params: { parallel_tool_calls: "true" } },
-    ])("should throw on $name", ({ params }) => {
-      expect(() => createModel("gpt-4o", { modelParams: params })).toThrow();
-    });
-  });
+      describe("model capabilities", () => {
+        const expectedCapabilities = {
+          supportsImageUrls: true,
+          supportsMultipleCompletions: true,
+          supportsParallelToolCalls: true,
+          supportsStreaming: true,
+          supportsStructuredOutputs: true,
+          supportsToolCalls: true,
+        };
 
-  describe("doGenerate", () => {
+        it.each([
+          "any-model",
+          "gpt-4o",
+          "anthropic--claude-3.5-sonnet",
+          "gemini-2.0-flash",
+          "amazon--nova-pro",
+          "mistralai--mistral-large-instruct",
+          "unknown-future-model",
+        ])("should have consistent capabilities for model %s", (modelId) => {
+          const model = createModelForApi(api, modelId);
+          expect(model).toMatchObject(expectedCapabilities);
+        });
+      });
+    },
+  );
+
+  describe.each<APIType>(["orchestration", "foundation-models"])(
+    "constructor validation (%s API)",
+    (api) => {
+      it.each([
+        { name: "valid modelParams", params: { maxTokens: 1000, temperature: 0.7, topP: 0.9 } },
+        { name: "empty modelParams", params: {} },
+        { name: "no modelParams", params: undefined },
+      ])("should accept $name", ({ params }) => {
+        expect(() =>
+          createModelForApi(api, "gpt-4o", params ? { modelParams: params } : {}),
+        ).not.toThrow();
+      });
+
+      it.each([
+        { name: "temperature too high", params: { temperature: 3 } },
+        { name: "temperature negative", params: { temperature: -1 } },
+        { name: "topP out of range", params: { topP: 1.5 } },
+        { name: "non-positive maxTokens", params: { maxTokens: 0 } },
+        { name: "non-integer maxTokens", params: { maxTokens: 100.5 } },
+        { name: "frequencyPenalty out of range", params: { frequencyPenalty: -3 } },
+        { name: "presencePenalty out of range", params: { presencePenalty: 2.5 } },
+      ])("should throw on $name", ({ params }) => {
+        expect(() => createModelForApi(api, "gpt-4o", { modelParams: params })).toThrow();
+      });
+
+      it.each([
+        { name: "non-positive n", params: { n: 0 } },
+        { name: "non-boolean parallel_tool_calls", params: { parallel_tool_calls: "true" } },
+      ])("should throw on $name", ({ params }) => {
+        expect(() => createModelForApi(api, "gpt-4o", { modelParams: params })).toThrow();
+      });
+    },
+  );
+
+  describe.each<APIType>(["orchestration", "foundation-models"])("doGenerate (%s API)", (api) => {
     it("should generate text response", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const result = await model.doGenerate({ prompt });
@@ -561,7 +911,7 @@ describe("SAPAILanguageModel", () => {
 
     describe("error handling", () => {
       it("should propagate axios response headers into doGenerate errors", async () => {
-        const MockClient = await getMockClient();
+        const MockClient = await getMockClientForApi(api);
         if (!MockClient.setChatCompletionError) {
           throw new Error("mock missing setChatCompletionError");
         }
@@ -579,7 +929,7 @@ describe("SAPAILanguageModel", () => {
 
         MockClient.setChatCompletionError(axiosError);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         await expect(model.doGenerate({ prompt })).rejects.toMatchObject({
@@ -590,7 +940,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should sanitize requestBodyValues in errors", async () => {
-        const model = createModel();
+        const model = createModelForApi(api);
 
         const prompt: LanguageModelV3Prompt = [
           {
@@ -626,30 +976,30 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("abort signal support", () => {
-      it("should pass abort signal to chatCompletion via requestConfig", async () => {
-        const model = createModel();
+      it("should pass abort signal via requestConfig", async () => {
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
         const controller = new AbortController();
 
         await model.doGenerate({ abortSignal: controller.signal, prompt });
 
-        const requestConfig = await getLastChatCompletionRequestConfig();
-        expect(requestConfig).toBeDefined();
-        expect(requestConfig).toHaveProperty("signal", controller.signal);
+        const MockClient = await getMockClientForApi(api);
+        expect(MockClient.lastRequestConfig).toBeDefined();
+        expect(MockClient.lastRequestConfig).toHaveProperty("signal", controller.signal);
       });
 
       it("should not pass requestConfig when abort signal is not provided", async () => {
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         await model.doGenerate({ prompt });
 
-        const requestConfig = await getLastChatCompletionRequestConfig();
-        expect(requestConfig).toBeUndefined();
+        const MockClient = await getMockClientForApi(api);
+        expect(MockClient.lastRequestConfig).toBeUndefined();
       });
 
-      it("should propagate error when chatCompletion rejects due to abort", async () => {
-        const MockClient = await getMockClient();
+      it("should propagate error when request rejects due to abort", async () => {
+        const MockClient = await getMockClientForApi(api);
 
         const abortError = new Error("Request aborted") as Error & {
           isAxiosError: boolean;
@@ -663,7 +1013,7 @@ describe("SAPAILanguageModel", () => {
 
         MockClient.setChatCompletionError(abortError);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
         const controller = new AbortController();
 
@@ -673,8 +1023,8 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
-    it("should pass tools to orchestration config", async () => {
-      const model = createModel();
+    it("should pass tools to request config", async () => {
+      const model = createModelForApi(api);
       const prompt = createPrompt("What is 2+2?");
 
       const tools: LanguageModelV3FunctionTool[] = [
@@ -698,7 +1048,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should pass parallel_tool_calls when configured", async () => {
-      const model = createModel("gpt-4o", {
+      const model = createModelForApi(api, "gpt-4o", {
         modelParams: {
           parallel_tool_calls: true,
         },
@@ -712,7 +1062,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should apply providerOptions.sap-ai overrides", async () => {
-      const model = createModel("gpt-4o", {
+      const model = createModelForApi(api, "gpt-4o", {
         includeReasoning: false,
         modelParams: {
           temperature: 0.1,
@@ -736,12 +1086,12 @@ describe("SAPAILanguageModel", () => {
 
       expectRequestBodyHasMessages(result);
 
-      const request = await getLastChatCompletionRequest();
-      expect(request.model?.params?.temperature).toBe(0.9);
+      const request = await getLastRequestForApi(api);
+      expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.9);
     });
 
     it("should map responseFormat json without schema to json_object", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
 
       const prompt = createPrompt("Return JSON");
 
@@ -752,13 +1102,13 @@ describe("SAPAILanguageModel", () => {
 
       expectRequestBodyHasMessages(result);
 
-      const request = await getLastChatCompletionRequest();
+      const request = await getLastRequestForApi(api);
 
       expect(request.response_format).toEqual({ type: "json_object" });
     });
 
     it("should map responseFormat json with schema to json_schema", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
 
       const prompt = createPrompt("Return JSON");
 
@@ -783,7 +1133,7 @@ describe("SAPAILanguageModel", () => {
 
       expectRequestBodyHasMessages(result);
 
-      const request = await getLastChatCompletionRequest();
+      const request = await getLastRequestForApi(api);
 
       expect(request.response_format).toEqual({
         json_schema: {
@@ -797,7 +1147,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should use settings.responseFormat as fallback when options.responseFormat is not provided", async () => {
-      const model = createModel("gpt-4o", {
+      const model = createModelForApi(api, "gpt-4o", {
         responseFormat: {
           json_schema: {
             description: "Settings-level schema",
@@ -813,7 +1163,7 @@ describe("SAPAILanguageModel", () => {
 
       await model.doGenerate({ prompt });
 
-      const request = await getLastChatCompletionRequest();
+      const request = await getLastRequestForApi(api);
 
       expect(request.response_format).toEqual({
         json_schema: {
@@ -827,7 +1177,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should prefer options.responseFormat over settings.responseFormat", async () => {
-      const model = createModel("gpt-4o", {
+      const model = createModelForApi(api, "gpt-4o", {
         responseFormat: {
           json_schema: {
             description: "Settings-level schema",
@@ -857,7 +1207,7 @@ describe("SAPAILanguageModel", () => {
         },
       });
 
-      const request = await getLastChatCompletionRequest();
+      const request = await getLastRequestForApi(api);
 
       expect(request.response_format).toEqual({
         json_schema: {
@@ -871,7 +1221,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should warn about unsupported tool types", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const tools = [
@@ -891,70 +1241,8 @@ describe("SAPAILanguageModel", () => {
       expect(result.warnings[0]?.type).toBe("unsupported");
     });
 
-    it("should prefer call options.tools over settings.tools (and warn)", async () => {
-      const model = createModel("gpt-4o", {
-        tools: [
-          {
-            function: {
-              description: "From settings",
-              name: "settings_tool",
-              parameters: {
-                properties: {},
-                required: [],
-                type: "object",
-              },
-            },
-            type: "function",
-          },
-        ],
-      });
-
-      const prompt = createPrompt("Hello");
-
-      const tools: LanguageModelV3FunctionTool[] = [
-        {
-          description: "From call options",
-          inputSchema: {
-            properties: {},
-            required: [],
-            type: "object",
-          },
-          name: "call_tool",
-          type: "function",
-        },
-      ];
-
-      const result = await model.doGenerate({ prompt, tools });
-      const warnings = result.warnings;
-
-      expectWarningMessageContains(warnings, "preferring call options.tools");
-
-      expectRequestBodyHasMessages(result);
-
-      const request = await getLastChatCompletionRequest();
-      const requestTools = Array.isArray(request.tools) ? (request.tools as unknown[]) : [];
-
-      expect(
-        requestTools.some(
-          (tool) =>
-            typeof tool === "object" &&
-            tool !== null &&
-            (tool as { function?: { name?: unknown } }).function?.name === "call_tool",
-        ),
-      ).toBe(true);
-
-      expect(
-        requestTools.some(
-          (tool) =>
-            typeof tool === "object" &&
-            tool !== null &&
-            (tool as { function?: { name?: unknown } }).function?.name === "settings_tool",
-        ),
-      ).toBe(false);
-    });
-
     it("should warn when tool Zod schema conversion fails", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Use a tool");
 
       const zodLikeThatThrows = {
@@ -981,7 +1269,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should include tool calls in doGenerate response content", async () => {
-      const MockClient = await getMockClient();
+      const MockClient = await getMockClientForApi(api);
       if (!MockClient.setChatCompletionResponse) {
         throw new Error("mock missing setChatCompletionResponse");
       }
@@ -1008,7 +1296,7 @@ describe("SAPAILanguageModel", () => {
         }),
       );
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("What's the weather?");
 
       const result = await model.doGenerate({ prompt });
@@ -1078,7 +1366,7 @@ describe("SAPAILanguageModel", () => {
         },
       },
     ])("should $description in doGenerate response", async ({ expected, headers }) => {
-      const MockClient = await getMockClient();
+      const MockClient = await getMockClientForApi(api);
       if (!MockClient.setChatCompletionResponse) {
         throw new Error("mock missing setChatCompletionResponse");
       }
@@ -1096,7 +1384,7 @@ describe("SAPAILanguageModel", () => {
         }),
       );
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Test");
       const result = await model.doGenerate({ prompt });
 
@@ -1104,7 +1392,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should include response body in doGenerate result", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const result = await model.doGenerate({ prompt });
@@ -1116,7 +1404,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should handle large non-streaming responses without truncation (100KB+)", async () => {
-      const MockClient = await getMockClient();
+      const MockClient = await getMockClientForApi(api);
       if (!MockClient.setChatCompletionResponse) {
         throw new Error("mock missing setChatCompletionResponse");
       }
@@ -1131,7 +1419,7 @@ describe("SAPAILanguageModel", () => {
         }),
       );
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Generate a very long response");
 
       const result = await model.doGenerate({ prompt });
@@ -1147,7 +1435,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should handle tool calls with large JSON arguments without truncation", async () => {
-      const MockClient = await getMockClient();
+      const MockClient = await getMockClientForApi(api);
       if (!MockClient.setChatCompletionResponse) {
         throw new Error("mock missing setChatCompletionResponse");
       }
@@ -1169,7 +1457,7 @@ describe("SAPAILanguageModel", () => {
         }),
       );
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Call a tool");
 
       const result = await model.doGenerate({ prompt });
@@ -1192,57 +1480,7 @@ describe("SAPAILanguageModel", () => {
     });
   });
 
-  describe("doStream", () => {
-    it("should stream basic text (edge-runtime compatible)", async () => {
-      const model = createModel();
-      const prompt = createPrompt("Hello");
-
-      const { stream } = await model.doStream({ prompt });
-      const reader = stream.getReader();
-
-      const parts: unknown[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        parts.push(value);
-      }
-
-      expect(parts.some((p) => (p as { type?: string }).type === "stream-start")).toBe(true);
-      expect(parts.some((p) => (p as { type?: string }).type === "finish")).toBe(true);
-    });
-
-    it("should not mutate stream-start warnings when warnings occur during stream", async () => {
-      await setStreamChunks([
-        createMockStreamChunk({
-          deltaToolCalls: [
-            {
-              function: {
-                arguments: '{"x":1}',
-              },
-              id: "toolcall-0",
-              index: 0,
-            },
-          ],
-          finishReason: "tool_calls",
-          usage: {
-            completion_tokens: 1,
-            prompt_tokens: 1,
-            total_tokens: 2,
-          },
-        }),
-      ]);
-
-      const model = createModel();
-      const prompt = createPrompt("Hello");
-
-      const result = await model.doStream({ prompt });
-
-      const parts = await readAllParts(result.stream);
-      const streamStart = parts.find((part) => part.type === "stream-start");
-      expect(streamStart?.warnings).toHaveLength(0);
-    });
-
+  describe.each<APIType>(["orchestration", "foundation-models"])("doStream (%s API)", (api) => {
     /**
      * Reads all parts from a language model stream.
      * @param stream - The stream to read from.
@@ -1262,8 +1500,58 @@ describe("SAPAILanguageModel", () => {
       return parts;
     }
 
+    it("should stream basic text (edge-runtime compatible)", async () => {
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const { stream } = await model.doStream({ prompt });
+      const reader = stream.getReader();
+
+      const parts: unknown[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+      }
+
+      expect(parts.some((p) => (p as { type?: string }).type === "stream-start")).toBe(true);
+      expect(parts.some((p) => (p as { type?: string }).type === "finish")).toBe(true);
+    });
+
+    it("should not mutate stream-start warnings when warnings occur during stream", async () => {
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: {
+                arguments: '{"x":1}',
+              },
+              id: "toolcall-0",
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: {
+            completion_tokens: 1,
+            prompt_tokens: 1,
+            total_tokens: 2,
+          },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const result = await model.doStream({ prompt });
+
+      const parts = await readAllParts(result.stream);
+      const streamStart = parts.find((part) => part.type === "stream-start");
+      expect(streamStart?.warnings).toHaveLength(0);
+    });
+
     it("should not emit text deltas after tool-call deltas", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaContent: "Hello",
         }),
@@ -1295,7 +1583,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
@@ -1307,7 +1595,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should stream text response", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaContent: "Hello",
         }),
@@ -1322,7 +1610,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
@@ -1362,7 +1650,7 @@ describe("SAPAILanguageModel", () => {
       const rawData1 = { custom: "data1", delta: "Hello" };
       const rawData2 = { custom: "data2", delta: "!" };
 
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           _data: rawData1,
           deltaContent: "Hello",
@@ -1379,7 +1667,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ includeRawChunks: true, prompt });
@@ -1392,7 +1680,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should not emit raw chunks when includeRawChunks is false or omitted", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           _data: { some: "data" },
           deltaContent: "Hello",
@@ -1409,14 +1697,14 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream: stream1 } = await model.doStream({ prompt });
       const parts1 = await readAllParts(stream1);
       expect(parts1.filter((p) => p.type === "raw")).toHaveLength(0);
 
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           _data: { some: "data" },
           deltaContent: "Hello",
@@ -1435,7 +1723,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should use chunk itself as rawValue when _data is undefined", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaContent: "Hello",
           finishReason: "stop",
@@ -1447,7 +1735,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ includeRawChunks: true, prompt });
@@ -1462,7 +1750,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should flush tool calls immediately on tool-calls finishReason", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaToolCalls: [
             {
@@ -1490,7 +1778,7 @@ describe("SAPAILanguageModel", () => {
         createMockStreamChunk({ deltaContent: "SHOULD_NOT_APPEAR" }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Use tool");
 
       const result = await model.doStream({ prompt });
@@ -1555,7 +1843,7 @@ describe("SAPAILanguageModel", () => {
         input: undefined,
       },
     ])("should handle stream with finish reason: $description", async ({ expected, input }) => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaContent: "test content",
           finishReason: input,
@@ -1567,7 +1855,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
@@ -1582,18 +1870,18 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should omit tools and response_format when not provided", async () => {
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const result = await model.doGenerate({ prompt });
       expectRequestBodyHasMessages(result);
 
-      const request = await getLastChatCompletionRequest();
+      const request = await getLastRequestForApi(api);
       expectToOmitKeys(request, ["tools", "response_format"]);
     });
 
     it("should handle stream chunks with null content", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({}),
         createMockStreamChunk({
           deltaContent: "Hello",
@@ -1608,7 +1896,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
@@ -1623,7 +1911,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     it("should handle stream with empty string content", async () => {
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaContent: "",
         }),
@@ -1638,7 +1926,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
@@ -1664,9 +1952,9 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      await setStreamChunks(chunks);
+      await setStreamChunksForApi(api, chunks);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Generate a very long streaming response");
 
       const { stream } = await model.doStream({ prompt });
@@ -1698,7 +1986,7 @@ describe("SAPAILanguageModel", () => {
       );
       const argPart3 = largeArgs.slice(Math.floor((2 * largeArgs.length) / 3));
 
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaToolCalls: [
             {
@@ -1728,7 +2016,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Call a tool with large arguments");
 
       const { stream } = await model.doStream({ prompt });
@@ -1761,7 +2049,7 @@ describe("SAPAILanguageModel", () => {
         query: "G".repeat(5000),
       });
 
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaToolCalls: [
             {
@@ -1792,7 +2080,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Call multiple tools");
 
       const { stream } = await model.doStream({ prompt });
@@ -1828,7 +2116,7 @@ describe("SAPAILanguageModel", () => {
         "🎉".repeat(100) +
         " [UNICODE_END]";
 
-      await setStreamChunks([
+      await setStreamChunksForApi(api, [
         createMockStreamChunk({
           deltaContent: unicodeContent.slice(0, 50),
         }),
@@ -1842,7 +2130,7 @@ describe("SAPAILanguageModel", () => {
         }),
       ]);
 
-      const model = createModel();
+      const model = createModelForApi(api);
       const prompt = createPrompt("Generate Unicode content");
 
       const { stream } = await model.doStream({ prompt });
@@ -1861,7 +2149,7 @@ describe("SAPAILanguageModel", () => {
 
     describe("error handling", () => {
       it("should warn when tool call delta has no tool name", async () => {
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaToolCalls: [
               {
@@ -1879,20 +2167,11 @@ describe("SAPAILanguageModel", () => {
           }),
         ]);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Use tool");
 
-        const result = await model.doStream({ prompt });
-        const { stream } = result;
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const { stream } = await model.doStream({ prompt });
+        const parts = await readAllParts(stream);
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
@@ -1920,12 +2199,12 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should emit error part when stream iteration throws", async () => {
-        const MockClient = await getMockClient();
+        const MockClient = await getMockClientForApi(api);
         if (!MockClient.setStreamError) {
           throw new Error("mock missing setStreamError");
         }
 
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaContent: "Hello",
           }),
@@ -1943,19 +2222,11 @@ describe("SAPAILanguageModel", () => {
 
         MockClient.setStreamError(axiosError as unknown as Error);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         const { stream } = await model.doStream({ prompt });
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const parts = await readAllParts(stream);
 
         const textDelta = parts.find((p) => p.type === "text-delta");
         expect(textDelta).toBeDefined();
@@ -1974,7 +2245,7 @@ describe("SAPAILanguageModel", () => {
           "x-request-id": "stream-axios-123",
         });
 
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaContent: "reset",
             finishReason: "stop",
@@ -1988,7 +2259,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should skip tool call deltas with invalid index", async () => {
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaContent: "Hello",
             deltaToolCalls: [
@@ -2016,26 +2287,18 @@ describe("SAPAILanguageModel", () => {
           }),
         ]);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         const { stream } = await model.doStream({ prompt });
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const parts = await readAllParts(stream);
 
         expect(parts.some((p) => p.type === "finish")).toBe(true);
         expect(parts.some((p) => p.type === "tool-call")).toBe(false);
       });
 
       it("should generate unique RFC 4122 UUIDs for text blocks", async () => {
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaContent: "First text block",
           }),
@@ -2050,19 +2313,11 @@ describe("SAPAILanguageModel", () => {
           }),
         ]);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Test");
 
         const { stream } = await model.doStream({ prompt });
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const parts = await readAllParts(stream);
 
         const textStarts = parts.filter(
           (p): p is Extract<LanguageModelV3StreamPart, { type: "text-start" }> =>
@@ -2092,15 +2347,7 @@ describe("SAPAILanguageModel", () => {
         expect(textEnds[0]?.id).toBe(blockId);
 
         const { stream: stream2 } = await model.doStream({ prompt });
-        const parts2: LanguageModelV3StreamPart[] = [];
-        const reader2 = stream2.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader2.read();
-          if (done) break;
-          parts2.push(value);
-        }
+        const parts2 = await readAllParts(stream2);
 
         const textStarts2 = parts2.filter(
           (p): p is Extract<LanguageModelV3StreamPart, { type: "text-start" }> =>
@@ -2114,7 +2361,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should flush unflushed tool calls at stream end (with finishReason=stop)", async () => {
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaToolCalls: [
               {
@@ -2134,19 +2381,11 @@ describe("SAPAILanguageModel", () => {
           }),
         ]);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Test");
 
         const { stream } = await model.doStream({ prompt });
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const parts = await readAllParts(stream);
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
@@ -2164,7 +2403,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should handle undefined finish reason from stream", async () => {
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaContent: "Hello",
             finishReason: undefined as unknown as string,
@@ -2180,19 +2419,11 @@ describe("SAPAILanguageModel", () => {
           }),
         ]);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         const { stream } = await model.doStream({ prompt });
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const parts = await readAllParts(stream);
 
         const finish = parts.find(
           (p): p is Extract<LanguageModelV3StreamPart, { type: "finish" }> => p.type === "finish",
@@ -2204,7 +2435,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should flush tool calls that never received input-start", async () => {
-        await setStreamChunks([
+        await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaToolCalls: [
               {
@@ -2230,19 +2461,11 @@ describe("SAPAILanguageModel", () => {
           }),
         ]);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Test");
 
         const { stream } = await model.doStream({ prompt });
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
+        const parts = await readAllParts(stream);
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
@@ -2255,7 +2478,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should throw converted error when doStream setup fails", async () => {
-        const MockClient = await getMockClient();
+        const MockClient = await getMockClientForApi(api);
         if (!MockClient.setStreamSetupError) {
           throw new Error("mock missing setStreamSetupError");
         }
@@ -2263,7 +2486,7 @@ describe("SAPAILanguageModel", () => {
         const setupError = new Error("Stream setup failed");
         MockClient.setStreamSetupError(setupError);
 
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         await expect(model.doStream({ prompt })).rejects.toThrow("Stream setup failed");
@@ -2277,7 +2500,7 @@ describe("SAPAILanguageModel", () => {
         { property: "masking", settings: { masking: {} } },
         { property: "filtering", settings: { filtering: {} } },
       ])("should omit $property when empty object", async ({ property, settings }) => {
-        const model = createModel("gpt-4o", settings);
+        const model = createOrchModel("gpt-4o", settings);
 
         const prompt = createPrompt("Hello");
 
@@ -2285,7 +2508,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).not.toHaveProperty(property);
       });
 
@@ -2300,7 +2523,7 @@ describe("SAPAILanguageModel", () => {
           ],
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           masking,
         });
 
@@ -2310,7 +2533,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).toHaveProperty("masking");
         expect(request.masking).toEqual(masking);
       });
@@ -2332,7 +2555,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           filtering,
         });
 
@@ -2342,7 +2565,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).toHaveProperty("filtering");
         expect(request.filtering).toEqual(filtering);
       });
@@ -2374,7 +2597,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           filtering,
           masking,
         });
@@ -2385,7 +2608,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).toHaveProperty("masking");
         expect(request.masking).toEqual(masking);
         expect(request).toHaveProperty("filtering");
@@ -2412,7 +2635,7 @@ describe("SAPAILanguageModel", () => {
           type: "document_grounding_service",
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           grounding,
         });
 
@@ -2422,7 +2645,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).toHaveProperty("grounding");
         expect(request.grounding).toEqual(grounding);
       });
@@ -2438,7 +2661,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           translation,
         });
 
@@ -2448,7 +2671,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).toHaveProperty("translation");
         expect(request.translation).toEqual(translation);
       });
@@ -2457,7 +2680,7 @@ describe("SAPAILanguageModel", () => {
         { property: "grounding", settings: { grounding: {} } },
         { property: "translation", settings: { translation: {} } },
       ])("should omit $property when empty object", async ({ property, settings }) => {
-        const model = createModel("gpt-4o", settings);
+        const model = createOrchModel("gpt-4o", settings);
 
         const prompt = createPrompt("Hello");
 
@@ -2465,7 +2688,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).not.toHaveProperty(property);
       });
 
@@ -2521,7 +2744,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           filtering,
           grounding,
           masking,
@@ -2534,7 +2757,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
         expect(request).toHaveProperty("grounding");
         expect(request.grounding).toEqual(grounding);
         expect(request).toHaveProperty("translation");
@@ -2556,7 +2779,7 @@ describe("SAPAILanguageModel", () => {
           ],
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           masking,
         });
 
@@ -2566,7 +2789,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastStreamRequest();
+        const request = await getLastOrchStreamRequest();
         expect(request).toHaveProperty("masking");
         expect(request.masking).toEqual(masking);
       });
@@ -2588,7 +2811,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           filtering,
         });
 
@@ -2598,7 +2821,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastStreamRequest();
+        const request = await getLastOrchStreamRequest();
         expect(request).toHaveProperty("filtering");
         expect(request.filtering).toEqual(filtering);
       });
@@ -2630,7 +2853,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           filtering,
           masking,
         });
@@ -2641,7 +2864,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastStreamRequest();
+        const request = await getLastOrchStreamRequest();
         expect(request).toHaveProperty("masking");
         expect(request.masking).toEqual(masking);
         expect(request).toHaveProperty("filtering");
@@ -2668,7 +2891,7 @@ describe("SAPAILanguageModel", () => {
           type: "document_grounding_service",
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           grounding,
         });
 
@@ -2678,7 +2901,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastStreamRequest();
+        const request = await getLastOrchStreamRequest();
         expect(request).toHaveProperty("grounding");
         expect(request.grounding).toEqual(grounding);
       });
@@ -2694,7 +2917,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           translation,
         });
 
@@ -2704,7 +2927,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastStreamRequest();
+        const request = await getLastOrchStreamRequest();
         expect(request).toHaveProperty("translation");
         expect(request.translation).toEqual(translation);
       });
@@ -2761,7 +2984,7 @@ describe("SAPAILanguageModel", () => {
           },
         };
 
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           filtering,
           grounding,
           masking,
@@ -2774,7 +2997,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastStreamRequest();
+        const request = await getLastOrchStreamRequest();
         expect(request).toHaveProperty("grounding");
         expect(request.grounding).toEqual(grounding);
         expect(request).toHaveProperty("translation");
@@ -2786,9 +3009,9 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
-    describe("model version", () => {
+    describe("model version (orchestration only)", () => {
       it("should pass model version to orchestration config", async () => {
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           modelVersion: "2024-05-13",
         });
 
@@ -2798,13 +3021,13 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
 
         expect(request.model?.version).toBe("2024-05-13");
       });
 
       it("should use 'latest' as default version", async () => {
-        const model = createModel("gpt-4o");
+        const model = createOrchModel("gpt-4o");
 
         const prompt = createPrompt("Hello");
 
@@ -2812,15 +3035,20 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
 
         expect(request.model?.version).toBe("latest");
       });
     });
 
-    describe("model parameters", () => {
-      it.each([
+    describe.each([
+      { api: "orchestration" as APIType, apiName: "Orchestration" },
+      { api: "foundation-models" as APIType, apiName: "Foundation Models" },
+    ])("model parameters ($apiName API)", ({ api }) => {
+      // Define test cases with supported APIs
+      const optionOverrideTestCases = [
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           expectedKey: "temperature",
           expectedValue: 0.9,
           optionKey: "temperature",
@@ -2830,6 +3058,7 @@ describe("SAPAILanguageModel", () => {
           testName: "temperature",
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "maxTokens",
           expectedKey: "max_tokens",
           expectedValue: 1000,
@@ -2840,6 +3069,7 @@ describe("SAPAILanguageModel", () => {
           testName: "maxOutputTokens",
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "topP",
           expectedKey: "top_p",
           expectedValue: 0.9,
@@ -2850,6 +3080,7 @@ describe("SAPAILanguageModel", () => {
           testName: "topP",
         },
         {
+          apis: ["orchestration"] as APIType[], // top_k not supported by Foundation Models (Azure OpenAI)
           camelCaseKey: "topK",
           expectedKey: "top_k",
           expectedValue: 40,
@@ -2859,7 +3090,9 @@ describe("SAPAILanguageModel", () => {
           settingsValue: 20,
           testName: "topK",
         },
-      ])(
+      ].filter((tc) => tc.apis.includes(api));
+
+      it.each(optionOverrideTestCases)(
         "should prefer options.$testName over settings.modelParams.$settingsKey",
         async ({
           camelCaseKey,
@@ -2870,7 +3103,7 @@ describe("SAPAILanguageModel", () => {
           settingsKey,
           settingsValue,
         }) => {
-          const model = createModel("gpt-4o", {
+          const model = createModelForApi(api, "gpt-4o", {
             modelParams: {
               [settingsKey]: settingsValue,
             },
@@ -2885,18 +3118,20 @@ describe("SAPAILanguageModel", () => {
 
           expectRequestBodyHasMessages(result);
 
-          const request = await getLastChatCompletionRequest();
+          const request = await getLastRequestForApi(api);
 
-          expect(request.model?.params?.[expectedKey]).toBe(expectedValue);
+          expect(getModelParamFromRequest(api, request, expectedKey)).toBe(expectedValue);
 
           if (camelCaseKey && camelCaseKey !== expectedKey) {
-            expect(request.model?.params?.[camelCaseKey]).toBeUndefined();
+            expect(getModelParamFromRequest(api, request, camelCaseKey)).toBeUndefined();
           }
         },
       );
 
-      it.each([
+      // Define test cases with supported APIs
+      const paramPassthroughTestCases = [
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "topP",
           expectedKey: "top_p",
           expectedValue: 0.9,
@@ -2904,6 +3139,7 @@ describe("SAPAILanguageModel", () => {
           paramValue: 0.9,
         },
         {
+          apis: ["orchestration"] as APIType[], // top_k not supported by Foundation Models (Azure OpenAI)
           camelCaseKey: "topK",
           expectedKey: "top_k",
           expectedValue: 40,
@@ -2911,6 +3147,7 @@ describe("SAPAILanguageModel", () => {
           paramValue: 40,
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "frequencyPenalty",
           expectedKey: "frequency_penalty",
           expectedValue: 0.5,
@@ -2918,6 +3155,7 @@ describe("SAPAILanguageModel", () => {
           paramValue: 0.5,
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "presencePenalty",
           expectedKey: "presence_penalty",
           expectedValue: 0.3,
@@ -2925,6 +3163,7 @@ describe("SAPAILanguageModel", () => {
           paramValue: 0.3,
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "stopSequences",
           expectedKey: "stop",
           expectedValue: ["END", "STOP"],
@@ -2932,16 +3171,19 @@ describe("SAPAILanguageModel", () => {
           paramValue: ["END", "STOP"],
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "seed",
           expectedKey: "seed",
           expectedValue: 42,
           paramName: "seed",
           paramValue: 42,
         },
-      ])(
+      ].filter((tc) => tc.apis.includes(api));
+
+      it.each(paramPassthroughTestCases)(
         "should pass $paramName from options to model params",
         async ({ camelCaseKey, expectedKey, expectedValue, paramName, paramValue }) => {
-          const model = createModel();
+          const model = createModelForApi(api);
           const prompt = createPrompt("Hello");
 
           const result = await model.doGenerate({
@@ -2951,220 +3193,284 @@ describe("SAPAILanguageModel", () => {
 
           expectRequestBodyHasMessages(result);
 
-          const request = await getLastChatCompletionRequest();
+          const request = await getLastRequestForApi(api);
 
-          expect(request.model?.params?.[expectedKey]).toEqual(expectedValue);
+          expect(getModelParamFromRequest(api, request, expectedKey)).toEqual(expectedValue);
 
           if (camelCaseKey !== expectedKey) {
-            expect(request.model?.params?.[camelCaseKey]).toBeUndefined();
+            expect(getModelParamFromRequest(api, request, camelCaseKey)).toBeUndefined();
           }
         },
       );
     });
 
-    describe("model-specific behavior", () => {
-      it.each([
-        { modelId: "amazon--nova-pro", vendor: "Amazon" },
-        { modelId: "anthropic--claude-3.5-sonnet", vendor: "Anthropic" },
-      ])("should disable n parameter for $vendor models", async ({ modelId }) => {
-        const model = createModel(modelId, {
-          modelParams: { n: 2 },
-        });
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastChatCompletionRequest();
-
-        expect(request.model?.params?.n).toBeUndefined();
-      });
-    });
-
-    describe("unknown parameter preservation", () => {
-      it("should preserve unknown parameters from settings.modelParams", async () => {
-        const model = createModel("gpt-4o", {
-          modelParams: {
-            customParam: "custom-value",
-            maxTokens: 100,
-            temperature: 0.7,
-            topP: 0.8,
-            unknownField: 123,
-          },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastChatCompletionRequest();
-
-        expect(request.model?.params?.temperature).toBe(0.7);
-        expect(request.model?.params?.customParam).toBe("custom-value");
-        expect(request.model?.params?.unknownField).toBe(123);
-
-        expect(request.model?.params?.max_tokens).toBe(100);
-        expect(request.model?.params?.maxTokens).toBeUndefined();
-        expect(request.model?.params?.top_p).toBe(0.8);
-        expect(request.model?.params?.topP).toBeUndefined();
-      });
-
-      it("should preserve unknown parameters from providerOptions", async () => {
-        const model = createModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({
-          prompt,
-          providerOptions: {
-            "sap-ai": {
-              modelParams: {
-                customProviderParam: "provider-value",
-                frequencyPenalty: 0.7,
-                presencePenalty: 0.2,
-                specialField: true,
-                temperature: 0.5,
-              },
+    describe.each<APIType>(["orchestration", "foundation-models"])(
+      "unknown parameter preservation (%s API)",
+      (api) => {
+        // Both APIs now preserve unknown params - they pass through to the underlying API
+        it("should preserve unknown parameters from settings.modelParams", async () => {
+          const model = createModelForApi(api, "gpt-4o", {
+            modelParams: {
+              customParam: "custom-value",
+              maxTokens: 100,
+              temperature: 0.7,
+              topP: 0.8,
+              unknownField: 123,
             },
-          },
-        });
-        expectRequestBodyHasMessages(result);
+          });
 
-        const request = await getLastChatCompletionRequest();
+          const prompt = createPrompt("Hello");
 
-        expect(request.model?.params?.temperature).toBe(0.5);
-        expect(request.model?.params?.customProviderParam).toBe("provider-value");
-        expect(request.model?.params?.specialField).toBe(true);
+          const result = await model.doGenerate({ prompt });
+          expectRequestBodyHasMessages(result);
 
-        expect(request.model?.params?.frequency_penalty).toBe(0.7);
-        expect(request.model?.params?.frequencyPenalty).toBeUndefined();
-        expect(request.model?.params?.presence_penalty).toBe(0.2);
-        expect(request.model?.params?.presencePenalty).toBeUndefined();
-      });
+          const request = await getLastRequestForApi(api);
 
-      it("should merge unknown parameters from settings and providerOptions", async () => {
-        const model = createModel("gpt-4o", {
-          modelParams: {
-            fromSettings: "settings-value",
-            maxTokens: 800,
-            sharedParam: "from-settings",
-            temperature: 0.3,
-          },
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.7);
+          expect(getModelParamFromRequest(api, request, "customParam")).toBe("custom-value");
+          expect(getModelParamFromRequest(api, request, "unknownField")).toBe(123);
+
+          expect(getModelParamFromRequest(api, request, "max_tokens")).toBe(100);
+          expect(getModelParamFromRequest(api, request, "maxTokens")).toBeUndefined();
+          expect(getModelParamFromRequest(api, request, "top_p")).toBe(0.8);
+          expect(getModelParamFromRequest(api, request, "topP")).toBeUndefined();
         });
 
-        const prompt = createPrompt("Hello");
+        it("should preserve unknown parameters from providerOptions", async () => {
+          const model = createModelForApi(api, "gpt-4o");
 
-        const result = await model.doGenerate({
-          prompt,
-          providerOptions: {
-            "sap-ai": {
-              modelParams: {
-                fromProvider: "provider-value",
-                sharedParam: "from-provider",
-                topP: 0.95,
-              },
-            },
-          },
-        });
-        expectRequestBodyHasMessages(result);
+          const prompt = createPrompt("Hello");
 
-        const request = await getLastChatCompletionRequest();
-
-        expect(request.model?.params?.temperature).toBe(0.3);
-        expect(request.model?.params?.fromSettings).toBe("settings-value");
-        expect(request.model?.params?.fromProvider).toBe("provider-value");
-        expect(request.model?.params?.sharedParam).toBe("from-provider");
-
-        expect(request.model?.params?.max_tokens).toBe(800);
-        expect(request.model?.params?.maxTokens).toBeUndefined();
-        expect(request.model?.params?.top_p).toBe(0.95);
-        expect(request.model?.params?.topP).toBeUndefined();
-      });
-
-      it("should deep merge nested objects in modelParams", async () => {
-        const model = createModel("gpt-4o", {
-          modelParams: {
-            nested: {
-              a: 1,
-              b: {
-                c: 2,
-                d: 3,
-              },
-            },
-            temperature: 0.5,
-          },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({
-          prompt,
-          providerOptions: {
-            "sap-ai": {
-              modelParams: {
-                nested: {
-                  b: {
-                    d: 4,
-                    e: 5,
-                  },
-                  f: 6,
+          const result = await model.doGenerate({
+            prompt,
+            providerOptions: {
+              "sap-ai": {
+                modelParams: {
+                  customProviderParam: "provider-value",
+                  frequencyPenalty: 0.7,
+                  presencePenalty: 0.2,
+                  specialField: true,
+                  temperature: 0.5,
                 },
               },
             },
-          },
-        });
-        expectRequestBodyHasMessages(result);
+          });
+          expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+          const request = await getLastRequestForApi(api);
 
-        expect(request.model?.params?.temperature).toBe(0.5);
-        expect(request.model?.params?.nested).toEqual({
-          a: 1,
-          b: {
-            c: 2,
-            d: 4,
-            e: 5,
-          },
-          f: 6,
-        });
-      });
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.5);
+          expect(getModelParamFromRequest(api, request, "customProviderParam")).toBe(
+            "provider-value",
+          );
+          expect(getModelParamFromRequest(api, request, "specialField")).toBe(true);
 
-      it("should allow AI SDK standard options to override unknown params", async () => {
-        const model = createModel("gpt-4o", {
-          modelParams: {
-            customParam: "custom-value",
-            temperature: 0.3,
-          },
+          expect(getModelParamFromRequest(api, request, "frequency_penalty")).toBe(0.7);
+          expect(getModelParamFromRequest(api, request, "frequencyPenalty")).toBeUndefined();
+          expect(getModelParamFromRequest(api, request, "presence_penalty")).toBe(0.2);
+          expect(getModelParamFromRequest(api, request, "presencePenalty")).toBeUndefined();
         });
 
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({
-          maxOutputTokens: 500,
-          prompt,
-          temperature: 0.8,
-        });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastChatCompletionRequest();
-
-        expect(request.model?.params?.temperature).toBe(0.8);
-        expect(request.model?.params?.max_tokens).toBe(500);
-        expect(request.model?.params?.maxTokens).toBeUndefined();
-        expect(request.model?.params?.customParam).toBe("custom-value");
-      });
-
-      it("should preserve complex unknown parameter types", async () => {
-        const model = createModel("gpt-4o", {
-          modelParams: {
-            arrayParam: [1, 2, 3],
-            nestedObject: {
-              foo: "bar",
-              nested: { deep: true },
+        it("should merge unknown parameters from settings and providerOptions", async () => {
+          const model = createModelForApi(api, "gpt-4o", {
+            modelParams: {
+              fromSettings: "settings-value",
+              maxTokens: 800,
+              sharedParam: "from-settings",
+              temperature: 0.3,
             },
-            nullParam: null,
-            temperature: 0.5,
+          });
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({
+            prompt,
+            providerOptions: {
+              "sap-ai": {
+                modelParams: {
+                  fromProvider: "provider-value",
+                  sharedParam: "from-provider",
+                  topP: 0.95,
+                },
+              },
+            },
+          });
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastRequestForApi(api);
+
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.3);
+          expect(getModelParamFromRequest(api, request, "fromSettings")).toBe("settings-value");
+          expect(getModelParamFromRequest(api, request, "fromProvider")).toBe("provider-value");
+          expect(getModelParamFromRequest(api, request, "sharedParam")).toBe("from-provider");
+
+          expect(getModelParamFromRequest(api, request, "max_tokens")).toBe(800);
+          expect(getModelParamFromRequest(api, request, "maxTokens")).toBeUndefined();
+          expect(getModelParamFromRequest(api, request, "top_p")).toBe(0.95);
+          expect(getModelParamFromRequest(api, request, "topP")).toBeUndefined();
+        });
+
+        it("should deep merge nested objects in modelParams", async () => {
+          const model = createModelForApi(api, "gpt-4o", {
+            modelParams: {
+              nested: {
+                a: 1,
+                b: {
+                  c: 2,
+                  d: 3,
+                },
+              },
+              temperature: 0.5,
+            },
+          });
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({
+            prompt,
+            providerOptions: {
+              "sap-ai": {
+                modelParams: {
+                  nested: {
+                    b: {
+                      d: 4,
+                      e: 5,
+                    },
+                    f: 6,
+                  },
+                },
+              },
+            },
+          });
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastRequestForApi(api);
+
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.5);
+          expect(getModelParamFromRequest(api, request, "nested")).toEqual({
+            a: 1,
+            b: {
+              c: 2,
+              d: 4,
+              e: 5,
+            },
+            f: 6,
+          });
+        });
+
+        it("should allow AI SDK standard options to override unknown params", async () => {
+          const model = createModelForApi(api, "gpt-4o", {
+            modelParams: {
+              customParam: "custom-value",
+              temperature: 0.3,
+            },
+          });
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({
+            maxOutputTokens: 500,
+            prompt,
+            temperature: 0.8,
+          });
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastRequestForApi(api);
+
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.8);
+          expect(getModelParamFromRequest(api, request, "max_tokens")).toBe(500);
+          expect(getModelParamFromRequest(api, request, "maxTokens")).toBeUndefined();
+          expect(getModelParamFromRequest(api, request, "customParam")).toBe("custom-value");
+        });
+
+        it("should preserve complex unknown parameter types", async () => {
+          const model = createModelForApi(api, "gpt-4o", {
+            modelParams: {
+              arrayParam: [1, 2, 3],
+              nestedObject: {
+                foo: "bar",
+                nested: { deep: true },
+              },
+              nullParam: null,
+              temperature: 0.5,
+            },
+          });
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({ prompt });
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastRequestForApi(api);
+
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.5);
+          expect(getModelParamFromRequest(api, request, "arrayParam")).toEqual([1, 2, 3]);
+          expect(getModelParamFromRequest(api, request, "nestedObject")).toEqual({
+            foo: "bar",
+            nested: { deep: true },
+          });
+          expect(getModelParamFromRequest(api, request, "nullParam")).toBe(null);
+        });
+
+        it("should preserve n parameter for all models including Amazon", async () => {
+          // n parameter is now passed through for all vendors - no filtering
+          const model = createModelForApi(api, "amazon--nova-pro", {
+            modelParams: {
+              customAmazonParam: "amazon-value",
+              n: 2,
+              temperature: 0.7,
+            },
+          });
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({ prompt });
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastRequestForApi(api);
+
+          expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.7);
+          expect(getModelParamFromRequest(api, request, "n")).toBe(2);
+          expect(getModelParamFromRequest(api, request, "customAmazonParam")).toBe("amazon-value");
+        });
+      },
+    );
+
+    describe("Foundation Models specific parameters", () => {
+      // These parameters are only supported by the Foundation Models API (Azure OpenAI)
+      // They are passed via modelParams in settings or providerOptions
+
+      it.each([
+        { expectedKey: "logprobs", paramName: "logprobs", paramValue: true },
+        { expectedKey: "top_logprobs", paramName: "top_logprobs", paramValue: 5 },
+        { expectedKey: "logit_bias", paramName: "logit_bias", paramValue: { "50256": -100 } },
+        { expectedKey: "user", paramName: "user", paramValue: "user-123" },
+        { expectedKey: "parallel_tool_calls", paramName: "parallel_tool_calls", paramValue: false },
+      ])(
+        "should pass $paramName from modelParams to FM API request",
+        async ({ expectedKey, paramName, paramValue }) => {
+          const model = createFMModel("gpt-4o", {
+            modelParams: {
+              [paramName]: paramValue,
+            },
+          });
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({ prompt });
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastFMRequest();
+
+          expect(request[expectedKey]).toEqual(paramValue);
+        },
+      );
+
+      it("should pass logprobs with top_logprobs together", async () => {
+        const model = createFMModel("gpt-4o", {
+          modelParams: {
+            logprobs: true,
+            top_logprobs: 3,
           },
         });
 
@@ -3173,23 +3479,22 @@ describe("SAPAILanguageModel", () => {
         const result = await model.doGenerate({ prompt });
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastFMRequest();
 
-        expect(request.model?.params?.temperature).toBe(0.5);
-        expect(request.model?.params?.arrayParam).toEqual([1, 2, 3]);
-        expect(request.model?.params?.nestedObject).toEqual({
-          foo: "bar",
-          nested: { deep: true },
-        });
-        expect(request.model?.params?.nullParam).toBe(null);
+        expect(request.logprobs).toBe(true);
+        expect(request.top_logprobs).toBe(3);
       });
 
-      it("should preserve unknown params even when n is removed for Amazon models", async () => {
-        const model = createModel("amazon--nova-pro", {
+      it("should pass logit_bias with complex token mappings", async () => {
+        const logitBias = {
+          "1234": 50,
+          "9999": 0,
+          "50256": -100,
+        };
+
+        const model = createFMModel("gpt-4o", {
           modelParams: {
-            customAmazonParam: "amazon-value",
-            n: 2,
-            temperature: 0.7,
+            logit_bias: logitBias,
           },
         });
 
@@ -3198,17 +3503,168 @@ describe("SAPAILanguageModel", () => {
         const result = await model.doGenerate({ prompt });
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastFMRequest();
 
-        expect(request.model?.params?.temperature).toBe(0.7);
-        expect(request.model?.params?.n).toBeUndefined();
-        expect(request.model?.params?.customAmazonParam).toBe("amazon-value");
+        expect(request.logit_bias).toEqual(logitBias);
       });
     });
 
-    describe("warnings", () => {
+    describe("FM-only params with Orchestration API", () => {
+      // FM-specific parameters like logprobs, top_logprobs, logit_bias are passed through
+      // to the Orchestration SDK without error (unknown parameter passthrough behavior)
+
+      it("should pass FM-only modelParams through to Orchestration request without error", async () => {
+        // Note: Using `as Record<string, unknown>` because TypeScript types don't include
+        // FM-only params for orchestration settings, but the SDK passes them through
+        const model = createOrchModel("gpt-4o", {
+          modelParams: {
+            logit_bias: { "50256": -100 },
+            logprobs: true,
+            temperature: 0.7,
+            top_logprobs: 3,
+            user: "test-user",
+          } as Record<string, unknown>,
+        });
+
+        const prompt = createPrompt("Hello");
+
+        // Should not throw - FM-only params are passed through
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        // Verify the request was made (params passed through to SDK)
+        const request = await getLastOrchRequest();
+        // Orchestration stores params in model.params
+        expect(request.model?.params?.temperature).toBe(0.7);
+        // FM-only params are passed through to model.params
+        expect(request.model?.params?.logprobs).toBe(true);
+        expect(request.model?.params?.top_logprobs).toBe(3);
+        expect(request.model?.params?.logit_bias).toEqual({ "50256": -100 });
+        expect(request.model?.params?.user).toBe("test-user");
+      });
+
+      it("should not throw when passing FM-only params via providerOptions to Orchestration", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        // FM-only params via providerOptions should also pass through without error
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              modelParams: {
+                logprobs: true,
+                seed: 42,
+              },
+            },
+          },
+        });
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+        expect(request.model?.params?.logprobs).toBe(true);
+        expect(request.model?.params?.seed).toBe(42);
+      });
+    });
+
+    describe("Foundation Models dataSources (Azure On Your Data)", () => {
+      // dataSources is only supported by the Foundation Models API
+      // It enables RAG scenarios with Azure AI Search, Cosmos DB, etc.
+
+      it("should pass dataSources to FM API request", async () => {
+        const dataSources = [
+          {
+            parameters: {
+              authentication: {
+                key: "api-key-123",
+                type: "api_key",
+              },
+              endpoint: "https://search.windows.net",
+              index_name: "my-index",
+            },
+            type: "azure_search",
+          },
+        ];
+
+        const model = createFMModel("gpt-4o", {
+          dataSources,
+        });
+
+        const prompt = createPrompt("What is SAP AI Core?");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastFMRequest();
+
+        expect(request.data_sources).toEqual(dataSources);
+      });
+
+      it("should pass dataSources in stream request", async () => {
+        const dataSources = [
+          {
+            parameters: {
+              authentication: {
+                type: "system_assigned_managed_identity",
+              },
+              endpoint: "https://search.windows.net",
+              index_name: "products-index",
+            },
+            type: "azure_search",
+          },
+        ];
+
+        const model = createFMModel("gpt-4o", {
+          dataSources,
+        });
+
+        const prompt = createPrompt("List available products");
+
+        const result = await model.doStream({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastFMStreamRequest();
+
+        expect(request.data_sources).toEqual(dataSources);
+      });
+
+      it("should not include data_sources when dataSources is empty array", async () => {
+        const model = createFMModel("gpt-4o", {
+          dataSources: [],
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastFMRequest();
+
+        expect(request).not.toHaveProperty("data_sources");
+      });
+
+      it("should not include data_sources when dataSources is undefined", async () => {
+        const model = createFMModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastFMRequest();
+
+        expect(request).not.toHaveProperty("data_sources");
+      });
+    });
+
+    describe.each([
+      { api: "orchestration" as APIType, apiName: "Orchestration" },
+      { api: "foundation-models" as APIType, apiName: "Foundation Models" },
+    ])("warnings ($apiName API)", ({ api }) => {
       it("should warn when toolChoice is not 'auto'", async () => {
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         const tools: LanguageModelV3FunctionTool[] = [
@@ -3235,7 +3691,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should not warn when toolChoice is 'auto'", async () => {
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Hello");
 
         const tools: LanguageModelV3FunctionTool[] = [
@@ -3262,7 +3718,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should emit a best-effort warning for responseFormat json", async () => {
-        const model = createModel();
+        const model = createModelForApi(api);
         const prompt = createPrompt("Return JSON");
 
         const result = await model.doGenerate({
@@ -3276,7 +3732,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should emit a best-effort warning for settings.responseFormat json", async () => {
-        const model = createModel("gpt-4o", {
+        const model = createModelForApi(api, "gpt-4o", {
           responseFormat: {
             json_schema: {
               name: "test",
@@ -3295,7 +3751,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should not emit responseFormat warning when responseFormat is text", async () => {
-        const model = createModel("gpt-4o", {
+        const model = createModelForApi(api, "gpt-4o", {
           responseFormat: { type: "text" },
         });
         const prompt = createPrompt("Hello");
@@ -3310,9 +3766,71 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
-    describe("tools", () => {
+    describe("settings.tools (orchestration only)", () => {
+      it("should prefer call options.tools over settings.tools (and warn)", async () => {
+        const model = createOrchModel("gpt-4o", {
+          tools: [
+            {
+              function: {
+                description: "From settings",
+                name: "settings_tool",
+                parameters: {
+                  properties: {},
+                  required: [],
+                  type: "object",
+                },
+              },
+              type: "function",
+            },
+          ],
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "From call options",
+            inputSchema: {
+              properties: {},
+              required: [],
+              type: "object",
+            },
+            name: "call_tool",
+            type: "function",
+          },
+        ];
+
+        const result = await model.doGenerate({ prompt, tools });
+        const warnings = result.warnings;
+
+        expectWarningMessageContains(warnings, "preferring call options.tools");
+
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+        const requestTools = Array.isArray(request.tools) ? (request.tools as unknown[]) : [];
+
+        expect(
+          requestTools.some(
+            (tool) =>
+              typeof tool === "object" &&
+              tool !== null &&
+              (tool as { function?: { name?: unknown } }).function?.name === "call_tool",
+          ),
+        ).toBe(true);
+
+        expect(
+          requestTools.some(
+            (tool) =>
+              typeof tool === "object" &&
+              tool !== null &&
+              (tool as { function?: { name?: unknown } }).function?.name === "settings_tool",
+          ),
+        ).toBe(false);
+      });
+
       it("should use tools from settings when provided", async () => {
-        const model = createModel("gpt-4o", {
+        const model = createOrchModel("gpt-4o", {
           tools: [
             {
               function: {
@@ -3337,7 +3855,7 @@ describe("SAPAILanguageModel", () => {
 
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastChatCompletionRequest();
+        const request = await getLastOrchRequest();
 
         const tools = Array.isArray(request.tools) ? (request.tools as unknown[]) : undefined;
 
@@ -3363,49 +3881,54 @@ describe("SAPAILanguageModel", () => {
           expect(customTool).toBeDefined();
         }
       });
-
-      it.each([
-        {
-          description: "Tool with array schema",
-          inputSchema: { items: { type: "string" }, type: "array" },
-          testName: "coerce non-object schema type to object (array)",
-          toolName: "array_tool",
-        },
-        {
-          description: "Tool with string schema",
-          inputSchema: { type: "string" },
-          testName: "handle tool with string type schema",
-          toolName: "string_tool",
-        },
-        {
-          description: "Tool with empty properties",
-          inputSchema: { properties: {}, type: "object" },
-          testName: "handle tool with schema that has no properties",
-          toolName: "empty_props_tool",
-        },
-        {
-          description: "Tool without schema",
-          inputSchema: undefined as unknown as Record<string, unknown>,
-          testName: "handle tool with undefined inputSchema",
-          toolName: "no_schema_tool",
-        },
-      ])("should $testName", async ({ description, inputSchema, toolName }) => {
-        const model = createModel();
-        const prompt = createPrompt("Use tool");
-
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description,
-            inputSchema,
-            name: toolName,
-            type: "function",
-          },
-        ];
-
-        const result = await model.doGenerate({ prompt, tools });
-
-        expectRequestBodyHasMessages(result);
-      });
     });
+
+    describe.each<APIType>(["orchestration", "foundation-models"])(
+      "tool schema edge cases (%s API)",
+      (api) => {
+        it.each([
+          {
+            description: "Tool with array schema",
+            inputSchema: { items: { type: "string" }, type: "array" },
+            testName: "coerce non-object schema type to object (array)",
+            toolName: "array_tool",
+          },
+          {
+            description: "Tool with string schema",
+            inputSchema: { type: "string" },
+            testName: "handle tool with string type schema",
+            toolName: "string_tool",
+          },
+          {
+            description: "Tool with empty properties",
+            inputSchema: { properties: {}, type: "object" },
+            testName: "handle tool with schema that has no properties",
+            toolName: "empty_props_tool",
+          },
+          {
+            description: "Tool without schema",
+            inputSchema: undefined as unknown as Record<string, unknown>,
+            testName: "handle tool with undefined inputSchema",
+            toolName: "no_schema_tool",
+          },
+        ])("should $testName", async ({ description, inputSchema, toolName }) => {
+          const model = createModelForApi(api);
+          const prompt = createPrompt("Use tool");
+
+          const tools: LanguageModelV3FunctionTool[] = [
+            {
+              description,
+              inputSchema,
+              name: toolName,
+              type: "function",
+            },
+          ];
+
+          const result = await model.doGenerate({ prompt, tools });
+
+          expectRequestBodyHasMessages(result);
+        });
+      },
+    );
   });
 });

@@ -5,21 +5,46 @@
 import type { EmbeddingModelV3CallOptions } from "@ai-sdk/provider";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
+import { clearStrategyCaches } from "./sap-ai-strategy.js";
 
-// Mock types
-interface ConstructorCall {
+// Note: APIType is reserved for future dual-API embedding tests
+// type APIType = "foundation-models" | "orchestration";
+
+// Mock types for Foundation Models API
+interface FMConstructorCall {
+  destination: unknown;
+  modelDeployment: { deploymentConfiguration: unknown; model: string };
+}
+interface FMEmbedCall {
+  request: {
+    dimensions?: number;
+    encoding_format?: string;
+    input: string[];
+    input_type?: string;
+    user?: string;
+  };
+  requestConfig?: { signal?: AbortSignal };
+}
+// FM SDK getEmbeddings returns number[][] directly (not wrapped objects like orchestration)
+interface FMEmbeddingResponse {
+  _data: { usage: { prompt_tokens: number; total_tokens: number } };
+  getEmbeddings: () => (number[] | string)[];
+}
+
+// Mock types for Orchestration API
+interface OrchestrationConstructorCall {
   config: { embeddings: { model: { name: string; params?: Record<string, unknown> } } };
   deploymentConfig: unknown;
   destination: unknown;
 }
-interface EmbedCall {
+interface OrchestrationEmbedCall {
   request: { input: string[]; type?: string };
   requestConfig?: { signal?: AbortSignal };
 }
-interface EmbeddingResponse {
+interface OrchestrationEmbeddingResponse {
   getEmbeddings: () => { embedding: number[] | string; index: number; object: string }[];
   getTokenUsage: () => { prompt_tokens: number; total_tokens: number };
 }
@@ -27,9 +52,9 @@ interface EmbeddingResponse {
 vi.mock("@sap-ai-sdk/orchestration", () => {
   class MockOrchestrationEmbeddingClient {
     static embedError: Error | undefined;
-    static embedResponse: EmbeddingResponse | undefined;
-    static lastConstructorCall: ConstructorCall | undefined;
-    static lastEmbedCall: EmbedCall | undefined;
+    static embedResponse: OrchestrationEmbeddingResponse | undefined;
+    static lastConstructorCall: OrchestrationConstructorCall | undefined;
+    static lastEmbedCall: OrchestrationEmbedCall | undefined;
 
     embed = vi
       .fn()
@@ -74,12 +99,70 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
   };
 });
 
-interface MockClientType {
+vi.mock("@sap-ai-sdk/foundation-models", () => {
+  class MockAzureOpenAiEmbeddingClient {
+    static embedError: Error | undefined;
+    static embedResponse: FMEmbeddingResponse | undefined;
+    static lastConstructorCall: FMConstructorCall | undefined;
+    static lastEmbedCall: FMEmbedCall | undefined;
+
+    run = vi
+      .fn()
+      .mockImplementation(
+        (request: FMEmbedCall["request"], requestConfig?: { signal?: AbortSignal }) => {
+          MockAzureOpenAiEmbeddingClient.lastEmbedCall = { request, requestConfig };
+          const errorToThrow = MockAzureOpenAiEmbeddingClient.embedError;
+          if (errorToThrow) {
+            MockAzureOpenAiEmbeddingClient.embedError = undefined;
+            throw errorToThrow;
+          }
+          if (MockAzureOpenAiEmbeddingClient.embedResponse) {
+            const response = MockAzureOpenAiEmbeddingClient.embedResponse;
+            MockAzureOpenAiEmbeddingClient.embedResponse = undefined;
+            return Promise.resolve(response);
+          }
+          // FM SDK getEmbeddings returns number[][] directly (not objects with embedding property)
+          return Promise.resolve({
+            _data: { usage: { prompt_tokens: 8, total_tokens: 8 } },
+            getEmbeddings: () => [
+              [0.1, 0.2, 0.3],
+              [0.4, 0.5, 0.6],
+            ],
+          });
+        },
+      );
+
+    constructor(
+      modelDeployment: { deploymentConfiguration: unknown; model: string },
+      destination: unknown,
+    ) {
+      MockAzureOpenAiEmbeddingClient.lastConstructorCall = {
+        destination,
+        modelDeployment,
+      };
+    }
+  }
+  return {
+    AzureOpenAiEmbeddingClient: MockAzureOpenAiEmbeddingClient,
+    MockAzureOpenAiEmbeddingClient,
+  };
+});
+
+interface MockFMClientType {
+  MockAzureOpenAiEmbeddingClient: {
+    embedError: Error | undefined;
+    embedResponse: FMEmbeddingResponse | undefined;
+    lastConstructorCall: FMConstructorCall | undefined;
+    lastEmbedCall: FMEmbedCall | undefined;
+  };
+}
+
+interface MockOrchestrationClientType {
   MockOrchestrationEmbeddingClient: {
     embedError: Error | undefined;
-    embedResponse: EmbeddingResponse | undefined;
-    lastConstructorCall: ConstructorCall | undefined;
-    lastEmbedCall: EmbedCall | undefined;
+    embedResponse: OrchestrationEmbeddingResponse | undefined;
+    lastConstructorCall: OrchestrationConstructorCall | undefined;
+    lastEmbedCall: OrchestrationEmbedCall | undefined;
   };
 }
 
@@ -87,9 +170,18 @@ interface MockClientType {
  * Helper to access the mocked SAP AI SDK OrchestrationEmbeddingClient for test manipulation.
  * @returns The mock client instance with spied constructor and embed method.
  */
-async function getMockClient(): Promise<MockClientType> {
+async function getMockClient(): Promise<MockOrchestrationClientType> {
   const mod = await import("@sap-ai-sdk/orchestration");
-  return mod as unknown as MockClientType;
+  return mod as unknown as MockOrchestrationClientType;
+}
+
+/**
+ * Helper to access the mocked SAP AI SDK AzureOpenAiEmbeddingClient for test manipulation.
+ * @returns The mock client instance with spied constructor and run method.
+ */
+async function getMockFMClient(): Promise<MockFMClientType> {
+  const mod = await import("@sap-ai-sdk/foundation-models");
+  return mod as unknown as MockFMClientType;
 }
 
 describe("SAPAIEmbeddingModel", () => {
@@ -349,6 +441,192 @@ describe("SAPAIEmbeddingModel", () => {
       const model = new SAPAIEmbeddingModel("text-embedding-ada-002", {}, defaultConfig);
 
       await expect(model.doEmbed({ values: ["Test"] })).rejects.toThrow();
+    });
+  });
+
+  describe("Foundation Models API", () => {
+    const fmConfig = {
+      deploymentConfig: { resourceGroup: "default" },
+      provider: "sap-ai",
+      providerApi: "foundation-models" as const,
+    };
+
+    beforeEach(async () => {
+      clearStrategyCaches();
+      // Reset FM mock state
+      const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+      MockAzureOpenAiEmbeddingClient.lastConstructorCall = undefined;
+      MockAzureOpenAiEmbeddingClient.lastEmbedCall = undefined;
+      MockAzureOpenAiEmbeddingClient.embedError = undefined;
+      MockAzureOpenAiEmbeddingClient.embedResponse = undefined;
+    });
+
+    function createFMModel(
+      modelId = "text-embedding-ada-002",
+      settings: Record<string, unknown> = {},
+    ) {
+      return new SAPAIEmbeddingModel(modelId, settings, fmConfig);
+    }
+
+    describe("doEmbed", () => {
+      it("should generate embeddings with correct result structure", async () => {
+        const model = createFMModel();
+        const result = await model.doEmbed({
+          values: ["Hello", "World"],
+        } as EmbeddingModelV3CallOptions);
+
+        expect(result.embeddings).toEqual([
+          [0.1, 0.2, 0.3],
+          [0.4, 0.5, 0.6],
+        ]);
+        expect(result.usage?.tokens).toBe(8);
+        expect(result.warnings).toEqual([]);
+        expect(result.providerMetadata).toEqual({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          "sap-ai": { model: "text-embedding-ada-002", version: expect.any(String) },
+        });
+      });
+
+      it("should pass abort signal to SAP SDK", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const abortController = new AbortController();
+        const model = createFMModel();
+
+        await model.doEmbed({ abortSignal: abortController.signal, values: ["Test"] });
+
+        expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.requestConfig?.signal).toBe(
+          abortController.signal,
+        );
+      });
+
+      it("should not pass requestConfig when no abort signal", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const model = createFMModel();
+
+        await model.doEmbed({ values: ["Test"] });
+
+        expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.requestConfig).toBeUndefined();
+      });
+
+      it("should throw TooManyEmbeddingValuesForCallError when exceeding limit", async () => {
+        const model = new SAPAIEmbeddingModel(
+          "text-embedding-ada-002",
+          { maxEmbeddingsPerCall: 2 },
+          fmConfig,
+        );
+        await expect(model.doEmbed({ values: ["A", "B", "C"] })).rejects.toThrow(
+          TooManyEmbeddingValuesForCallError,
+        );
+      });
+    });
+
+    describe("FM-specific parameters", () => {
+      it("should pass user parameter to FM API request", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const model = createFMModel("text-embedding-ada-002", {
+          modelParams: { user: "user-123" },
+        });
+
+        await model.doEmbed({ values: ["Test"] });
+
+        expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.user).toBe("user-123");
+      });
+
+      it("should pass encoding_format parameter to FM API request", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const model = createFMModel("text-embedding-3-small", {
+          modelParams: { encoding_format: "base64" },
+        });
+
+        await model.doEmbed({ values: ["Test"] });
+
+        expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.encoding_format).toBe(
+          "base64",
+        );
+      });
+
+      it("should pass dimensions parameter to FM API request", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const model = createFMModel("text-embedding-3-large", {
+          modelParams: { dimensions: 256 },
+        });
+
+        await model.doEmbed({ values: ["Test"] });
+
+        expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.dimensions).toBe(256);
+      });
+
+      it("should pass providerOptions modelParams to FM API request", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const model = createFMModel();
+
+        await model.doEmbed({
+          providerOptions: {
+            "sap-ai": {
+              modelParams: {
+                dimensions: 512,
+                input_type: "query",
+                user: "override-user",
+              },
+            },
+          },
+          values: ["Test"],
+        });
+
+        const request = MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request;
+        expect(request?.dimensions).toBe(512);
+        expect(request?.input_type).toBe("query");
+        expect(request?.user).toBe("override-user");
+      });
+
+      it("should override settings modelParams with providerOptions modelParams", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const model = createFMModel("text-embedding-3-large", {
+          modelParams: { dimensions: 256, user: "settings-user" },
+        });
+
+        await model.doEmbed({
+          providerOptions: {
+            "sap-ai": {
+              modelParams: { dimensions: 1024 },
+            },
+          },
+          values: ["Test"],
+        });
+
+        const request = MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request;
+        expect(request?.dimensions).toBe(1024);
+        // user from settings should still be present since not overridden
+        expect(request?.user).toBe("settings-user");
+      });
+    });
+
+    describe("embedding normalization", () => {
+      it("should handle base64-encoded embeddings", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        const floats = new Float32Array([1.0, 2.0, 3.0]);
+        const base64 = Buffer.from(floats.buffer).toString("base64");
+        // FM SDK returns embeddings as direct array - string for base64 format
+        MockAzureOpenAiEmbeddingClient.embedResponse = {
+          _data: { usage: { prompt_tokens: 4, total_tokens: 4 } },
+          getEmbeddings: () => [base64],
+        };
+
+        const model = createFMModel();
+        const result = await model.doEmbed({ values: ["Test"] });
+
+        expect(result.embeddings).toEqual([[1.0, 2.0, 3.0]]);
+      });
+    });
+
+    describe("error handling", () => {
+      it("should convert SAP errors to AI SDK errors", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        MockAzureOpenAiEmbeddingClient.embedError = new Error("SAP API Error");
+        const model = createFMModel();
+
+        await expect(model.doEmbed({ values: ["Test"] })).rejects.toThrow();
+      });
     });
   });
 });
