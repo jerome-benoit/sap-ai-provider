@@ -167,6 +167,11 @@ The provider supports two SAP AI Core APIs:
 - **Foundation Models API**: Direct model access with additional parameters like
   `logprobs`, `seed`, `logit_bias`, and `dataSources` (Azure On Your Data)
 
+**Complete example:**
+[examples/example-foundation-models.ts](./examples/example-foundation-models.ts)\
+**Complete documentation:**
+[API Reference - Foundation Models API](./API_REFERENCE.md#api-comparison-orchestration-vs-foundation-models)
+
 ```typescript
 import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 
