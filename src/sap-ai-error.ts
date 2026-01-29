@@ -36,9 +36,11 @@ const HTTP_STATUS = {
  * const model = provider("gpt-4o", { filtering: { ... } });
  *
  * // Attempt to switch to Foundation Models at invocation time
+ * import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+ *
  * await generateText({
  *   model,
- *   providerOptions: { "sap-ai": { api: "foundation-models" } },
+ *   providerOptions: { [SAP_AI_PROVIDER_NAME]: { api: "foundation-models" } },
  *   prompt: "Hello",
  * });
  * // Throws: ApiSwitchError("orchestration", "foundation-models", "filtering")

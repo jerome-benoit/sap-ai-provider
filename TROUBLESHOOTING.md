@@ -285,6 +285,8 @@ other API:
 1. **Check which API you're using:**
 
    ```typescript
+   import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
    // Provider-level (affects all models)
    const provider = createSAPAIProvider({ api: "orchestration" }); // default
 
@@ -295,7 +297,7 @@ other API:
    await generateText({
      model,
      prompt: "Hello",
-     providerOptions: { "sap-ai": { api: "orchestration" } },
+     providerOptions: { [SAP_AI_PROVIDER_NAME]: { api: "orchestration" } },
    });
    ```
 
@@ -576,7 +578,7 @@ for await (const part of stream) {
 - Cannot correlate streaming responses with SAP AI Core server logs using
   `x-request-id`
 - Non-streaming (`doGenerate`) responses correctly expose `x-request-id` in
-  `providerMetadata['sap-ai'].requestId`
+  `providerMetadata[SAP_AI_PROVIDER_NAME].requestId`
 
 **Status:** Waiting for SAP AI SDK enhancement. See
 [SAP AI SDK Issue #1433](https://github.com/SAP/ai-sdk-js/issues/1433).

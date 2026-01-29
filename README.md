@@ -168,6 +168,8 @@ The provider supports two SAP AI Core APIs:
   `logprobs`, `seed`, `logit_bias`, and `dataSources` (Azure On Your Data)
 
 ```typescript
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
 // Provider-level API selection
 const provider = createSAPAIProvider({
   api: "foundation-models", // All models use Foundation Models API
@@ -183,7 +185,7 @@ const result = await generateText({
   model: provider("gpt-4o"),
   prompt: "Hello",
   providerOptions: {
-    "sap-ai": {
+    [SAP_AI_PROVIDER_NAME]: {
       api: "foundation-models", // Override for this call only
     },
   },
@@ -560,12 +562,13 @@ Options are validated at runtime with Zod schemas.
 
 ```typescript
 import { generateText } from "ai";
+import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 
 const result = await generateText({
   model: provider("gpt-4o"),
   prompt: "Explain quantum computing",
   providerOptions: {
-    "sap-ai": {
+    [SAP_AI_PROVIDER_NAME]: {
       includeReasoning: true,
       modelParams: {
         temperature: 0.7,

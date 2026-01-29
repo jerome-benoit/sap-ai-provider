@@ -1090,7 +1090,7 @@ the right API for your use case.
 #### Switching APIs
 
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 import { generateText } from "ai";
 
 // Provider-level: all models use this API by default
@@ -1104,7 +1104,7 @@ const result = await generateText({
   model,
   prompt: "Hello",
   providerOptions: {
-    "sap-ai": { api: "foundation-models" },
+    [SAP_AI_PROVIDER_NAME]: { api: "foundation-models" },
   },
 });
 ```
@@ -1359,7 +1359,7 @@ const masking: MaskingModuleConfig = {
 ## Provider Options
 
 Provider options enable per-call configuration that overrides constructor settings.
-These options are passed via `providerOptions['sap-ai']` in AI SDK calls and are
+These options are passed via `providerOptions[SAP_AI_PROVIDER_NAME]` in AI SDK calls and are
 validated at runtime using Zod schemas.
 
 ### SAP AI Provider Name Constant
@@ -1407,7 +1407,7 @@ Zod schema for validating language model provider options.
 
 ```typescript
 import { generateText } from "ai";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider();
 
@@ -1415,7 +1415,7 @@ const result = await generateText({
   model: provider("gpt-4o"),
   prompt: "Explain quantum computing",
   providerOptions: {
-    "sap-ai": {
+    [SAP_AI_PROVIDER_NAME]: {
       includeReasoning: true,
       modelParams: {
         temperature: 0.7,
@@ -1443,7 +1443,7 @@ Zod schema for validating embedding model provider options.
 
 ```typescript
 import { embed } from "ai";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider();
 
@@ -1451,7 +1451,7 @@ const { embedding } = await embed({
   model: provider.embedding("text-embedding-ada-002"),
   value: "Search query text",
   providerOptions: {
-    "sap-ai": {
+    [SAP_AI_PROVIDER_NAME]: {
       type: "query",
     },
   },
@@ -1800,7 +1800,7 @@ try {
     model,
     prompt: "Hello",
     providerOptions: {
-      "sap-ai": { api: "foundation-models" },
+      [SAP_AI_PROVIDER_NAME]: { api: "foundation-models" },
     },
   });
 } catch (error) {
@@ -1995,7 +1995,7 @@ function resolveApi(providerApi: SAPAIApiType | undefined, modelApi: SAPAIApiTyp
 
 - `providerApi`: API set at provider creation (`createSAPAIProvider({ api })`)
 - `modelApi`: API set at model creation (`provider("gpt-4o", { api })`)
-- `invocationApi`: API set at invocation (`providerOptions["sap-ai"].api`)
+- `invocationApi`: API set at invocation (`providerOptions[SAP_AI_PROVIDER_NAME].api`)
 
 **Returns:** The resolved API type to use (highest precedence wins)
 

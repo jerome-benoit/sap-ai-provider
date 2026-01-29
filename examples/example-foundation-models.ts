@@ -29,8 +29,8 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { embed, generateText, streamText } from "ai";
 
-// NOTE: In production, use: import { createSAPAIProvider, UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
-import { createSAPAIProvider, UnsupportedFeatureError } from "../src/index";
+// NOTE: In production, use: import { createSAPAIProvider, SAP_AI_PROVIDER_NAME, UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME, UnsupportedFeatureError } from "../src/index";
 
 /**
  * Demonstrates Foundation Models API features
@@ -183,7 +183,7 @@ async function foundationModelsExample() {
       model: orchProvider("gpt-4o"),
       prompt: "Say hello",
       providerOptions: {
-        "sap-ai": {
+        [SAP_AI_PROVIDER_NAME]: {
           api: "foundation-models", // Override for this call only
           modelParams: {
             max_tokens: 10,
