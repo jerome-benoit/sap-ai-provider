@@ -66,25 +66,18 @@ export type { DeploymentConfig, SAPAIProvider } from "./sap-ai-provider.js";
  * Model settings types and model identifier type definitions.
  */
 export type {
-  // Data sources (Azure "On Your Data" extensions) - extracted from SDK type
   AzureOpenAiChatExtensionConfiguration,
-  // Model params interfaces
   CommonModelParams,
-  // Default settings discriminated unions (for provider factory)
   FoundationModelsDefaultSettings,
   FoundationModelsEmbeddingParams,
   FoundationModelsModelParams,
-  // Model settings discriminated unions
   FoundationModelsModelSettings,
   OrchestrationDefaultSettings,
   OrchestrationModelParams,
   OrchestrationModelSettings,
-  // Response format
   ResponseFormat,
-  // API types
   SAPAIApiType,
   SAPAIDefaultSettingsConfig,
-  // Legacy types (backward compatibility)
   SAPAIModelId,
   SAPAIModelSettings,
   SAPAISettings,
