@@ -818,7 +818,17 @@ describe("SAPAILanguageModel", () => {
       describe("model capabilities", () => {
         it.each([
           {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
             modelId: "any-model",
+          },
+          {
             expected: {
               supportsImageUrls: true,
               supportsMultipleCompletions: true,
@@ -827,20 +837,9 @@ describe("SAPAILanguageModel", () => {
               supportsStructuredOutputs: true,
               supportsToolCalls: true,
             },
-          },
-          {
             modelId: "gpt-4o",
-            expected: {
-              supportsImageUrls: true,
-              supportsMultipleCompletions: true,
-              supportsParallelToolCalls: true,
-              supportsStreaming: true,
-              supportsStructuredOutputs: true,
-              supportsToolCalls: true,
-            },
           },
           {
-            modelId: "anthropic--claude-3.5-sonnet",
             expected: {
               supportsImageUrls: true,
               supportsMultipleCompletions: false, // Anthropic models don't support n parameter
@@ -849,9 +848,9 @@ describe("SAPAILanguageModel", () => {
               supportsStructuredOutputs: true,
               supportsToolCalls: true,
             },
+            modelId: "anthropic--claude-3.5-sonnet",
           },
           {
-            modelId: "gemini-2.0-flash",
             expected: {
               supportsImageUrls: true,
               supportsMultipleCompletions: true,
@@ -860,9 +859,9 @@ describe("SAPAILanguageModel", () => {
               supportsStructuredOutputs: true,
               supportsToolCalls: true,
             },
+            modelId: "gemini-2.0-flash",
           },
           {
-            modelId: "amazon--nova-pro",
             expected: {
               supportsImageUrls: true,
               supportsMultipleCompletions: false, // Amazon models don't support n parameter
@@ -871,20 +870,20 @@ describe("SAPAILanguageModel", () => {
               supportsStructuredOutputs: true,
               supportsToolCalls: true,
             },
+            modelId: "amazon--nova-pro",
           },
           {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
             modelId: "mistralai--mistral-large-instruct",
-            expected: {
-              supportsImageUrls: true,
-              supportsMultipleCompletions: true,
-              supportsParallelToolCalls: true,
-              supportsStreaming: true,
-              supportsStructuredOutputs: true,
-              supportsToolCalls: true,
-            },
           },
           {
-            modelId: "unknown-future-model",
             expected: {
               supportsImageUrls: true,
               supportsMultipleCompletions: true,
@@ -893,8 +892,9 @@ describe("SAPAILanguageModel", () => {
               supportsStructuredOutputs: true,
               supportsToolCalls: true,
             },
+            modelId: "unknown-future-model",
           },
-        ])("should have correct capabilities for model $modelId", ({ modelId, expected }) => {
+        ])("should have correct capabilities for model $modelId", ({ expected, modelId }) => {
           const model = createModelForApi(api, modelId);
           expect(model).toMatchObject(expected);
         });
