@@ -197,6 +197,8 @@ const result = await generateText({
 });
 ```
 
+**Run it:** `npx tsx examples/example-foundation-models.ts`
+
 > **Note:** The Foundation Models API does not support orchestration features
 > (masking, filtering, grounding, translation). Attempting to use these features
 > with Foundation Models API will throw an `UnsupportedFeatureError`.
