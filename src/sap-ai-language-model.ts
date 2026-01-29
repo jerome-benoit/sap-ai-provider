@@ -80,9 +80,13 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Gets the supported URL patterns for image input.
+   * Returns empty object if the model doesn't support image inputs.
    * @returns A mapping of MIME type patterns to URL regex patterns.
    */
   get supportedUrls(): Record<string, RegExp[]> {
+    if (!this.capabilities.supportsImageInputs) {
+      return {};
+    }
     return {
       "image/*": [/^https:\/\/.+$/i, /^data:image\/.*$/],
     };
@@ -246,9 +250,12 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   /**
    * Checks if a URL is supported for image input (HTTPS or data:image/*).
    * @param url - The URL to check.
-   * @returns True if the URL is supported for image input.
+   * @returns True if the URL is supported for image input, false if model doesn't support images.
    */
   supportsUrl(url: URL): boolean {
+    if (!this.capabilities.supportsImageInputs) {
+      return false;
+    }
     if (url.protocol === "https:") return true;
     if (url.protocol === "data:") {
       return /^data:image\//i.test(url.href);

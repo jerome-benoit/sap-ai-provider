@@ -1760,7 +1760,6 @@ Implementation of Vercel AI SDK's `LanguageModelV3` interface.
 | Property                      | Type                     | Description                                     |
 | ----------------------------- | ------------------------ | ----------------------------------------------- |
 | `specificationVersion`        | `'v3'`                   | API specification version                       |
-| `defaultObjectGenerationMode` | `'json'`                 | Default object generation mode                  |
 | `capabilities`                | `SAPAIModelCapabilities` | Dynamic model capabilities (see below)          |
 | `supportsImageUrls`           | `boolean`                | Image URL support (model-dependent)             |
 | `supportsMultipleCompletions` | `boolean`                | Multiple completions support (model-dependent)  |
@@ -2128,21 +2127,21 @@ function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabilities;
 
 **Returns:** `SAPAIModelCapabilities` object with the following properties:
 
-| Property                    | Type      | Description                                     |
-| --------------------------- | --------- | ----------------------------------------------- |
-| `supportsN`                 | `boolean` | Multiple completions support (`n` parameter)    |
-| `supportsImageInputs`       | `boolean` | Vision/image input support                      |
-| `supportsParallelToolCalls` | `boolean` | Parallel tool calls in single response          |
-| `supportsStreaming`         | `boolean` | Streaming response support                      |
-| `supportsStructuredOutputs` | `boolean` | JSON schema response format support             |
-| `supportsToolCalls`         | `boolean` | Tool/function calling support                   |
-| `defaultSystemMessageMode`  | `string`  | System message mode (`"system"`, `"developer"`) |
-| `vendor`                    | `string`  | Detected vendor or `"unknown"`                  |
+| Property                    | Type      | Description                                               |
+| --------------------------- | --------- | --------------------------------------------------------- |
+| `supportsN`                 | `boolean` | Multiple completions support (`n` parameter)              |
+| `supportsImageInputs`       | `boolean` | Vision/image input support                                |
+| `supportsParallelToolCalls` | `boolean` | Parallel tool calls in single response                    |
+| `supportsStreaming`         | `boolean` | Streaming response support                                |
+| `supportsStructuredOutputs` | `boolean` | JSON schema response format support                       |
+| `supportsToolCalls`         | `boolean` | Tool/function calling support                             |
+| `defaultSystemMessageMode`  | `string`  | System message mode (`"system"`, `"developer"`, `"user"`) |
+| `vendor`                    | `string`  | Detected vendor or `"unknown"`                            |
 
 **Example:**
 
 ```typescript
-import { getSAPAIModelCapabilities } from "@mymediset/sap-ai-provider";
+import { getSAPAIModelCapabilities } from "@jerome-benoit/sap-ai-provider";
 
 const capabilities = getSAPAIModelCapabilities("amazon--nova-pro");
 // {
@@ -2177,7 +2176,7 @@ function getModelVendor(modelId: string): SAPAIModelVendor | "unknown";
 **Example:**
 
 ```typescript
-import { getModelVendor } from "@mymediset/sap-ai-provider";
+import { getModelVendor } from "@jerome-benoit/sap-ai-provider";
 
 getModelVendor("anthropic--claude-3.5-sonnet"); // "anthropic"
 getModelVendor("gpt-4o"); // "unknown"
@@ -2196,7 +2195,7 @@ function modelSupports(modelId: string, capability: keyof Omit<SAPAIModelCapabil
 **Example:**
 
 ```typescript
-import { modelSupports } from "@mymediset/sap-ai-provider";
+import { modelSupports } from "@jerome-benoit/sap-ai-provider";
 
 if (modelSupports("amazon--nova-pro", "supportsN")) {
   // Use n parameter for multiple completions

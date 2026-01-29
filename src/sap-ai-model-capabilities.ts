@@ -216,7 +216,7 @@ export function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabiliti
     }
   }
 
-  return { ...capabilities, vendor };
+  return Object.freeze({ ...capabilities, vendor });
 }
 
 /**

@@ -815,6 +815,17 @@ describe("SAPAILanguageModel", () => {
         expect(urls["image/*"]?.[1]?.test("data:image/png;base64,Zm9v")).toBe(true);
       });
 
+      it("should return empty supportedUrls for models without image support", () => {
+        const model = createModelForApi(api, "meta--llama-3.1-70b");
+        expect(model.supportedUrls).toEqual({});
+      });
+
+      it("should return false from supportsUrl for models without image support", () => {
+        const model = createModelForApi(api, "meta--llama-3.1-70b");
+        expect(model.supportsUrl(new URL("https://example.com/image.png"))).toBe(false);
+        expect(model.supportsUrl(new URL("data:image/png;base64,Zm9v"))).toBe(false);
+      });
+
       describe("model capabilities", () => {
         it.each([
           {
