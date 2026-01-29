@@ -193,7 +193,7 @@
 
 ## 13. Testing - Integration Tests
 
-> **Note:** Integration tests require real SAP AI Core credentials and are deferred. Unit test coverage (819 tests) thoroughly validates all dual-API functionality via mocks.
+> **Note:** Integration tests require real SAP AI Core credentials and are deferred. Unit test coverage (834 tests) thoroughly validates all dual-API functionality via mocks.
 
 - [~] 13.1 Integration test: generateText with Foundation Models API _(deferred: requires credentials)_
 - [~] 13.2 Integration test: streamText with Foundation Models API _(deferred: requires credentials)_
@@ -204,7 +204,7 @@
 - [~] 13.7 Integration test: API override at invocation time (streamText) _(deferred: requires credentials)_
 - [~] 13.8 Integration test: API override at invocation time (embed) _(deferred: requires credentials)_
 - [~] 13.9 Integration test: backward compatibility (existing code unchanged) _(deferred: requires credentials)_
-- [x] 13.10 Verify all existing tests pass (no regressions) _(819 tests passing)_
+- [x] 13.10 Verify all existing tests pass (no regressions) _(834 tests passing)_
 
 ## 14. Testing - Edge Cases
 
@@ -267,11 +267,11 @@ Follow conventions: H2/H3/H4 hierarchy, `typescript` code blocks with `import "d
 - [x] 16.3 Update exports in `src/index.ts` for new types and error class (re-export SDK types)
 - [x] 16.4 Verify TypeScript compilation succeeds _(npm run prepublishOnly passes)_
 - [x] 16.5 Verify build output includes all new files _(FM/Orch strategy chunks in dist/)_
-- [x] 16.6 Run full test suite (node and edge runtimes) _(819 tests passing)_
+- [x] 16.6 Run full test suite (node and edge runtimes) _(834 tests passing)_
 
 ## 17. Final Validation
 
-- [x] 17.1 Run `npm run prepublishOnly` (type-check, lint, test, build) _(passes - 819 tests)_
+- [x] 17.1 Run `npm run prepublishOnly` (type-check, lint, test, build) _(passes - 834 tests)_
 - [x] 17.2 Verify no breaking changes in public API _(backward compatible: existing orchestration code unchanged, api defaults to "orchestration")_
 - [~] 17.3 Test with real SAP AI Core credentials (manual) _(deferred: requires credentials)_:
   - Orchestration API chat
@@ -281,7 +281,7 @@ Follow conventions: H2/H3/H4 hierarchy, `typescript` code blocks with `import "d
   - Foundation Models API embeddings
 - [x] 17.4 Verify bundle size impact is minimal (lazy loading working) _(FM strategy: 21KB, Orch strategy: 24KB - lazy loaded, index.js: 18KB)_
 - [x] 17.5 Review all error messages for clarity _(UnsupportedFeatureError, ApiSwitchError have clear messages with suggested API)_
-- [x] 17.6 Validate OpenSpec _(validated via prepublishOnly: type-check, lint, 819 tests, build all pass)_
+- [x] 17.6 Validate OpenSpec _(validated via prepublishOnly: type-check, lint, 834 tests, build all pass)_
 
 ## Summary
 
