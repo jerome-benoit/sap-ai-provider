@@ -121,7 +121,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
    * @returns The generation result with content, usage, warnings, and provider metadata.
    */
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
-    // 1. Parse provider options for invocation-time overrides
     const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
       provider: providerName,
@@ -129,11 +128,8 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       schema: sapAILanguageModelProviderOptions,
     });
 
-    // 2. Resolve effective API using full precedence chain
-    // Precedence: invocation > model > provider > default ('orchestration')
     const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
 
-    // 3. Validate settings for the resolved API
     validateSettings({
       api: effectiveApi,
       invocationSettings: sapOptions
@@ -143,10 +139,8 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       modelSettings: this.settings,
     });
 
-    // 4. Get or create the appropriate strategy (lazy loaded, cached)
     const strategy = await getOrCreateLanguageModelStrategy(effectiveApi);
 
-    // 5. Build strategy config with tenant-specific information
     const strategyConfig: LanguageModelStrategyConfig = {
       deploymentConfig: this.config.deploymentConfig,
       destination: this.config.destination,
@@ -154,7 +148,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       provider: this.config.provider,
     };
 
-    // 6. Delegate to strategy
     return strategy.doGenerate(strategyConfig, this.settings, options);
   }
 
@@ -168,7 +161,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
    * @returns A stream result with async iterable stream parts.
    */
   async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
-    // 1. Parse provider options for invocation-time overrides
     const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
       provider: providerName,
@@ -176,11 +168,8 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       schema: sapAILanguageModelProviderOptions,
     });
 
-    // 2. Resolve effective API using full precedence chain
-    // Precedence: invocation > model > provider > default ('orchestration')
     const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
 
-    // 3. Validate settings for the resolved API
     validateSettings({
       api: effectiveApi,
       invocationSettings: sapOptions
@@ -190,10 +179,8 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       modelSettings: this.settings,
     });
 
-    // 4. Get or create the appropriate strategy (lazy loaded, cached)
     const strategy = await getOrCreateLanguageModelStrategy(effectiveApi);
 
-    // 5. Build strategy config with tenant-specific information
     const strategyConfig: LanguageModelStrategyConfig = {
       deploymentConfig: this.config.deploymentConfig,
       destination: this.config.destination,
@@ -201,7 +188,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       provider: this.config.provider,
     };
 
-    // 6. Delegate to strategy
     return strategy.doStream(strategyConfig, this.settings, options);
   }
 

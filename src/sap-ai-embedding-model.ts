@@ -112,7 +112,6 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
    * @returns The embedding result with vectors, usage data, and warnings.
    */
   async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result> {
-    // 1. Parse provider options for invocation-time overrides
     const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
       provider: providerName,
@@ -120,24 +119,17 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       schema: sapAIEmbeddingProviderOptions,
     });
 
-    // 2. Resolve effective API using full precedence chain
-    // Precedence: invocation > model > provider > default ('orchestration')
     const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
 
-    // 3. Validate settings for the resolved API
-    // Embedding models don't have escapeTemplatePlaceholders, so we pass minimal validation
     validateSettings({
       api: effectiveApi,
       invocationSettings: sapOptions ? { api: sapOptions.api } : undefined,
       modelApi: this.settings.api,
-      // Convert embedding settings to model settings format for validation
       modelSettings: this.settings.api ? { api: this.settings.api } : undefined,
     });
 
-    // 4. Get or create the appropriate strategy (lazy loaded, cached)
     const strategy = await getOrCreateEmbeddingModelStrategy(effectiveApi);
 
-    // 5. Build strategy config with tenant-specific information
     const strategyConfig: EmbeddingModelStrategyConfig = {
       deploymentConfig: this.config.deploymentConfig,
       destination: this.config.destination,
@@ -145,7 +137,6 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       provider: this.config.provider,
     };
 
-    // 6. Delegate to strategy
     return strategy.doEmbed(strategyConfig, this.settings, options, this.maxEmbeddingsPerCall);
   }
 }
