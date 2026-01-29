@@ -281,10 +281,6 @@ describe("SAPAIEmbeddingModel", () => {
     return MockOrchestrationEmbeddingClient.lastEmbedCall;
   };
 
-  // ============================================================================
-  // Common tests for both APIs using describe.each
-  // ============================================================================
-
   describe.each<APIType>(["orchestration", "foundation-models"])(
     "model properties (%s API)",
     (api) => {
@@ -495,10 +491,6 @@ describe("SAPAIEmbeddingModel", () => {
     },
   );
 
-  // ============================================================================
-  // Orchestration API-specific tests
-  // ============================================================================
-
   describe("Orchestration API", () => {
     beforeEach(async () => {
       await resetMockStateForApi("orchestration");
@@ -586,10 +578,6 @@ describe("SAPAIEmbeddingModel", () => {
       });
     });
   });
-
-  // ============================================================================
-  // Foundation Models API-specific tests
-  // ============================================================================
 
   describe("Foundation Models API", () => {
     beforeEach(async () => {
