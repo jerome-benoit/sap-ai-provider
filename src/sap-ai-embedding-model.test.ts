@@ -9,7 +9,6 @@ import { clearStrategyCaches } from "./sap-ai-strategy.js";
 
 type APIType = "foundation-models" | "orchestration";
 
-// Mock types for Foundation Models API
 interface FMConstructorCall {
   destination: unknown;
   modelDeployment: { deploymentConfiguration: unknown; model: string };
@@ -24,13 +23,11 @@ interface FMEmbedCall {
   };
   requestConfig?: { signal?: AbortSignal };
 }
-// FM SDK getEmbeddings returns number[][] directly (not wrapped objects like orchestration)
 interface FMEmbeddingResponse {
   _data: { usage: { prompt_tokens: number; total_tokens: number } };
   getEmbeddings: () => (number[] | string)[];
 }
 
-// Mock types for Orchestration API
 interface OrchestrationConstructorCall {
   config: { embeddings: { model: { name: string; params?: Record<string, unknown> } } };
   deploymentConfig: unknown;
@@ -117,7 +114,6 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
             MockAzureOpenAiEmbeddingClient.embedResponse = undefined;
             return Promise.resolve(response);
           }
-          // FM SDK getEmbeddings returns number[][] directly (not objects with embedding property)
           return Promise.resolve({
             _data: { usage: { prompt_tokens: 8, total_tokens: 8 } },
             getEmbeddings: () => [
@@ -486,7 +482,6 @@ describe("SAPAIEmbeddingModel", () => {
             params: { customParam: "from-constructor", dimensions: 1024 },
           });
         }
-        // FM API merges at request level, tested in FM-specific tests
       });
     },
   );
@@ -671,7 +666,6 @@ describe("SAPAIEmbeddingModel", () => {
 
         const request = MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request;
         expect(request?.dimensions).toBe(1024);
-        // user from settings should still be present since not overridden
         expect(request?.user).toBe("settings-user");
       });
 

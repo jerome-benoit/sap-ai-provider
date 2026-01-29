@@ -3045,7 +3045,6 @@ describe("SAPAILanguageModel", () => {
       { api: "orchestration" as APIType, apiName: "Orchestration" },
       { api: "foundation-models" as APIType, apiName: "Foundation Models" },
     ])("model parameters ($apiName API)", ({ api }) => {
-      // Define test cases with supported APIs
       const optionOverrideTestCases = [
         {
           apis: ["orchestration", "foundation-models"] as APIType[],
@@ -3080,7 +3079,7 @@ describe("SAPAILanguageModel", () => {
           testName: "topP",
         },
         {
-          apis: ["orchestration"] as APIType[], // top_k not supported by Foundation Models (Azure OpenAI)
+          apis: ["orchestration"] as APIType[],
           camelCaseKey: "topK",
           expectedKey: "top_k",
           expectedValue: 40,
@@ -3128,7 +3127,6 @@ describe("SAPAILanguageModel", () => {
         },
       );
 
-      // Define test cases with supported APIs
       const paramPassthroughTestCases = [
         {
           apis: ["orchestration", "foundation-models"] as APIType[],
@@ -3139,7 +3137,7 @@ describe("SAPAILanguageModel", () => {
           paramValue: 0.9,
         },
         {
-          apis: ["orchestration"] as APIType[], // top_k not supported by Foundation Models (Azure OpenAI)
+          apis: ["orchestration"] as APIType[],
           camelCaseKey: "topK",
           expectedKey: "top_k",
           expectedValue: 40,
@@ -3207,7 +3205,6 @@ describe("SAPAILanguageModel", () => {
     describe.each<APIType>(["orchestration", "foundation-models"])(
       "unknown parameter preservation (%s API)",
       (api) => {
-        // Both APIs now preserve unknown params - they pass through to the underlying API
         it("should preserve unknown parameters from settings.modelParams", async () => {
           const model = createModelForApi(api, "gpt-4o", {
             modelParams: {
@@ -3413,7 +3410,6 @@ describe("SAPAILanguageModel", () => {
         });
 
         it("should preserve n parameter for all models including Amazon", async () => {
-          // n parameter is now passed through for all vendors - no filtering
           const model = createModelForApi(api, "amazon--nova-pro", {
             modelParams: {
               customAmazonParam: "amazon-value",
@@ -3437,9 +3433,6 @@ describe("SAPAILanguageModel", () => {
     );
 
     describe("Foundation Models specific parameters", () => {
-      // These parameters are only supported by the Foundation Models API (Azure OpenAI)
-      // They are passed via modelParams in settings or providerOptions
-
       it.each([
         { expectedKey: "logprobs", paramName: "logprobs", paramValue: true },
         { expectedKey: "top_logprobs", paramName: "top_logprobs", paramValue: 5 },
@@ -3510,12 +3503,7 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("FM-only params with Orchestration API", () => {
-      // FM-specific parameters like logprobs, top_logprobs, logit_bias are passed through
-      // to the Orchestration SDK without error (unknown parameter passthrough behavior)
-
       it("should pass FM-only modelParams through to Orchestration request without error", async () => {
-        // Note: Using `as Record<string, unknown>` because TypeScript types don't include
-        // FM-only params for orchestration settings, but the SDK passes them through
         const model = createOrchModel("gpt-4o", {
           modelParams: {
             logit_bias: { "50256": -100 },
@@ -3528,15 +3516,11 @@ describe("SAPAILanguageModel", () => {
 
         const prompt = createPrompt("Hello");
 
-        // Should not throw - FM-only params are passed through
         const result = await model.doGenerate({ prompt });
         expectRequestBodyHasMessages(result);
 
-        // Verify the request was made (params passed through to SDK)
         const request = await getLastOrchRequest();
-        // Orchestration stores params in model.params
         expect(request.model?.params?.temperature).toBe(0.7);
-        // FM-only params are passed through to model.params
         expect(request.model?.params?.logprobs).toBe(true);
         expect(request.model?.params?.top_logprobs).toBe(3);
         expect(request.model?.params?.logit_bias).toEqual({ "50256": -100 });
@@ -3548,7 +3532,6 @@ describe("SAPAILanguageModel", () => {
 
         const prompt = createPrompt("Hello");
 
-        // FM-only params via providerOptions should also pass through without error
         const result = await model.doGenerate({
           prompt,
           providerOptions: {
@@ -3570,9 +3553,6 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("Foundation Models dataSources (Azure On Your Data)", () => {
-      // dataSources is only supported by the Foundation Models API
-      // It enables RAG scenarios with Azure AI Search, Cosmos DB, etc.
-
       it("should pass dataSources to FM API request", async () => {
         const dataSources = [
           {
