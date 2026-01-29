@@ -22,7 +22,7 @@ import type {
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
-import type { FoundationModelsModelParams, SAPAIModelSettings } from "./sap-ai-settings.js";
+import type { FoundationModelsModelSettings, SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
@@ -519,17 +519,10 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
 
     const warnings: SharedV3Warning[] = [];
 
-    const fmSettings = settings as {
-      dataSources?: unknown[];
-      escapeTemplatePlaceholders?: boolean;
-      includeReasoning?: boolean;
-      modelParams?: FoundationModelsModelParams;
-      responseFormat?: unknown;
-    };
+    const fmSettings = settings as FoundationModelsModelSettings;
 
     const messages = convertToSAPMessages(options.prompt, {
-      escapeTemplatePlaceholders:
-        sapOptions?.escapeTemplatePlaceholders ?? fmSettings.escapeTemplatePlaceholders ?? false,
+      escapeTemplatePlaceholders: sapOptions?.escapeTemplatePlaceholders ?? false,
       includeReasoning: sapOptions?.includeReasoning ?? fmSettings.includeReasoning ?? false,
     });
 

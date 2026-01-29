@@ -24,14 +24,7 @@ import type { Template } from "@sap-ai-sdk/orchestration/dist/client/api/schema/
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
-import type {
-  FilteringModule,
-  GroundingModule,
-  MaskingModule,
-  OrchestrationModelParams,
-  SAPAIModelSettings,
-  TranslationModule,
-} from "./sap-ai-settings.js";
+import type { OrchestrationModelSettings, SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
@@ -567,18 +560,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
 
     const warnings: SharedV3Warning[] = [];
 
-    const orchSettings = settings as {
-      escapeTemplatePlaceholders?: boolean;
-      filtering?: FilteringModule;
-      grounding?: GroundingModule;
-      includeReasoning?: boolean;
-      masking?: MaskingModule;
-      modelParams?: OrchestrationModelParams;
-      modelVersion?: string;
-      responseFormat?: unknown;
-      tools?: ChatCompletionTool[];
-      translation?: TranslationModule;
-    };
+    const orchSettings = settings as OrchestrationModelSettings;
 
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders:
