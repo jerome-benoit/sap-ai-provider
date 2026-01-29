@@ -609,6 +609,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       modelParams,
       options as Record<string, unknown>,
       sapOptions?.modelParams as Record<string, unknown> | undefined,
+      fmSettings.modelParams as Record<string, unknown> | undefined,
     );
 
     if (options.stopSequences && options.stopSequences.length > 0) {
@@ -695,38 +696,32 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
 }
 
 /**
- * Applies parameter overrides from AI SDK options and provider options.
- * @param modelParams - The model parameters to modify in place.
- * @param options - AI SDK call options containing standard parameters.
- * @param providerModelParams - Provider-specific model parameters for overrides.
+ * Applies parameter overrides from AI SDK options and modelParams, with camelCase → snake_case conversion.
+ * @param modelParams - The model parameters object to modify.
+ * @param options - The AI SDK options containing override values.
+ * @param sapModelParams - Additional SAP model parameters from provider options.
+ * @param settingsModelParams - Model parameters from settings configuration.
  * @internal
  */
 function applyParameterOverrides(
   modelParams: Record<string, unknown>,
   options: Record<string, unknown>,
-  providerModelParams: Record<string, unknown> | undefined,
+  sapModelParams: Record<string, unknown> | undefined,
+  settingsModelParams: Record<string, unknown> | undefined,
 ): void {
   for (const mapping of PARAM_MAPPINGS) {
-    const { camelCaseKey, optionKey, outputKey } = mapping;
+    const value =
+      (mapping.optionKey ? options[mapping.optionKey] : undefined) ??
+      (mapping.camelCaseKey ? sapModelParams?.[mapping.camelCaseKey] : undefined) ??
+      (mapping.camelCaseKey ? settingsModelParams?.[mapping.camelCaseKey] : undefined);
 
-    if (camelCaseKey && camelCaseKey in modelParams) {
-      const value = modelParams[camelCaseKey];
+    if (value !== undefined) {
+      modelParams[mapping.outputKey] = value;
+    }
+
+    if (mapping.camelCaseKey && mapping.camelCaseKey !== mapping.outputKey) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete modelParams[camelCaseKey];
-      if (value !== undefined && !(outputKey in modelParams)) {
-        modelParams[outputKey] = value;
-      }
-    }
-
-    if (providerModelParams && outputKey in providerModelParams) {
-      modelParams[outputKey] = providerModelParams[outputKey];
-    }
-
-    if (optionKey && optionKey in options) {
-      const value = options[optionKey];
-      if (value !== undefined) {
-        modelParams[outputKey] = value;
-      }
+      delete modelParams[mapping.camelCaseKey];
     }
   }
 }
