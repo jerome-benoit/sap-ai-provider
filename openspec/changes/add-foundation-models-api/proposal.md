@@ -20,19 +20,20 @@ Currently, our provider only supports the Orchestration API, limiting users who 
 ### Core Architecture
 
 - Add `@sap-ai-sdk/foundation-models` as a **runtime dependency**
-- Introduce `api: 'orchestration' | 'foundation-models'` option at provider and model level
+- Introduce `api: 'orchestration' | 'foundation-models'` option at provider, model, and invocation level
 - Implement **Strategy Pattern** for API-agnostic model implementations
 - Use **lazy loading** via dynamic `import()` to only load the selected SDK (zero-cost abstraction)
 - Create **discriminated union types** for type-safe API-specific settings
 
 ### Option Handling
 
-#### Orchestration-Only Options (rejected with Foundation Models API)
+#### Orchestration-Only Options (throws `UnsupportedFeatureError` with Foundation Models API)
 
 - `filtering` - Content safety filtering
 - `grounding` - RAG document grounding
 - `masking` - Data anonymization (SAP DPI)
 - `translation` - Input/output translation
+- `tools` - SAP format tool definitions (`ChatCompletionTool[]`)
 - `escapeTemplatePlaceholders: true` - Template delimiter escaping (only meaningful for Jinja2)
 
 #### Foundation Models-Only Options
@@ -77,10 +78,18 @@ Currently, our provider only supports the Orchestration API, limiting users who 
 
 ### Error Handling
 
-New `UnsupportedFeatureError` class with clear, actionable messages:
+New error classes with clear, actionable messages:
+
+**`UnsupportedFeatureError`** - When a feature is used with an incompatible API:
 
 ```text
 "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
+```
+
+**`ApiSwitchError`** - When switching APIs at invocation time conflicts with model settings:
+
+```text
+"Cannot switch from orchestration to foundation-models API at invocation time because the model was configured with filtering. Create a new model instance instead."
 ```
 
 **Non-Breaking**: Existing code continues to work unchanged. Default API remains `'orchestration'`.
@@ -93,9 +102,13 @@ New `UnsupportedFeatureError` class with clear, actionable messages:
   - `src/sap-ai-language-model.ts` - Strategy Pattern for chat completions
   - `src/sap-ai-embedding-model.ts` - Strategy Pattern for embeddings
   - `src/sap-ai-settings.ts` - Discriminated union types for API options
-  - New: `src/strategies/` - Strategy implementations
-  - New: `src/convert-to-azure-messages.ts` - FM message conversion
-  - New: `src/errors/unsupported-feature-error.ts` - Error class
+  - New: `src/sap-ai-strategy.ts` - Strategy interfaces, factory, and caching
+  - New: `src/strategy-utils.ts` - Shared utilities for strategy implementations
+  - New: `src/orchestration-language-model-strategy.ts` - Orchestration language model strategy
+  - New: `src/foundation-models-language-model-strategy.ts` - Foundation Models language model strategy
+  - New: `src/orchestration-embedding-model-strategy.ts` - Orchestration embedding model strategy
+  - New: `src/foundation-models-embedding-model-strategy.ts` - Foundation Models embedding model strategy
+  - Modified: `src/sap-ai-error.ts` - Added `UnsupportedFeatureError` and `ApiSwitchError` classes
 
 ## References
 
