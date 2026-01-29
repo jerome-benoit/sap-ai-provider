@@ -9,6 +9,7 @@ import type {
   OrchestrationModelSettings,
   SAPAIApiType,
   SAPAIModelSettings,
+  SAPAISettings,
 } from "./sap-ai-settings.js";
 
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
@@ -19,7 +20,7 @@ import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
  * @returns True if settings are for Foundation Models API
  */
 export function isFoundationModelsSettings(
-  settings: SAPAIModelSettings,
+  settings: SAPAIModelSettings | SAPAISettings,
 ): settings is FoundationModelsModelSettings {
   return settings.api === "foundation-models";
 }
@@ -30,7 +31,7 @@ export function isFoundationModelsSettings(
  * @returns True if settings are for Orchestration API (api is undefined or "orchestration")
  */
 export function isOrchestrationSettings(
-  settings: SAPAIModelSettings,
+  settings: SAPAIModelSettings | SAPAISettings,
 ): settings is OrchestrationModelSettings {
   return settings.api === undefined || settings.api === "orchestration";
 }
@@ -67,7 +68,7 @@ export function validateEscapeTemplatePlaceholders(
  * @throws {UnsupportedFeatureError} If Foundation Models-only features are used with Orchestration API
  */
 export function validateFoundationModelsOnlyOptions(
-  settings: SAPAIModelSettings | undefined,
+  settings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
   if (!settings) return;
 
@@ -89,7 +90,9 @@ export function validateFoundationModelsOnlyOptions(
  * @param settings - The model settings to validate
  * @throws {UnsupportedFeatureError} If Orchestration-only features are used with Foundation Models API
  */
-export function validateOrchestrationOnlyOptions(settings: SAPAIModelSettings | undefined): void {
+export function validateOrchestrationOnlyOptions(
+  settings: SAPAIModelSettings | SAPAISettings | undefined,
+): void {
   if (!settings) return;
 
   // Type guard: Check if settings could have orchestration-only options
@@ -149,7 +152,7 @@ const FOUNDATION_MODELS_ONLY_FEATURES = ["dataSources"] as const;
 export function validateApiSwitch(
   fromApi: SAPAIApiType,
   toApi: SAPAIApiType,
-  modelSettings: SAPAIModelSettings | undefined,
+  modelSettings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
   // No switch happening
   if (fromApi === toApi) return;
@@ -200,7 +203,7 @@ export interface ValidateSettingsOptions {
   /** The API the model was originally configured with (for switch detection) */
   readonly modelApi?: SAPAIApiType;
   /** Model-level settings (configured at model creation) */
-  readonly modelSettings?: SAPAIModelSettings;
+  readonly modelSettings?: SAPAIModelSettings | SAPAISettings;
 }
 
 /**
@@ -212,7 +215,7 @@ export interface ValidateSettingsOptions {
  */
 export function getEffectiveEscapeTemplatePlaceholders(
   api: SAPAIApiType,
-  modelSettings: SAPAIModelSettings | undefined,
+  modelSettings: SAPAIModelSettings | SAPAISettings | undefined,
   invocationEscape: boolean | undefined,
 ): boolean {
   // Foundation Models API never escapes
