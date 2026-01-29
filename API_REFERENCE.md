@@ -1923,6 +1923,74 @@ advanced use cases.
 
 ---
 
+### Re-exported SAP AI SDK Classes
+
+The following classes are re-exported from `@sap-ai-sdk/orchestration` for
+advanced usage scenarios where direct access to SDK responses is needed:
+
+| Class                              | Description                     |
+| ---------------------------------- | ------------------------------- |
+| `OrchestrationClient`              | Direct orchestration API client |
+| `OrchestrationEmbeddingClient`     | Direct embedding API client     |
+| `OrchestrationResponse`            | Non-streaming response wrapper  |
+| `OrchestrationStream`              | Streaming response handler      |
+| `OrchestrationStreamResponse`      | Streaming response wrapper      |
+| `OrchestrationStreamChunkResponse` | Individual stream chunk         |
+| `OrchestrationEmbeddingResponse`   | Embedding response wrapper      |
+
+**Example:**
+
+```typescript
+import { OrchestrationClient, OrchestrationResponse } from "@jerome-benoit/sap-ai-provider";
+
+// For advanced scenarios requiring direct SDK access
+const client = new OrchestrationClient({
+  llm: { model_name: "gpt-4o" },
+});
+```
+
+> **Note:** Most users should use `createSAPAIProvider()` instead of these
+> low-level classes. These are exported for advanced integration scenarios.
+
+---
+
+### `DeploymentConfig`
+
+Type for configuring deployment resolution behavior.
+
+**Type:**
+
+```typescript
+type DeploymentConfig = {
+  deploymentId?: string;
+  resourceGroup?: string;
+  scenario?: string;
+};
+```
+
+**Properties:**
+
+| Property        | Type     | Description                                         |
+| --------------- | -------- | --------------------------------------------------- |
+| `deploymentId`  | `string` | Specific deployment ID (skips auto-resolution)      |
+| `resourceGroup` | `string` | SAP AI Core resource group (default: `"default"`)   |
+| `scenario`      | `string` | Deployment scenario for filtering (default: varies) |
+
+**Example:**
+
+```typescript
+import { createSAPAIProvider, DeploymentConfig } from "@jerome-benoit/sap-ai-provider";
+
+const deploymentConfig: DeploymentConfig = {
+  deploymentId: "d1234567-89ab-cdef-0123-456789abcdef",
+  resourceGroup: "my-resource-group",
+};
+
+const provider = createSAPAIProvider(deploymentConfig);
+```
+
+---
+
 ## Utility Functions
 
 > **Architecture Context:** For message transformation flow and format details,
@@ -2314,6 +2382,77 @@ const model = provider("gpt-4o");
 
 ---
 
+### `escapeOrchestrationPlaceholders(text)`
+
+Escapes SAP Orchestration template delimiters (`{{`, `{%`, `{#`) in text content
+to prevent them from being interpreted as template expressions.
+
+**Signature:**
+
+```typescript
+function escapeOrchestrationPlaceholders(text: string): string;
+```
+
+**Parameters:**
+
+- `text`: The text content that may contain template delimiters
+
+**Returns:** Text with escaped delimiters (e.g., `{{` becomes `\{{`)
+
+**Example:**
+
+```typescript
+import { escapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+
+const userInput = "Use {{variable}} in your template";
+const escaped = escapeOrchestrationPlaceholders(userInput);
+// Result: "Use \\{{variable}} in your template"
+```
+
+**Use Case:**
+
+Use this function when passing user-generated content that may contain
+curly braces to prevent template injection:
+
+```typescript
+const prompt = escapeOrchestrationPlaceholders(userProvidedContent);
+const result = await generateText({
+  model: provider("gpt-4o"),
+  prompt,
+});
+```
+
+---
+
+### `unescapeOrchestrationPlaceholders(text)`
+
+Reverses the escaping performed by `escapeOrchestrationPlaceholders`, restoring
+the original template delimiters.
+
+**Signature:**
+
+```typescript
+function unescapeOrchestrationPlaceholders(text: string): string;
+```
+
+**Parameters:**
+
+- `text`: Text with escaped template delimiters
+
+**Returns:** Text with original delimiters restored
+
+**Example:**
+
+```typescript
+import { unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+
+const escaped = "Use \\{{variable}} in your template";
+const original = unescapeOrchestrationPlaceholders(escaped);
+// Result: "Use {{variable}} in your template"
+```
+
+---
+
 ## Response Formats
 
 ### Text Response
@@ -2397,6 +2536,18 @@ const settings: SAPAISettings = {
 ---
 
 ## Version Information
+
+### `VERSION`
+
+The package exports a `VERSION` constant containing the current version string,
+injected at build time.
+
+```typescript
+import { VERSION } from "@jerome-benoit/sap-ai-provider";
+
+console.log(`Using SAP AI Provider v${VERSION}`);
+// Output: "Using SAP AI Provider v4.0.0" (example)
+```
 
 For the current package version, see [package.json](./package.json).
 

@@ -178,7 +178,6 @@ async function documentGroundingExample() {
     console.log("   - Set VECTOR_STORE_ID environment variable");
     console.log("   - Use document_metadata filters to restrict search to specific documents");
     console.log("   - Use metadata_params to retrieve source information for citations");
-    console.log("   - Use metadata_params to retrieve source information for citations");
   } catch (error: unknown) {
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);

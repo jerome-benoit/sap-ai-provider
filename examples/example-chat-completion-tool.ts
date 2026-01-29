@@ -213,3 +213,5 @@ async function simpleToolExample() {
 }
 
 simpleToolExample().catch(console.error);
+
+export { simpleToolExample };

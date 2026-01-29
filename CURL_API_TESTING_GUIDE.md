@@ -26,6 +26,7 @@ testing and debugging. For production code, use the SAP AI SDK with
   - [Error Response (HTTP 400)](#error-response-http-400)
 - [Common Issues](#common-issues)
 - [Debugging Tips](#debugging-tips)
+- [Foundation Models API](#foundation-models-api)
 - [Security Best Practices](#security-best-practices)
 - [Additional Resources](#additional-resources)
 - [TypeScript Examples](#typescript-examples)
@@ -398,6 +399,87 @@ Check: `exp` (expiration), `subaccountid`, `scope`
   }
 }
 ```
+
+---
+
+## Foundation Models API
+
+The Foundation Models API provides direct model access with additional parameters
+like `logprobs`, `seed`, and `logit_bias`. Use a different endpoint path.
+
+### Endpoint
+
+```text
+${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions
+```
+
+Note: Replace `completion` (Orchestration) with `chat/completions` (Foundation Models).
+
+### Basic Request
+
+```bash
+curl --request POST \
+  --url "${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions" \
+  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --header "AI-Resource-Group: ${RESOURCE_GROUP}" \
+  --header "Content-Type: application/json" \
+  --data '{
+  "model": "gpt-4o",
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 100
+}'
+```
+
+### Foundation Models-Specific Parameters
+
+```json
+{
+  "model": "gpt-4o",
+  "messages": [...],
+  "logprobs": true,
+  "top_logprobs": 5,
+  "seed": 42,
+  "logit_bias": {"50256": -100},
+  "user": "user-123"
+}
+```
+
+### Response Format
+
+```json
+{
+  "id": "chatcmpl-xxx",
+  "object": "chat.completion",
+  "model": "gpt-4o",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello! How can I help you today?"
+      },
+      "finish_reason": "stop",
+      "logprobs": {
+        "content": [
+          {"token": "Hello", "logprob": -0.5, "top_logprobs": [...]}
+        ]
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 10,
+    "total_tokens": 30
+  }
+}
+```
+
+> **Note**: The Foundation Models API uses standard OpenAI-compatible format,
+> while the Orchestration API uses SAP's orchestration envelope format.
 
 ---
 

@@ -27,6 +27,7 @@ the SAP AI Core Provider.
   - [❌ Cannot Find Module 'dotenv'](#cannot-find-module-dotenv)
   - [❌ Deployment Not Found (404)](#deployment-not-found-404)
   - [✅ Verify Configuration](#verify-configuration)
+- [Environment Variables Reference](#environment-variables-reference)
 - [Security Best Practices](#security-best-practices)
 - [Related Documentation](#related-documentation)
 
@@ -102,6 +103,24 @@ const model = provider("gpt-4o");
 1. `AICORE_SERVICE_KEY` environment variable
 2. `VCAP_SERVICES` (SAP BTP service binding)
 3. Custom destination configuration
+
+---
+
+## Environment Variables Reference
+
+| Variable                  | Description                                                    | Required    |
+| ------------------------- | -------------------------------------------------------------- | ----------- |
+| `AICORE_SERVICE_KEY`      | SAP AI Core service key JSON (local development)               | Yes (local) |
+| `VCAP_SERVICES`           | Service bindings (auto-detected on SAP BTP)                    | Yes (BTP)   |
+| `SAP_CLOUD_SDK_LOG_LEVEL` | Log level for SAP Cloud SDK (`debug`, `info`, `warn`, `error`) | No          |
+
+**Example with debugging enabled:**
+
+```bash
+# .env
+AICORE_SERVICE_KEY='{"serviceurls":{...}}'
+SAP_CLOUD_SDK_LOG_LEVEL=debug
+```
 
 ---
 

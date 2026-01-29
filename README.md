@@ -402,10 +402,16 @@ modules.
 [examples/example-chat-completion-tool.ts](./examples/example-chat-completion-tool.ts)
 
 ```typescript
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+
+const provider = createSAPAIProvider();
+
 const weatherTool = tool({
   description: "Get weather for a location",
-  inputSchema: z.object({ location: z.string() }),
-  execute: (args) => `Weather in ${args.location}: sunny, 72°F`,
+  parameters: z.object({ location: z.string() }),
+  execute: async (args) => `Weather in ${args.location}: sunny, 72°F`,
 });
 
 const result = await generateText({
@@ -562,7 +568,9 @@ Options are validated at runtime with Zod schemas.
 
 ```typescript
 import { generateText } from "ai";
-import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
+const provider = createSAPAIProvider();
 
 const result = await generateText({
   model: provider("gpt-4o"),
@@ -608,7 +616,11 @@ handling.
 **Quick Example:**
 
 ```typescript
+import { generateText } from "ai";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+
+const provider = createSAPAIProvider();
 
 try {
   const result = await generateText({
@@ -750,7 +762,7 @@ complete upgrade instructions.**
 ### Upgrading from v2.x to v3.x
 
 Version 3.0 standardizes error handling to use Vercel AI SDK native error types.
-**See the [Migration Guide](./MIGRATION_GUIDE.md#v2x--v30) for complete upgrade
+**See the [Migration Guide](./MIGRATION_GUIDE.md#version-2x-to-3x-breaking-changes) for complete upgrade
 instructions.**
 
 **Key changes:**
@@ -762,7 +774,7 @@ instructions.**
 ### Upgrading from v1.x to v2.x
 
 Version 2.0 uses the official SAP AI SDK. **See the
-[Migration Guide](./MIGRATION_GUIDE.md#v1x--v20) for complete upgrade
+[Migration Guide](./MIGRATION_GUIDE.md#version-1x-to-2x-breaking-changes) for complete upgrade
 instructions.**
 
 **Key changes:**

@@ -285,6 +285,7 @@ other API:
 1. **Check which API you're using:**
 
    ```typescript
+   import { generateText } from "ai";
    import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 
    // Provider-level (affects all models)
@@ -357,8 +358,11 @@ for complete feature comparison.
    ```typescript
    import "dotenv/config"; // Load environment variables
    import { streamText } from "ai";
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
-   const result = streamText({
+   const provider = createSAPAIProvider();
+
+   const result = await streamText({
      model: provider("gpt-4o"),
      prompt: "Write a story",
    });

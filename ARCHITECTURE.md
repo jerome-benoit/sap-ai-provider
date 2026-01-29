@@ -276,17 +276,21 @@ graph TB
 src/
 ├── index.ts                                        # Public API exports
 ├── sap-ai-provider.ts                              # Main provider factory
+├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
 ├── sap-ai-language-model.ts                        # Language model (API-agnostic)
 ├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
 ├── sap-ai-settings.ts                              # Settings and type definitions
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
+├── strategy-utils.ts                               # Shared strategy utilities
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
 ├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
-└── convert-to-sap-messages.ts                     # Message format conversion
+├── convert-to-sap-messages.ts                     # Message format conversion
+├── deep-merge.ts                                   # Deep merge utility
+└── version.ts                                      # Package version constant
 ```
 
 ### Component Responsibilities
@@ -1215,8 +1219,8 @@ const result = await generateText({
 
 The validation layer ensures features are compatible with the resolved API:
 
-- **Orchestration-only features**: masking, filtering, grounding, templating
-- **Foundation Models-only features**: logprobs, seed, logit_bias, user
+- **Orchestration-only features**: masking, filtering, grounding, templating, translation
+- **Foundation Models-only features**: logprobs, seed, logit_bias, user, dataSources
 - **Common features**: temperature, maxTokens, topP, tools, streaming
 
 Incompatible feature combinations throw `UnsupportedFeatureError` with helpful

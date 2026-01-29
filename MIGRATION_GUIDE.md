@@ -252,6 +252,63 @@ The following V3 capabilities are not currently supported by SAP AI Core:
 | **Tool approval requests**   | ❌ Not supported | Not applicable                                        |
 | **Detailed token breakdown** | ⚠️ Partial       | Nested structure present but details may be undefined |
 
+### New in v4.x: Foundation Models API Support
+
+Version 4.x adds support for the **Foundation Models API** as an alternative to
+the Orchestration API, providing access to additional model parameters.
+
+#### Choosing an API
+
+| Feature                          | Orchestration API (default) | Foundation Models API |
+| -------------------------------- | --------------------------- | --------------------- |
+| Data masking                     | ✅                          | ❌                    |
+| Content filtering                | ✅                          | ❌                    |
+| Document grounding               | ✅                          | ❌                    |
+| Translation                      | ✅                          | ❌                    |
+| `logprobs`, `seed`, `logit_bias` | ❌                          | ✅                    |
+| Azure OpenAI `dataSources`       | ❌                          | ✅                    |
+
+#### Using Foundation Models API
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+
+// Option 1: Provider-level (affects all models)
+const provider = createSAPAIProvider({ api: "foundation-models" });
+
+// Option 2: Model-level (overrides provider)
+const model = provider("gpt-4o", { api: "foundation-models" });
+
+// Option 3: Call-level (highest precedence)
+const result = await generateText({
+  model,
+  prompt: "Hello",
+  providerOptions: {
+    [SAP_AI_PROVIDER_NAME]: { api: "foundation-models" },
+  },
+});
+```
+
+#### Foundation Models-Specific Settings
+
+```typescript
+const provider = createSAPAIProvider({
+  api: "foundation-models",
+  defaultSettings: {
+    modelParams: {
+      logprobs: true,
+      topLogprobs: 5,
+      seed: 42,
+      logitBias: { "50256": -100 },
+      user: "user-123",
+    },
+  },
+});
+```
+
+> **Note**: If you're using Orchestration-only features (masking, filtering,
+> grounding, translation), continue using the default Orchestration API.
+
 ### Testing Your Migration
 
 1. **Run your tests:**
