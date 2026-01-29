@@ -323,7 +323,6 @@ describe("createSAPAIProvider", () => {
         const provider = createSAPAIProvider();
         const model = provider("gpt-4o");
         expect(model).toBeDefined();
-        // Model is created - API resolution happens at invocation time
       });
 
       it("should accept orchestration api at provider level", () => {
@@ -400,23 +399,20 @@ describe("createSAPAIProvider", () => {
     describe("API resolution precedence", () => {
       it("should use provider-level API as fallback when model-level is not set", () => {
         const provider = createSAPAIProvider({ api: "foundation-models" });
-        const model = provider("gpt-4o"); // No model-level api
+        const model = provider("gpt-4o");
         expect(model).toBeDefined();
-        // Provider-level 'foundation-models' will be used at invocation time
       });
 
       it("should prefer model-level API over provider-level API", () => {
         const provider = createSAPAIProvider({ api: "orchestration" });
         const model = provider("gpt-4o", { api: "foundation-models" });
         expect(model).toBeDefined();
-        // Model-level 'foundation-models' overrides provider-level 'orchestration'
       });
 
       it("should use default orchestration when neither provider nor model specifies api", () => {
         const provider = createSAPAIProvider();
         const model = provider("gpt-4o");
         expect(model).toBeDefined();
-        // Default 'orchestration' will be used at invocation time
       });
     });
   });
