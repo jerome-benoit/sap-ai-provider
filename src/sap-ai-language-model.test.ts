@@ -249,6 +249,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
             | { function: { arguments: string; name: string }; id: string }[];
           rawResponse?: { headers?: Record<string, unknown> };
         };
+    static lastConstructorCall: undefined | { destination: unknown; modelDeployment: unknown };
     static lastRunRequest: unknown;
     static lastRunRequestConfig: unknown;
 
@@ -400,6 +401,10 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       };
     });
 
+    constructor(modelDeployment: unknown, destination: unknown) {
+      MockAzureOpenAiChatClient.lastConstructorCall = { destination, modelDeployment };
+    }
+
     static setChatCompletionError(error: Error) {
       MockAzureOpenAiChatClient.chatCompletionError = error;
     }
@@ -548,6 +553,7 @@ describe("SAPAILanguageModel", () => {
   const getMockFMClient = async () => {
     const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
     const client = AzureOpenAiChatClient as unknown as {
+      lastConstructorCall: undefined | { destination: unknown; modelDeployment: unknown };
       lastRunRequest: unknown;
       lastRunRequestConfig: unknown;
       lastStreamAbortSignal: unknown;
@@ -559,6 +565,7 @@ describe("SAPAILanguageModel", () => {
       setStreamSetupError?: (error: Error) => void;
     };
     return {
+      lastConstructorCall: client.lastConstructorCall,
       lastRequest: client.lastRunRequest,
       lastRequestConfig: client.lastRunRequestConfig,
       lastStreamAbortSignal: client.lastStreamAbortSignal,
@@ -568,7 +575,7 @@ describe("SAPAILanguageModel", () => {
       setStreamChunks: client.setStreamChunks,
       setStreamError: client.setStreamError,
       setStreamSetupError: client.setStreamSetupError,
-    } as MockClientInterface;
+    };
   };
 
   const getMockClientForApi = async (api: APIType): Promise<MockClientInterface> => {
@@ -3910,5 +3917,52 @@ describe("SAPAILanguageModel", () => {
         });
       },
     );
+  });
+
+  describe("Foundation Models deployment resolution", () => {
+    it("should use modelName for deployment resolution even when deploymentId is configured", async () => {
+      const modelId = "gpt-4o-test";
+      const model = new SAPAILanguageModel(
+        modelId,
+        { api: "foundation-models" },
+        {
+          deploymentConfig: { deploymentId: "should-be-ignored" },
+          provider: "sap-ai",
+        },
+      );
+
+      const prompt = createPrompt("Hello");
+      await model.doGenerate({ prompt });
+
+      const mockClient = await getMockFMClient();
+      const constructorCall = mockClient.lastConstructorCall;
+
+      expect(constructorCall).toBeDefined();
+      expect(constructorCall?.modelDeployment).toHaveProperty("modelName", modelId);
+      expect(constructorCall?.modelDeployment).not.toHaveProperty("deploymentId");
+    });
+
+    it("should include resourceGroup when configured", async () => {
+      const modelId = "gpt-4o-test";
+      const model = new SAPAILanguageModel(
+        modelId,
+        { api: "foundation-models" },
+        {
+          deploymentConfig: { resourceGroup: "custom-group" },
+          provider: "sap-ai",
+        },
+      );
+
+      const prompt = createPrompt("Hello");
+      await model.doGenerate({ prompt });
+
+      const mockClient = await getMockFMClient();
+      const constructorCall = mockClient.lastConstructorCall;
+
+      expect(constructorCall).toBeDefined();
+      expect(constructorCall?.modelDeployment).toHaveProperty("modelName", modelId);
+      expect(constructorCall?.modelDeployment).toHaveProperty("resourceGroup", "custom-group");
+      expect(constructorCall?.modelDeployment).not.toHaveProperty("deploymentId");
+    });
   });
 });

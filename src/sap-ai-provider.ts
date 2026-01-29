@@ -134,12 +134,16 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     setGlobalLogLevel(logLevel);
   }
 
-  const deploymentConfig: DeploymentConfig = options.deploymentId
-    ? { deploymentId: options.deploymentId }
-    : { resourceGroup };
-
   // Provider-level API setting (defaults to 'orchestration')
   const providerApi = options.api ?? "orchestration";
+
+  // Foundation Models API uses model-based deployment resolution; ignore deploymentId
+  const effectiveDeploymentId =
+    providerApi === "foundation-models" ? undefined : options.deploymentId;
+
+  const deploymentConfig: DeploymentConfig = effectiveDeploymentId
+    ? { deploymentId: effectiveDeploymentId }
+    : { resourceGroup };
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
     const mergedSettings: SAPAISettings = {

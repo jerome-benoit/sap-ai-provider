@@ -146,32 +146,23 @@ export function applyParameterOverrides(
 /**
  * Builds a ModelDeployment object for the Foundation Models API SDK.
  *
- * The SDK expects either:
- * - `{ deploymentId, resourceGroup? }` for direct deployment access
- * - `{ modelName, resourceGroup? }` for model-based deployment resolution
+ * Always uses model-based deployment resolution (modelName); deploymentId is
+ * ignored since Foundation Models API resolves deployments automatically.
  * @param config - The strategy configuration containing deployment info and model ID.
- * @returns A ModelDeployment-compatible object.
+ * @returns A ModelDeployment object with modelName for automatic deployment resolution.
  * @internal
  */
-export function buildModelDeployment(
-  config: BaseModelDeploymentConfig,
-):
-  | { deploymentId: string; resourceGroup?: string }
-  | { modelName: string; resourceGroup?: string } {
+export function buildModelDeployment(config: BaseModelDeploymentConfig): {
+  modelName: string;
+  resourceGroup?: string;
+} {
   const deploymentConfig = config.deploymentConfig;
 
   // Extract resourceGroup if present
   const resourceGroup =
     "resourceGroup" in deploymentConfig ? deploymentConfig.resourceGroup : undefined;
 
-  // If we have a deploymentId, use it directly
-  if ("deploymentId" in deploymentConfig) {
-    return resourceGroup
-      ? { deploymentId: deploymentConfig.deploymentId, resourceGroup }
-      : { deploymentId: deploymentConfig.deploymentId };
-  }
-
-  // Otherwise, use modelId as modelName for deployment resolution
+  // Always use modelName for deployment resolution (Foundation Models API)
   return resourceGroup
     ? { modelName: config.modelId, resourceGroup }
     : { modelName: config.modelId };
