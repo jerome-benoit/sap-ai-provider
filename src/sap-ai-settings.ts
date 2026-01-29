@@ -96,8 +96,6 @@ export interface FoundationModelsModelSettings {
   /** API type - required discriminant for Foundation Models. */
   readonly api: "foundation-models";
 
-  // === Foundation Models-Only Options ===
-
   /**
    * Azure OpenAI "On Your Data" configuration for chat extensions.
    * Enables RAG scenarios with Azure AI Search, Cosmos DB, etc.
@@ -105,8 +103,6 @@ export interface FoundationModelsModelSettings {
    * Type extracted from SDK's AzureOpenAiChatCompletionParameters["data_sources"].
    */
   readonly dataSources?: AzureOpenAiChatExtensionConfiguration[];
-
-  // === Common Options ===
 
   /**
    * Whether to include assistant reasoning parts in the response.
@@ -149,8 +145,6 @@ export interface OrchestrationModelSettings {
   /** API type - optional, defaults to 'orchestration'. */
   readonly api?: "orchestration";
 
-  // === Orchestration-Only Options ===
-
   /**
    * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
    * @default true
@@ -174,8 +168,6 @@ export interface OrchestrationModelSettings {
 
   /** Model generation parameters that control the output. */
   readonly modelParams?: OrchestrationModelParams;
-
-  // === Common Options ===
 
   /** Specific version of the model to use (defaults to latest). */
   readonly modelVersion?: string;
