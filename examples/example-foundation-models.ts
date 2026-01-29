@@ -183,7 +183,7 @@ async function foundationModelsExample() {
       model: orchProvider("gpt-4o"),
       prompt: "Say hello",
       providerOptions: {
-        sapai: {
+        "sap-ai": {
           api: "foundation-models", // Override for this call only
           modelParams: {
             max_tokens: 10,

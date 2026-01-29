@@ -68,6 +68,7 @@ consistently:
   - [`SAPAIEmbeddingProviderOptions` (Type)](#sapaiembeddingprovideroptions-type)
 - [Types](#types)
   - [`SAPAIModelId`](#sapaimodelid)
+  - [`SAPAIApiType`](#sapaiapitype)
   - [`DpiEntities`](#dpientities)
 - [Classes](#classes)
   - [`SAPAILanguageModel`](#sapailanguagemodel)
@@ -87,6 +88,8 @@ consistently:
   - [`buildLlamaGuard38BFilter(type, categories)`](#buildllamaguard38bfiltertype-categories)
   - [`buildDocumentGroundingConfig(config)`](#builddocumentgroundingconfigconfig)
   - [`buildTranslationConfig(type, config)`](#buildtranslationconfigtype-config)
+  - [`resolveApi(providerApi, modelApi, invocationApi)`](#resolveapiproviderapi-modelapi-invocationapi)
+  - [`validateSettings(options)`](#validatesettingsoptions)
 - [Response Formats](#response-formats)
   - [Text Response](#text-response)
   - [JSON Object Response](#json-object-response)
@@ -1160,6 +1163,45 @@ const settings: SAPAISettings = {
 
 > **Note:** The `escapeTemplatePlaceholders` option is enabled by default to prevent SAP AI Core orchestration API errors when content contains template syntax (`{{variable}}`, `{% if %}`, `{# comment #}`). Set to `false` only if you intentionally use SAP orchestration templating features. See [Troubleshooting - Problem: Template Placeholder Conflicts](./TROUBLESHOOTING.md#problem-template-placeholder-conflicts) for details.
 
+**API-Specific Settings Types:**
+
+For type-safe API-specific configuration, use the discriminated union types:
+
+- `OrchestrationModelSettings` - Settings with `api?: "orchestration"` and
+  Orchestration-only options (`filtering`, `masking`, `grounding`, `translation`,
+  `tools`, `escapeTemplatePlaceholders`)
+- `FoundationModelsModelSettings` - Settings with `api: "foundation-models"` and
+  Foundation Models-only options (`dataSources`)
+
+```typescript
+import type { OrchestrationModelSettings, FoundationModelsModelSettings } from "@jerome-benoit/sap-ai-provider";
+
+// Type-safe Orchestration settings
+const orchSettings: OrchestrationModelSettings = {
+  api: "orchestration",
+  filtering: {
+    /* ... */
+  },
+  masking: {
+    /* ... */
+  },
+};
+
+// Type-safe Foundation Models settings
+const fmSettings: FoundationModelsModelSettings = {
+  api: "foundation-models",
+  dataSources: [
+    {
+      type: "azure_search",
+      parameters: {
+        /* ... */
+      },
+    },
+  ],
+  modelParams: { logprobs: true, seed: 42 },
+};
+```
+
 ---
 
 ### `ModelParams`
@@ -1481,6 +1523,30 @@ including:
 - Model capabilities comparison
 - Selection guide by use case
 - Performance trade-offs
+
+---
+
+### `SAPAIApiType`
+
+API type selector for SAP AI Core.
+
+**Type:**
+
+```typescript
+export type SAPAIApiType = "orchestration" | "foundation-models";
+```
+
+**Description:**
+
+Determines which SAP AI Core API to use:
+
+- `"orchestration"` (default): Full-featured API with data masking, content
+  filtering, document grounding, and translation capabilities
+- `"foundation-models"`: Direct model access with additional parameters like
+  `logprobs`, `seed`, `logit_bias`, and `dataSources`
+
+See [API Comparison](#api-comparison-orchestration-vs-foundation-models) for a
+detailed feature matrix.
 
 ---
 
@@ -1911,6 +1977,99 @@ const result = await generateText({ model, prompt: "Hello" });
 // Use getProviderName to access metadata with the correct key
 const providerName = getProviderName(model.provider); // "my-sap"
 const metadata = result.providerMetadata?.[providerName];
+```
+
+---
+
+### `resolveApi(providerApi, modelApi, invocationApi)`
+
+Resolves the effective API type using the precedence chain.
+
+**Signature:**
+
+```typescript
+function resolveApi(providerApi: SAPAIApiType | undefined, modelApi: SAPAIApiType | undefined, invocationApi: SAPAIApiType | undefined): SAPAIApiType;
+```
+
+**Parameters:**
+
+- `providerApi`: API set at provider creation (`createSAPAIProvider({ api })`)
+- `modelApi`: API set at model creation (`provider("gpt-4o", { api })`)
+- `invocationApi`: API set at invocation (`providerOptions["sap-ai"].api`)
+
+**Returns:** The resolved API type to use (highest precedence wins)
+
+**Precedence (highest to lowest):**
+
+1. Invocation-time override
+2. Model-level setting
+3. Provider-level setting
+4. System default (`"orchestration"`)
+
+**Example:**
+
+```typescript
+import { resolveApi } from "@jerome-benoit/sap-ai-provider";
+
+resolveApi(undefined, undefined, undefined); // "orchestration"
+resolveApi("foundation-models", undefined, undefined); // "foundation-models"
+resolveApi("foundation-models", "orchestration", undefined); // "orchestration"
+resolveApi("orchestration", "orchestration", "foundation-models"); // "foundation-models"
+```
+
+---
+
+### `validateSettings(options)`
+
+Validates that settings are compatible with the selected API.
+
+**Signature:**
+
+```typescript
+function validateSettings(options: ValidateSettingsOptions): void;
+```
+
+**Parameters:**
+
+- `options.api`: The resolved API type
+- `options.modelSettings`: Model-level settings to validate
+- `options.invocationSettings`: Optional invocation-time settings
+- `options.modelApi`: The API the model was configured with (for switch detection)
+
+**Throws:**
+
+- `UnsupportedFeatureError` - If API-specific features are used with the wrong API
+- `ApiSwitchError` - If switching APIs conflicts with configured features
+- `Error` - If API value is invalid
+
+**Example:**
+
+```typescript
+import { validateSettings, resolveApi } from "@jerome-benoit/sap-ai-provider";
+
+const api = resolveApi(providerApi, modelApi, invocationApi);
+
+// This will throw UnsupportedFeatureError
+validateSettings({
+  api: "foundation-models",
+  modelSettings: {
+    filtering: {
+      /* ... */
+    },
+  }, // Orchestration-only feature
+});
+
+// This will throw ApiSwitchError
+validateSettings({
+  api: "foundation-models",
+  modelApi: "orchestration",
+  modelSettings: {
+    masking: {
+      /* ... */
+    },
+  },
+  invocationSettings: { api: "foundation-models" },
+});
 ```
 
 ---

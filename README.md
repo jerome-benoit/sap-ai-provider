@@ -165,7 +165,7 @@ The provider supports two SAP AI Core APIs:
 - **Orchestration API** (default): Full-featured API with data masking, content
   filtering, document grounding, and translation
 - **Foundation Models API**: Direct model access with additional parameters like
-  `logprobs`, `seed`, and `logit_bias`
+  `logprobs`, `seed`, `logit_bias`, and `dataSources` (Azure On Your Data)
 
 ```typescript
 // Provider-level API selection
