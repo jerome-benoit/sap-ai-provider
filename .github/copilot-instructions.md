@@ -74,7 +74,7 @@ npm run type-check && npm run test && npm run test:node && npm run test:edge && 
 
 **For environment setup and authentication**, see [Environment Setup](../ENVIRONMENT_SETUP.md)
 
-- **Examples location**: `/examples` directory contains 9 example files
+- **Examples location**: `/examples` directory contains 10 example files
 - **Running examples**: `npx tsx examples/example-simple-chat-completion.ts`
   ⚠️ **Important:** Examples require `AICORE_SERVICE_KEY` environment variable to work
 - **Without service key**: Examples will fail with clear error message about missing environment variable
@@ -107,7 +107,7 @@ This should complete in under 15 seconds total and all commands should pass.
 ```
 .
 ├── .github/               # GitHub Actions workflows and configs
-├── examples/              # Example usage files (9 examples)
+├── examples/              # Example usage files (10 examples)
 ├── src/                   # TypeScript source code
 │   ├── index.ts                    # Main exports
 │   ├── sap-ai-provider.ts          # Main provider implementation
@@ -200,6 +200,7 @@ npx tsx examples/example-data-masking.ts
 npx tsx examples/example-document-grounding.ts
 npx tsx examples/example-translation.ts
 npx tsx examples/example-embeddings.ts
+npx tsx examples/example-foundation-models.ts
 ```
 
 ### Known Issues
