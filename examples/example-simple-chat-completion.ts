@@ -4,7 +4,7 @@
  * SAP AI Provider - Simple Chat Completion Example
  *
  * This example demonstrates basic chat completion using the SAP AI Provider
- * powered by `@sap-ai-sdk/orchestration`.
+ * powered by `@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`.
  *
  * Authentication:
  * - On SAP BTP: Automatically uses service binding (VCAP_SERVICES)

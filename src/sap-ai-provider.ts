@@ -106,8 +106,8 @@ export interface SAPAIProviderSettings {
 /**
  * Creates a SAP AI Core provider instance for use with the Vercel AI SDK.
  *
- * Uses the official SAP AI SDK (@sap-ai-sdk/orchestration) for authentication
- * and API communication. Authentication is automatic via service binding
+ * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
+ * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
  * (VCAP_SERVICES on SAP BTP) or AICORE_SERVICE_KEY environment variable.
  * @param options - Provider configuration options.
  * @returns A configured SAP AI provider instance.
