@@ -15,18 +15,18 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
-import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings";
+import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 import {
   getProviderName,
   sapAILanguageModelProviderOptions,
   validateModelParamsSettings,
-} from "./sap-ai-provider-options";
+} from "./sap-ai-provider-options.js";
 import {
   getOrCreateLanguageModelStrategy,
   type LanguageModelStrategyConfig,
-} from "./sap-ai-strategy";
-import { resolveApi, validateSettings } from "./sap-ai-validation";
+} from "./sap-ai-strategy.js";
+import { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
 /**
  * Internal configuration for SAP AI Language Model.

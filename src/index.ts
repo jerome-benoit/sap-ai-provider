@@ -60,7 +60,7 @@ export type {
  */
 export { createSAPAIProvider, sapai } from "./sap-ai-provider.js";
 
-export type { DeploymentConfig, SAPAIProvider } from "./sap-ai-provider.js";
+export type { DeploymentConfig, SAPAIProvider, SAPAIProviderSettings } from "./sap-ai-provider.js";
 
 /**
  * Model settings types and model identifier type definitions.
