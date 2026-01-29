@@ -26,6 +26,7 @@ testing and debugging. For production code, use the SAP AI SDK with
   - [Error Response (HTTP 400)](#error-response-http-400)
 - [Common Issues](#common-issues)
 - [Debugging Tips](#debugging-tips)
+- [Foundation Models API](#foundation-models-api)
 - [Security Best Practices](#security-best-practices)
 - [Additional Resources](#additional-resources)
 - [TypeScript Examples](#typescript-examples)
@@ -38,7 +39,8 @@ Complete OAuth2 authentication → API call → Tool calling flow.
 
 ## Prerequisites
 
-- SAP AI Core instance + service key (from BTP cockpit)
+- SAP AI Core instance + service key (from BTP cockpit) - see
+  [Environment Setup](./ENVIRONMENT_SETUP.md) for credential configuration
 - `curl` and `base64` utilities
 
 ---
@@ -179,16 +181,8 @@ execution, error handling, and best practices, see
 
 ### ⚠️ Model-Specific Limitations
 
-| Model                | Multiple Tools Support | Notes                                |
-| -------------------- | ---------------------- | ------------------------------------ |
-| **gpt-4o**           | ✅ Yes                 | Full support for multiple tools      |
-| **gpt-4.1-mini**     | ✅ Yes                 | Full support for multiple tools      |
-| **gemini-2.0-flash** | ⚠️ Limited             | Only 1 tool per request              |
-| **gemini-1.5-pro**   | ⚠️ Limited             | Only 1 tool per request              |
-| **claude-3-sonnet**  | ✅ Yes                 | Multiple tools, sequential execution |
-
-**Gemini Note**: Multiple tools supported in future. Currently: 1 tool per
-request.
+For complete model capabilities and tool calling support, see
+[API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations).
 
 ---
 
@@ -401,13 +395,91 @@ Check: `exp` (expiration), `subaccountid`, `scope`
 
 ---
 
+## Foundation Models API
+
+The Foundation Models API provides direct model access with additional parameters
+like `logprobs`, `seed`, and `logit_bias`. Use a different endpoint path.
+
+### Endpoint
+
+```text
+${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions
+```
+
+Note: Replace `completion` (Orchestration) with `chat/completions` (Foundation Models).
+
+### Basic Request
+
+```bash
+curl --request POST \
+  --url "${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions" \
+  --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+  --header "AI-Resource-Group: ${RESOURCE_GROUP}" \
+  --header "Content-Type: application/json" \
+  --data '{
+  "model": "gpt-4o",
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!"}
+  ],
+  "temperature": 0.7,
+  "max_tokens": 100
+}'
+```
+
+### Foundation Models-Specific Parameters
+
+```json
+{
+  "model": "gpt-4o",
+  "messages": [...],
+  "logprobs": true,
+  "top_logprobs": 5,
+  "seed": 42,
+  "logit_bias": {"50256": -100},
+  "user": "user-123"
+}
+```
+
+### Response Format
+
+```json
+{
+  "id": "chatcmpl-xxx",
+  "object": "chat.completion",
+  "model": "gpt-4o",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello! How can I help you today?"
+      },
+      "finish_reason": "stop",
+      "logprobs": {
+        "content": [
+          {"token": "Hello", "logprob": -0.5, "top_logprobs": [...]}
+        ]
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 10,
+    "total_tokens": 30
+  }
+}
+```
+
+> **Note**: The Foundation Models API uses standard OpenAI-compatible format,
+> while the Orchestration API uses SAP's orchestration envelope format.
+
+---
+
 ## Security Best Practices
 
-1. Never commit credentials (use `.gitignore` + env vars)
-2. Rotate credentials regularly
-3. Use HTTPS only (curl verifies SSL by default)
-4. Store tokens securely (12h validity, don't log)
-5. Limit token scope (dedicated keys per app)
+See [Environment Setup - Security Best Practices](./ENVIRONMENT_SETUP.md#security-best-practices)
+for detailed guidance on credential management, key rotation, and secure deployment.
 
 ---
 

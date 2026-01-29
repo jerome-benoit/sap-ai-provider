@@ -4,7 +4,7 @@
  * SAP AI Provider - Simple Chat Completion Example
  *
  * This example demonstrates basic chat completion using the SAP AI Provider
- * powered by `@sap-ai-sdk/orchestration`.
+ * powered by `@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`.
  *
  * Authentication:
  * - On SAP BTP: Automatically uses service binding (VCAP_SERVICES)
@@ -14,14 +14,10 @@
 // Load environment variables
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+
+// This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
-
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
 import { createSAPAIProvider } from "../src/index";
 
 /**

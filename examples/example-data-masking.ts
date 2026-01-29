@@ -4,7 +4,7 @@
  * SAP AI Provider - Data Masking Example (DPI)
  *
  * This example demonstrates data masking/anonymization using
- * SAP Data Privacy Integration (DPI) through the orchestration service.
+ * SAP Data Privacy Integration (DPI) through the Orchestration API.
  *
  * Authentication:
  * - On SAP BTP: Automatically uses service binding (VCAP_SERVICES)
@@ -15,14 +15,10 @@
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
+
+// This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider, buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
-
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
 import { buildDpiMaskingProvider, createSAPAIProvider } from "../src/index";
 
 /**

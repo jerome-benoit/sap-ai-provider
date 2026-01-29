@@ -21,9 +21,16 @@ export { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 export type { SAPAIEmbeddingModelId, SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
 
 /**
- * Error handling types for SAP AI Core error responses.
+ * Error handling types and classes for SAP AI Core error responses.
  */
 export type { OrchestrationErrorResponse } from "./sap-ai-error.js";
+
+/**
+ * Custom error classes for Foundation Models API support.
+ * - `UnsupportedFeatureError`: Thrown when a feature is used with an incompatible API.
+ * - `ApiSwitchError`: Thrown when attempting to switch APIs at invocation time with conflicting settings.
+ */
+export { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
  * Language model class for chat/text completions via SAP AI Core.
@@ -72,7 +79,23 @@ export type { DeploymentConfig, SAPAIProvider, SAPAIProviderSettings } from "./s
 /**
  * Model settings types and model identifier type definitions.
  */
-export type { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
+export type {
+  AzureOpenAiChatExtensionConfiguration,
+  CommonModelParams,
+  FoundationModelsDefaultSettings,
+  FoundationModelsEmbeddingParams,
+  FoundationModelsModelParams,
+  FoundationModelsModelSettings,
+  OrchestrationDefaultSettings,
+  OrchestrationModelParams,
+  OrchestrationModelSettings,
+  ResponseFormat,
+  SAPAIApiType,
+  SAPAIDefaultSettingsConfig,
+  SAPAIModelId,
+  SAPAIModelSettings,
+  SAPAISettings,
+} from "./sap-ai-settings.js";
 
 /**
  * SAP AI SDK types and utilities.
@@ -126,6 +149,13 @@ export {
   OrchestrationStreamChunkResponse,
   OrchestrationStreamResponse,
 } from "./sap-ai-settings.js";
+
+/**
+ * Validation utilities for API selection and feature compatibility.
+ * - `resolveApi`: Resolves API type from provider/model/invocation precedence chain.
+ * - `validateSettings`: Validates settings are compatible with the selected API.
+ */
+export { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
 /**
  * Package version, injected at build time.

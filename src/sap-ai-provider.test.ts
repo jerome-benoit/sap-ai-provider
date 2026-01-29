@@ -251,74 +251,174 @@ describe("createSAPAIProvider", () => {
           expect(noSuchModelError.modelId).toBe(modelId);
           expect(noSuchModelError.modelType).toBe("imageModel");
           expect(noSuchModelError.message).toContain(
-            "SAP AI Core Orchestration Service does not support image generation",
+            "SAP AI Core does not support image generation",
           );
         }
       }
     });
   });
+
+  describe("provider name", () => {
+    describe("language models use {name}.chat provider identifier", () => {
+      it("should use default provider identifier", () => {
+        const provider = createSAPAIProvider();
+        const model = provider("gpt-4o");
+        expect(model.provider).toBe("sap-ai.chat");
+      });
+
+      it("should use custom provider name", () => {
+        const provider = createSAPAIProvider({ name: "sap-ai-core" });
+
+        expect(provider("gpt-4o").provider).toBe("sap-ai-core.chat");
+        expect(provider.chat("gpt-4o").provider).toBe("sap-ai-core.chat");
+        expect(provider.languageModel("gpt-4o").provider).toBe("sap-ai-core.chat");
+      });
+    });
+
+    describe("embedding models use {name}.embedding provider identifier", () => {
+      it("should use custom provider name for embeddings", () => {
+        const provider = createSAPAIProvider({ name: "sap-ai-embeddings" });
+
+        expect(provider.embedding("text-embedding-ada-002").provider).toBe(
+          "sap-ai-embeddings.embedding",
+        );
+        expect(provider.embeddingModel("text-embedding-3-small").provider).toBe(
+          "sap-ai-embeddings.embedding",
+        );
+      });
+    });
+
+    describe("provider name works with other settings", () => {
+      it("should work with defaultSettings and resourceGroup", () => {
+        const provider = createSAPAIProvider({
+          defaultSettings: {
+            modelParams: { temperature: 0.7 },
+          },
+          name: "sap-ai-prod",
+          resourceGroup: "production",
+        });
+        const model = provider("gpt-4o");
+        expect(model.provider).toBe("sap-ai-prod.chat");
+      });
+
+      it("should work with deploymentId", () => {
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        const provider = createSAPAIProvider({
+          deploymentId: "d65d81e7c077e583",
+          name: "sap-ai-deployment",
+          resourceGroup: "default",
+        });
+        const model = provider("gpt-4o");
+        expect(model.provider).toBe("sap-ai-deployment.chat");
+
+        warnSpy.mockRestore();
+      });
+    });
+  });
+
+  describe("API selection", () => {
+    describe("provider-level selection", () => {
+      it("should default to orchestration API when no api option is specified", () => {
+        const provider = createSAPAIProvider();
+        const model = provider("gpt-4o");
+        expect(model).toBeDefined();
+      });
+
+      it("should accept orchestration api at provider level", () => {
+        const provider = createSAPAIProvider({ api: "orchestration" });
+        const model = provider("gpt-4o");
+        expect(model).toBeDefined();
+      });
+
+      it("should accept foundation-models api at provider level", () => {
+        const provider = createSAPAIProvider({ api: "foundation-models" });
+        const model = provider("gpt-4o");
+        expect(model).toBeDefined();
+      });
+    });
+
+    describe("model-level selection (override)", () => {
+      it("should allow model-level api to override provider-level api", () => {
+        const provider = createSAPAIProvider({ api: "orchestration" });
+        const model = provider("gpt-4o", { api: "foundation-models" });
+        expect(model).toBeDefined();
+      });
+
+      it("should accept api option in chat method", () => {
+        const provider = createSAPAIProvider();
+        const model = provider.chat("gpt-4o", { api: "foundation-models" });
+        expect(model).toBeDefined();
+      });
+
+      it("should accept api option in languageModel method", () => {
+        const provider = createSAPAIProvider();
+        const model = provider.languageModel("gpt-4o", { api: "orchestration" });
+        expect(model).toBeDefined();
+      });
+
+      it("should accept api option in embedding method", () => {
+        const provider = createSAPAIProvider();
+        const model = provider.embedding("text-embedding-ada-002", { api: "foundation-models" });
+        expect(model).toBeDefined();
+      });
+
+      it("should accept api option in embeddingModel method", () => {
+        const provider = createSAPAIProvider();
+        const model = provider.embeddingModel("text-embedding-3-small", { api: "orchestration" });
+        expect(model).toBeDefined();
+      });
+    });
+
+    describe("mixed API usage within same provider", () => {
+      it("should allow different models to use different APIs", () => {
+        const provider = createSAPAIProvider();
+
+        const orchestrationModel = provider("gpt-4o", { api: "orchestration" });
+        const fmModel = provider("gpt-4o-mini", { api: "foundation-models" });
+
+        expect(orchestrationModel).toBeDefined();
+        expect(fmModel).toBeDefined();
+        expect(orchestrationModel.modelId).toBe("gpt-4o");
+        expect(fmModel.modelId).toBe("gpt-4o-mini");
+      });
+
+      it("should allow mixing language and embedding models with different APIs", () => {
+        const provider = createSAPAIProvider({ api: "orchestration" });
+
+        const chatModel = provider.chat("gpt-4o");
+        const embeddingModel = provider.embedding("text-embedding-ada-002", {
+          api: "foundation-models",
+        });
+
+        expect(chatModel).toBeDefined();
+        expect(embeddingModel).toBeDefined();
+      });
+    });
+
+    describe("API resolution precedence", () => {
+      it("should use provider-level API as fallback when model-level is not set", () => {
+        const provider = createSAPAIProvider({ api: "foundation-models" });
+        const model = provider("gpt-4o");
+        expect(model).toBeDefined();
+      });
+
+      it("should prefer model-level API over provider-level API", () => {
+        const provider = createSAPAIProvider({ api: "orchestration" });
+        const model = provider("gpt-4o", { api: "foundation-models" });
+        expect(model).toBeDefined();
+      });
+
+      it("should use default orchestration when neither provider nor model specifies api", () => {
+        const provider = createSAPAIProvider();
+        const model = provider("gpt-4o");
+        expect(model).toBeDefined();
+      });
+    });
+  });
 });
 
-describe("provider name", () => {
-  describe("language models use {name}.chat provider identifier", () => {
-    it("should use default provider identifier", () => {
-      const provider = createSAPAIProvider();
-      const model = provider("gpt-4o");
-      expect(model.provider).toBe("sap-ai.chat");
-    });
-
-    it("should use custom provider name", () => {
-      const provider = createSAPAIProvider({ name: "sap-ai-core" });
-
-      expect(provider("gpt-4o").provider).toBe("sap-ai-core.chat");
-      expect(provider.chat("gpt-4o").provider).toBe("sap-ai-core.chat");
-      expect(provider.languageModel("gpt-4o").provider).toBe("sap-ai-core.chat");
-    });
-  });
-
-  describe("embedding models use {name}.embedding provider identifier", () => {
-    it("should use custom provider name for embeddings", () => {
-      const provider = createSAPAIProvider({ name: "sap-ai-embeddings" });
-
-      expect(provider.embedding("text-embedding-ada-002").provider).toBe(
-        "sap-ai-embeddings.embedding",
-      );
-      expect(provider.embeddingModel("text-embedding-3-small").provider).toBe(
-        "sap-ai-embeddings.embedding",
-      );
-    });
-  });
-
-  describe("provider name works with other settings", () => {
-    it("should work with defaultSettings and resourceGroup", () => {
-      const provider = createSAPAIProvider({
-        defaultSettings: {
-          modelParams: { temperature: 0.7 },
-        },
-        name: "sap-ai-prod",
-        resourceGroup: "production",
-      });
-      const model = provider("gpt-4o");
-      expect(model.provider).toBe("sap-ai-prod.chat");
-    });
-
-    it("should work with deploymentId", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-
-      const provider = createSAPAIProvider({
-        deploymentId: "d65d81e7c077e583",
-        name: "sap-ai-deployment",
-        resourceGroup: "default",
-      });
-      const model = provider("gpt-4o");
-      expect(model.provider).toBe("sap-ai-deployment.chat");
-
-      warnSpy.mockRestore();
-    });
-  });
-});
-
-describe("sapai default provider", () => {
+describe("sapai", () => {
   it("should expose provider entrypoint", () => {
     expect(sapai).toBeDefined();
     expect(typeof sapai).toBe("function");

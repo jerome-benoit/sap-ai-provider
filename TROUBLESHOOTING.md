@@ -5,18 +5,19 @@ Provider.
 
 ## Quick Reference
 
-| Issue                 | Section                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------- |
-| 401 Unauthorized      | [Authentication Issues](#problem-authentication-failed-or-401-errors)              |
-| 403 Forbidden         | [Authentication Issues](#problem-403-forbidden)                                    |
-| 404 Not Found         | [Model and Deployment Issues](#problem-404-modeldeployment-not-found)              |
-| 400 Bad Request       | [API Errors](#problem-400-bad-request)                                             |
-| 400 Template errors   | [Problem: Template Placeholder Conflicts](#problem-template-placeholder-conflicts) |
-| 429 Rate Limit        | [API Errors](#problem-429-rate-limit-exceeded)                                     |
-| 500-504 Server Errors | [API Errors](#problem-500502503504-server-errors)                                  |
-| Tools not called      | [Tool Calling Issues](#problem-tools-not-being-called)                             |
-| Stream issues         | [Streaming Issues](#problem-streaming-not-working-or-incomplete)                   |
-| Slow responses        | [Performance Issues](#problem-slow-response-times)                                 |
+| Issue                   | Section                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| 401 Unauthorized        | [Authentication Issues](#problem-authentication-failed-or-401-errors)                           |
+| 403 Forbidden           | [Authentication Issues](#problem-403-forbidden)                                                 |
+| 404 Not Found           | [Model and Deployment Issues](#problem-404-modeldeployment-not-found)                           |
+| 400 Bad Request         | [API Errors](#problem-400-bad-request)                                                          |
+| 400 Template errors     | [Problem: Template Placeholder Conflicts](#problem-template-placeholder-conflicts)              |
+| 429 Rate Limit          | [API Errors](#problem-429-rate-limit-exceeded)                                                  |
+| 500-504 Server Errors   | [API Errors](#problem-500502503504-server-errors)                                               |
+| UnsupportedFeatureError | [API-specific feature mismatch](#problem-api-specific-feature-mismatch-unsupportedfeatureerror) |
+| Tools not called        | [Tool Calling Issues](#problem-tools-not-being-called)                                          |
+| Stream issues           | [Streaming Issues](#problem-streaming-not-working-or-incomplete)                                |
+| Slow responses          | [Performance Issues](#problem-slow-response-times)                                              |
 
 ## Common Problems (Top 5)
 
@@ -67,6 +68,7 @@ below.
 - [Model and Deployment Issues](#model-and-deployment-issues)
   - [Problem: 404 Model/Deployment Not Found](#problem-404-modeldeployment-not-found)
   - [Problem: Model doesn't support features](#problem-model-doesnt-support-features)
+  - [Problem: API-specific feature mismatch (UnsupportedFeatureError)](#problem-api-specific-feature-mismatch-unsupportedfeatureerror)
 - [Streaming Issues](#streaming-issues)
   - [Problem: Streaming not working or incomplete](#problem-streaming-not-working-or-incomplete)
 - [Tool Calling Issues](#tool-calling-issues)
@@ -122,39 +124,12 @@ For a complete error code reference, see
 
 ### Parsing SAP Error Metadata (v3.0.0+)
 
-> **Architecture Details:** For OAuth2 authentication flow and token management,
-> see
-> [Architecture - Authentication System](./ARCHITECTURE.md#authentication-system).
+**v3.0.0 Breaking Change:** `SAPAIError` removed. Use standard Vercel AI SDK
+error types from `@ai-sdk/provider`.
 
-**v3.0.0 Breaking Change:** `SAPAIError` removed. Use `APICallError`,
-`LoadAPIKeyError`, or `NoSuchModelError` from `@ai-sdk/provider`.
-
-**Quick example:**
-
-```typescript
-import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
-
-try {
-  const result = await generateText({ model, prompt });
-} catch (error) {
-  if (error instanceof LoadAPIKeyError) {
-    // 401/403: Authentication issue
-    console.error("Auth error:", error.message);
-  } else if (error instanceof NoSuchModelError) {
-    // 404: Model not found
-    console.error("Model not found:", error.modelId);
-  } else if (error instanceof APICallError) {
-    // Other API errors
-    console.error("Status:", error.statusCode);
-    const sapError = JSON.parse(error.responseBody ?? "{}");
-    console.error("Request ID:", sapError.error?.request_id);
-  }
-}
-```
-
-**For complete error handling with all error properties and SAP metadata
-fields**, see
-[API Reference - Error Handling Examples](./API_REFERENCE.md#error-handling-examples).
+For complete error handling examples with all error types and SAP-specific
+metadata fields, see
+[API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference).
 
 ### Problem: 400 Bad Request
 
@@ -266,6 +241,79 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 3. Remove unsupported features or use alternatives (JSON mode instead of
    structured outputs)
 
+### Problem: API-specific feature mismatch (UnsupportedFeatureError)
+
+**Symptoms:** `UnsupportedFeatureError` thrown at runtime with message like
+"Content filtering is not supported with Foundation Models API"
+
+**Cause:** Attempting to use features that are only available on one API with the
+other API:
+
+- **Orchestration-only features:** `filtering`, `grounding`, `masking`,
+  `translation`, `escapeTemplatePlaceholders`
+- **Foundation Models-only features:** `dataSources` (Azure OpenAI On Your Data)
+
+**Solutions:**
+
+1. **Check which API you're using:**
+
+   ```typescript
+   import { generateText } from "ai";
+   import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
+   // Provider-level (affects all models)
+   const provider = createSAPAIProvider({ api: "orchestration" }); // default
+
+   // Model-level (overrides provider)
+   const model = provider("gpt-4o", { api: "foundation-models" });
+
+   // Call-level (overrides model and provider)
+   await generateText({
+     model,
+     prompt: "Hello",
+     providerOptions: { [SAP_AI_PROVIDER_NAME]: { api: "orchestration" } },
+   });
+   ```
+
+2. **Match features to the correct API:**
+
+   ```typescript
+   // ✅ Correct: Use filtering with Orchestration API (default)
+   const provider = createSAPAIProvider({
+     defaultSettings: {
+       filtering: { input: { filters: [...] } },
+     },
+   });
+
+   // ❌ Wrong: Using filtering with Foundation Models API
+   const provider = createSAPAIProvider({
+     api: "foundation-models",
+     defaultSettings: {
+       filtering: { ... }, // Throws UnsupportedFeatureError!
+     },
+   });
+   ```
+
+3. **Handle the error gracefully:**
+
+   ```typescript
+   import { UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
+
+   try {
+     await generateText({ model, prompt: "Hello" });
+   } catch (error) {
+     if (error instanceof UnsupportedFeatureError) {
+       console.error("Feature:", error.feature);
+       console.error("Current API:", error.api);
+       console.error("Required API:", error.suggestedApi);
+     }
+   }
+   ```
+
+**Reference:** See
+[API Reference - API Selection](./API_REFERENCE.md#api-selection-orchestration-vs-foundation-models)
+for complete feature comparison.
+
 ## Streaming Issues
 
 > **Architecture Details:** For streaming implementation and SSE flow diagrams,
@@ -283,8 +331,11 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
    ```typescript
    import "dotenv/config"; // Load environment variables
    import { streamText } from "ai";
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
-   const result = streamText({
+   const provider = createSAPAIProvider();
+
+   const result = await streamText({
      model: provider("gpt-4o"),
      prompt: "Write a story",
    });
@@ -340,9 +391,9 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 2. **Make prompt explicit:** "What's the weather in Tokyo? Use the weather tool
    to check."
 
-3. **Check compatibility:** Gemini supports only 1 tool per request. Use
-   `gpt-4o` for multiple tools.
-   [Model limitations](./CURL_API_TESTING_GUIDE.md#tool-calling-example)
+3. **Check compatibility:** See
+   [Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
+   for supported models and restrictions.
 
 ### Problem: Tool execution errors
 
@@ -504,7 +555,7 @@ for await (const part of stream) {
 - Cannot correlate streaming responses with SAP AI Core server logs using
   `x-request-id`
 - Non-streaming (`doGenerate`) responses correctly expose `x-request-id` in
-  `providerMetadata['sap-ai'].requestId`
+  `providerMetadata[SAP_AI_PROVIDER_NAME].requestId`
 
 **Status:** Waiting for SAP AI SDK enhancement. See
 [SAP AI SDK Issue #1433](https://github.com/SAP/ai-sdk-js/issues/1433).

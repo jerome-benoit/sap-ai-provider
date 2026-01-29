@@ -6,8 +6,8 @@ description: Environment variables, credentials, and configuration guidance
 
 ## Credentials
 
-The SAP AI SDK (`@sap-ai-sdk/orchestration`) handles authentication
-automatically:
+The SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`)
+handles authentication automatically:
 
 1. **On SAP BTP**: Uses service binding from `VCAP_SERVICES`
 2. **Locally**: Uses `AICORE_SERVICE_KEY` environment variable containing the

@@ -12,7 +12,7 @@ see [API Reference](./API_REFERENCE.md).
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
 - Implements Vercel AI SDK's `ProviderV3` interface
-- Uses SAP AI SDK (`@sap-ai-sdk/orchestration`) for OAuth2 auth
+- Uses SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`) for API communication
 - Transforms messages bidirectionally (AI SDK ↔ SAP format)
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
 
@@ -59,7 +59,7 @@ Handler → SAP AI Core API
 - [Integration Patterns](#integration-patterns)
   - [Provider Pattern](#provider-pattern)
   - [Adapter Pattern](#adapter-pattern)
-  - [Strategy Pattern](#strategy-pattern)
+  - [Strategy Pattern (Dual API Support)](#strategy-pattern-dual-api-support)
 - [Performance Considerations](#performance-considerations)
   - [Request Optimization](#request-optimization)
   - [Memory Management](#memory-management)
@@ -217,45 +217,80 @@ conversion), API Client (HTTP communication), and Error Handling system.
 ```mermaid
 graph TB
     subgraph "Component Responsibilities"
-        Provider[SAPAIProvider<br/>━━━━━━━━━━━━━<br/>• OAuth2 Management<br/>• Provider Factory<br/>• Configuration<br/>• Deployment Setup]
+        Provider[SAPAIProvider<br/>━━━━━━━━━━━━━<br/>• OAuth2 Management<br/>• Provider Factory<br/>• Configuration<br/>• API Selection]
 
-        Model[SAPAILanguageModel<br/>━━━━━━━━━━━━━━━━━<br/>• doGenerate/doStream<br/>• Request Building<br/>• Response Parsing<br/>• Tool Call Handling<br/>• Multi-modal Support]
+        Model[SAPAILanguageModel<br/>━━━━━━━━━━━━━━━━━<br/>• doGenerate/doStream<br/>• API Resolution<br/>• Strategy Delegation<br/>• Late Binding]
 
-        Auth[Authentication System<br/>━━━━━━━━━━━━━━<br/>• Token Acquisition<br/>• Service Key Parsing<br/>• Credential Validation<br/>• Token Caching]
+        Embedding[SAPAIEmbeddingModel<br/>━━━━━━━━━━━━━━━━━<br/>• doEmbed<br/>• API Resolution<br/>• Strategy Delegation]
 
-        Transform[Message Transformer<br/>━━━━━━━━━━━━━━━<br/>• Prompt Conversion<br/>• Tool Call Mapping<br/>• Multi-modal Handling<br/>• Format Validation]
+        Validation[API Validation<br/>━━━━━━━━━━━━━━<br/>• API Resolution<br/>• Feature Validation<br/>• API Switch Detection<br/>• Error Generation]
 
-        ErrorSys[Error System<br/>━━━━━━━━━━━━<br/>• Error Classification<br/>• Retry Logic<br/>• Error Transformation<br/>• Status Code Mapping]
+        Strategy[Strategy Factory<br/>━━━━━━━━━━━━━━<br/>• Lazy Loading<br/>• Promise Caching<br/>• SDK Import<br/>• Race Prevention]
+    end
 
-        Types[Type System<br/>━━━━━━━━━━━<br/>• Zod Schemas<br/>• Request/Response Types<br/>• Validation<br/>• Type Safety]
+    subgraph "API Strategies"
+        OrchLM[Orchestration<br/>Language Model<br/>━━━━━━━━━━━━━━<br/>• Masking<br/>• Filtering<br/>• Grounding<br/>• Templating]
+
+        FMLM[Foundation Models<br/>Language Model<br/>━━━━━━━━━━━━━━<br/>• Logprobs<br/>• Seed<br/>• Direct Access]
+
+        OrchEM[Orchestration<br/>Embedding Model]
+
+        FMEM[Foundation Models<br/>Embedding Model]
+    end
+
+    subgraph "SAP AI Core"
+        OrchAPI[Orchestration API<br/>/v2/completion]
+        FMAPI[Foundation Models API<br/>/chat/completions]
     end
 
     Provider -->|Creates| Model
-    Provider -->|Uses| Auth
-    Model -->|Uses| Transform
-    Model -->|Uses| ErrorSys
-    Model -->|Uses| Types
-    Transform -->|Uses| Types
+    Provider -->|Creates| Embedding
+    Model -->|Resolves| Validation
+    Embedding -->|Resolves| Validation
+    Validation -->|Gets Strategy| Strategy
+
+    Strategy -->|Lazy Load| OrchLM
+    Strategy -->|Lazy Load| FMLM
+    Strategy -->|Lazy Load| OrchEM
+    Strategy -->|Lazy Load| FMEM
+
+    OrchLM -->|Calls| OrchAPI
+    FMLM -->|Calls| FMAPI
+    OrchEM -->|Calls| OrchAPI
+    FMEM -->|Calls| FMAPI
 
     style Provider fill:#e1f5ff
     style Model fill:#ffe1f5
-    style Auth fill:#fff4e1
-    style Transform fill:#f0ffe1
-    style ErrorSys fill:#ffe1e1
-    style Types fill:#f5e1ff
+    style Embedding fill:#ffe1f5
+    style Validation fill:#fff4e1
+    style Strategy fill:#f0ffe1
+    style OrchLM fill:#e1ffe1
+    style FMLM fill:#f5e1ff
+    style OrchAPI fill:#e1f5ff
+    style FMAPI fill:#f5e1ff
 ```
 
 ### Detailed Component Flow
 
 ```text
 src/
-├── index.ts                           # Public API exports
-├── sap-ai-provider.ts                 # Main provider factory
-├── sap-ai-language-model.ts           # Language model implementation
-├── sap-ai-embedding-model.ts          # Embedding model implementation
-├── sap-ai-settings.ts                 # Settings and type definitions
-├── sap-ai-error.ts                    # Error handling system
-└── convert-to-sap-messages.ts         # Message format conversion
+├── index.ts                                        # Public API exports
+├── sap-ai-provider.ts                              # Main provider factory
+├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
+├── sap-ai-language-model.ts                        # Language model (API-agnostic)
+├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
+├── sap-ai-settings.ts                              # Settings and type definitions
+├── sap-ai-error.ts                                 # Error handling system
+├── sap-ai-validation.ts                            # API resolution & validation
+├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
+├── strategy-utils.ts                               # Shared strategy utilities
+├── orchestration-language-model-strategy.ts       # Orchestration API strategy
+├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
+├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
+├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
+├── convert-to-sap-messages.ts                     # Message format conversion
+├── deep-merge.ts                                   # Deep merge utility
+└── version.ts                                      # Package version constant
 ```
 
 ### Component Responsibilities
@@ -859,7 +894,7 @@ sequenceDiagram
 
 ### OAuth2 Flow
 
-Authentication is handled automatically by `@sap-ai-sdk/orchestration`:
+Authentication is handled automatically by the SAP AI SDK packages:
 
 - **Local**: `AICORE_SERVICE_KEY` environment variable
 - **SAP BTP**: `VCAP_SERVICES` service binding
@@ -922,7 +957,7 @@ flag.
 
 ### User-Facing Error Handling (v3.0.0+)
 
-This provider converts all SAP Orchestration errors to standard Vercel AI SDK
+This provider converts all SAP AI Core errors to standard Vercel AI SDK
 error types:
 
 - **401/403 (Authentication)** → `LoadAPIKeyError`
@@ -958,8 +993,8 @@ See `src/sap-ai-settings.ts` for complete type definitions.
 
 ### Request/Response Schemas
 
-All API interactions use types from `@sap-ai-sdk/orchestration` and are
-validated for type safety. Key types include:
+All API interactions use types from `@sap-ai-sdk/orchestration` and
+`@sap-ai-sdk/foundation-models`, validated for type safety. Key types include:
 
 - `ChatCompletionRequest`: Orchestration config and input parameters
 - `OrchestrationResponse`: API responses with module results
@@ -992,11 +1027,204 @@ Core format. The `convertToSAPMessages()` function transforms prompt arrays,
 handling text content, images, tool calls, and tool results across different
 message formats.
 
-### Strategy Pattern
+### Strategy Pattern (Dual API Support)
 
-Different AI models may require different handling strategies based on their
-specific requirements and formats. The implementation can adapt behavior based
-on model identifiers (e.g., `anthropic--*`, `gemini-*`, etc.).
+The provider uses the Strategy Pattern with lazy loading to support two SAP AI
+Core APIs: **Orchestration API** and **Foundation Models API**. This enables
+feature-rich orchestration capabilities or direct model access depending on
+your needs.
+
+#### Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Application Layer"
+        App[Your Application]
+        SDK[Vercel AI SDK]
+    end
+
+    subgraph "Provider Layer"
+        Provider[SAPAIProvider]
+        LM[SAPAILanguageModel]
+        EM[SAPAIEmbeddingModel]
+        Validation[API Resolution<br/>& Validation]
+    end
+
+    subgraph "Strategy Layer"
+        Factory[Strategy Factory<br/>━━━━━━━━━━━━━<br/>• Lazy Loading<br/>• Promise Caching<br/>• SDK Import]
+        Cache[(Strategy Cache<br/>Key: API Type)]
+    end
+
+    subgraph "Language Model Strategies"
+        LMStrategy[LanguageModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doGenerate()<br/>• doStream()]
+        OrchLM[OrchestrationLanguageModelStrategy]
+        FMLM[FoundationModelsLanguageModelStrategy]
+    end
+
+    subgraph "Embedding Model Strategies"
+        EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed()]
+        OrchEM[OrchestrationEmbeddingModelStrategy]
+        FMEM[FoundationModelsEmbeddingModelStrategy]
+    end
+
+    subgraph "SAP AI SDKs"
+        OrchSDK[@sap-ai-sdk/orchestration<br/>━━━━━━━━━━━━━━━━━━<br/>• OrchestrationClient<br/>• OrchestrationEmbeddingClient]
+        FMSDK[@sap-ai-sdk/foundation-models<br/>━━━━━━━━━━━━━━━━━━<br/>• AzureOpenAiChatClient<br/>• AzureOpenAiEmbeddingClient]
+    end
+
+    App -->|generateText/streamText| SDK
+    SDK -->|doGenerate/doStream| LM
+    SDK -->|doEmbed| EM
+
+    Provider -->|creates| LM
+    Provider -->|creates| EM
+
+    LM -->|resolveApi| Validation
+    EM -->|resolveApi| Validation
+    Validation -->|api type| Factory
+
+    Factory -->|cache check| Cache
+    Factory -->|lazy import| OrchLM
+    Factory -->|lazy import| FMLM
+    Factory -->|lazy import| OrchEM
+    Factory -->|lazy import| FMEM
+
+    LMStrategy -.->|implements| OrchLM
+    LMStrategy -.->|implements| FMLM
+    EMStrategy -.->|implements| OrchEM
+    EMStrategy -.->|implements| FMEM
+
+    OrchLM -->|uses| OrchSDK
+    OrchEM -->|uses| OrchSDK
+    FMLM -->|uses| FMSDK
+    FMEM -->|uses| FMSDK
+
+    style Provider fill:#e1f5ff
+    style Factory fill:#fff4e1
+    style LMStrategy fill:#ffe1f5
+    style EMStrategy fill:#ffe1f5
+    style OrchSDK fill:#e1ffe1
+    style FMSDK fill:#f5e1ff
+```
+
+#### Late Binding Flow
+
+Strategies are loaded lazily at first invocation - not at provider creation
+time. This enables:
+
+1. **Reduced startup time** - No SDK imports until needed
+2. **Smaller bundles** - Only import the API you use
+3. **Runtime flexibility** - Switch APIs at any level (provider, model, call)
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant LM as SAPAILanguageModel
+    participant Val as API Validation
+    participant Factory as Strategy Factory
+    participant Cache as Strategy Cache
+    participant SDK as SAP AI SDK
+
+    rect rgb(240, 248, 255)
+        Note over App,LM: 1. First API Call
+        App->>LM: doGenerate(options)
+        LM->>Val: resolveApi(providerApi, modelApi, callApi)
+        Val-->>LM: effectiveApi = "orchestration"
+    end
+
+    rect rgb(255, 248, 240)
+        Note over LM,Cache: 2. Strategy Resolution (Lazy)
+        LM->>Factory: getOrCreateLanguageModelStrategy("orchestration")
+        Factory->>Cache: Check cache
+        Cache-->>Factory: Not found
+    end
+
+    rect rgb(248, 255, 240)
+        Note over Factory,SDK: 3. Lazy Import & Caching
+        Factory->>Factory: Cache Promise SYNCHRONOUSLY
+        Factory->>SDK: import("@sap-ai-sdk/orchestration")
+        SDK-->>Factory: { OrchestrationClient }
+        Factory->>Factory: new OrchestrationLanguageModelStrategy(OrchestrationClient)
+        Factory-->>LM: strategy
+    end
+
+    rect rgb(255, 240, 248)
+        Note over LM,SDK: 4. Execute via Strategy
+        LM->>Factory: strategy.doGenerate(config, settings, options)
+        Note right of Factory: Config passed per-call<br/>(tenant-specific, not cached)
+        Factory->>SDK: client.chatCompletion(...)
+        SDK-->>Factory: response
+        Factory-->>LM: LanguageModelV3GenerateResult
+    end
+
+    rect rgb(240, 255, 255)
+        Note over App,Cache: 5. Subsequent Calls (Cached)
+        App->>LM: doGenerate(options)
+        LM->>Factory: getOrCreateLanguageModelStrategy("orchestration")
+        Factory->>Cache: Check cache
+        Cache-->>Factory: Cached strategy (instant)
+        Factory-->>LM: strategy
+    end
+```
+
+#### Strategy Interface Design
+
+Strategies implement stateless interfaces - all tenant-specific configuration
+flows through method parameters, never cached in strategy instances:
+
+```typescript
+// Language model strategy interface
+interface LanguageModelAPIStrategy {
+  doGenerate(
+    config: LanguageModelStrategyConfig, // Tenant config - passed per-call
+    settings: SAPAIModelSettings, // Merged model settings
+    options: LanguageModelV3CallOptions, // AI SDK options
+  ): Promise<LanguageModelV3GenerateResult>;
+
+  doStream(config: LanguageModelStrategyConfig, settings: SAPAIModelSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult>;
+}
+
+// Embedding model strategy interface
+interface EmbeddingModelAPIStrategy {
+  doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV3CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV3Result>;
+}
+```
+
+#### API Selection Hierarchy
+
+The effective API is resolved with a clear priority order:
+
+```text
+Call-time api > Model-time api > Provider-time api > Default ("orchestration")
+```
+
+```typescript
+// Provider-level default
+const provider = createSAPAIProvider({ api: "orchestration" });
+
+// Model-level override
+const model = provider("gpt-4o", { api: "foundation-models" });
+
+// Call-level override (highest priority)
+const result = await generateText({
+  model,
+  prompt: "Hello",
+  providerOptions: {
+    sapai: { api: "orchestration" }, // Wins!
+  },
+});
+```
+
+#### Feature Validation
+
+The validation layer ensures features are compatible with the resolved API:
+
+- **Orchestration-only features**: masking, filtering, grounding, templating, translation
+- **Foundation Models-only features**: logprobs, seed, logit_bias, user, dataSources
+- **Common features**: temperature, maxTokens, topP, tools, streaming
+
+Incompatible feature combinations throw `UnsupportedFeatureError` with helpful
+suggestions for which API to use instead.
 
 ## Performance Considerations
 

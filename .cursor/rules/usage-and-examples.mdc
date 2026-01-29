@@ -27,6 +27,8 @@ Start with the README’s Quick Start and Advanced sections:
   [examples/example-translation.ts](mdc:examples/example-translation.ts)
 - Embeddings:
   [examples/example-embeddings.ts](mdc:examples/example-embeddings.ts)
+- Foundation Models API:
+  [examples/example-foundation-models.ts](mdc:examples/example-foundation-models.ts)
 
 ## Common Patterns
 

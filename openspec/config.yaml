@@ -1,0 +1,53 @@
+schema: spec-driven
+
+context: |
+  ## Project: SAP AI Provider for Vercel AI SDK
+
+  TypeScript/Node.js library providing integration between SAP AI Core and Vercel AI SDK.
+  Enables developers to use SAP's AI services through the standardized AI SDK interface.
+
+  ### Tech Stack
+  - Language: TypeScript (strict mode)
+  - Runtime: Node.js 18+ and Edge runtime compatible
+  - Build: tsup (CommonJS + ESM + .d.ts)
+  - Test: Vitest (node + edge configs)
+  - Formatting: Prettier + ESLint
+
+  ### Key Dependencies
+  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, zod
+  - Peer: ai (Vercel AI SDK), zod
+  - SAP SDKs: @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models
+
+  ### Architecture Patterns
+  - Implements Vercel AI SDK ProviderV3 interface
+  - Uses zod schemas for validation
+  - Lazy loading for optional dependencies
+  - Strategy Pattern for API abstraction
+  - Must work in both Node.js and Edge runtimes
+
+  ### Source Structure
+  - src/index.ts - Main exports
+  - src/sap-ai-provider.ts - Provider factory
+  - src/sap-ai-language-model.ts - Language model implementation
+  - src/sap-ai-embedding-model.ts - Embedding model implementation
+  - src/sap-ai-settings.ts - Types and settings
+  - src/convert-to-sap-messages.ts - Message conversion utilities
+
+  ### Conventions
+  - JSDoc comments required for all public APIs
+  - Use Vercel AI SDK standard errors
+  - Follow existing patterns in codebase
+  - Tests mirror source file structure (*.test.ts)
+
+  ### Validation Command
+  npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

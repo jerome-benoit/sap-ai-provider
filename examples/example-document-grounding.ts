@@ -4,7 +4,7 @@
  * SAP AI Provider - Document Grounding (RAG) Example
  *
  * This example demonstrates document grounding (Retrieval-Augmented Generation)
- * using the SAP AI Core Orchestration service's document grounding module.
+ * using the SAP AI Core Orchestration API's document grounding module.
  *
  * Document grounding allows you to ground LLM responses in your own documents
  * stored in a vector database, ensuring answers are based on your specific
@@ -24,14 +24,10 @@
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
+
+// This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider, buildDocumentGroundingConfig } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
-
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
 import { buildDocumentGroundingConfig, createSAPAIProvider } from "../src/index";
 
 /**
@@ -181,7 +177,6 @@ async function documentGroundingExample() {
     console.log("   - Index your documents in SAP HANA Cloud Vector Engine");
     console.log("   - Set VECTOR_STORE_ID environment variable");
     console.log("   - Use document_metadata filters to restrict search to specific documents");
-    console.log("   - Use metadata_params to retrieve source information for citations");
     console.log("   - Use metadata_params to retrieve source information for citations");
   } catch (error: unknown) {
     if (error instanceof LoadAPIKeyError) {

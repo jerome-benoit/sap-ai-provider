@@ -22,14 +22,10 @@ import { z } from "zod";
 
 import type { ChatCompletionTool } from "../src/index";
 
-// ============================================================================
-// NOTE: Import Path for Development vs Production
-// ============================================================================
-// This example uses relative imports for local development within this repo:
-import { createSAPAIProvider } from "../src/index";
+// This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider, ChatCompletionTool } from "@jerome-benoit/sap-ai-provider";
-// ============================================================================
+import { createSAPAIProvider } from "../src/index";
 
 // Define tool schemas in SAP AI SDK format (proper JSON Schema)
 // These are passed via provider settings to bypass AI SDK conversion issues
@@ -217,3 +213,5 @@ async function simpleToolExample() {
 }
 
 simpleToolExample().catch(console.error);
+
+export { simpleToolExample };

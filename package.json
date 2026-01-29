@@ -1,8 +1,8 @@
 {
   "name": "@jerome-benoit/sap-ai-provider",
-  "version": "4.3.0",
+  "version": "4.4.0",
   "type": "module",
-  "description": "SAP AI Core provider for AI SDK (powered by @sap-ai-sdk/orchestration)",
+  "description": "SAP AI Core provider for AI SDK (powered by @sap-ai-sdk/orchestration and @sap-ai-sdk/foundation-models)",
   "keywords": [
     "ai",
     "vercel",
@@ -73,6 +73,7 @@
   "dependencies": {
     "@ai-sdk/provider": "^3.0.5",
     "@ai-sdk/provider-utils": "^4.0.10",
+    "@sap-ai-sdk/foundation-models": "^2.5.0",
     "@sap-ai-sdk/orchestration": "^2.5.0",
     "zod": "^4.3.6"
   },

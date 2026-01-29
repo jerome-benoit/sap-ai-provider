@@ -2,14 +2,14 @@
 
 [![npm](https://img.shields.io/npm/v/@jerome-benoit/sap-ai-provider/latest?label=npm&color=blue)](https://www.npmjs.com/package/@jerome-benoit/sap-ai-provider)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-6.0+-black.svg)](https://sdk.vercel.ai/docs)
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5.0+-black.svg)](https://sdk.vercel.ai/docs)
 [![Language Model](https://img.shields.io/badge/Language%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
 [![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
 
 A community provider for SAP AI Core that integrates seamlessly with the Vercel
-AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** package, this
-provider enables you to use SAP's enterprise-grade AI models through the
-familiar Vercel AI SDK interface.
+AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** and
+**@sap-ai-sdk/foundation-models** packages, this provider enables you to use
+SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 
 ## Table of Contents
 
@@ -71,6 +71,8 @@ familiar Vercel AI SDK interface.
 - ⚡ **Language Model V3** - Latest Vercel AI SDK specification with enhanced
   streaming
 - 📊 **Text Embeddings** - Generate vector embeddings for RAG and semantic search
+- 🔀 **Dual API Support** - Choose between Orchestration or Foundation Models API
+  per provider, model, or call
 
 ## Quick Start
 
@@ -124,7 +126,7 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 18+ and Vercel AI SDK 6.0+
+**Requirements:** Node.js 18+ and Vercel AI SDK 5.0+ or 6.0+
 
 ```bash
 npm install @jerome-benoit/sap-ai-provider ai
@@ -156,6 +158,51 @@ const provider = createSAPAIProvider({
 });
 ```
 
+### API Selection
+
+The provider supports two SAP AI Core APIs:
+
+- **Orchestration API** (default): Full-featured API with data masking, content
+  filtering, document grounding, and translation
+- **Foundation Models API**: Direct model access with additional parameters like
+  `logprobs`, `seed`, `logit_bias`, and `dataSources` (Azure On Your Data)
+
+**Complete example:**
+[examples/example-foundation-models.ts](./examples/example-foundation-models.ts)\
+**Complete documentation:**
+[API Reference - Foundation Models API](./API_REFERENCE.md#api-comparison-orchestration-vs-foundation-models)
+
+```typescript
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
+// Provider-level API selection
+const provider = createSAPAIProvider({
+  api: "foundation-models", // All models use Foundation Models API
+});
+
+// Model-level API override
+const model = provider("gpt-4o", {
+  api: "orchestration", // Override for this model only
+});
+
+// Per-call API override via providerOptions
+const result = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "Hello",
+  providerOptions: {
+    [SAP_AI_PROVIDER_NAME]: {
+      api: "foundation-models", // Override for this call only
+    },
+  },
+});
+```
+
+**Run it:** `npx tsx examples/example-foundation-models.ts`
+
+> **Note:** The Foundation Models API does not support orchestration features
+> (masking, filtering, grounding, translation). Attempting to use these features
+> with Foundation Models API will throw an `UnsupportedFeatureError`.
+
 ### Option 2: Default Instance (Quick Start)
 
 ```typescript
@@ -175,17 +222,11 @@ automatic configuration from environment variables or service bindings.
 
 ## Authentication
 
-Authentication is handled automatically by the SAP AI SDK using the
-`AICORE_SERVICE_KEY` environment variable.
+Authentication is handled automatically by the SAP AI SDK via the
+`AICORE_SERVICE_KEY` environment variable (local) or `VCAP_SERVICES` (SAP BTP).
 
-**Quick Setup:**
-
-1. Create a `.env` file: `cp .env.example .env`
-2. Add your SAP AI Core service key JSON to `AICORE_SERVICE_KEY`
-3. Import in code: `import "dotenv/config";`
-
-**For complete setup instructions, SAP BTP deployment, troubleshooting, and
-advanced scenarios, see the [Environment Setup Guide](./ENVIRONMENT_SETUP.md).**
+**→ [Environment Setup Guide](./ENVIRONMENT_SETUP.md)** - Complete setup
+instructions, SAP BTP deployment, and troubleshooting.
 
 ## Basic Usage
 
@@ -315,8 +356,7 @@ For complete embedding API documentation, see
 
 ## Supported Models
 
-This provider supports all models available through SAP AI Core Orchestration
-service, including:
+This provider supports all models available through SAP AI Core, including:
 
 **Popular models:**
 
@@ -324,8 +364,6 @@ service, including:
   multi-tool apps)
 - **Anthropic Claude**: anthropic--claude-3.5-sonnet, anthropic--claude-4-opus
 - **Google Gemini**: gemini-2.5-pro, gemini-2.0-flash
-
-⚠️ **Important:** Google Gemini models have a 1 tool limit per request.
 
 - **Amazon Nova**: amazon--nova-pro, amazon--nova-lite
 - **Open Source**: mistralai--mistral-large-instruct,
@@ -362,10 +400,16 @@ modules.
 [examples/example-chat-completion-tool.ts](./examples/example-chat-completion-tool.ts)
 
 ```typescript
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+
+const provider = createSAPAIProvider();
+
 const weatherTool = tool({
   description: "Get weather for a location",
-  inputSchema: z.object({ location: z.string() }),
-  execute: (args) => `Weather in ${args.location}: sunny, 72°F`,
+  parameters: z.object({ location: z.string() }),
+  execute: async (args) => `Weather in ${args.location}: sunny, 72°F`,
 });
 
 const result = await generateText({
@@ -378,10 +422,9 @@ const result = await generateText({
 
 **Run it:** `npx tsx examples/example-chat-completion-tool.ts`
 
-⚠️ **Important:** Gemini models support only 1 tool per request. For multi-tool
-applications, use GPT-4o, Claude, or Amazon Nova models. See
-[API Reference - Tool Calling](./API_REFERENCE.md#tool-calling-function-calling)
-for complete model comparison.
+⚠️ **Model Limitations:** Some models have tool calling restrictions. See
+[API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
+for the complete comparison table.
 
 ### Multi-modal Input (Images)
 
@@ -522,12 +565,15 @@ Options are validated at runtime with Zod schemas.
 
 ```typescript
 import { generateText } from "ai";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
+const provider = createSAPAIProvider();
 
 const result = await generateText({
   model: provider("gpt-4o"),
   prompt: "Explain quantum computing",
   providerOptions: {
-    "sap-ai": {
+    [SAP_AI_PROVIDER_NAME]: {
       includeReasoning: true,
       modelParams: {
         temperature: 0.7,
@@ -561,44 +607,16 @@ examples, see
 
 ## Error Handling
 
-The provider uses standard Vercel AI SDK error types for consistent error
-handling.
+The provider uses standard Vercel AI SDK error types (`APICallError`,
+`LoadAPIKeyError`, `NoSuchModelError` from `@ai-sdk/provider`) for consistent
+error handling across providers.
 
-**Quick Example:**
+**Documentation:**
 
-```typescript
-import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
-
-try {
-  const result = await generateText({
-    model: provider("gpt-4o"),
-    prompt: "Hello world",
-  });
-} catch (error) {
-  if (error instanceof LoadAPIKeyError) {
-    // 401/403: Authentication or permission issue
-    console.error("Authentication issue:", error.message);
-  } else if (error instanceof NoSuchModelError) {
-    // 404: Model or deployment not found
-    console.error("Model not found:", error.modelId);
-  } else if (error instanceof APICallError) {
-    // Other API errors (400, 429, 5xx, etc.)
-    console.error("API error:", error.statusCode, error.message);
-    // SAP-specific metadata in responseBody
-    const sapError = JSON.parse(error.responseBody ?? "{}");
-    console.error("Request ID:", sapError.error?.request_id);
-  }
-}
-```
-
-**Complete reference:**
-
-- **[API Reference - Error Handling](./API_REFERENCE.md#error-handling-examples)** -
-  Complete examples with all error properties
-- **[API Reference - HTTP Status Codes](./API_REFERENCE.md#http-status-code-reference)** -
-  Status code reference table
-- **[Troubleshooting Guide](./TROUBLESHOOTING.md)** - Detailed solutions for
-  each error type
+- **[API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference)** -
+  Complete examples, error types, and SAP-specific metadata
+- **[Troubleshooting Guide](./TROUBLESHOOTING.md)** - Solutions for common errors
+  (401, 404, 429, 5xx)
 
 ## Troubleshooting
 
@@ -635,13 +653,9 @@ Error code reference table:
 
 ## Security
 
-- Do not commit `.env` or credentials; use environment variables and secrets
-  managers.
-- Treat `AICORE_SERVICE_KEY` as sensitive; avoid logging it or including in
-  crash reports.
-- Mask PII with DPI: configure `masking.masking_providers` using
-  `buildDpiMaskingProvider()`.
-- Validate and sanitize tool outputs before executing any side effects.
+Follow security best practices when handling credentials. See
+[Environment Setup - Security Best Practices](./ENVIRONMENT_SETUP.md#security-best-practices)
+for detailed guidance on credential management, key rotation, and secure deployment.
 
 ## Debug Mode
 
@@ -668,6 +682,7 @@ features:
 | `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen   |
 | `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation |
 | `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity  |
+| `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed     |
 
 **Running Examples:**
 
@@ -683,7 +698,7 @@ npx tsx examples/example-generate-text.ts
 ### Upgrading from v3.x to v4.x
 
 Version 4.0 migrates from **LanguageModelV2** to **LanguageModelV3**
-specification (AI SDK 6.0+). **See the
+specification (AI SDK 5.0+). **See the
 [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for
 complete upgrade instructions.**
 
@@ -708,7 +723,7 @@ complete upgrade instructions.**
 ### Upgrading from v2.x to v3.x
 
 Version 3.0 standardizes error handling to use Vercel AI SDK native error types.
-**See the [Migration Guide](./MIGRATION_GUIDE.md#v2x--v30) for complete upgrade
+**See the [Migration Guide](./MIGRATION_GUIDE.md#version-2x-to-3x-breaking-changes) for complete upgrade
 instructions.**
 
 **Key changes:**
@@ -720,7 +735,7 @@ instructions.**
 ### Upgrading from v1.x to v2.x
 
 Version 2.0 uses the official SAP AI SDK. **See the
-[Migration Guide](./MIGRATION_GUIDE.md#v1x--v20) for complete upgrade
+[Migration Guide](./MIGRATION_GUIDE.md#version-1x-to-2x-breaking-changes) for complete upgrade
 instructions.**
 
 **Key changes:**
