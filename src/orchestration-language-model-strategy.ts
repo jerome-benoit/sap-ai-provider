@@ -666,9 +666,6 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
         .filter((t): t is ChatCompletionTool => t !== null);
     }
 
-    const supportsN =
-      !config.modelId.startsWith("amazon--") && !config.modelId.startsWith("anthropic--");
-
     const modelParams: SAPModelParams = deepMerge(
       orchSettings.modelParams ?? {},
       sapOptions?.modelParams ?? {},
@@ -683,15 +680,6 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
 
     if (options.stopSequences && options.stopSequences.length > 0) {
       modelParams.stop = options.stopSequences;
-    }
-
-    if (supportsN) {
-      const nValue = sapOptions?.modelParams?.n ?? orchSettings.modelParams?.n;
-      if (nValue !== undefined) {
-        modelParams.n = nValue;
-      }
-    } else {
-      delete modelParams.n;
     }
 
     validateModelParamsWithWarnings(

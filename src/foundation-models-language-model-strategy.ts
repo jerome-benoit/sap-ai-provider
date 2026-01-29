@@ -660,35 +660,11 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       });
     }
 
+    // Pass through all model params (known and unknown) to the API
+    // This allows users to send vendor-specific parameters
     const request: AzureOpenAiChatCompletionParameters = {
       messages: messages as AzureOpenAiChatCompletionParameters["messages"],
-      ...(modelParams.max_tokens !== undefined
-        ? { max_tokens: modelParams.max_tokens as number }
-        : {}),
-      ...(modelParams.temperature !== undefined
-        ? { temperature: modelParams.temperature as number }
-        : {}),
-      ...(modelParams.top_p !== undefined ? { top_p: modelParams.top_p as number } : {}),
-      ...(modelParams.frequency_penalty !== undefined
-        ? { frequency_penalty: modelParams.frequency_penalty as number }
-        : {}),
-      ...(modelParams.presence_penalty !== undefined
-        ? { presence_penalty: modelParams.presence_penalty as number }
-        : {}),
-      ...(modelParams.stop !== undefined ? { stop: modelParams.stop as string | string[] } : {}),
-      ...(modelParams.seed !== undefined ? { seed: modelParams.seed as number } : {}),
-      ...(modelParams.n !== undefined ? { n: modelParams.n as number } : {}),
-      ...(modelParams.logprobs !== undefined ? { logprobs: modelParams.logprobs as boolean } : {}),
-      ...(modelParams.top_logprobs !== undefined
-        ? { top_logprobs: modelParams.top_logprobs as number }
-        : {}),
-      ...(modelParams.logit_bias !== undefined
-        ? { logit_bias: modelParams.logit_bias as Record<string, number> }
-        : {}),
-      ...(modelParams.user !== undefined ? { user: modelParams.user as string } : {}),
-      ...(modelParams.parallel_tool_calls !== undefined
-        ? { parallel_tool_calls: modelParams.parallel_tool_calls as boolean }
-        : {}),
+      ...modelParams,
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
       ...(fmSettings.dataSources &&
