@@ -715,7 +715,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
         model: {
           name: config.modelId,
           params: modelParams,
-          version: orchSettings.modelVersion ?? "latest",
+          ...(orchSettings.modelVersion ? { version: orchSettings.modelVersion } : {}),
         },
         prompt: {
           template: [],

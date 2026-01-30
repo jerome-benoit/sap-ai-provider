@@ -134,12 +134,12 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     setGlobalLogLevel(logLevel);
   }
 
+  // Provider-level API setting (defaults to 'orchestration')
+  const providerApi = options.api ?? "orchestration";
+
   const deploymentConfig: DeploymentConfig = options.deploymentId
     ? { deploymentId: options.deploymentId }
     : { resourceGroup };
-
-  // Provider-level API setting (defaults to 'orchestration')
-  const providerApi = options.api ?? "orchestration";
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
     const mergedSettings: SAPAISettings = {

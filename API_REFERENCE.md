@@ -674,6 +674,9 @@ const model = provider.embedding("text-embedding-3-large", {
   // Maximum embeddings per API call (default: 2048)
   maxEmbeddingsPerCall: 100,
 
+  // Specific version of the model (optional)
+  modelVersion: "2024-02-15-preview",
+
   // Embedding type: "document", "query", or "text" (default: "text")
   type: "document",
 
@@ -754,11 +757,13 @@ Configuration options for embedding models.
 
 **Properties:**
 
-| Property               | Type                   | Default  | Description                 |
-| ---------------------- | ---------------------- | -------- | --------------------------- |
-| `maxEmbeddingsPerCall` | `number`               | `2048`   | Maximum values per API call |
-| `type`                 | `EmbeddingType`        | `'text'` | Embedding type              |
-| `modelParams`          | `EmbeddingModelParams` | -        | Model-specific parameters   |
+| Property               | Type                   | Default           | Description                                          |
+| ---------------------- | ---------------------- | ----------------- | ---------------------------------------------------- |
+| `api`                  | `SAPAIApiType`         | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`) |
+| `maxEmbeddingsPerCall` | `number`               | `2048`            | Maximum values per API call                          |
+| `modelVersion`         | `string`               | -                 | Specific version of the model                        |
+| `type`                 | `EmbeddingType`        | `'text'`          | Embedding type                                       |
+| `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                            |
 
 **EmbeddingType Values:**
 
@@ -1121,22 +1126,22 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                   | Default    | Description                                                                                                             |
-| ---------------------------- | ---------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `modelVersion`               | `string`               | `'latest'` | Specific model version                                                                                                  |
-| `includeReasoning`           | `boolean`              | -          | Whether to include assistant reasoning parts in SAP prompt conversion (may contain internal reasoning)                  |
-| `escapeTemplatePlaceholders` | `boolean`              | `true`     | Escape template delimiters (`{{`, `{%`, `{#`) in message content to prevent conflicts with SAP orchestration templating |
-| `modelParams`                | `ModelParams`          | -          | Model generation parameters                                                                                             |
-| `masking`                    | `MaskingModule`        | -          | Data masking configuration (DPI)                                                                                        |
-| `filtering`                  | `FilteringModule`      | -          | Content filtering configuration                                                                                         |
-| `responseFormat`             | `ResponseFormatConfig` | -          | Response format specification                                                                                           |
-| `tools`                      | `ChatCompletionTool[]` | -          | Tool definitions in SAP AI SDK format                                                                                   |
+| Property                     | Type                   | Default | Description                                                                                                             |
+| ---------------------------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `modelVersion`               | `string`               | -       | Specific model version                                                                                                  |
+| `includeReasoning`           | `boolean`              | -       | Whether to include assistant reasoning parts in SAP prompt conversion (may contain internal reasoning)                  |
+| `escapeTemplatePlaceholders` | `boolean`              | `true`  | Escape template delimiters (`{{`, `{%`, `{#`) in message content to prevent conflicts with SAP orchestration templating |
+| `modelParams`                | `ModelParams`          | -       | Model generation parameters                                                                                             |
+| `masking`                    | `MaskingModule`        | -       | Data masking configuration (DPI)                                                                                        |
+| `filtering`                  | `FilteringModule`      | -       | Content filtering configuration                                                                                         |
+| `responseFormat`             | `ResponseFormatConfig` | -       | Response format specification                                                                                           |
+| `tools`                      | `ChatCompletionTool[]` | -       | Tool definitions in SAP AI SDK format                                                                                   |
 
 **Example:**
 
 ```typescript
 const settings: SAPAISettings = {
-  modelVersion: "latest",
+  modelVersion: "2024-08-06",
   modelParams: {
     temperature: 0.3,
     maxTokens: 2000,

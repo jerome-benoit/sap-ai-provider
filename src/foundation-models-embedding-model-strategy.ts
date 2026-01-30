@@ -18,9 +18,10 @@ import type {
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
-import type { FoundationModelsEmbeddingParams, SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
+import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
 import { buildModelDeployment, normalizeEmbedding } from "./strategy-utils.js";
@@ -87,7 +88,7 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
     }
 
     try {
-      const client = this.createClient(config);
+      const client = this.createClient(config, settings.modelVersion);
       const request = this.buildRequest(values, settings, sapOptions);
       const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
@@ -123,7 +124,6 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
    * Builds the embedding request parameters.
    * @param values - The input strings to embed.
    * @param settings - The embedding model settings.
-   * @param settings.modelParams - Model-specific parameters from settings.
    * @param sapOptions - Provider options from the call.
    * @returns The Azure OpenAI embedding parameters.
    * @internal
@@ -133,52 +133,29 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
     settings: SAPAIEmbeddingSettings,
     sapOptions: undefined | { modelParams?: Record<string, unknown> },
   ): AzureOpenAiEmbeddingParameters {
-    const request: AzureOpenAiEmbeddingParameters = {
+    const mergedParams = deepMerge(
+      settings.modelParams as Record<string, unknown> | undefined,
+      sapOptions?.modelParams,
+    );
+
+    return {
       input: values,
-    };
-
-    const modelParams = settings.modelParams as FoundationModelsEmbeddingParams | undefined;
-    if (modelParams) {
-      if (modelParams.user !== undefined) {
-        request.user = modelParams.user;
-      }
-      if (modelParams.encoding_format !== undefined) {
-        request.encoding_format = modelParams.encoding_format;
-      }
-      if (modelParams.dimensions !== undefined) {
-        request.dimensions = modelParams.dimensions;
-      }
-    }
-
-    if (sapOptions?.modelParams) {
-      const callParams = sapOptions.modelParams;
-      if (callParams.user !== undefined) {
-        request.user = callParams.user as string;
-      }
-      if (callParams.input_type !== undefined) {
-        request.input_type = callParams.input_type as string;
-      }
-      if (callParams.encoding_format !== undefined) {
-        request.encoding_format = callParams.encoding_format as string;
-      }
-      if (callParams.dimensions !== undefined) {
-        request.dimensions = callParams.dimensions as number;
-      }
-    }
-
-    return request;
+      ...(Object.keys(mergedParams).length > 0 ? mergedParams : {}),
+    } as AzureOpenAiEmbeddingParameters;
   }
 
   /**
    * Creates an SAP AI SDK AzureOpenAiEmbeddingClient with the given configuration.
    * @param config - The strategy configuration containing deployment info.
+   * @param modelVersion - Optional model version for deployment resolution.
    * @returns A new AzureOpenAiEmbeddingClient instance.
    * @internal
    */
   private createClient(
     config: EmbeddingModelStrategyConfig,
+    modelVersion?: string,
   ): InstanceType<AzureOpenAiEmbeddingClientClass> {
-    const modelDeployment = buildModelDeployment(config);
+    const modelDeployment = buildModelDeployment(config, modelVersion);
     return new this.ClientClass(modelDeployment, config.destination);
   }
 }

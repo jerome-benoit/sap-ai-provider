@@ -146,35 +146,34 @@ export function applyParameterOverrides(
 /**
  * Builds a ModelDeployment object for the Foundation Models API SDK.
  *
- * The SDK expects either:
- * - `{ deploymentId, resourceGroup? }` for direct deployment access
- * - `{ modelName, resourceGroup? }` for model-based deployment resolution
+ * Supports both deployment resolution strategies:
+ * - Direct deploymentId: Uses the specific deployment directly
+ * - Model-based: Uses modelName with optional modelVersion and resourceGroup
  * @param config - The strategy configuration containing deployment info and model ID.
- * @returns A ModelDeployment-compatible object.
+ * @param modelVersion - Optional model version for model-based resolution.
+ * @returns A ModelDeployment object for the Foundation Models API SDK.
  * @internal
  */
 export function buildModelDeployment(
   config: BaseModelDeploymentConfig,
-):
-  | { deploymentId: string; resourceGroup?: string }
-  | { modelName: string; resourceGroup?: string } {
+  modelVersion?: string,
+): { deploymentId: string } | { modelName: string; modelVersion?: string; resourceGroup?: string } {
   const deploymentConfig = config.deploymentConfig;
 
-  // Extract resourceGroup if present
+  // Use deploymentId directly if provided
+  if ("deploymentId" in deploymentConfig) {
+    return { deploymentId: deploymentConfig.deploymentId };
+  }
+
+  // Build model-based deployment with optional version and resourceGroup
   const resourceGroup =
     "resourceGroup" in deploymentConfig ? deploymentConfig.resourceGroup : undefined;
 
-  // If we have a deploymentId, use it directly
-  if ("deploymentId" in deploymentConfig) {
-    return resourceGroup
-      ? { deploymentId: deploymentConfig.deploymentId, resourceGroup }
-      : { deploymentId: deploymentConfig.deploymentId };
-  }
-
-  // Otherwise, use modelId as modelName for deployment resolution
-  return resourceGroup
-    ? { modelName: config.modelId, resourceGroup }
-    : { modelName: config.modelId };
+  return {
+    modelName: config.modelId,
+    ...(modelVersion && { modelVersion }),
+    ...(resourceGroup && { resourceGroup }),
+  };
 }
 
 /**
