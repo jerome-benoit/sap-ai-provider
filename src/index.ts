@@ -18,12 +18,7 @@ export {
  */
 export { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 
-export type { SAPAIEmbeddingModelId, SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
-
-/**
- * Error handling types and classes for SAP AI Core error responses.
- */
-export type { OrchestrationErrorResponse } from "./sap-ai-error.js";
+export type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 
 /**
  * Custom error classes for Foundation Models API support.
@@ -78,6 +73,7 @@ export type {
   ResponseFormat,
   SAPAIApiType,
   SAPAIDefaultSettingsConfig,
+  SAPAIEmbeddingSettings,
   SAPAIModelId,
   SAPAIModelSettings,
   SAPAISettings,
@@ -147,6 +143,11 @@ export { resolveApi, validateSettings } from "./sap-ai-validation.js";
  * Package version, injected at build time.
  */
 export { VERSION } from "./version.js";
+
+/**
+ * Error handling types and classes for SAP AI Core error responses.
+ */
+export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
 /**
  * Direct access to SAP AI SDK OrchestrationClient.
