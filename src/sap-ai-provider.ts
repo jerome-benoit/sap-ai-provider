@@ -5,14 +5,15 @@ import { NoSuchModelError, ProviderV3 } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import { deepMerge } from "./deep-merge.js";
-import {
-  SAPAIEmbeddingModel,
-  SAPAIEmbeddingModelId,
-  SAPAIEmbeddingSettings,
-} from "./sap-ai-embedding-model.js";
+import { SAPAIEmbeddingModel, SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 import { SAPAILanguageModel } from "./sap-ai-language-model.js";
 import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
-import { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
+import {
+  SAPAIApiType,
+  SAPAIEmbeddingSettings,
+  SAPAIModelId,
+  SAPAISettings,
+} from "./sap-ai-settings.js";
 
 /** Deployment configuration type used by the SAP AI SDK. */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;

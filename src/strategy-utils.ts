@@ -9,9 +9,12 @@ import type {
   LanguageModelV3CallOptions,
   LanguageModelV3FinishReason,
   LanguageModelV3FunctionTool,
+  SharedV3Warning,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { ZodType } from "zod";
+
+import { z } from "zod";
 
 /**
  * Base configuration for model deployment resolution.
@@ -23,6 +26,17 @@ export interface BaseModelDeploymentConfig {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   /** The model identifier (e.g., 'gpt-4o', 'text-embedding-ada-002'). */
   readonly modelId: string;
+}
+
+/**
+ * Result of extracting tool parameters from an AI SDK tool.
+ * @internal
+ */
+export interface ExtractedToolParameters {
+  /** The extracted SAP-compatible parameters. */
+  readonly parameters: SAPToolParameters;
+  /** Optional warning if schema conversion failed. */
+  readonly warning?: SharedV3Warning;
 }
 
 /**
@@ -294,6 +308,53 @@ export function createInitialStreamState(): StreamState {
       },
     },
   };
+}
+
+/**
+ * Extracts SAP-compatible tool parameters from an AI SDK function tool.
+ *
+ * Handles multiple schema formats:
+ * - Zod schemas (converted via z.toJSONSchema)
+ * - JSON Schema objects with properties
+ * - Empty/missing schemas (returns empty object schema)
+ * @param tool - The AI SDK function tool to extract parameters from.
+ * @returns The extracted parameters and optional warning.
+ * @internal
+ */
+export function extractToolParameters(tool: LanguageModelV3FunctionTool): ExtractedToolParameters {
+  const inputSchema = tool.inputSchema as Record<string, unknown> | undefined;
+  const toolWithParams = tool as FunctionToolWithParameters;
+
+  if (toolWithParams.parameters && isZodSchema(toolWithParams.parameters)) {
+    try {
+      const jsonSchema = z.toJSONSchema(toolWithParams.parameters);
+      const schemaRecord = jsonSchema as Record<string, unknown>;
+      delete schemaRecord.$schema;
+      return { parameters: buildSAPToolParameters(schemaRecord) };
+    } catch (error) {
+      return {
+        parameters: buildSAPToolParameters({}),
+        warning: {
+          details: `Failed to convert tool Zod schema: ${error instanceof Error ? error.message : String(error)}. Falling back to empty object schema.`,
+          feature: `tool schema conversion for ${tool.name}`,
+          type: "unsupported",
+        },
+      };
+    }
+  }
+
+  if (inputSchema && Object.keys(inputSchema).length > 0) {
+    const hasProperties =
+      inputSchema.properties &&
+      typeof inputSchema.properties === "object" &&
+      Object.keys(inputSchema.properties).length > 0;
+
+    if (hasProperties) {
+      return { parameters: buildSAPToolParameters(inputSchema) };
+    }
+  }
+
+  return { parameters: buildSAPToolParameters({}) };
 }
 
 /**

@@ -23,7 +23,6 @@ import {
   sapAIEmbeddingProviderOptions,
   validateEmbeddingModelParamsSettings,
 } from "./sap-ai-provider-options.js";
-// Note: SAPAIEmbeddingSettings is also re-exported below for backward compatibility
 import {
   type EmbeddingModelStrategyConfig,
   getOrCreateEmbeddingModelStrategy,
@@ -35,9 +34,6 @@ const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
 
 /** Model identifier for SAP AI embedding models (e.g., 'text-embedding-ada-002'). */
 export type SAPAIEmbeddingModelId = string;
-
-// Re-export SAPAIEmbeddingSettings from sap-ai-settings.ts for backward compatibility
-export type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
 /**
  * Internal configuration for SAP AI Embedding Model.

@@ -715,8 +715,6 @@ function isRetryable(statusCode: number): boolean {
   );
 }
 
-export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
-
 /**
  * Serializes and truncates axios response data for error messages.
  * @param data - The response data to serialize.

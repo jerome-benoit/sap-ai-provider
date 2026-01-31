@@ -22,7 +22,6 @@ import type {
 import type { Template } from "@sap-ai-sdk/orchestration/dist/client/api/schema/template.js";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
-import { z } from "zod";
 
 import type { OrchestrationModelSettings, SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
@@ -37,14 +36,11 @@ import {
 } from "./sap-ai-provider-options.js";
 import {
   applyParameterOverrides,
-  buildSAPToolParameters,
   createAISDKRequestBodySummary,
   createInitialStreamState,
-  type FunctionToolWithParameters,
-  isZodSchema,
+  extractToolParameters,
   mapFinishReason,
   type ParamMapping,
-  type SAPToolParameters,
   StreamIdGenerator,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
@@ -595,38 +591,9 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
       tools = availableTools
         ?.map((tool): ChatCompletionTool | null => {
           if (tool.type === "function") {
-            const inputSchema = tool.inputSchema as Record<string, unknown> | undefined;
-            const toolWithParams = tool as FunctionToolWithParameters;
-
-            let parameters: SAPToolParameters;
-
-            if (toolWithParams.parameters && isZodSchema(toolWithParams.parameters)) {
-              try {
-                const jsonSchema = z.toJSONSchema(toolWithParams.parameters);
-                const schemaRecord = jsonSchema as Record<string, unknown>;
-                delete schemaRecord.$schema;
-                parameters = buildSAPToolParameters(schemaRecord);
-              } catch (error) {
-                warnings.push({
-                  details: `Failed to convert tool Zod schema: ${error instanceof Error ? error.message : String(error)}. Falling back to empty object schema.`,
-                  feature: `tool schema conversion for ${tool.name}`,
-                  type: "unsupported",
-                });
-                parameters = buildSAPToolParameters({});
-              }
-            } else if (inputSchema && Object.keys(inputSchema).length > 0) {
-              const hasProperties =
-                inputSchema.properties &&
-                typeof inputSchema.properties === "object" &&
-                Object.keys(inputSchema.properties).length > 0;
-
-              if (hasProperties) {
-                parameters = buildSAPToolParameters(inputSchema);
-              } else {
-                parameters = buildSAPToolParameters({});
-              }
-            } else {
-              parameters = buildSAPToolParameters({});
+            const { parameters, warning } = extractToolParameters(tool);
+            if (warning) {
+              warnings.push(warning);
             }
 
             return {
