@@ -97,7 +97,7 @@
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "ai": "^5.0.0"
+    "ai": "^5.0.0 || ^6.0.0"
   },
   "engines": {
     "node": ">=18"
