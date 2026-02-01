@@ -12,10 +12,10 @@ import type {
   LanguageModelV3StreamResult,
   SharedV3Warning,
 } from "@ai-sdk/provider";
-import type { LlmModelParams } from "@sap-ai-sdk/orchestration";
 import type {
   ChatCompletionTool,
   ChatMessage,
+  LlmModelParams,
   OrchestrationClient,
   OrchestrationModuleConfig,
 } from "@sap-ai-sdk/orchestration";

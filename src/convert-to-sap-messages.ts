@@ -49,7 +49,7 @@ const ZERO_WIDTH_SPACE = "\u200B";
  * Regex matching template opening delimiters: `{{`, `{%`, `{#`.
  * @internal
  */
-const JINJA2_DELIMITERS_PATTERN = /\{([{%#])/g;
+const JINJA2_DELIMITERS_PATTERN = /\{(?=[{%#])/g;
 
 /**
  * Regex matching escaped template delimiters for unescaping.
@@ -301,14 +301,7 @@ export function convertToSAPMessages(
  */
 export function escapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
-  // Loop to handle overlapping patterns like {{{ where {{ appears twice
-  let result = text;
-  let previous: string;
-  do {
-    previous = result;
-    result = result.replace(JINJA2_DELIMITERS_PATTERN, `{${ZERO_WIDTH_SPACE}$1`);
-  } while (result !== previous);
-  return result;
+  return text.replaceAll(JINJA2_DELIMITERS_PATTERN, `{${ZERO_WIDTH_SPACE}`);
 }
 
 /**
@@ -318,5 +311,5 @@ export function escapeOrchestrationPlaceholders(text: string): string {
  */
 export function unescapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
-  return text.replace(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
+  return text.replaceAll(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
 }

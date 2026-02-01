@@ -1,6 +1,6 @@
 {
   "name": "@jerome-benoit/sap-ai-provider",
-  "version": "4.4.2",
+  "version": "4.4.4",
   "type": "module",
   "description": "SAP AI Core provider for AI SDK (powered by @sap-ai-sdk/orchestration and @sap-ai-sdk/foundation-models)",
   "keywords": [
@@ -72,7 +72,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.6",
-    "@ai-sdk/provider-utils": "^4.0.11",
+    "@ai-sdk/provider-utils": "^4.0.12",
     "@sap-ai-sdk/foundation-models": "^2.5.0",
     "@sap-ai-sdk/orchestration": "^2.5.0",
     "zod": "^4.3.6"

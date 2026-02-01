@@ -62,12 +62,12 @@ export function extractHeadings(content: string): Heading[] {
       const rawText = match[2];
 
       const text = rawText
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/\*([^*]+)\*/g, "$1")
-        .replace(/__([^_]+)__/g, "$1")
-        .replace(/_([^_]+)_/g, "$1")
-        .replace(/`([^`]+)`/g, "$1")
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replaceAll(/\*\*([^*]+)\*\*/g, "$1")
+        .replaceAll(/\*([^*]+)\*/g, "$1")
+        .replaceAll(/__([^_]+)__/g, "$1")
+        .replaceAll(/_([^_]+)_/g, "$1")
+        .replaceAll(/`([^`]+)`/g, "$1")
+        .replaceAll(/\[([^\]]+)\]\([^)]+\)/g, "$1")
         .trim();
 
       const baseSlug = slugify(text);
@@ -175,9 +175,9 @@ export function run(args: string[]): number {
 export function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^\w-]/g, "")
-    .replace(/^-+|-+$/g, "");
+    .replaceAll(/\s+/g, "-")
+    .replaceAll(/[^\w-]/g, "")
+    .replaceAll(/^-+|-+$/g, "");
 }
 
 /**
