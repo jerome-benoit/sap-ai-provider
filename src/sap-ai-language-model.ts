@@ -18,6 +18,10 @@ import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 import {
+  getSAPAIModelCapabilities,
+  type SAPAIModelCapabilities,
+} from "./sap-ai-model-capabilities.js";
+import {
   getProviderName,
   sapAILanguageModelProviderOptions,
   validateModelParamsSettings,
@@ -56,18 +60,15 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   /** The Vercel AI SDK specification version. */
   readonly specificationVersion = "v3";
 
-  /** Whether the model supports image URLs in prompts. */
-  readonly supportsImageUrls: boolean = true;
-  /** Whether the model supports generating multiple completions. */
-  readonly supportsMultipleCompletions: boolean = true;
-  /** Whether the model supports parallel tool calls. */
-  readonly supportsParallelToolCalls: boolean = true;
-  /** Whether the model supports streaming responses. */
-  readonly supportsStreaming: boolean = true;
-  /** Whether the model supports structured JSON outputs. */
-  readonly supportsStructuredOutputs: boolean = true;
-  /** Whether the model supports tool/function calling. */
-  readonly supportsToolCalls: boolean = true;
+  /**
+   * Gets the model capabilities for the current model.
+   * Cached after first access for performance.
+   * @returns The model capabilities.
+   */
+  get capabilities(): SAPAIModelCapabilities {
+    this._capabilities ??= getSAPAIModelCapabilities(this.modelId);
+    return this._capabilities;
+  }
 
   /**
    * Gets the provider identifier string.
@@ -79,13 +80,68 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   /**
    * Gets the supported URL patterns for image input.
+   * Returns empty object if the model doesn't support image inputs.
    * @returns A mapping of MIME type patterns to URL regex patterns.
    */
   get supportedUrls(): Record<string, RegExp[]> {
+    if (!this.capabilities.supportsImageInputs) {
+      return {};
+    }
     return {
       "image/*": [/^https:\/\/.+$/i, /^data:image\/.*$/],
     };
   }
+
+  /**
+   * Whether the model supports image URLs in prompts.
+   * @returns True if image URLs are supported.
+   */
+  get supportsImageUrls(): boolean {
+    return this.capabilities.supportsImageInputs;
+  }
+
+  /**
+   * Whether the model supports generating multiple completions (n parameter).
+   * @returns True if multiple completions are supported.
+   */
+  get supportsMultipleCompletions(): boolean {
+    return this.capabilities.supportsN;
+  }
+
+  /**
+   * Whether the model supports parallel tool calls in a single response.
+   * @returns True if parallel tool calls are supported.
+   */
+  get supportsParallelToolCalls(): boolean {
+    return this.capabilities.supportsParallelToolCalls;
+  }
+
+  /**
+   * Whether the model supports streaming responses.
+   * @returns True if streaming is supported.
+   */
+  get supportsStreaming(): boolean {
+    return this.capabilities.supportsStreaming;
+  }
+
+  /**
+   * Whether the model supports structured JSON outputs.
+   * @returns True if structured outputs are supported.
+   */
+  get supportsStructuredOutputs(): boolean {
+    return this.capabilities.supportsStructuredOutputs;
+  }
+
+  /**
+   * Whether the model supports tool/function calling.
+   * @returns True if tool calls are supported.
+   */
+  get supportsToolCalls(): boolean {
+    return this.capabilities.supportsToolCalls;
+  }
+
+  /** @internal */
+  private _capabilities?: SAPAIModelCapabilities;
 
   /** @internal */
   private readonly config: SAPAILanguageModelConfig;
@@ -194,9 +250,12 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   /**
    * Checks if a URL is supported for image input (HTTPS or data:image/*).
    * @param url - The URL to check.
-   * @returns True if the URL is supported for image input.
+   * @returns True if the URL is supported for image input, false if model doesn't support images.
    */
   supportsUrl(url: URL): boolean {
+    if (!this.capabilities.supportsImageInputs) {
+      return false;
+    }
     if (url.protocol === "https:") return true;
     if (url.protocol === "data:") {
       return /^data:image\//i.test(url.href);
