@@ -5,7 +5,8 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 import { NoSuchModelError } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
-import type { SAPAIEmbeddingModelId, SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
+import type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
+import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
 import { deepMerge } from "./deep-merge.js";
 import { SAPAIEmbeddingModelV2 } from "./sap-ai-embedding-model-v2.js";

@@ -15,8 +15,7 @@ import type {
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
-import type { SAPAIEmbeddingSettings } from "./sap-ai-embedding-model.js";
-import type { SAPAIApiType } from "./sap-ai-settings.js";
+import type { SAPAIApiType, SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
 import { convertWarningsV3ToV2 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
