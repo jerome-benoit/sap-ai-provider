@@ -71,8 +71,8 @@
     "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.6",
-    "@ai-sdk/provider-utils": "^4.0.12",
+    "@ai-sdk/provider": "^3.0.7",
+    "@ai-sdk/provider-utils": "^4.0.13",
     "@sap-ai-sdk/foundation-models": "^2.5.0",
     "@sap-ai-sdk/orchestration": "^2.5.0",
     "zod": "^4.3.6"
@@ -80,13 +80,13 @@
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^9.39.2",
-    "@types/node": "^25.1.0",
+    "@types/node": "^25.2.0",
     "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.2.3",
     "eslint": "^9.39.2",
     "eslint-plugin-jsdoc": "^62.5.0",
     "eslint-plugin-perfectionist": "^5.4.0",
-    "globals": "^17.2.0",
+    "globals": "^17.3.0",
     "markdown-link-check": "^3.14.2",
     "markdownlint-cli": "^0.47.0",
     "prettier": "^3.8.1",
