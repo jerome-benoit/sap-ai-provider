@@ -4057,214 +4057,87 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
-    describe("toolChoice warnings (Orchestration API)", () => {
-      it("should warn when toolChoice is not 'auto'", async () => {
-        const model = createModelForApi("orchestration");
-        const prompt = createPrompt("Hello");
+    describe.each<APIType>(["orchestration", "foundation-models"])(
+      "toolChoice support (%s API)",
+      (api) => {
+        it.each([
+          { expected: "auto", toolChoice: { type: "auto" as const } },
+          { expected: "none", toolChoice: { type: "none" as const } },
+          { expected: "required", toolChoice: { type: "required" as const } },
+        ])("should pass tool_choice '$expected' in request", async ({ expected, toolChoice }) => {
+          const model = createModelForApi(api);
+          const prompt = createPrompt("Hello");
 
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
+          const tools: LanguageModelV3FunctionTool[] = [
+            {
+              description: "A test tool",
+              inputSchema: { properties: {}, required: [], type: "object" },
+              name: "test_tool",
+              type: "function",
+            },
+          ];
 
-        const result = await model.doGenerate({
-          prompt,
-          toolChoice: { type: "required" },
-          tools,
-        });
-
-        expect(result.warnings).toContainEqual(
-          expect.objectContaining({
-            feature: "toolChoice",
-            type: "unsupported",
-          }),
-        );
-      });
-
-      it("should not warn when toolChoice is 'auto'", async () => {
-        const model = createModelForApi("orchestration");
-        const prompt = createPrompt("Hello");
-
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
-
-        const result = await model.doGenerate({
-          prompt,
-          toolChoice: { type: "auto" },
-          tools,
-        });
-
-        const toolChoiceWarnings = result.warnings.filter(
-          (w) =>
-            w.type === "unsupported" &&
-            (w as unknown as { feature?: string }).feature === "toolChoice",
-        );
-        expect(toolChoiceWarnings).toHaveLength(0);
-      });
-    });
-
-    describe("toolChoice support (Foundation Models API)", () => {
-      it("should not warn for any toolChoice type", async () => {
-        const model = createModelForApi("foundation-models");
-        const prompt = createPrompt("Hello");
-
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
-
-        for (const toolChoiceType of ["auto", "none", "required"] as const) {
-          const result = await model.doGenerate({
+          await model.doGenerate({
             prompt,
-            toolChoice: { type: toolChoiceType },
+            toolChoice,
             tools,
           });
 
-          const toolChoiceWarnings = result.warnings.filter(
-            (w) =>
-              w.type === "unsupported" &&
-              (w as unknown as { feature?: string }).feature === "toolChoice",
-          );
-          expect(toolChoiceWarnings).toHaveLength(0);
-        }
-      });
+          const request = await getLastRequestForApi(api);
+          expect(request.tool_choice).toBe(expected);
+        });
 
-      it("should pass tool_choice 'auto' in request", async () => {
-        const model = createModelForApi("foundation-models");
-        const prompt = createPrompt("Hello");
+        it("should pass tool_choice with specific function name in request", async () => {
+          const model = createModelForApi(api);
+          const prompt = createPrompt("Hello");
 
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
+          const tools: LanguageModelV3FunctionTool[] = [
+            {
+              description: "A test tool",
+              inputSchema: { properties: {}, required: [], type: "object" },
+              name: "test_tool",
+              type: "function",
+            },
+          ];
+
+          await model.doGenerate({
+            prompt,
+            toolChoice: { toolName: "test_tool", type: "tool" },
+            tools,
+          });
+
+          const request = await getLastRequestForApi(api);
+          expect(request.tool_choice).toEqual({
+            function: { name: "test_tool" },
             type: "function",
-          },
-        ];
-
-        await model.doGenerate({
-          prompt,
-          toolChoice: { type: "auto" },
-          tools,
+          });
         });
 
-        const request = await getLastFMRequest();
-        expect(request.tool_choice).toBe("auto");
-      });
+        it("should not include tool_choice when not specified", async () => {
+          const model = createModelForApi(api);
+          const prompt = createPrompt("Hello");
 
-      it("should pass tool_choice 'none' in request", async () => {
-        const model = createModelForApi("foundation-models");
-        const prompt = createPrompt("Hello");
+          const tools: LanguageModelV3FunctionTool[] = [
+            {
+              description: "A test tool",
+              inputSchema: { properties: {}, required: [], type: "object" },
+              name: "test_tool",
+              type: "function",
+            },
+          ];
 
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
+          await model.doGenerate({
+            prompt,
+            tools,
+          });
 
-        await model.doGenerate({
-          prompt,
-          toolChoice: { type: "none" },
-          tools,
+          const request = await getLastRequestForApi(api);
+          expect(request).not.toHaveProperty("tool_choice");
         });
+      },
+    );
 
-        const request = await getLastFMRequest();
-        expect(request.tool_choice).toBe("none");
-      });
-
-      it("should pass tool_choice 'required' in request", async () => {
-        const model = createModelForApi("foundation-models");
-        const prompt = createPrompt("Hello");
-
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
-
-        await model.doGenerate({
-          prompt,
-          toolChoice: { type: "required" },
-          tools,
-        });
-
-        const request = await getLastFMRequest();
-        expect(request.tool_choice).toBe("required");
-      });
-
-      it("should pass tool_choice with specific function name in request", async () => {
-        const model = createModelForApi("foundation-models");
-        const prompt = createPrompt("Hello");
-
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
-
-        await model.doGenerate({
-          prompt,
-          toolChoice: { toolName: "test_tool", type: "tool" },
-          tools,
-        });
-
-        const request = await getLastFMRequest();
-        expect(request.tool_choice).toEqual({
-          function: { name: "test_tool" },
-          type: "function",
-        });
-      });
-
-      it("should not include tool_choice when not specified", async () => {
-        const model = createModelForApi("foundation-models");
-        const prompt = createPrompt("Hello");
-
-        const tools: LanguageModelV3FunctionTool[] = [
-          {
-            description: "A test tool",
-            inputSchema: { properties: {}, required: [], type: "object" },
-            name: "test_tool",
-            type: "function",
-          },
-        ];
-
-        await model.doGenerate({
-          prompt,
-          tools,
-        });
-
-        const request = await getLastFMRequest();
-        expect(request).not.toHaveProperty("tool_choice");
-      });
-    });
-
-    describe.each([
-      { api: "orchestration" as APIType, apiName: "Orchestration" },
-      { api: "foundation-models" as APIType, apiName: "Foundation Models" },
-    ])("warnings ($apiName API)", ({ api }) => {
+    describe.each<APIType>(["orchestration", "foundation-models"])("warnings (%s API)", (api) => {
       it("should emit a best-effort warning for responseFormat json", async () => {
         const model = createModelForApi(api);
         const prompt = createPrompt("Return JSON");

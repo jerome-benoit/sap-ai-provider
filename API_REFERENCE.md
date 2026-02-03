@@ -592,12 +592,6 @@ const result = await generateText({
 });
 ```
 
-> **API Note:** `toolChoice` is fully supported by the Foundation Models API
-> (`api: "foundation-models"`), which passes the setting directly to the underlying
-> model. The Orchestration API (`api: "orchestration"`, default) ignores non-`auto`
-> values and emits a warning, as the SAP Orchestration service doesn't support this
-> parameter. Use Foundation Models API if you need precise tool choice control.
-
 ### Best Practices
 
 1. **Model Selection:** Use GPT-4o, Claude, or Amazon Nova for multi-tool
@@ -1102,7 +1096,7 @@ the right API for your use case.
 | **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation                |
 | **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities            |
 | **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring                 |
-| **Tool Choice Control**         |      ❌       |        ✅         | `toolChoice` for `required`, `none`, or specific tool |
+| **Tool Choice Control**         |      ✅       |        ✅         | `toolChoice` for `required`, `none`, or specific tool |
 
 #### When to Use Each API
 
@@ -1121,7 +1115,6 @@ the right API for your use case.
 - ✅ You need Azure "On Your Data" (`dataSources`) integration
 - ✅ You want direct model access without orchestration overhead
 - ✅ You need fine-grained control with `logit_bias` or `stop` sequences
-- ✅ You need `toolChoice` control (`required`, `none`, or specific tool)
 
 #### Switching APIs
 
@@ -2376,16 +2369,17 @@ definitions.
 
 **Configuration Types:**
 
-| Type                        | Description                             |
-| --------------------------- | --------------------------------------- |
-| `ChatCompletionRequest`     | Full chat completion request structure  |
-| `ChatCompletionTool`        | Tool definition for function calling    |
-| `FunctionObject`            | Function schema within a tool           |
-| `LlmModelDetails`           | Model configuration details             |
-| `LlmModelParams`            | Model-specific parameters               |
-| `OrchestrationConfigRef`    | Reference to a stored configuration     |
-| `OrchestrationModuleConfig` | Full orchestration module configuration |
-| `PromptTemplatingModule`    | Prompt template configuration           |
+| Type                                    | Description                             |
+| --------------------------------------- | --------------------------------------- |
+| `AzureOpenAiChatExtensionConfiguration` | Azure OpenAI data source configuration  |
+| `ChatCompletionRequest`                 | Full chat completion request structure  |
+| `ChatCompletionTool`                    | Tool definition for function calling    |
+| `FunctionObject`                        | Function schema within a tool           |
+| `LlmModelDetails`                       | Model configuration details             |
+| `LlmModelParams`                        | Model-specific parameters               |
+| `OrchestrationConfigRef`                | Reference to a stored configuration     |
+| `OrchestrationModuleConfig`             | Full orchestration module configuration |
+| `PromptTemplatingModule`                | Prompt template configuration           |
 
 **Module Configuration Types:**
 

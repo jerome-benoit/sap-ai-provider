@@ -16,7 +16,6 @@ import type {
   AzureOpenAiChatClient,
   AzureOpenAiChatCompletionParameters,
   AzureOpenAiChatCompletionTool,
-  AzureOpenAiFunctionObject,
 } from "@sap-ai-sdk/foundation-models";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -537,17 +536,12 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
               warnings.push(warning);
             }
 
-            const functionDef: AzureOpenAiFunctionObject = {
-              name: tool.name,
-              parameters,
-            };
-
-            if (tool.description) {
-              functionDef.description = tool.description;
-            }
-
             return {
-              function: functionDef,
+              function: {
+                name: tool.name,
+                parameters,
+                ...(tool.description ? { description: tool.description } : {}),
+              },
               type: "function",
             };
           } else {

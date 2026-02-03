@@ -45,7 +45,9 @@ import {
   createInitialStreamState,
   extractToolParameters,
   mapFinishReason,
+  mapToolChoice,
   type ParamMapping,
+  type SAPToolChoice,
   StreamIdGenerator,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
@@ -152,12 +154,17 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
-      const { messages, orchestrationConfig, placeholderValues, warnings } =
+      const { messages, orchestrationConfig, placeholderValues, toolChoice, warnings } =
         await this.buildOrchestrationConfig(config, settings, options);
 
       const client = this.createClient(config, orchestrationConfig);
 
-      const requestBody = this.buildRequestBody(messages, orchestrationConfig, placeholderValues);
+      const requestBody = this.buildRequestBody(
+        messages,
+        orchestrationConfig,
+        placeholderValues,
+        toolChoice,
+      );
 
       const response = await client.chatCompletion(
         requestBody,
@@ -264,12 +271,17 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      const { messages, orchestrationConfig, placeholderValues, warnings } =
+      const { messages, orchestrationConfig, placeholderValues, toolChoice, warnings } =
         await this.buildOrchestrationConfig(config, settings, options);
 
       const client = this.createClient(config, orchestrationConfig);
 
-      const requestBody = this.buildRequestBody(messages, orchestrationConfig, placeholderValues);
+      const requestBody = this.buildRequestBody(
+        messages,
+        orchestrationConfig,
+        placeholderValues,
+        toolChoice,
+      );
 
       const streamResponse = await client.stream(requestBody, options.abortSignal, {
         promptTemplating: { include_usage: true },
@@ -558,6 +570,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     messages: ChatMessage[];
     orchestrationConfig: OrchestrationModuleConfig;
     placeholderValues?: Record<string, string>;
+    toolChoice?: SAPToolChoice;
     warnings: SharedV3Warning[];
   }> {
     const providerName = getProviderName(config.provider);
@@ -610,9 +623,9 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
 
             return {
               function: {
-                description: tool.description,
                 name: tool.name,
                 parameters,
+                ...(tool.description ? { description: tool.description } : {}),
               },
               type: "function",
             };
@@ -656,13 +669,8 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
       warnings,
     );
 
-    if (options.toolChoice && options.toolChoice.type !== "auto") {
-      warnings.push({
-        details: `SAP AI SDK does not support toolChoice '${options.toolChoice.type}'. Using default 'auto' behavior.`,
-        feature: "toolChoice",
-        type: "unsupported",
-      });
-    }
+    // Map Vercel AI SDK toolChoice to SAP Orchestration tool_choice
+    const toolChoice = mapToolChoice(options.toolChoice);
 
     let responseFormat: SAPResponseFormat | undefined;
     if (options.responseFormat?.type === "json") {
@@ -757,6 +765,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
       messages,
       orchestrationConfig,
       placeholderValues,
+      toolChoice,
       warnings,
     };
   }
@@ -766,6 +775,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
    * @param messages - The chat messages to send.
    * @param orchestrationConfig - The orchestration module configuration.
    * @param placeholderValues - Optional placeholder values for template variables.
+   * @param toolChoice - Optional tool choice configuration.
    * @returns The request body object for the SAP AI SDK.
    * @internal
    */
@@ -773,6 +783,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     messages: ChatMessage[],
     orchestrationConfig: OrchestrationModuleConfig,
     placeholderValues?: Record<string, string>,
+    toolChoice?: SAPToolChoice,
   ): Record<string, unknown> {
     const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
 
@@ -787,6 +798,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
         ? { template_ref: promptTemplating.prompt.template_ref }
         : {}),
       ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
+      ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(promptTemplating.prompt.response_format
         ? { response_format: promptTemplating.prompt.response_format }
         : {}),
