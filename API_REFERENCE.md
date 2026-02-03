@@ -69,6 +69,7 @@ consistently:
 - [Types](#types)
   - [`SAPAIModelId`](#sapaimodelid)
   - [`SAPAIApiType`](#sapaiapitype)
+  - [`PromptTemplateRef`](#prompttemplateref)
   - [`DpiEntities`](#dpientities)
 - [Classes](#classes)
   - [`SAPAILanguageModel`](#sapailanguagemodel)
@@ -591,6 +592,12 @@ const result = await generateText({
 });
 ```
 
+> **API Note:** `toolChoice` is fully supported by the Foundation Models API
+> (`api: "foundation-models"`), which passes the setting directly to the underlying
+> model. The Orchestration API (`api: "orchestration"`, default) ignores non-`auto`
+> values and emits a warning, as the SAP Orchestration service doesn't support this
+> parameter. Use Foundation Models API if you need precise tool choice control.
+
 ### Best Practices
 
 1. **Model Selection:** Use GPT-4o, Claude, or Amazon Nova for multi-tool
@@ -1076,25 +1083,26 @@ the right API for your use case.
 
 #### Feature Matrix
 
-| Feature                         | Orchestration | Foundation Models | Notes                                          |
-| ------------------------------- | :-----------: | :---------------: | ---------------------------------------------- |
-| **Chat Completions**            |      ✅       |        ✅         | Both APIs support chat completions             |
-| **Streaming**                   |      ✅       |        ✅         | Both APIs support streaming responses          |
-| **Tool Calling**                |      ✅       |        ✅         | Both APIs support tool calling                 |
-| **Embeddings**                  |      ✅       |        ✅         | Both APIs support embeddings                   |
-| **Structured Output (JSON)**    |      ✅       |        ✅         | Both APIs support JSON mode and schemas        |
-| **Data Masking (DPI)**          |      ✅       |        ❌         | Anonymize/pseudonymize PII via SAP DPI         |
-| **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters      |
-| **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration           |
-| **Translation**                 |      ✅       |        ❌         | SAP Document Translation service               |
-| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for Jinja2 safety |
-| **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                   |
-| **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB   |
-| **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters          |
-| **Deterministic Sampling**      |      ❌       |        ✅         | `seed` parameter for reproducible outputs      |
-| **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation         |
-| **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities     |
-| **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring          |
+| Feature                         | Orchestration | Foundation Models | Notes                                                 |
+| ------------------------------- | :-----------: | :---------------: | ----------------------------------------------------- |
+| **Chat Completions**            |      ✅       |        ✅         | Both APIs support chat completions                    |
+| **Streaming**                   |      ✅       |        ✅         | Both APIs support streaming responses                 |
+| **Tool Calling**                |      ✅       |        ✅         | Both APIs support tool calling                        |
+| **Embeddings**                  |      ✅       |        ✅         | Both APIs support embeddings                          |
+| **Structured Output (JSON)**    |      ✅       |        ✅         | Both APIs support JSON mode and schemas               |
+| **Data Masking (DPI)**          |      ✅       |        ❌         | Anonymize/pseudonymize PII via SAP DPI                |
+| **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters             |
+| **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration                  |
+| **Translation**                 |      ✅       |        ❌         | SAP Document Translation service                      |
+| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for Jinja2 safety        |
+| **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                          |
+| **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB          |
+| **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters                 |
+| **Deterministic Sampling**      |      ❌       |        ✅         | `seed` parameter for reproducible outputs             |
+| **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation                |
+| **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities            |
+| **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring                 |
+| **Tool Choice Control**         |      ❌       |        ✅         | `toolChoice` for `required`, `none`, or specific tool |
 
 #### When to Use Each API
 
@@ -1113,6 +1121,7 @@ the right API for your use case.
 - ✅ You need Azure "On Your Data" (`dataSources`) integration
 - ✅ You want direct model access without orchestration overhead
 - ✅ You need fine-grained control with `logit_bias` or `stop` sequences
+- ✅ You need `toolChoice` control (`required`, `none`, or specific tool)
 
 #### Switching APIs
 
@@ -1158,6 +1167,7 @@ Model-specific configuration options.
 | `filtering`                  | `FilteringModule`        | -       | Content filtering configuration                  |
 | `grounding`                  | `GroundingModule`        | -       | Document grounding configuration                 |
 | `placeholderValues`          | `Record<string, string>` | -       | Default values for template placeholders         |
+| `promptTemplateRef`          | `PromptTemplateRef`      | -       | Reference to a Prompt Registry template          |
 | `responseFormat`             | `ResponseFormatConfig`   | -       | Response format specification                    |
 | `tools`                      | `ChatCompletionTool[]`   | -       | Tool definitions in SAP AI SDK format            |
 
@@ -1659,6 +1669,111 @@ detailed feature matrix.
 
 ---
 
+### `PromptTemplateRef`
+
+Reference to a template in SAP AI Core's Prompt Registry.
+
+**Types:**
+
+```typescript
+// Scope determines where the template is accessible
+export type PromptTemplateScope = "tenant" | "resource_group";
+
+// Reference by template ID
+export interface PromptTemplateRefByID {
+  readonly id: string;
+  readonly scope?: PromptTemplateScope; // Default: "tenant"
+}
+
+// Reference by scenario/name/version
+export interface PromptTemplateRefByScenarioNameVersion {
+  readonly scenario: string;
+  readonly name: string;
+  readonly version: string;
+  readonly scope?: PromptTemplateScope; // Default: "tenant"
+}
+
+// Union type for both reference methods
+export type PromptTemplateRef = PromptTemplateRefByID | PromptTemplateRefByScenarioNameVersion;
+```
+
+**Description:**
+
+The Prompt Registry allows you to manage prompt templates centrally in SAP AI Core
+and reference them in your application. When `promptTemplateRef` is provided, the
+orchestration config uses `template_ref` instead of building an inline `template`
+array from the conversation messages.
+
+**Usage Examples:**
+
+```typescript
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+
+const provider = createSAPAIProvider();
+
+// Reference by ID (simplest form)
+const modelById = provider("gpt-4o", {
+  promptTemplateRef: { id: "my-template-id" },
+});
+
+// Reference by ID with explicit scope
+const modelByIdWithScope = provider("gpt-4o", {
+  promptTemplateRef: {
+    id: "my-template-id",
+    scope: "resource_group",
+  },
+});
+
+// Reference by scenario/name/version
+const modelByScenario = provider("gpt-4o", {
+  promptTemplateRef: {
+    scenario: "customer-support",
+    name: "greeting-template",
+    version: "latest",
+  },
+});
+
+// Override via providerOptions at invocation time
+const result = await generateText({
+  model: modelById,
+  prompt: "Hello",
+  providerOptions: {
+    [SAP_AI_PROVIDER_NAME]: {
+      promptTemplateRef: { id: "different-template" },
+    },
+  },
+});
+```
+
+**With Placeholder Values:**
+
+Prompt Registry templates often contain placeholders. Use `placeholderValues` to
+provide values for these placeholders:
+
+```typescript
+const model = provider("gpt-4o", {
+  promptTemplateRef: {
+    scenario: "customer-support",
+    name: "personalized-greeting",
+    version: "1.0.0",
+  },
+  placeholderValues: {
+    customerName: "Alice",
+    supportTopic: "billing",
+  },
+});
+```
+
+> **Note:** `promptTemplateRef` is only available with the Orchestration API (default).
+> It is not supported with the Foundation Models API.
+
+**See Also:**
+
+- [SAP AI Core Prompt Registry Documentation](https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/prompt-registry)
+
+---
+
 ### API-Specific Settings Types
 
 The following types provide type-safe configuration for each API. They are
@@ -1680,6 +1795,8 @@ export interface OrchestrationModelSettings {
   readonly masking?: MaskingModule;
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
+  readonly placeholderValues?: Record<string, string>;
+  readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
   readonly tools?: ChatCompletionTool[];
   readonly translation?: TranslationModule;
@@ -1693,6 +1810,7 @@ export interface OrchestrationModelSettings {
 - `masking` - Data anonymization via SAP DPI
 - `translation` - Input/output translation
 - `escapeTemplatePlaceholders` - Prevent template syntax conflicts
+- `promptTemplateRef` - Reference templates from SAP AI Core Prompt Registry
 
 #### `FoundationModelsModelSettings`
 

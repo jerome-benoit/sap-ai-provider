@@ -128,6 +128,47 @@ export function validateModelParamsWithWarnings(
  */
 export const sapAIApiTypeSchema = z.enum(["orchestration", "foundation-models"]);
 
+/**
+ * Zod schema for Prompt Registry template scope.
+ * @internal
+ */
+export const promptTemplateScopeSchema = z.enum(["tenant", "resource_group"]);
+
+/**
+ * Zod schema for Prompt Registry reference by ID.
+ * @internal
+ */
+export const promptTemplateRefByIdSchema = z.object({
+  /** ID of the template in the Prompt Registry. */
+  id: z.string().min(1, "Template ID cannot be empty"),
+  /** Scope for the template lookup. Defaults to "tenant". */
+  scope: promptTemplateScopeSchema.optional(),
+});
+
+/**
+ * Zod schema for Prompt Registry reference by scenario/name/version.
+ * @internal
+ */
+export const promptTemplateRefByScenarioNameVersionSchema = z.object({
+  /** Name of the template. */
+  name: z.string().min(1, "Template name cannot be empty"),
+  /** Scenario name. */
+  scenario: z.string().min(1, "Scenario cannot be empty"),
+  /** Scope for the template lookup. Defaults to "tenant". */
+  scope: promptTemplateScopeSchema.optional(),
+  /** Version of the template (can be "latest"). */
+  version: z.string().min(1, "Version cannot be empty"),
+});
+
+/**
+ * Zod schema for Prompt Registry template reference (union of ID or scenario/name/version).
+ * @internal
+ */
+export const promptTemplateRefSchema = z.union([
+  promptTemplateRefByIdSchema,
+  promptTemplateRefByScenarioNameVersionSchema,
+]);
+
 /** Zod schema for SAP AI language model provider options passed via `providerOptions['sap-ai']` object. */
 export const sapAILanguageModelProviderOptions = lazySchema(() =>
   zodSchema(
@@ -138,7 +179,7 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
        * - `'foundation-models'`: Use SAP AI Core Foundation Models API
        */
       api: sapAIApiTypeSchema.optional(),
-      /** Escape template delimiters to prevent SAP orchestration template conflicts. */
+      /** Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts. */
       escapeTemplatePlaceholders: z.boolean().optional(),
       /** Whether to include assistant reasoning parts in the response. */
       includeReasoning: z.boolean().optional(),
@@ -146,6 +187,8 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
       modelParams: modelParamsSchema.optional(),
       /** Values for SAP orchestration template placeholders. */
       placeholderValues: z.record(z.string(), z.string()).optional(),
+      /** Reference to a Prompt Registry template (overrides settings). */
+      promptTemplateRef: promptTemplateRefSchema.optional(),
     }),
   ),
 );

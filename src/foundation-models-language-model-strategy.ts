@@ -39,6 +39,7 @@ import {
   createInitialStreamState,
   extractToolParameters,
   mapFinishReason,
+  mapToolChoice,
   type ParamMapping,
   StreamIdGenerator,
 } from "./strategy-utils.js";
@@ -589,13 +590,8 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       warnings,
     );
 
-    if (options.toolChoice && options.toolChoice.type !== "auto") {
-      warnings.push({
-        details: `SAP AI SDK does not support toolChoice '${options.toolChoice.type}'. Using default 'auto' behavior.`,
-        feature: "toolChoice",
-        type: "unsupported",
-      });
-    }
+    // Map Vercel AI SDK toolChoice to SAP Foundation Models tool_choice
+    const toolChoice = mapToolChoice(options.toolChoice);
 
     let responseFormat: AzureOpenAiChatCompletionParameters["response_format"];
     if (options.responseFormat?.type === "json") {
@@ -629,6 +625,7 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
       messages: messages as AzureOpenAiChatCompletionParameters["messages"],
       ...modelParams,
       ...(tools && tools.length > 0 ? { tools } : {}),
+      ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
       ...(fmSettings.dataSources &&
       Array.isArray(fmSettings.dataSources) &&

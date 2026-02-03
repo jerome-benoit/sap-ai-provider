@@ -175,6 +175,9 @@ export interface OrchestrationModelSettings {
   /** Default values for SAP orchestration template placeholders. */
   readonly placeholderValues?: Record<string, string>;
 
+  /** Reference to a template in SAP AI Core's Prompt Registry. */
+  readonly promptTemplateRef?: PromptTemplateRef;
+
   /** Response format for structured output (OpenAI-compatible). */
   readonly responseFormat?: ResponseFormat;
 
@@ -184,6 +187,40 @@ export interface OrchestrationModelSettings {
   /** Translation module configuration for input/output translation. */
   readonly translation?: TranslationModule;
 }
+
+/**
+ * Reference to a template in SAP AI Core's Prompt Registry.
+ * Can reference by ID or by scenario/name/version combination.
+ * @see https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/prompt-registry
+ */
+export type PromptTemplateRef = PromptTemplateRefByID | PromptTemplateRefByScenarioNameVersion;
+
+/** Reference to a Prompt Registry template by ID. */
+export interface PromptTemplateRefByID {
+  /** ID of the template in the Prompt Registry. */
+  readonly id: string;
+  /** Scope for the template lookup. Defaults to "tenant". */
+  readonly scope?: PromptTemplateScope;
+}
+
+/** Reference to a Prompt Registry template by scenario, name, and version. */
+export interface PromptTemplateRefByScenarioNameVersion {
+  /** Name of the template. */
+  readonly name: string;
+  /** Scenario name. */
+  readonly scenario: string;
+  /** Scope for the template lookup. Defaults to "tenant". */
+  readonly scope?: PromptTemplateScope;
+  /** Version of the template (can be "latest"). */
+  readonly version: string;
+}
+
+/**
+ * Scope for Prompt Registry templates.
+ * - `'tenant'`: Template is shared across all resource groups within the tenant (default)
+ * - `'resource_group'`: Template is only accessible within the specific resource group
+ */
+export type PromptTemplateScope = "resource_group" | "tenant";
 
 /**
  * Response format for structured output (OpenAI-compatible).
@@ -312,7 +349,7 @@ export interface SAPAISettings {
   readonly api?: SAPAIApiType;
 
   /**
-   * Escape template delimiters (`\{\{`, `\{%`, `\{#`) to prevent SAP orchestration template conflicts.
+   * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
    * @default true
    */
   readonly escapeTemplatePlaceholders?: boolean;
@@ -337,6 +374,9 @@ export interface SAPAISettings {
 
   /** Specific version of the model to use. */
   readonly modelVersion?: string;
+
+  /** Reference to a Prompt Registry template (orchestration API only). */
+  readonly promptTemplateRef?: PromptTemplateRef;
 
   /** Response format for structured output (OpenAI-compatible). */
   readonly responseFormat?: ResponseFormat;

@@ -17,6 +17,16 @@ import type { ZodType } from "zod";
 import { z } from "zod";
 
 /**
+ * Vercel AI SDK tool choice type.
+ * @internal
+ */
+export type AISDKToolChoice =
+  | { toolName: string; type: "tool" }
+  | { type: "auto" }
+  | { type: "none" }
+  | { type: "required" };
+
+/**
  * Base configuration for model deployment resolution.
  * Shared fields used by buildModelDeployment helper.
  * @internal
@@ -63,6 +73,17 @@ export interface ParamMapping {
   /** Output key for SAP API (e.g., 'max_tokens', 'top_p'). */
   readonly outputKey: string;
 }
+
+/**
+ * SAP Foundation Models SDK tool_choice type.
+ * Matches AzureOpenAiChatCompletionToolChoiceOption from `@sap-ai-sdk/foundation-models`.
+ * @internal
+ */
+export type SAPToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | { function: { name: string }; type: "function" };
 
 /**
  * SAP-compatible tool parameters structure.
@@ -424,6 +445,40 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
       return { raw, unified: "length" };
     default:
       return { raw, unified: "other" };
+  }
+}
+
+/**
+ * Maps Vercel AI SDK toolChoice to SAP Foundation Models SDK tool_choice format.
+ *
+ * Mapping:
+ * - `{ type: 'auto' }` → `'auto'`
+ * - `{ type: 'none' }` → `'none'`
+ * - `{ type: 'required' }` → `'required'`
+ * - `{ type: 'tool', toolName: 'fn' }` → `{ type: 'function', function: { name: 'fn' } }`
+ * @param toolChoice - The Vercel AI SDK tool choice.
+ * @returns The SAP SDK tool_choice format, or undefined if no mapping needed.
+ * @internal
+ */
+export function mapToolChoice(toolChoice: AISDKToolChoice | undefined): SAPToolChoice | undefined {
+  if (!toolChoice) {
+    return undefined;
+  }
+
+  switch (toolChoice.type) {
+    case "auto":
+      return "auto";
+    case "none":
+      return "none";
+    case "required":
+      return "required";
+    case "tool":
+      return {
+        function: { name: toolChoice.toolName },
+        type: "function",
+      };
+    default:
+      return undefined;
   }
 }
 

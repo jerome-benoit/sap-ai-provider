@@ -23,7 +23,12 @@ import type { Template } from "@sap-ai-sdk/orchestration/dist/client/api/schema/
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
-import type { OrchestrationModelSettings, SAPAIModelSettings } from "./sap-ai-settings.js";
+import type {
+  OrchestrationModelSettings,
+  PromptTemplateRef,
+  PromptTemplateRefByID,
+  SAPAIModelSettings,
+} from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
@@ -53,6 +58,8 @@ import { VERSION } from "./version.js";
 interface ExtendedPromptTemplating {
   prompt: {
     response_format?: unknown;
+    template?: unknown[];
+    template_ref?: unknown;
     tools?: unknown;
   };
 }
@@ -74,6 +81,16 @@ type SAPModelParams = LlmModelParams & {
  * @internal
  */
 type SAPResponseFormat = Template["response_format"];
+
+/**
+ * Type guard to check if a PromptTemplateRef is by ID.
+ * @param ref - The template reference to check.
+ * @returns True if the reference is by ID.
+ * @internal
+ */
+function isTemplateRefById(ref: PromptTemplateRef): ref is PromptTemplateRefByID {
+  return "id" in ref;
+}
 
 /**
  * Parameter mappings for override resolution and camelCase conversion.
@@ -672,6 +689,34 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
       });
     }
 
+    // Determine prompt template reference: providerOptions override settings
+    const promptTemplateRef = sapOptions?.promptTemplateRef ?? orchSettings.promptTemplateRef;
+
+    // Build the prompt configuration - either using template_ref or inline template
+    // Note: We use type assertion because the SDK's Xor type doesn't allow
+    // additional properties like tools/response_format alongside template_ref
+    const promptConfig: Record<string, unknown> = promptTemplateRef
+      ? {
+          template_ref: isTemplateRefById(promptTemplateRef)
+            ? {
+                id: promptTemplateRef.id,
+                ...(promptTemplateRef.scope && { scope: promptTemplateRef.scope }),
+              }
+            : {
+                name: promptTemplateRef.name,
+                scenario: promptTemplateRef.scenario,
+                version: promptTemplateRef.version,
+                ...(promptTemplateRef.scope && { scope: promptTemplateRef.scope }),
+              },
+          ...(tools && tools.length > 0 ? { tools } : {}),
+          ...(responseFormat ? { response_format: responseFormat } : {}),
+        }
+      : {
+          template: [],
+          ...(tools && tools.length > 0 ? { tools } : {}),
+          ...(responseFormat ? { response_format: responseFormat } : {}),
+        };
+
     const orchestrationConfig: OrchestrationModuleConfig = {
       promptTemplating: {
         model: {
@@ -679,11 +724,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
           params: modelParams,
           ...(orchSettings.modelVersion ? { version: orchSettings.modelVersion } : {}),
         },
-        prompt: {
-          template: [],
-          tools: tools && tools.length > 0 ? tools : undefined,
-          ...(responseFormat ? { response_format: responseFormat } : {}),
-        },
+        prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
       },
       ...(orchSettings.masking && Object.keys(orchSettings.masking as object).length > 0
         ? { masking: orchSettings.masking }
@@ -741,6 +782,10 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
         ...orchestrationConfig.promptTemplating.model,
       },
       ...(placeholderValues ? { placeholderValues } : {}),
+      // Include template_ref when using Prompt Registry reference
+      ...(promptTemplating.prompt.template_ref
+        ? { template_ref: promptTemplating.prompt.template_ref }
+        : {}),
       ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
       ...(promptTemplating.prompt.response_format
         ? { response_format: promptTemplating.prompt.response_format }

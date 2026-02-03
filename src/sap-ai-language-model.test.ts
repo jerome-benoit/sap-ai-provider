@@ -3702,6 +3702,154 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
+    describe("promptTemplateRef", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      it("should include template_ref by ID in request body when set in settings", async () => {
+        const model = createOrchModel("gpt-4o", {
+          promptTemplateRef: { id: "my-template-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("template_ref");
+        expect(request.template_ref).toEqual({ id: "my-template-id" });
+      });
+
+      it("should include template_ref by scenario/name/version with scope in request body", async () => {
+        const model = createOrchModel("gpt-4o", {
+          promptTemplateRef: {
+            name: "my-template",
+            scenario: "my-scenario",
+            scope: "resource_group",
+            version: "1.0.0",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("template_ref");
+        expect(request.template_ref).toEqual({
+          name: "my-template",
+          scenario: "my-scenario",
+          scope: "resource_group",
+          version: "1.0.0",
+        });
+      });
+
+      it("should include template_ref from providerOptions in request body", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              promptTemplateRef: { id: "provider-template-id" },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("template_ref");
+        expect(request.template_ref).toEqual({ id: "provider-template-id" });
+      });
+
+      it("should override settings promptTemplateRef with providerOptions", async () => {
+        const model = createOrchModel("gpt-4o", {
+          promptTemplateRef: { id: "settings-template-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              promptTemplateRef: { id: "provider-template-id" },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("template_ref");
+        expect(request.template_ref).toEqual({ id: "provider-template-id" });
+      });
+
+      it("should not include template_ref when promptTemplateRef is not provided", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).not.toHaveProperty("template_ref");
+      });
+
+      it("should include template_ref in stream request body", async () => {
+        const model = createOrchModel("gpt-4o", {
+          promptTemplateRef: { id: "stream-template-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchStreamRequest();
+
+        expect(request).toHaveProperty("template_ref");
+        expect(request.template_ref).toEqual({ id: "stream-template-id" });
+      });
+
+      it("should override settings promptTemplateRef with providerOptions in stream request", async () => {
+        const model = createOrchModel("gpt-4o", {
+          promptTemplateRef: {
+            name: "settings-template",
+            scenario: "settings-scenario",
+            version: "1.0.0",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              promptTemplateRef: { id: "provider-override-id" },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchStreamRequest();
+
+        expect(request).toHaveProperty("template_ref");
+        expect(request.template_ref).toEqual({ id: "provider-override-id" });
+      });
+    });
+
     describe("Foundation Models specific parameters", () => {
       it.each([
         { expectedKey: "logprobs", paramName: "logprobs", paramValue: true },
@@ -3909,12 +4057,9 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
-    describe.each([
-      { api: "orchestration" as APIType, apiName: "Orchestration" },
-      { api: "foundation-models" as APIType, apiName: "Foundation Models" },
-    ])("warnings ($apiName API)", ({ api }) => {
+    describe("toolChoice warnings (Orchestration API)", () => {
       it("should warn when toolChoice is not 'auto'", async () => {
-        const model = createModelForApi(api);
+        const model = createModelForApi("orchestration");
         const prompt = createPrompt("Hello");
 
         const tools: LanguageModelV3FunctionTool[] = [
@@ -3941,7 +4086,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       it("should not warn when toolChoice is 'auto'", async () => {
-        const model = createModelForApi(api);
+        const model = createModelForApi("orchestration");
         const prompt = createPrompt("Hello");
 
         const tools: LanguageModelV3FunctionTool[] = [
@@ -3966,7 +4111,160 @@ describe("SAPAILanguageModel", () => {
         );
         expect(toolChoiceWarnings).toHaveLength(0);
       });
+    });
 
+    describe("toolChoice support (Foundation Models API)", () => {
+      it("should not warn for any toolChoice type", async () => {
+        const model = createModelForApi("foundation-models");
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "A test tool",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "test_tool",
+            type: "function",
+          },
+        ];
+
+        for (const toolChoiceType of ["auto", "none", "required"] as const) {
+          const result = await model.doGenerate({
+            prompt,
+            toolChoice: { type: toolChoiceType },
+            tools,
+          });
+
+          const toolChoiceWarnings = result.warnings.filter(
+            (w) =>
+              w.type === "unsupported" &&
+              (w as unknown as { feature?: string }).feature === "toolChoice",
+          );
+          expect(toolChoiceWarnings).toHaveLength(0);
+        }
+      });
+
+      it("should pass tool_choice 'auto' in request", async () => {
+        const model = createModelForApi("foundation-models");
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "A test tool",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "test_tool",
+            type: "function",
+          },
+        ];
+
+        await model.doGenerate({
+          prompt,
+          toolChoice: { type: "auto" },
+          tools,
+        });
+
+        const request = await getLastFMRequest();
+        expect(request.tool_choice).toBe("auto");
+      });
+
+      it("should pass tool_choice 'none' in request", async () => {
+        const model = createModelForApi("foundation-models");
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "A test tool",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "test_tool",
+            type: "function",
+          },
+        ];
+
+        await model.doGenerate({
+          prompt,
+          toolChoice: { type: "none" },
+          tools,
+        });
+
+        const request = await getLastFMRequest();
+        expect(request.tool_choice).toBe("none");
+      });
+
+      it("should pass tool_choice 'required' in request", async () => {
+        const model = createModelForApi("foundation-models");
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "A test tool",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "test_tool",
+            type: "function",
+          },
+        ];
+
+        await model.doGenerate({
+          prompt,
+          toolChoice: { type: "required" },
+          tools,
+        });
+
+        const request = await getLastFMRequest();
+        expect(request.tool_choice).toBe("required");
+      });
+
+      it("should pass tool_choice with specific function name in request", async () => {
+        const model = createModelForApi("foundation-models");
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "A test tool",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "test_tool",
+            type: "function",
+          },
+        ];
+
+        await model.doGenerate({
+          prompt,
+          toolChoice: { toolName: "test_tool", type: "tool" },
+          tools,
+        });
+
+        const request = await getLastFMRequest();
+        expect(request.tool_choice).toEqual({
+          function: { name: "test_tool" },
+          type: "function",
+        });
+      });
+
+      it("should not include tool_choice when not specified", async () => {
+        const model = createModelForApi("foundation-models");
+        const prompt = createPrompt("Hello");
+
+        const tools: LanguageModelV3FunctionTool[] = [
+          {
+            description: "A test tool",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "test_tool",
+            type: "function",
+          },
+        ];
+
+        await model.doGenerate({
+          prompt,
+          tools,
+        });
+
+        const request = await getLastFMRequest();
+        expect(request).not.toHaveProperty("tool_choice");
+      });
+    });
+
+    describe.each([
+      { api: "orchestration" as APIType, apiName: "Orchestration" },
+      { api: "foundation-models" as APIType, apiName: "Foundation Models" },
+    ])("warnings ($apiName API)", ({ api }) => {
       it("should emit a best-effort warning for responseFormat json", async () => {
         const model = createModelForApi(api);
         const prompt = createPrompt("Return JSON");

@@ -176,6 +176,89 @@ describe("sapAILanguageModelProviderOptions", () => {
         });
       }
     });
+
+    it("should accept promptTemplateRef with id", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: {
+            id: "my-template-id",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          promptTemplateRef: { id: "my-template-id" },
+        });
+      }
+    });
+
+    it("should accept promptTemplateRef with id and scope", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: {
+            id: "my-template-id",
+            scope: "resource_group",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          promptTemplateRef: { id: "my-template-id", scope: "resource_group" },
+        });
+      }
+    });
+
+    it("should accept promptTemplateRef with scenario/name/version", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: {
+            name: "greeting-template",
+            scenario: "customer-support",
+            version: "latest",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          promptTemplateRef: {
+            name: "greeting-template",
+            scenario: "customer-support",
+            version: "latest",
+          },
+        });
+      }
+    });
+
+    it("should accept promptTemplateRef with scenario/name/version and scope", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: {
+            name: "greeting-template",
+            scenario: "customer-support",
+            scope: "tenant",
+            version: "1.0",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          promptTemplateRef: {
+            name: "greeting-template",
+            scenario: "customer-support",
+            scope: "tenant",
+            version: "1.0",
+          },
+        });
+      }
+    });
   });
 
   describe("validation constraints", () => {
@@ -207,6 +290,66 @@ describe("sapAILanguageModelProviderOptions", () => {
       const result = await safeValidateTypes({
         schema: sapAILanguageModelProviderOptions,
         value: { placeholderValues: ["product", "version"] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject promptTemplateRef with empty id", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: { id: "" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject promptTemplateRef with invalid scope", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: { id: "my-id", scope: "invalid" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject promptTemplateRef with missing scenario fields", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: { scenario: "test" }, // missing name and version
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject promptTemplateRef with empty scenario", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: { name: "test", scenario: "", version: "1.0" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject promptTemplateRef with empty name", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: { name: "", scenario: "test", version: "1.0" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject promptTemplateRef with empty version", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          promptTemplateRef: { name: "test", scenario: "test", version: "" },
+        },
       });
       expect(result.success).toBe(false);
     });
