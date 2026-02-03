@@ -682,6 +682,36 @@ const model = provider.embedding("text-embedding-3-large", {
 });
 ```
 
+#### Embeddings with Data Masking
+
+When using the Orchestration API (default), you can apply data masking to protect
+sensitive information before embedding generation:
+
+```typescript
+import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
+
+const model = provider.embedding("text-embedding-ada-002", {
+  // Data masking configuration (Orchestration API only)
+  masking: {
+    masking_providers: [
+      buildDpiMaskingProvider({
+        method: "anonymization",
+        entities: [{ type: "profile-person" }, { type: "profile-email" }, { type: "profile-phone" }],
+      }),
+    ],
+  },
+});
+
+// PII in text will be anonymized before embedding
+const { embedding } = await embed({
+  model,
+  value: "Contact John Smith at john.smith@example.com or call 555-1234",
+});
+```
+
+> **Note:** Data masking for embeddings is only available when using the
+> Orchestration API (`api: 'orchestration'`, which is the default).
+
 **Embedding Types:**
 
 | Type       | Use Case                                 | Example                         |
@@ -752,13 +782,14 @@ Configuration options for embedding models.
 
 **Properties:**
 
-| Property               | Type                   | Default           | Description                                          |
-| ---------------------- | ---------------------- | ----------------- | ---------------------------------------------------- |
-| `api`                  | `SAPAIApiType`         | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`) |
-| `maxEmbeddingsPerCall` | `number`               | `2048`            | Maximum values per API call                          |
-| `modelVersion`         | `string`               | -                 | Specific version of the model                        |
-| `type`                 | `EmbeddingType`        | `'text'`          | Embedding type                                       |
-| `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                            |
+| Property               | Type                   | Default           | Description                                               |
+| ---------------------- | ---------------------- | ----------------- | --------------------------------------------------------- |
+| `api`                  | `SAPAIApiType`         | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
+| `maxEmbeddingsPerCall` | `number`               | `2048`            | Maximum values per API call                               |
+| `modelVersion`         | `string`               | -                 | Specific version of the model                             |
+| `type`                 | `EmbeddingType`        | `'text'`          | Embedding type                                            |
+| `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                                 |
+| `masking`              | `MaskingModule`        | -                 | Data masking configuration (DPI) - Orchestration API only |
 
 **EmbeddingType Values:**
 
@@ -1121,16 +1152,18 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                   | Default | Description                                                                                                             |
-| ---------------------------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `modelVersion`               | `string`               | -       | Specific model version                                                                                                  |
-| `includeReasoning`           | `boolean`              | -       | Whether to include assistant reasoning parts in SAP prompt conversion (may contain internal reasoning)                  |
-| `escapeTemplatePlaceholders` | `boolean`              | `true`  | Escape template delimiters (`{{`, `{%`, `{#`) in message content to prevent conflicts with SAP orchestration templating |
-| `modelParams`                | `ModelParams`          | -       | Model generation parameters                                                                                             |
-| `masking`                    | `MaskingModule`        | -       | Data masking configuration (DPI)                                                                                        |
-| `filtering`                  | `FilteringModule`      | -       | Content filtering configuration                                                                                         |
-| `responseFormat`             | `ResponseFormatConfig` | -       | Response format specification                                                                                           |
-| `tools`                      | `ChatCompletionTool[]` | -       | Tool definitions in SAP AI SDK format                                                                                   |
+| Property                     | Type                     | Default | Description                                      |
+| ---------------------------- | ------------------------ | ------- | ------------------------------------------------ |
+| `modelVersion`               | `string`                 | -       | Specific model version                           |
+| `includeReasoning`           | `boolean`                | -       | Include reasoning parts in SAP prompt conversion |
+| `escapeTemplatePlaceholders` | `boolean`                | `true`  | Escape template delimiters to prevent conflicts  |
+| `modelParams`                | `ModelParams`            | -       | Model generation parameters                      |
+| `masking`                    | `MaskingModule`          | -       | Data masking configuration (DPI)                 |
+| `filtering`                  | `FilteringModule`        | -       | Content filtering configuration                  |
+| `grounding`                  | `GroundingModule`        | -       | Document grounding configuration                 |
+| `placeholderValues`          | `Record<string, string>` | -       | Default values for template placeholders         |
+| `responseFormat`             | `ResponseFormatConfig`   | -       | Response format specification                    |
+| `tools`                      | `ChatCompletionTool[]`   | -       | Tool definitions in SAP AI SDK format            |
 
 **Example:**
 
@@ -1468,6 +1501,8 @@ TypeScript type inferred from the Zod schema for language model options.
 
 ```typescript
 type SAPAILanguageModelProviderOptions = {
+  api?: "orchestration" | "foundation-models";
+  escapeTemplatePlaceholders?: boolean;
   includeReasoning?: boolean;
   modelParams?: {
     frequencyPenalty?: number;
@@ -1479,7 +1514,85 @@ type SAPAILanguageModelProviderOptions = {
     topP?: number;
     [key: string]: unknown; // Passthrough for custom params
   };
+  placeholderValues?: Record<string, string>;
 };
+```
+
+**Properties:**
+
+| Property                     | Type                     | Description                                                         |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------- |
+| `api`                        | `string`                 | Override API selection (`'orchestration'` or `'foundation-models'`) |
+| `escapeTemplatePlaceholders` | `boolean`                | Escape template delimiters to prevent SAP templating conflicts      |
+| `includeReasoning`           | `boolean`                | Include assistant reasoning parts in the response                   |
+| `modelParams`                | `object`                 | Model generation parameters for this specific call                  |
+| `placeholderValues`          | `Record<string, string>` | Values for template placeholders (overrides settings values)        |
+
+**Example with placeholderValues:**
+
+```typescript
+const { text } = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "What are the key benefits of this product?",
+  providerOptions: {
+    "sap-ai": {
+      placeholderValues: {
+        product: "SAP Cloud SDK",
+        version: "1.0",
+      },
+    },
+  },
+});
+```
+
+**Example with grounding placeholders:**
+
+```typescript
+// When using grounding with orchestration templates
+const { text } = await generateText({
+  model: provider("gpt-4o", {
+    grounding: {
+      // grounding configuration
+    },
+  }),
+  prompt: "{​{groundingInput}}", // Template placeholder
+  providerOptions: {
+    "sap-ai": {
+      escapeTemplatePlaceholders: false, // Required for template usage
+      placeholderValues: {
+        groundingInput: "What is SAP?",
+        groundingOutput: "", // Will be populated by grounding
+      },
+    },
+  },
+});
+```
+
+**Example with settings and providerOptions merge:**
+
+```typescript
+// Default placeholders in settings, override per-request in providerOptions
+const model = provider("gpt-4o", {
+  escapeTemplatePlaceholders: false,
+  placeholderValues: {
+    product: "SAP Cloud SDK", // Default product
+    language: "English", // Default language
+  },
+});
+
+// Per-request override: product is overridden, language uses default
+const { text } = await generateText({
+  model,
+  prompt: "Describe the features of the product.",
+  providerOptions: {
+    "sap-ai": {
+      placeholderValues: {
+        product: "SAP S/4HANA", // Override default product
+        // language: "English" inherited from settings
+      },
+    },
+  },
+});
 ```
 
 ---
@@ -2560,7 +2673,18 @@ const provider = createSAPAIProvider({
 });
 
 // Now queries will be grounded in your documents
-const model = provider("gpt-4o");
+const { text } = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "What is SAP?",
+  providerOptions: {
+    "sap-ai": {
+      escapeTemplatePlaceholders: false, // Required for grounding templates
+      placeholderValues: {
+        "?question": "What is SAP?", // Maps to input placeholder
+      },
+    },
+  },
+});
 ```
 
 **Run it:** `npx tsx examples/example-document-grounding.ts`

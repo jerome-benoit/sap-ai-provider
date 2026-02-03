@@ -33,6 +33,7 @@ interface FMEmbeddingResponse {
 interface OrchestrationConstructorCall {
   config: {
     embeddings: { model: { name: string; params?: Record<string, unknown>; version?: string } };
+    masking?: Record<string, unknown>;
   };
   deploymentConfig: unknown;
   destination: unknown;
@@ -81,6 +82,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
     constructor(
       config: {
         embeddings: { model: { name: string; params?: Record<string, unknown>; version?: string } };
+        masking?: Record<string, unknown>;
       },
       deploymentConfig: unknown,
       destination: unknown,
@@ -578,6 +580,58 @@ describe("SAPAIEmbeddingModel", () => {
         ).toEqual({
           name: "text-embedding-ada-002",
         });
+      });
+    });
+
+    describe("masking", () => {
+      it("should include masking module in embedding config", async () => {
+        const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
+        const masking = {
+          masking_providers: [
+            {
+              entities: [{ type: "profile-email" }, { type: "profile-phone" }],
+              method: "anonymization",
+              type: "sap_data_privacy_integration",
+            },
+          ],
+        };
+
+        const model = createModelForApi("orchestration", "text-embedding-ada-002", {
+          masking,
+        });
+
+        await model.doEmbed({ values: ["My email is test@example.com"] });
+
+        expect(MockOrchestrationEmbeddingClient.lastConstructorCall?.config).toHaveProperty(
+          "masking",
+        );
+        expect(MockOrchestrationEmbeddingClient.lastConstructorCall?.config.masking).toEqual(
+          masking,
+        );
+      });
+
+      it("should omit masking when empty object", async () => {
+        const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
+        const model = createModelForApi("orchestration", "text-embedding-ada-002", {
+          masking: {},
+        });
+
+        await model.doEmbed({ values: ["Test"] });
+
+        expect(MockOrchestrationEmbeddingClient.lastConstructorCall?.config).not.toHaveProperty(
+          "masking",
+        );
+      });
+
+      it("should not include masking when not provided", async () => {
+        const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
+        const model = createModelForApi("orchestration");
+
+        await model.doEmbed({ values: ["Test"] });
+
+        expect(MockOrchestrationEmbeddingClient.lastConstructorCall?.config).not.toHaveProperty(
+          "masking",
+        );
       });
     });
   });

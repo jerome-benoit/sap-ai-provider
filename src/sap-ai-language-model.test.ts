@@ -708,6 +708,7 @@ describe("SAPAILanguageModel", () => {
       params?: Record<string, unknown>;
       version?: string;
     };
+    placeholderValues?: Record<string, string>;
     response_format?: unknown;
     tools?: unknown;
   };
@@ -3530,6 +3531,179 @@ describe("SAPAILanguageModel", () => {
         });
       },
     );
+
+    describe("placeholderValues", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      it.each([{ property: "placeholderValues", settings: { placeholderValues: {} } }])(
+        "should omit $property when empty object",
+        async ({ property, settings }) => {
+          const model = createOrchModel("gpt-4o", settings);
+
+          const prompt = createPrompt("Hello");
+
+          const result = await model.doGenerate({ prompt });
+
+          expectRequestBodyHasMessages(result);
+
+          const request = await getLastOrchRequest();
+          expect(request).not.toHaveProperty(property);
+        },
+      );
+
+      it("should include placeholderValues from settings in request body", async () => {
+        const model = createOrchModel("gpt-4o", {
+          placeholderValues: {
+            language: "English",
+            product: "SAP Cloud SDK",
+          },
+        });
+
+        const prompt = createPrompt("Describe the product.");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          language: "English",
+          product: "SAP Cloud SDK",
+        });
+      });
+
+      it("should include placeholderValues from providerOptions in request body", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Describe the product.");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              placeholderValues: {
+                groundingInput: "What is SAP?",
+                groundingOutput: "",
+              },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          groundingInput: "What is SAP?",
+          groundingOutput: "",
+        });
+      });
+
+      it("should merge placeholderValues from settings and providerOptions (shallow)", async () => {
+        const model = createOrchModel("gpt-4o", {
+          placeholderValues: {
+            language: "English",
+            product: "SAP Cloud SDK",
+            version: "1.0",
+          },
+        });
+
+        const prompt = createPrompt("Describe the product.");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              placeholderValues: {
+                product: "SAP S/4HANA",
+                region: "EMEA",
+              },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          language: "English",
+          product: "SAP S/4HANA",
+          region: "EMEA",
+          version: "1.0",
+        });
+      });
+
+      it("should not include placeholderValues when not provided", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).not.toHaveProperty("placeholderValues");
+      });
+
+      it("should include placeholderValues in stream request body", async () => {
+        const model = createOrchModel("gpt-4o", {
+          placeholderValues: {
+            language: "English",
+            product: "SAP Cloud SDK",
+          },
+        });
+
+        const prompt = createPrompt("Describe the product.");
+
+        const result = await model.doStream({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchStreamRequest();
+
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          language: "English",
+          product: "SAP Cloud SDK",
+        });
+      });
+
+      it("should merge placeholderValues from settings and providerOptions in stream request body", async () => {
+        const model = createOrchModel("gpt-4o", {
+          placeholderValues: {
+            language: "English",
+            version: "1.0",
+          },
+        });
+
+        const prompt = createPrompt("Describe the product.");
+
+        const result = await model.doStream({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              placeholderValues: {
+                product: "SAP S/4HANA",
+              },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchStreamRequest();
+
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          language: "English",
+          product: "SAP S/4HANA",
+          version: "1.0",
+        });
+      });
+    });
 
     describe("Foundation Models specific parameters", () => {
       it.each([

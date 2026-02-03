@@ -172,6 +172,12 @@ export interface OrchestrationModelSettings {
   /** Specific version of the model to use. */
   readonly modelVersion?: string;
 
+  /**
+   * Default placeholder values for SAP orchestration template variables.
+   * Values can be overridden per-request via providerOptions.
+   */
+  readonly placeholderValues?: Record<string, string>;
+
   /** Response format for structured output (OpenAI-compatible). */
   readonly responseFormat?: ResponseFormat;
 
@@ -218,6 +224,12 @@ export interface SAPAIEmbeddingSettings {
    * - `'foundation-models'`: SAP AI Core Foundation Models API
    */
   readonly api?: SAPAIApiType;
+
+  /**
+   * Masking configuration for data anonymization/pseudonymization via SAP DPI.
+   * Only supported with orchestration API.
+   */
+  readonly masking?: MaskingModule;
 
   /**
    * Maximum number of embeddings per API call.

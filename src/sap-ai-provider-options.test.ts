@@ -131,6 +131,51 @@ describe("sapAILanguageModelProviderOptions", () => {
         });
       }
     });
+
+    it("should accept placeholderValues as record of strings", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { placeholderValues: { product: "SAP Cloud SDK", version: "1.0" } },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          placeholderValues: { product: "SAP Cloud SDK", version: "1.0" },
+        });
+      }
+    });
+
+    it("should accept empty placeholderValues", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { placeholderValues: {} },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({ placeholderValues: {} });
+      }
+    });
+
+    it("should accept placeholderValues with grounding placeholders", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          placeholderValues: {
+            groundingInput: "What is SAP?",
+            groundingOutput: "",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          placeholderValues: {
+            groundingInput: "What is SAP?",
+            groundingOutput: "",
+          },
+        });
+      }
+    });
   });
 
   describe("validation constraints", () => {
@@ -149,6 +194,22 @@ describe("sapAILanguageModelProviderOptions", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("should reject placeholderValues with non-string values", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { placeholderValues: { product: 123 } },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject placeholderValues as array", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { placeholderValues: ["product", "version"] },
+      });
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("type inference", () => {
@@ -161,6 +222,18 @@ describe("sapAILanguageModelProviderOptions", () => {
         },
       };
       expect(validOptions).toBeDefined();
+    });
+
+    it("should have correct TypeScript type with placeholderValues", () => {
+      const validOptions: SAPAILanguageModelProviderOptions = {
+        placeholderValues: {
+          groundingInput: "What is SAP?",
+          groundingOutput: "",
+          product: "SAP Cloud SDK",
+        },
+      };
+      expect(validOptions).toBeDefined();
+      expect(validOptions.placeholderValues?.product).toBe("SAP Cloud SDK");
     });
   });
 });

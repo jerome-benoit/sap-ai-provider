@@ -10,7 +10,12 @@ import type {
   EmbeddingModelV3Result,
   SharedV3ProviderMetadata,
 } from "@ai-sdk/provider";
-import type { EmbeddingModelConfig, OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
+import type {
+  EmbeddingModelConfig,
+  EmbeddingModuleConfig,
+  MaskingModule,
+  OrchestrationEmbeddingClient,
+} from "@sap-ai-sdk/orchestration";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -92,6 +97,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
         settings.modelParams as Record<string, unknown> | undefined,
         sapOptions?.modelParams,
         settings.modelVersion,
+        settings.masking,
       );
 
       const response = await client.embed(
@@ -135,6 +141,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
    * @param settingsModelParams - Model parameters from settings.
    * @param perCallModelParams - Per-call model parameters to merge with settings.
    * @param modelVersion - Optional model version to use.
+   * @param masking - Optional masking configuration for data anonymization.
    * @returns A configured SAP AI SDK embedding client instance.
    * @internal
    */
@@ -143,6 +150,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
     settingsModelParams?: Record<string, unknown>,
     perCallModelParams?: Record<string, unknown>,
     modelVersion?: string,
+    masking?: MaskingModule,
   ): OrchestrationEmbeddingClient {
     const mergedParams = deepMerge(settingsModelParams ?? {}, perCallModelParams ?? {});
     const hasParams = Object.keys(mergedParams).length > 0;
@@ -155,10 +163,11 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
       },
     };
 
-    return new this.ClientClass(
-      { embeddings: embeddingConfig },
-      config.deploymentConfig,
-      config.destination,
-    );
+    const moduleConfig: EmbeddingModuleConfig = {
+      embeddings: embeddingConfig,
+      ...(masking && Object.keys(masking).length > 0 ? { masking } : {}),
+    };
+
+    return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
   }
 }

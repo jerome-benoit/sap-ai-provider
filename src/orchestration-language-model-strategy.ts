@@ -135,15 +135,12 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
-      const { messages, orchestrationConfig, warnings } = await this.buildOrchestrationConfig(
-        config,
-        settings,
-        options,
-      );
+      const { messages, orchestrationConfig, placeholderValues, warnings } =
+        await this.buildOrchestrationConfig(config, settings, options);
 
       const client = this.createClient(config, orchestrationConfig);
 
-      const requestBody = this.buildRequestBody(messages, orchestrationConfig);
+      const requestBody = this.buildRequestBody(messages, orchestrationConfig, placeholderValues);
 
       const response = await client.chatCompletion(
         requestBody,
@@ -250,15 +247,12 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      const { messages, orchestrationConfig, warnings } = await this.buildOrchestrationConfig(
-        config,
-        settings,
-        options,
-      );
+      const { messages, orchestrationConfig, placeholderValues, warnings } =
+        await this.buildOrchestrationConfig(config, settings, options);
 
       const client = this.createClient(config, orchestrationConfig);
 
-      const requestBody = this.buildRequestBody(messages, orchestrationConfig);
+      const requestBody = this.buildRequestBody(messages, orchestrationConfig, placeholderValues);
 
       const streamResponse = await client.stream(requestBody, options.abortSignal, {
         promptTemplating: { include_usage: true },
@@ -546,6 +540,7 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
   ): Promise<{
     messages: ChatMessage[];
     orchestrationConfig: OrchestrationModuleConfig;
+    placeholderValues?: Record<string, string>;
     warnings: SharedV3Warning[];
   }> {
     const providerName = getProviderName(config.provider);
@@ -704,19 +699,35 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
         : {}),
     };
 
-    return { messages, orchestrationConfig, warnings };
+    // Merge placeholderValues: providerOptions override settings
+    const placeholderValues: Record<string, string> | undefined =
+      orchSettings.placeholderValues || sapOptions?.placeholderValues
+        ? {
+            ...orchSettings.placeholderValues,
+            ...sapOptions?.placeholderValues,
+          }
+        : undefined;
+
+    return {
+      messages,
+      orchestrationConfig,
+      placeholderValues,
+      warnings,
+    };
   }
 
   /**
    * Builds the request body for SAP AI SDK chat completion or streaming.
    * @param messages - The chat messages to send.
    * @param orchestrationConfig - The orchestration module configuration.
+   * @param placeholderValues - Optional placeholder values for template variables.
    * @returns The request body object for the SAP AI SDK.
    * @internal
    */
   private buildRequestBody(
     messages: ChatMessage[],
     orchestrationConfig: OrchestrationModuleConfig,
+    placeholderValues?: Record<string, string>,
   ): Record<string, unknown> {
     const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
 
@@ -725,6 +736,9 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
       model: {
         ...orchestrationConfig.promptTemplating.model,
       },
+      ...(placeholderValues && Object.keys(placeholderValues).length > 0
+        ? { placeholderValues }
+        : {}),
       ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
       ...(promptTemplating.prompt.response_format
         ? { response_format: promptTemplating.prompt.response_format }
