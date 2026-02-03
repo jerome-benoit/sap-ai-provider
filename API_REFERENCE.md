@@ -684,14 +684,13 @@ const model = provider.embedding("text-embedding-3-large", {
 
 #### Embeddings with Data Masking
 
-When using the Orchestration API (default), you can apply data masking to protect
-sensitive information before embedding generation:
+Apply data masking to protect sensitive information before embedding generation
+(Orchestration API only):
 
 ```typescript
 import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
 
 const model = provider.embedding("text-embedding-ada-002", {
-  // Data masking configuration (Orchestration API only)
   masking: {
     masking_providers: [
       buildDpiMaskingProvider({
@@ -708,9 +707,6 @@ const { embedding } = await embed({
   value: "Contact John Smith at john.smith@example.com or call 555-1234",
 });
 ```
-
-> **Note:** Data masking for embeddings is only available when using the
-> Orchestration API (`api: 'orchestration'`, which is the default).
 
 **Embedding Types:**
 

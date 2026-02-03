@@ -172,10 +172,7 @@ export interface OrchestrationModelSettings {
   /** Specific version of the model to use. */
   readonly modelVersion?: string;
 
-  /**
-   * Default placeholder values for SAP orchestration template variables.
-   * Values can be overridden per-request via providerOptions.
-   */
+  /** Default values for SAP orchestration template placeholders. */
   readonly placeholderValues?: Record<string, string>;
 
   /** Response format for structured output (OpenAI-compatible). */
@@ -225,10 +222,7 @@ export interface SAPAIEmbeddingSettings {
    */
   readonly api?: SAPAIApiType;
 
-  /**
-   * Masking configuration for data anonymization/pseudonymization via SAP DPI.
-   * Only supported with orchestration API.
-   */
+  /** Masking configuration for data anonymization via SAP DPI (orchestration API only). */
   readonly masking?: MaskingModule;
 
   /**

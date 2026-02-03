@@ -144,11 +144,7 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
       includeReasoning: z.boolean().optional(),
       /** Model generation parameters for this specific call. */
       modelParams: modelParamsSchema.optional(),
-      /**
-       * Placeholder values for SAP orchestration template variables.
-       * Used with prompt templates that contain template placeholders.
-       * Required when using grounding with groundingInput/groundingOutput placeholders.
-       */
+      /** Values for SAP orchestration template placeholders. */
       placeholderValues: z.record(z.string(), z.string()).optional(),
     }),
   ),
