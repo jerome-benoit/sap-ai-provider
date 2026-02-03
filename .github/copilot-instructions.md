@@ -109,13 +109,23 @@ This should complete in under 15 seconds total and all commands should pass.
 ├── .github/               # GitHub Actions workflows and configs
 ├── examples/              # Example usage files (10 examples)
 ├── src/                   # TypeScript source code
-│   ├── index.ts                    # Main exports
-│   ├── sap-ai-provider.ts          # Main provider implementation
-│   ├── sap-ai-language-model.ts    # Language model implementation
-│   ├── sap-ai-embedding-model.ts   # Embedding model implementation
-│   ├── sap-ai-settings.ts          # Settings and model types
-│   ├── sap-ai-error.ts             # Error handling
-│   └── convert-to-sap-messages.ts  # Message conversion utilities
+│   ├── index.ts                                      # Public API exports
+│   ├── sap-ai-provider.ts                            # Main provider factory
+│   ├── sap-ai-provider-options.ts                    # Provider options & Zod schemas
+│   ├── sap-ai-language-model.ts                      # Language model (API-agnostic)
+│   ├── sap-ai-embedding-model.ts                     # Embedding model (API-agnostic)
+│   ├── sap-ai-settings.ts                            # Settings and type definitions
+│   ├── sap-ai-error.ts                               # Error handling system
+│   ├── sap-ai-validation.ts                          # API resolution & validation
+│   ├── sap-ai-strategy.ts                            # Strategy factory (lazy loading)
+│   ├── strategy-utils.ts                             # Shared strategy utilities
+│   ├── orchestration-language-model-strategy.ts     # Orchestration API strategy
+│   ├── orchestration-embedding-model-strategy.ts    # Orchestration embedding strategy
+│   ├── foundation-models-language-model-strategy.ts # Foundation Models API strategy
+│   ├── foundation-models-embedding-model-strategy.ts# Foundation Models embedding strategy
+│   ├── convert-to-sap-messages.ts                   # Message format conversion
+│   ├── deep-merge.ts                                 # Deep merge utility
+│   └── version.ts                                    # Package version constant
 ├── dist/                  # Build outputs (gitignored)
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
