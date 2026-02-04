@@ -28,6 +28,10 @@ describe("sap-ai-model-capabilities", () => {
       { expected: "mistral", modelId: "mistral--mistral-small" },
       { expected: "mistralai", modelId: "mistralai--mistral-large-instruct" },
       { expected: "mistralai", modelId: "mistralai--mistral-small" },
+      { expected: "mistralai", modelId: "mistralai--mistral-small-instruct" },
+      { expected: "cohere", modelId: "cohere--command-a-reasoning" },
+      { expected: "cohere", modelId: "cohere--command-r-plus" },
+      { expected: "meta", modelId: "meta--llama3.1-70b-instruct" },
     ])("should return '$expected' for model '$modelId'", ({ expected, modelId }) => {
       expect(getModelVendor(modelId)).toBe(expected);
     });
@@ -139,6 +143,15 @@ describe("sap-ai-model-capabilities", () => {
         expect(capabilities.supportsToolCalls).toBe(true);
         expect(capabilities.vendor).toBe("mistralai");
       });
+
+      it("should have all capabilities enabled for Cohere models", () => {
+        const capabilities = getSAPAIModelCapabilities("cohere--command-a-reasoning");
+
+        expect(capabilities.supportsN).toBe(true);
+        expect(capabilities.supportsStructuredOutputs).toBe(true);
+        expect(capabilities.supportsToolCalls).toBe(true);
+        expect(capabilities.vendor).toBe("cohere");
+      });
     });
 
     describe("model-specific overrides", () => {
@@ -194,6 +207,10 @@ describe("sap-ai-model-capabilities", () => {
           "meta--llama-3.10-70b",
           "meta--llama-3.11-128b",
           "aicore--llama-3.15-70b",
+          // Without dash format (llama3.1 vs llama-3.1) - documented in API_REFERENCE.md
+          "meta--llama3.1-70b-instruct",
+          "meta--llama3.2-90b-instruct",
+          "aicore--llama3.1-8b",
         ])("should support tools for %s", (modelId) => {
           const capabilities = getSAPAIModelCapabilities(modelId);
 
@@ -261,6 +278,18 @@ describe("sap-ai-model-capabilities", () => {
           const capabilities = getSAPAIModelCapabilities("mistralai--mistral-large-instruct");
 
           expect(capabilities.supportsStructuredOutputs).toBe(true);
+        });
+      });
+
+      describe("MistralAI Instruct models", () => {
+        it("should have full capabilities for mistralai--mistral-small-instruct", () => {
+          const capabilities = getSAPAIModelCapabilities("mistralai--mistral-small-instruct");
+
+          // Note: mistral-small has limited structured outputs, but -instruct suffix
+          // doesn't change this - the pattern matches on mistral-small prefix
+          expect(capabilities.supportsStructuredOutputs).toBe(false);
+          expect(capabilities.supportsN).toBe(true);
+          expect(capabilities.vendor).toBe("mistralai");
         });
       });
     });

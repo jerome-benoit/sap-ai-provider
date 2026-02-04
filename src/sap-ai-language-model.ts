@@ -105,50 +105,26 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     };
   }
 
-  /**
-   * Whether the model supports image URLs in prompts.
-   * @returns True if image URLs are supported.
-   */
   get supportsImageUrls(): boolean {
     return this.capabilities.supportsImageInputs;
   }
 
-  /**
-   * Whether the model supports generating multiple completions (n parameter).
-   * @returns True if multiple completions are supported.
-   */
   get supportsMultipleCompletions(): boolean {
     return this.capabilities.supportsN;
   }
 
-  /**
-   * Whether the model supports parallel tool calls in a single response.
-   * @returns True if parallel tool calls are supported.
-   */
   get supportsParallelToolCalls(): boolean {
     return this.capabilities.supportsParallelToolCalls;
   }
 
-  /**
-   * Whether the model supports streaming responses.
-   * @returns True if streaming is supported.
-   */
   get supportsStreaming(): boolean {
     return this.capabilities.supportsStreaming;
   }
 
-  /**
-   * Whether the model supports structured JSON outputs.
-   * @returns True if structured outputs are supported.
-   */
   get supportsStructuredOutputs(): boolean {
     return this.capabilities.supportsStructuredOutputs;
   }
 
-  /**
-   * Whether the model supports tool/function calling.
-   * @returns True if tool calls are supported.
-   */
   get supportsToolCalls(): boolean {
     return this.capabilities.supportsToolCalls;
   }

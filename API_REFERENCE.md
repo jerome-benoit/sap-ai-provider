@@ -83,6 +83,9 @@ consistently:
     - [Error Handling Strategy](#error-handling-strategy)
   - [`OrchestrationErrorResponse`](#orchestrationerrorresponse)
 - [Model Capabilities Detection](#model-capabilities-detection)
+  - [Exported Types](#exported-types)
+    - [`SAPAIModelVendor`](#sapaimodelvendor)
+    - [`SAPAIModelCapabilities`](#sapaimodelcapabilities)
   - [`getSAPAIModelCapabilities(modelId)`](#getsapaimodelcapabilitiesmodelid)
   - [`getModelVendor(modelId)`](#getmodelvendormodelid)
   - [`modelSupports(modelId, capability)`](#modelsupportsmodelid-capability)
@@ -2339,6 +2342,33 @@ advanced use cases.
 The provider includes dynamic capability detection based on model vendor and type,
 following SAP AI Core's naming convention: `vendor--model-name`.
 
+### Exported Types
+
+#### `SAPAIModelVendor`
+
+Union type of supported vendor prefixes:
+
+```typescript
+type SAPAIModelVendor = "aicore" | "amazon" | "anthropic" | "azure" | "cohere" | "google" | "meta" | "mistral" | "mistralai";
+```
+
+#### `SAPAIModelCapabilities`
+
+Interface describing the capabilities of a model:
+
+```typescript
+interface SAPAIModelCapabilities {
+  readonly defaultSystemMessageMode: "system" | "developer" | "user";
+  readonly supportsImageInputs: boolean;
+  readonly supportsN: boolean;
+  readonly supportsParallelToolCalls: boolean;
+  readonly supportsStreaming: boolean;
+  readonly supportsStructuredOutputs: boolean;
+  readonly supportsToolCalls: boolean;
+  readonly vendor: SAPAIModelVendor | "unknown";
+}
+```
+
 ### `getSAPAIModelCapabilities(modelId)`
 
 Returns capability information for a specific SAP AI Core model.
@@ -2355,16 +2385,16 @@ function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabilities;
 
 **Returns:** `SAPAIModelCapabilities` object with the following properties:
 
-| Property                    | Type      | Description                                               |
-| --------------------------- | --------- | --------------------------------------------------------- |
-| `supportsN`                 | `boolean` | Multiple completions support (`n` parameter)              |
-| `supportsImageInputs`       | `boolean` | Vision/image input support                                |
-| `supportsParallelToolCalls` | `boolean` | Parallel tool calls in single response                    |
-| `supportsStreaming`         | `boolean` | Streaming response support                                |
-| `supportsStructuredOutputs` | `boolean` | JSON schema response format support                       |
-| `supportsToolCalls`         | `boolean` | Tool/function calling support                             |
-| `defaultSystemMessageMode`  | `string`  | System message mode (`"system"`, `"developer"`, `"user"`) |
-| `vendor`                    | `string`  | Detected vendor or `"unknown"`                            |
+| Property                    | Type                                | Description                                               |
+| --------------------------- | ----------------------------------- | --------------------------------------------------------- |
+| `supportsN`                 | `boolean`                           | Multiple completions support (`n` parameter)              |
+| `supportsImageInputs`       | `boolean`                           | Vision/image input support                                |
+| `supportsParallelToolCalls` | `boolean`                           | Parallel tool calls in single response                    |
+| `supportsStreaming`         | `boolean`                           | Streaming response support                                |
+| `supportsStructuredOutputs` | `boolean`                           | JSON schema response format support                       |
+| `supportsToolCalls`         | `boolean`                           | Tool/function calling support                             |
+| `defaultSystemMessageMode`  | `"system" \| "developer" \| "user"` | System message mode (`"system"`, `"developer"`, `"user"`) |
+| `vendor`                    | `SAPAIModelVendor \| "unknown"`     | Detected vendor or `"unknown"`                            |
 
 **Example:**
 
@@ -2399,7 +2429,8 @@ function getModelVendor(modelId: string): SAPAIModelVendor | "unknown";
 - `modelId`: The full model identifier (e.g., `"anthropic--claude-3.5-sonnet"`)
 
 **Returns:** The vendor prefix (`"aicore"`, `"amazon"`, `"anthropic"`, `"azure"`,
-`"google"`, `"meta"`, `"mistral"`) or `"unknown"` if not recognized.
+`"cohere"`, `"google"`, `"meta"`, `"mistral"`, `"mistralai"`) or `"unknown"` if
+not recognized.
 
 **Example:**
 
@@ -2438,6 +2469,7 @@ if (modelSupports("amazon--nova-pro", "supportsN")) {
 | `google`    | ✅          | ✅                          | Gemini 1.0 has limited outputs  |
 | `mistral`   | ✅          | ✅                          | Small/Tiny have limited outputs |
 | `mistralai` | ✅          | ✅                          | Small/Tiny have limited outputs |
+| `cohere`    | ✅          | ✅                          | Full capabilities               |
 | `amazon`    | ❌          | ✅                          | Titan models very limited       |
 | `anthropic` | ❌          | ✅                          | Claude 2.x has limitations      |
 | `meta`      | ✅          | ❌                          | Llama 2 lacks tools             |

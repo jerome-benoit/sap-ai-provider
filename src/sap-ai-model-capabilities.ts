@@ -76,6 +76,7 @@ export type SAPAIModelVendor =
   | "amazon"
   | "anthropic"
   | "azure"
+  | "cohere"
   | "google"
   | "meta"
   | "mistral"
@@ -105,6 +106,7 @@ const VENDOR_CAPABILITIES: Record<SAPAIModelVendor, Partial<SAPAIModelCapabiliti
   amazon: { supportsN: false },
   anthropic: { supportsN: false },
   azure: {},
+  cohere: {},
   google: {},
   meta: { supportsStructuredOutputs: false },
   mistral: {},
@@ -145,8 +147,9 @@ const MODEL_SPECIFIC_CAPABILITIES: {
     pattern: /^(meta--llama-2|aicore--llama-2)/,
   },
   {
+    // Matches both "llama-3.1" and "llama3.1" formats for version 3.1+
     capabilities: { supportsImageInputs: false, supportsToolCalls: true },
-    pattern: /^(meta--llama-3\.[1-9][0-9]*|aicore--llama-3\.[1-9][0-9]*)/,
+    pattern: /^(meta--llama-?3\.[1-9][0-9]*|aicore--llama-?3\.[1-9][0-9]*)/,
   },
   {
     capabilities: { supportsStructuredOutputs: false },
