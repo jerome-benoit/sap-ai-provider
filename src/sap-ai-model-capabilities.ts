@@ -78,7 +78,8 @@ export type SAPAIModelVendor =
   | "azure"
   | "google"
   | "meta"
-  | "mistral";
+  | "mistral"
+  | "mistralai";
 
 /**
  * Default capabilities for models without specific overrides.
@@ -107,6 +108,7 @@ const VENDOR_CAPABILITIES: Record<SAPAIModelVendor, Partial<SAPAIModelCapabiliti
   google: {},
   meta: { supportsStructuredOutputs: false },
   mistral: {},
+  mistralai: {},
 };
 
 /**
@@ -152,7 +154,7 @@ const MODEL_SPECIFIC_CAPABILITIES: {
   },
   {
     capabilities: { supportsStructuredOutputs: false },
-    pattern: /^mistral--(mistral-small|mistral-tiny)/,
+    pattern: /^mistral(ai)?--(mistral-small|mistral-tiny)/,
   },
 ];
 

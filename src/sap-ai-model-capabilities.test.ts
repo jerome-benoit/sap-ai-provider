@@ -26,6 +26,8 @@ describe("sap-ai-model-capabilities", () => {
       { expected: "meta", modelId: "meta--llama-2-70b" },
       { expected: "mistral", modelId: "mistral--mistral-large" },
       { expected: "mistral", modelId: "mistral--mistral-small" },
+      { expected: "mistralai", modelId: "mistralai--mistral-large-instruct" },
+      { expected: "mistralai", modelId: "mistralai--mistral-small" },
     ])("should return '$expected' for model '$modelId'", ({ expected, modelId }) => {
       expect(getModelVendor(modelId)).toBe(expected);
     });
@@ -128,6 +130,15 @@ describe("sap-ai-model-capabilities", () => {
         expect(capabilities.supportsN).toBe(true);
         expect(capabilities.vendor).toBe("mistral");
       });
+
+      it("should have all capabilities enabled for MistralAI models", () => {
+        const capabilities = getSAPAIModelCapabilities("mistralai--mistral-large-instruct");
+
+        expect(capabilities.supportsN).toBe(true);
+        expect(capabilities.supportsStructuredOutputs).toBe(true);
+        expect(capabilities.supportsToolCalls).toBe(true);
+        expect(capabilities.vendor).toBe("mistralai");
+      });
     });
 
     describe("model-specific overrides", () => {
@@ -228,18 +239,26 @@ describe("sap-ai-model-capabilities", () => {
       });
 
       describe("Mistral Small/Tiny models", () => {
-        it.each(["mistral--mistral-small", "mistral--mistral-tiny"])(
-          "should have limited structured output for %s",
-          (modelId) => {
-            const capabilities = getSAPAIModelCapabilities(modelId);
+        it.each([
+          "mistral--mistral-small",
+          "mistral--mistral-tiny",
+          "mistralai--mistral-small",
+          "mistralai--mistral-tiny",
+        ])("should have limited structured output for %s", (modelId) => {
+          const capabilities = getSAPAIModelCapabilities(modelId);
 
-            expect(capabilities.supportsStructuredOutputs).toBe(false);
-            expect(capabilities.supportsN).toBe(true);
-          },
-        );
+          expect(capabilities.supportsStructuredOutputs).toBe(false);
+          expect(capabilities.supportsN).toBe(true);
+        });
 
         it("should have full capabilities for Mistral Large", () => {
           const capabilities = getSAPAIModelCapabilities("mistral--mistral-large");
+
+          expect(capabilities.supportsStructuredOutputs).toBe(true);
+        });
+
+        it("should have full capabilities for MistralAI Large Instruct", () => {
+          const capabilities = getSAPAIModelCapabilities("mistralai--mistral-large-instruct");
 
           expect(capabilities.supportsStructuredOutputs).toBe(true);
         });

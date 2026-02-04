@@ -2437,6 +2437,7 @@ if (modelSupports("amazon--nova-pro", "supportsN")) {
 | `azure`     | ✅          | ✅                          | Full capabilities               |
 | `google`    | ✅          | ✅                          | Gemini 1.0 has limited outputs  |
 | `mistral`   | ✅          | ✅                          | Small/Tiny have limited outputs |
+| `mistralai` | ✅          | ✅                          | Small/Tiny have limited outputs |
 | `amazon`    | ❌          | ✅                          | Titan models very limited       |
 | `anthropic` | ❌          | ✅                          | Claude 2.x has limitations      |
 | `meta`      | ✅          | ❌                          | Llama 2 lacks tools             |
