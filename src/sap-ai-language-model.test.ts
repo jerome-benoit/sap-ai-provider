@@ -3850,6 +3850,173 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
+    describe("orchestrationConfigRef", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      it("should use configRef by ID when set in settings", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "my-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        // When using configRef, the request contains messages but no orchestration_config
+        expect(request).toHaveProperty("messages");
+      });
+
+      it("should use configRef by scenario/name/version when set in settings", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            name: "my-config",
+            scenario: "my-scenario",
+            version: "1.0.0",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("messages");
+      });
+
+      it("should use configRef from providerOptions", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "provider-config-id" },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("messages");
+      });
+
+      it("should override settings orchestrationConfigRef with providerOptions", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "settings-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "provider-config-id" },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("messages");
+      });
+
+      it("should generate warnings when local settings are ignored due to configRef", async () => {
+        const model = createOrchModel("gpt-4o", {
+          filtering: {
+            output: {
+              filters: [{ config: {}, type: "azure_content_safety" as const }],
+            },
+          },
+          orchestrationConfigRef: { id: "my-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "filtering");
+      });
+
+      it("should include placeholderValues when using configRef", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "my-config-id" },
+          placeholderValues: {
+            customerName: "Alice",
+            topic: "billing",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchRequest();
+
+        expect(request).toHaveProperty("messages");
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          customerName: "Alice",
+          topic: "billing",
+        });
+      });
+
+      it("should use configRef in stream request", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "stream-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({ prompt });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchStreamRequest();
+
+        expect(request).toHaveProperty("messages");
+      });
+
+      it("should override settings orchestrationConfigRef with providerOptions in stream request", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            name: "settings-config",
+            scenario: "settings-scenario",
+            version: "1.0.0",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "provider-override-id" },
+            },
+          },
+        });
+        expectRequestBodyHasMessages(result);
+
+        const request = await getLastOrchStreamRequest();
+
+        expect(request).toHaveProperty("messages");
+      });
+    });
+
     describe("Foundation Models specific parameters", () => {
       it.each([
         { expectedKey: "logprobs", paramName: "logprobs", paramValue: true },

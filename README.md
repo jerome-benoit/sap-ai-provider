@@ -74,6 +74,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
   search
 - 🔀 **Dual API Support** - Choose between Orchestration or Foundation Models
   API per provider, model, or call
+- 📦 **Stored Configuration Support** - Reference orchestration configurations
+  or prompt templates from SAP AI Core
 
 ## Quick Start
 

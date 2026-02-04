@@ -10,6 +10,7 @@ import type {
   ChatMessage,
   LlmModelParams,
   OrchestrationClient,
+  OrchestrationConfigRef,
   OrchestrationModuleConfig,
 } from "@sap-ai-sdk/orchestration";
 
@@ -25,7 +26,11 @@ import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sa
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
-import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
+import {
+  getProviderName,
+  orchestrationConfigRefSchema,
+  sapAILanguageModelProviderOptions,
+} from "./sap-ai-provider-options.js";
 import {
   buildGenerateResult,
   buildModelParams,
@@ -74,6 +79,32 @@ function isTemplateRefById(ref: PromptTemplateRef): ref is PromptTemplateRefByID
 }
 
 /**
+ * Module settings that are ignored when using orchestrationConfigRef.
+ * @internal
+ */
+const CONFIG_REF_IGNORED_MODULES = [
+  "filtering",
+  "grounding",
+  "masking",
+  "translation",
+  "promptTemplateRef",
+  "responseFormat",
+  "tools",
+  "modelParams",
+  "modelVersion",
+] as const;
+
+/**
+ * Checks if a value is a valid OrchestrationConfigRef.
+ * @param value - The value to check.
+ * @returns True if the value is a valid OrchestrationConfigRef.
+ * @internal
+ */
+function isOrchestrationConfigRef(value: unknown): value is OrchestrationConfigRef {
+  return orchestrationConfigRefSchema.safeParse(value).success;
+}
+
+/**
  * @internal
  */
 const PARAM_MAPPINGS: readonly ParamMapping[] = [
@@ -111,6 +142,12 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
+    // Check for orchestrationConfigRef - use dedicated code path if present
+    const configRef = await this.resolveConfigRef(config, settings, options);
+    if (configRef) {
+      return this.doGenerateWithConfigRef(config, settings, options, configRef);
+    }
+
     try {
       const { messages, orchestrationConfig, placeholderValues, toolChoice, warnings } =
         await this.buildOrchestrationConfig(config, settings, options);
@@ -147,11 +184,52 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     }
   }
 
+  async doGenerateWithConfigRef(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions,
+    configRef: OrchestrationConfigRef,
+  ): Promise<LanguageModelV3GenerateResult> {
+    try {
+      const { messages, placeholderValues, requestBody, warnings } =
+        await this.buildConfigRefRequest(config, settings, options, configRef);
+
+      const client = this.createClientWithConfigRef(config, configRef);
+
+      const response = await client.chatCompletion(
+        { messages, ...(placeholderValues ? { placeholderValues } : {}) },
+        options.abortSignal ? { signal: options.abortSignal } : undefined,
+      );
+
+      return buildGenerateResult({
+        modelId: config.modelId,
+        providerName: getProviderName(config.provider),
+        requestBody,
+        response: response as SDKResponse,
+        responseHeaders: normalizeHeaders(response.rawResponse.headers),
+        version: VERSION,
+        warnings,
+      });
+    } catch (error) {
+      throw convertToAISDKError(error, {
+        operation: "doGenerate",
+        requestBody: createAISDKRequestBodySummary(options),
+        url: "sap-ai:orchestration",
+      });
+    }
+  }
+
   async doStream(
     config: LanguageModelStrategyConfig,
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
+    // Check for orchestrationConfigRef - use dedicated code path if present
+    const configRef = await this.resolveConfigRef(config, settings, options);
+    if (configRef) {
+      return this.doStreamWithConfigRef(config, settings, options, configRef);
+    }
+
     try {
       const { messages, orchestrationConfig, placeholderValues, toolChoice, warnings } =
         await this.buildOrchestrationConfig(config, settings, options);
@@ -201,6 +279,123 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
         url: "sap-ai:orchestration",
       });
     }
+  }
+
+  async doStreamWithConfigRef(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions,
+    configRef: OrchestrationConfigRef,
+  ): Promise<LanguageModelV3StreamResult> {
+    try {
+      const { messages, placeholderValues, requestBody, warnings } =
+        await this.buildConfigRefRequest(config, settings, options, configRef);
+
+      const client = this.createClientWithConfigRef(config, configRef);
+
+      const streamResponse = await client.stream(
+        { messages, ...(placeholderValues ? { placeholderValues } : {}) },
+        options.abortSignal,
+        { promptTemplating: { include_usage: true } },
+      );
+
+      const idGenerator = new StreamIdGenerator();
+      const responseId = idGenerator.generateResponseId();
+
+      const transformedStream = createStreamTransformer({
+        convertToAISDKError,
+        idGenerator,
+        includeRawChunks: options.includeRawChunks ?? false,
+        modelId: config.modelId,
+        options,
+        providerName: getProviderName(config.provider),
+        responseId,
+        sdkStream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+        streamResponseGetFinishReason: () => streamResponse.getFinishReason(),
+        streamResponseGetTokenUsage: () => streamResponse.getTokenUsage(),
+        url: "sap-ai:orchestration",
+        version: VERSION,
+        warnings,
+      });
+
+      return {
+        request: {
+          body: requestBody as unknown,
+        },
+        stream: transformedStream,
+      };
+    } catch (error) {
+      throw convertToAISDKError(error, {
+        operation: "doStream",
+        requestBody: createAISDKRequestBodySummary(options),
+        url: "sap-ai:orchestration",
+      });
+    }
+  }
+
+  /**
+   * Builds configuration for configRef mode - only messages and placeholderValues are passed.
+   * @param config - The strategy configuration.
+   * @param settings - The model settings.
+   * @param options - The call options.
+   * @param configRef - The orchestration config reference.
+   * @returns The request configuration for configRef mode.
+   */
+  private async buildConfigRefRequest(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions,
+    configRef: OrchestrationConfigRef,
+  ): Promise<{
+    configRef: OrchestrationConfigRef;
+    messages: ChatMessage[];
+    placeholderValues?: Record<string, string>;
+    requestBody: Record<string, unknown>;
+    warnings: SharedV3Warning[];
+  }> {
+    const providerName = getProviderName(config.provider);
+    const sapOptions = await parseProviderOptions({
+      provider: providerName,
+      providerOptions: options.providerOptions,
+      schema: sapAILanguageModelProviderOptions,
+    });
+
+    const orchSettings = settings as OrchestrationModelSettings;
+    const warnings = this.collectConfigRefIgnoredWarnings(orchSettings, options);
+
+    const messages = convertToSAPMessages(options.prompt, {
+      escapeTemplatePlaceholders:
+        sapOptions?.escapeTemplatePlaceholders ?? orchSettings.escapeTemplatePlaceholders ?? true,
+      includeReasoning: sapOptions?.includeReasoning ?? orchSettings.includeReasoning ?? false,
+    });
+
+    // Merge placeholder values from settings and provider options
+    const mergedPlaceholderValues =
+      orchSettings.placeholderValues || sapOptions?.placeholderValues
+        ? {
+            ...orchSettings.placeholderValues,
+            ...sapOptions?.placeholderValues,
+          }
+        : undefined;
+    const placeholderValues =
+      mergedPlaceholderValues && Object.keys(mergedPlaceholderValues).length > 0
+        ? mergedPlaceholderValues
+        : undefined;
+
+    // Build minimal request body for configRef mode
+    const requestBody: Record<string, unknown> = {
+      configRef,
+      messages,
+      ...(placeholderValues ? { placeholderValues } : {}),
+    };
+
+    return {
+      configRef,
+      messages,
+      placeholderValues,
+      requestBody,
+      warnings,
+    };
   }
 
   private async buildOrchestrationConfig(
@@ -377,10 +572,95 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     };
   }
 
+  /**
+   * Collects warnings for settings that will be ignored when using orchestrationConfigRef.
+   * @param settings - The orchestration model settings.
+   * @param options - The call options (for tools and responseFormat).
+   * @returns Array of warnings for ignored settings.
+   */
+  private collectConfigRefIgnoredWarnings(
+    settings: OrchestrationModelSettings,
+    options: LanguageModelV3CallOptions,
+  ): SharedV3Warning[] {
+    const warnings: SharedV3Warning[] = [];
+    const ignoredSettings: string[] = [];
+
+    // Check settings-level configurations
+    for (const key of CONFIG_REF_IGNORED_MODULES) {
+      const value = settings[key as keyof OrchestrationModelSettings];
+      if (value !== undefined) {
+        if (typeof value === "object" && Object.keys(value as object).length === 0) {
+          continue; // Skip empty objects
+        }
+        ignoredSettings.push(key);
+      }
+    }
+
+    // Check call-level options
+    if (options.tools && options.tools.length > 0) {
+      ignoredSettings.push("options.tools");
+    }
+    if (options.responseFormat) {
+      ignoredSettings.push("options.responseFormat");
+    }
+    if (options.toolChoice) {
+      ignoredSettings.push("options.toolChoice");
+    }
+
+    if (ignoredSettings.length > 0) {
+      warnings.push({
+        message: `orchestrationConfigRef is set; the following local settings are ignored: ${ignoredSettings.join(", ")}. The full configuration is managed by the referenced config.`,
+        type: "other",
+      });
+    }
+
+    return warnings;
+  }
+
   private createClient(
     config: LanguageModelStrategyConfig,
     orchConfig: OrchestrationModuleConfig,
   ): InstanceType<OrchestrationClientClass> {
     return new this.ClientClass(orchConfig, config.deploymentConfig, config.destination);
+  }
+
+  private createClientWithConfigRef(
+    config: LanguageModelStrategyConfig,
+    configRef: OrchestrationConfigRef,
+  ): InstanceType<OrchestrationClientClass> {
+    return new this.ClientClass(configRef, config.deploymentConfig, config.destination);
+  }
+
+  /**
+   * Resolves the orchestrationConfigRef from provider options or settings.
+   * Provider options take priority over settings.
+   * @param config - The strategy configuration.
+   * @param settings - The model settings.
+   * @param options - The call options.
+   * @returns The resolved config reference or undefined.
+   */
+  private async resolveConfigRef(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions,
+  ): Promise<OrchestrationConfigRef | undefined> {
+    const providerName = getProviderName(config.provider);
+    const sapOptions = await parseProviderOptions({
+      provider: providerName,
+      providerOptions: options.providerOptions,
+      schema: sapAILanguageModelProviderOptions,
+    });
+
+    const orchSettings = settings as OrchestrationModelSettings;
+
+    // Provider options take priority
+    const configRefCandidate =
+      sapOptions?.orchestrationConfigRef ?? orchSettings.orchestrationConfigRef;
+
+    if (configRefCandidate && isOrchestrationConfigRef(configRefCandidate)) {
+      return configRefCandidate;
+    }
+
+    return undefined;
   }
 }
