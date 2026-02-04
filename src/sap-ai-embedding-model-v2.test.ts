@@ -1,14 +1,14 @@
 /**
  * Unit tests for SAP AI Embedding Model V2.
  *
- * Tests verify V2 facade correctly delegates to V3 and transforms responses.
- * V2 is a thin facade - most functionality is tested in V3 tests.
+ * Tests verify V2 facade correctly delegates to internal implementation and transforms responses.
+ * V2 is a thin facade - most functionality is tested in internal implementation tests.
  *
  * Test Strategy:
  * - V2-specific properties (specificationVersion)
- * - Delegation to V3 (doEmbed)
+ * - Delegation to internal model (doEmbed)
  * - Warning handling (console.warn for V2)
- * - Forward all options to V3
+ * - Forward all options to internal model
  * @see SAPAIEmbeddingModelV2
  */
 
@@ -32,8 +32,8 @@ describe("SAPAIEmbeddingModelV2", () => {
     });
   });
 
-  describe("Delegation to V3", () => {
-    it("should delegate doEmbed to V3 model", async () => {
+  describe("Delegation to internal model", () => {
+    it("should delegate doEmbed to internal model", async () => {
       const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
       const mockDoEmbed = vi.fn().mockResolvedValue({
@@ -48,7 +48,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       const result = await model.doEmbed({ values: ["Hello", "World"] });
 
@@ -63,7 +63,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       expect(result.response?.body).toEqual({ data: "test" });
     });
 
-    it("should forward all options to V3 (abortSignal, headers, providerOptions)", async () => {
+    it("should forward all options to internal model (abortSignal, headers, providerOptions)", async () => {
       const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
       const abortController = new AbortController();
@@ -74,7 +74,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       await model.doEmbed({
         abortSignal: abortController.signal,
@@ -91,16 +91,18 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
     });
 
-    it("should propagate errors from V3 doEmbed", async () => {
+    it("should propagate errors from internal doEmbed", async () => {
       const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
-      const mockError = new Error("V3 embedding failed");
+      const mockError = new Error("Internal embedding failed");
       const mockDoEmbed = vi.fn().mockRejectedValue(mockError);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
-      await expect(model.doEmbed({ values: ["Test"] })).rejects.toThrow("V3 embedding failed");
+      await expect(model.doEmbed({ values: ["Test"] })).rejects.toThrow(
+        "Internal embedding failed",
+      );
     });
   });
 
@@ -117,7 +119,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       await model.doEmbed({ values: ["Test"] });
 
@@ -146,7 +148,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       await model.doEmbed({ values: ["Test"] });
 
@@ -171,7 +173,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       await model.doEmbed({ values: ["Test"] });
 
@@ -194,7 +196,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       await model.doEmbed({ values: ["Test"] });
 
@@ -215,7 +217,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doEmbed = mockDoEmbed;
+      (model as any).internalModel.doEmbed = mockDoEmbed;
 
       await model.doEmbed({ values: ["Test"] });
 

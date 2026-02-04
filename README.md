@@ -6,8 +6,6 @@
 [![Language Model](https://img.shields.io/badge/Language%20Model-V2-orange.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
 [![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V2-orange.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
 
-> **Note:** This is a **V2-compatible fork** for use with **AI SDK 5.x**.
-
 A community provider for SAP AI Core that integrates seamlessly with the Vercel
 AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** and
 **@sap-ai-sdk/foundation-models** packages, this provider enables you to use
@@ -116,17 +114,17 @@ try {
 
 ## Quick Reference
 
-| Task                | Code Pattern                                                     | Documentation                                                 |
-| ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai`                  | [Installation](#installation)                                 |
-| **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                               | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
-| **Create Provider** | `createSAPAIProvider()` or use `sapai`                           | [Provider Creation](#provider-creation)                       |
-| **Text Generation** | `generateText({ model: provider("gpt-4o"), prompt })`            | [Basic Usage](#text-generation)                               |
-| **Streaming**       | `streamText({ model: provider("gpt-4o"), prompt })`              | [Streaming](#streaming-responses)                             |
-| **Tool Calling**    | `generateText({ tools: { myTool: tool({...}) } })`               | [Tool Calling](#tool-calling)                                 |
-| **Error Handling**  | `catch (error instanceof APICallError)`                          | [API Reference](./API_REFERENCE.md#error-handling--reference) |
-| **Choose Model**    | See 80+ models (GPT, Claude, Gemini, Llama)                      | [Models](./API_REFERENCE.md#models)                           |
-| **Embeddings**      | `embed({ model: provider.embedding("text-embedding-ada-002") })` | [Embeddings](#embeddings)                                     |
+| Task                | Code Pattern                                                              | Documentation                                                 |
+| ------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai`                           | [Installation](#installation)                                 |
+| **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                                        | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
+| **Create Provider** | `createSAPAIProvider()` or use `sapai`                                    | [Provider Creation](#provider-creation)                       |
+| **Text Generation** | `generateText({ model: provider("gpt-4o"), prompt })`                     | [Basic Usage](#text-generation)                               |
+| **Streaming**       | `streamText({ model: provider("gpt-4o"), prompt })`                       | [Streaming](#streaming-responses)                             |
+| **Tool Calling**    | `generateText({ tools: { myTool: tool({...}) } })`                        | [Tool Calling](#tool-calling)                                 |
+| **Error Handling**  | `catch (error instanceof APICallError)`                                   | [API Reference](./API_REFERENCE.md#error-handling--reference) |
+| **Choose Model**    | See 80+ models (GPT, Claude, Gemini, Llama)                               | [Models](./API_REFERENCE.md#models)                           |
+| **Embeddings**      | `embed({ model: provider.textEmbeddingModel("text-embedding-ada-002") })` | [Embeddings](#embeddings)                                     |
 
 ## Installation
 
@@ -234,7 +232,7 @@ const chatModel = provider("gpt-4o");
 
 // Explicit method syntax
 const chatModel = provider.chat("gpt-4o");
-const embeddingModel = provider.embedding("text-embedding-ada-002");
+const embeddingModel = provider.textEmbeddingModel("text-embedding-ada-002");
 ```
 
 All methods accept an optional second parameter for model-specific settings.
@@ -368,13 +366,13 @@ const provider = createSAPAIProvider();
 
 // Single embedding
 const { embedding } = await embed({
-  model: provider.embedding("text-embedding-ada-002"),
+  model: provider.textEmbeddingModel("text-embedding-ada-002"),
   value: "What is machine learning?",
 });
 
 // Multiple embeddings
 const { embeddings } = await embedMany({
-  model: provider.embedding("text-embedding-3-small"),
+  model: provider.textEmbeddingModel("text-embedding-3-small"),
   values: ["Hello world", "AI is amazing", "Vector search"],
 });
 ```
@@ -731,28 +729,19 @@ npx tsx examples/example-generate-text.ts
 
 ### Upgrading from v3.x to v4.x
 
-Version 4.0 migrates from **LanguageModelV2** to **LanguageModelV3**
-specification (AI SDK 5.0+). **See the
-[Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for
-complete upgrade instructions.**
+Version 4.0 of the upstream package migrates to **LanguageModelV3**
+specification. However, this **V2-compatible fork** provides a facade that
+exposes the familiar **LanguageModelV2** interface for AI SDK 5.x compatibility.
 
-**Key changes:**
-
-- **Finish Reason**: Changed from string to object
-  (`result.finishReason.unified`)
-- **Usage Structure**: Nested format with detailed token breakdown
-  (`result.usage.inputTokens.total`)
-- **Stream Events**: Structured blocks (`text-start`, `text-delta`, `text-end`)
-  instead of simple deltas
-- **Warning Types**: Updated format with `feature` field for categorization
+**This fork handles the V3→V2 transformation internally**, so you can use the
+standard V2 API without changes.
 
 **Impact by user type:**
 
-- High-level API users (`generateText`/`streamText`): ✅ Minimal impact (likely
-  no changes)
-- Direct provider users: ⚠️ Update type imports (`LanguageModelV2` →
-  `LanguageModelV3`)
-- Custom stream parsers: ⚠️ Update parsing logic for V3 structure
+- High-level API users (`generateText`/`streamText`): ✅ No impact - works as
+  expected
+- Direct provider users: ✅ Use `LanguageModelV2` types as before
+- Custom stream parsers: ✅ V2 stream format is preserved
 
 ### Upgrading from v2.x to v3.x
 

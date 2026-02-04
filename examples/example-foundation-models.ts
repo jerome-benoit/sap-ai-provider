@@ -161,7 +161,7 @@ async function foundationModelsExample() {
     console.log("7. Embeddings with Foundation Models\n");
 
     const { embedding } = await embed({
-      model: fmProvider.embedding("text-embedding-ada-002"),
+      model: fmProvider.textEmbeddingModel("text-embedding-ada-002"),
       value: "Hello, world!",
     });
 

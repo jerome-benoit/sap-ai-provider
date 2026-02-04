@@ -14,7 +14,7 @@ import { SAPAILanguageModelV2 } from "./sap-ai-language-model-v2.js";
 import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
 import { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
-/** Deployment configuration type used by the SAP AI SDK. */
+/** @internal */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
 
 /**
@@ -64,27 +64,13 @@ export interface SAPAIProviderSettings {
   readonly warnOnAmbiguousConfig?: boolean;
 }
 
-/**
- * SAP AI Provider V2 interface for creating and configuring SAP AI Core models.
- * Extends the Vercel AI SDK ProviderV2 interface with SAP-specific functionality.
- */
+/** SAP AI Provider interface extending Vercel AI SDK ProviderV2. */
 export interface SAPAIProviderV2 extends ProviderV2 {
-  /** Creates a language model instance. */
   (modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV2;
-
-  /** Creates a language model instance (custom convenience method). */
   chat(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV2;
-
-  /**
-   * Image model stub - always throws NoSuchModelError.
-   * SAP AI Core Orchestration Service does not support image generation.
-   */
+  /** Always throws - SAP AI Core does not support image generation. */
   imageModel(modelId: string): ImageModelV2;
-
-  /** Creates a language model instance (Vercel AI SDK ProviderV2 standard method). */
   languageModel(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV2;
-
-  /** Creates a text embedding model instance (Vercel AI SDK ProviderV2 standard method). */
   textEmbeddingModel(
     modelId: SAPAIEmbeddingModelId,
     settings?: SAPAIEmbeddingSettings,
@@ -92,13 +78,38 @@ export interface SAPAIProviderV2 extends ProviderV2 {
 }
 
 /**
- * Creates a SAP AI Core provider instance for use with the Vercel AI SDK (V2 compatibility).
+ * Creates an SAP AI Provider instance for use with the Vercel AI SDK.
  *
- * Uses the official SAP AI SDK (@sap-ai-sdk/orchestration) for authentication
- * and API communication. Authentication is automatic via service binding
+ * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
+ * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
  * (VCAP_SERVICES on SAP BTP) or AICORE_SERVICE_KEY environment variable.
  * @param options - Provider configuration options.
- * @returns A configured SAP AI provider instance.
+ * @param options.api - Default API type: `'orchestration'` (default) or `'foundation-models'`.
+ * @param options.defaultSettings - Default model settings applied to every model instance.
+ * @param options.deploymentId - SAP AI Core deployment ID for automatic deployment resolution.
+ * @param options.destination - Custom SAP Cloud SDK destination configuration.
+ * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
+ * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
+ * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`).
+ * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.
+ * @returns A configured SAP AI provider instance that can be used as a callable or via methods.
+ * @example
+ * // Basic usage with defaults
+ * const provider = createSAPAIProvider();
+ * const model = provider('gpt-4o');
+ * @example
+ * // With custom configuration
+ * const provider = createSAPAIProvider({
+ *   api: 'foundation-models',
+ *   resourceGroup: 'production',
+ *   defaultSettings: { modelParams: { temperature: 0.7 } },
+ * });
+ * @example
+ * // Using provider methods
+ * const chatModel = provider.chat('gpt-4o');
+ * const embeddingModel = provider.textEmbeddingModel('text-embedding-ada-002');
+ * @see {@link SAPAIProviderSettings} for all configuration options.
+ * @see {@link SAPAIProviderV2} for the provider interface.
  */
 export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIProviderV2 {
   if (options.defaultSettings?.modelParams) {
@@ -185,7 +196,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
 
   provider.imageModel = (modelId: string) => {
     throw new NoSuchModelError({
-      message: `SAP AI Core Orchestration Service does not support image generation. Model '${modelId}' is not available.`,
+      message: `SAP AI Core does not support image generation. Model '${modelId}' is not available.`,
       modelId,
       modelType: "imageModel",
     });

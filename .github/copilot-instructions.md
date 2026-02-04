@@ -269,7 +269,7 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
 
 **Key patterns to follow:**
 
-- Implement Vercel AI SDK interfaces correctly (`ProviderV3`, etc.)
+- Implement Vercel AI SDK interfaces correctly (`ProviderV2`, `LanguageModelV2`, `EmbeddingModelV2`)
 - Maintain Node.js and Edge runtime compatibility
 - Keep components focused and single-purpose
 - Follow existing authentication and caching patterns

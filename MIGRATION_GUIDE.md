@@ -21,7 +21,7 @@ Guide for migrating between versions of the SAP AI Provider.
   - [Common Migration Issues](#common-migration-issues)
     - [Issue: "Property 'textDelta' does not exist"](#issue-property-textdelta-does-not-exist)
     - [Issue: "Cannot read property 'total' of undefined"](#issue-cannot-read-property-total-of-undefined)
-    - [Issue: TypeScript errors on LanguageModelV2 types](#issue-typescript-errors-on-languagemodelv2-types)
+    - [Issue: TypeScript errors on LanguageModelV3 types](#issue-typescript-errors-on-languagemodelv3-types)
   - [FAQ](#faq)
 - [Version 2.x to 3.x (Breaking Changes)](#version-2x-to-3x-breaking-changes)
   - [Summary of Changes](#summary-of-changes-1)
@@ -78,13 +78,18 @@ features.
 
 ## Version 3.x to 4.x (Breaking Changes)
 
-**Version 4.0 migrates from LanguageModelV2 to LanguageModelV3 specification.**
+**This V2 fork maintains LanguageModelV2/EmbeddingModelV2 interfaces for Vercel AI SDK 5.x compatibility.**
+
+> **Note:** The upstream `@jerome-benoit/sap-ai-provider` v4.0 migrated to V3
+> interfaces. This fork (`sap-ai-provider-v2`) provides a V2 facade over the V3
+> internal implementation, allowing you to use V2-compatible code with the latest
+> features.
 
 ### Summary of Changes
 
-**Breaking Changes:**
+**Key Differences from Upstream:**
 
-- Implements **LanguageModelV3** interface (replacing V2)
+- Implements **LanguageModelV2** interface (V2 facade over V3 internals)
 - Finish reason changed from `string` to `{ unified: string, raw?: string }`
 - Usage structure now nested with detailed token breakdown
 - Warning types updated to V3 format with `feature` field
@@ -97,7 +102,7 @@ features.
 - Better type safety with structured result types
 - Richer streaming with explicit block lifecycle
 - Enhanced token usage metadata
-- **New:** Text embeddings support (`EmbeddingModelV3`) for RAG and semantic search
+- **New:** Text embeddings support (`EmbeddingModelV2`) for RAG and semantic search
 
 ### Who Is Affected?
 
@@ -117,7 +122,7 @@ npm install @jerome-benoit/sap-ai-provider@^4.0.0
 
 #### 2. Update Type Imports (If Using Direct Provider Access)
 
-**Before (v3.x):**
+**With this V2 fork (no changes needed):**
 
 ```typescript
 import type { LanguageModelV2 } from "@ai-sdk/provider";
@@ -125,13 +130,8 @@ import type { LanguageModelV2 } from "@ai-sdk/provider";
 const model: LanguageModelV2 = provider("gpt-4o");
 ```
 
-**After (v4.x):**
-
-```typescript
-import type { LanguageModelV3 } from "@ai-sdk/provider";
-
-const model: LanguageModelV3 = provider("gpt-4o");
-```
+> **Note:** If you were using the upstream v4.x with `LanguageModelV3`, switching
+> to this V2 fork means you continue using `LanguageModelV2` types.
 
 #### 3. Update Stream Parsing (If Manually Parsing Streams)
 
@@ -376,18 +376,18 @@ version.
 const inputTokens = result.usage.inputTokens?.total ?? result.usage.inputTokens;
 ```
 
-#### Issue: TypeScript errors on LanguageModelV2 types
+#### Issue: TypeScript errors on LanguageModelV3 types
 
-**Cause**: Importing old V2 types.
+**Cause**: Using upstream v4.x types with this V2 fork.
 
-**Fix**: Update imports to V3:
+**Fix**: Use V2 types (this fork exposes V2 interfaces):
 
 ```typescript
-// ❌ Before
-import type { LanguageModelV2 } from "@ai-sdk/provider";
-
-// ✅ After
+// ❌ Upstream v4.x (LanguageModelV3)
 import type { LanguageModelV3 } from "@ai-sdk/provider";
+
+// ✅ This V2 fork (LanguageModelV2)
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 ```
 
 ### FAQ

@@ -1,8 +1,12 @@
 /**
- * `@jerome-benoit/sap-ai-provider`
+ * `@jerome-benoit/sap-ai-provider-v2`
  *
- * Vercel AI SDK provider for SAP AI Core.
- * Wraps the SAP AI SDK to provide Vercel AI SDK-compatible interfaces.
+ * Vercel AI SDK V2 provider for SAP AI Core.
+ *
+ * This package provides LanguageModelV2 and EmbeddingModelV2 interfaces
+ * for compatibility with Vercel AI SDK 5.x. Internally uses the provider's
+ * implementation with automatic format transformation to V2.
+ * @see {@link https://sdk.vercel.ai/} Vercel AI SDK documentation
  */
 
 /**
@@ -14,7 +18,8 @@ export {
 } from "./convert-to-sap-messages.js";
 
 /**
- * Embedding model class for generating vector embeddings via SAP AI Core.
+ * Embedding model class implementing EmbeddingModelV2 for SAP AI Core.
+ * V2 facade over internal implementation.
  */
 export { SAPAIEmbeddingModelV2 as SAPAIEmbeddingModel } from "./sap-ai-embedding-model-v2.js";
 
@@ -28,7 +33,8 @@ export type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 export { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
- * Language model class for chat/text completions via SAP AI Core.
+ * Language model class implementing LanguageModelV2 for SAP AI Core.
+ * V2 facade over internal implementation.
  */
 export { SAPAILanguageModelV2 as SAPAILanguageModel } from "./sap-ai-language-model-v2.js";
 
@@ -51,7 +57,8 @@ export type {
 } from "./sap-ai-provider-options.js";
 
 /**
- * Provider factory function and pre-configured default instance.
+ * Provider factory function implementing ProviderV2 interface.
+ * Creates language and embedding model instances for SAP AI Core.
  */
 export { createSAPAIProvider, sapai } from "./sap-ai-provider-v2.js";
 

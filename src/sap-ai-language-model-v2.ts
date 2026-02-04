@@ -1,7 +1,10 @@
 /**
- * SAP AI Language Model V2 - Vercel AI SDK LanguageModelV2 facade for SAP AI Core Orchestration.
+ * SAP AI Language Model V2 - Vercel AI SDK LanguageModelV2 implementation for SAP AI Core.
  *
- * This is a facade that delegates to the V3 implementation and transforms responses to V2 format.
+ * This module provides the language model implementation that connects to SAP AI Core
+ * services (Orchestration API or Foundation Models API) for text generation.
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/generate-text | Vercel AI SDK generateText()}
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/stream-text | Vercel AI SDK streamText()}
  */
 
 import type {
@@ -22,80 +25,83 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 import {
-  convertFinishReasonV3ToV2,
-  convertStreamV3ToV2,
-  convertUsageV3ToV2,
-  convertWarningsV3ToV2,
+  convertFinishReasonToV2,
+  convertStreamToV2,
+  convertUsageToV2,
+  convertWarningsToV2,
 } from "./sap-ai-adapters-v3-to-v2.js";
-import { SAPAILanguageModel as SAPAILanguageModelV3Internal } from "./sap-ai-language-model.js";
+import { SAPAILanguageModel as SAPAILanguageModelInternal } from "./sap-ai-language-model.js";
 
-/**
- * Internal configuration for SAP AI Language Model V2.
- * @internal
- */
+/** @internal */
 interface SAPAILanguageModelV2Config {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
-  /** Provider-level API setting for fallback during API resolution. */
   readonly providerApi?: SAPAIApiType;
 }
 
 /**
- * SAP AI Language Model V2 implementing Vercel AI SDK LanguageModelV2.
+ * SAP AI Language Model implementing Vercel AI SDK LanguageModelV2.
  *
- * Facade delegating to V3 implementation with V2 format transformation.
- * Features: text generation, tool calling, multi-modal input, data masking, content filtering.
- * Supports: Azure OpenAI, Google Vertex AI, AWS Bedrock, AI Core open source models.
+ * This class provides chat completion and streaming capabilities through SAP AI Core,
+ * supporting both the Orchestration API (with content filtering, grounding, masking,
+ * and translation) and Foundation Models API (direct Azure OpenAI access).
+ *
+ * Users typically don't instantiate this class directly. Instead, use the
+ * {@link createSAPAIProvider} factory function:
+ * @example
+ * ```typescript
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+ * import { generateText, streamText } from "ai";
+ *
+ * const provider = createSAPAIProvider();
+ * const model = provider("gpt-4o");
+ *
+ * // Non-streaming
+ * const { text } = await generateText({
+ *   model,
+ *   prompt: "Hello!",
+ * });
+ *
+ * // Streaming
+ * const result = streamText({
+ *   model,
+ *   prompt: "Tell me a story",
+ * });
+ *
+ * for await (const chunk of result.textStream) {
+ *   process.stdout.write(chunk);
+ * }
+ * ```
+ * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/generating-text | Vercel AI SDK Text Generation}
+ * @see {@link createSAPAIProvider} - Factory function to create provider instances
  */
 export class SAPAILanguageModelV2 implements LanguageModelV2 {
-  /** The model identifier. */
   readonly modelId: SAPAIModelId;
-  /** The Vercel AI SDK specification version. */
   readonly specificationVersion = "v2" as const;
 
-  /**
-   * Gets the provider identifier string.
-   * @returns The provider identifier.
-   */
   get provider(): string {
-    return this.v3Model.provider;
+    return this.internalModel.provider;
   }
 
-  /**
-   * Gets the supported URL patterns for image input.
-   * @returns A mapping of MIME type patterns to URL regex patterns.
-   */
   get supportedUrls(): Record<string, RegExp[]> {
-    return this.v3Model.supportedUrls;
+    return this.internalModel.supportedUrls;
   }
 
-  /** Internal V3 model instance that handles all SAP AI Core logic. */
-  private readonly v3Model: SAPAILanguageModelV3Internal;
+  /** @internal */
+  private readonly internalModel: SAPAILanguageModelInternal;
 
   /**
-   * Creates a new SAP AI Language Model V2 instance.
-   *
-   * This constructor creates a V3 implementation internally and delegates all operations to it.
-   * @param modelId - The model identifier (e.g., 'gpt-4o', 'claude-3-5-sonnet', 'gemini-2.0-flash').
-   * @param settings - Model configuration settings (temperature, max tokens, filtering, etc.).
-   * @param config - SAP AI Core deployment and destination configuration.
+   * @param modelId - Model identifier.
+   * @param settings - Model settings.
+   * @param config - Model configuration.
    * @internal
    */
   constructor(modelId: SAPAIModelId, settings: SAPAISettings, config: SAPAILanguageModelV2Config) {
     this.modelId = modelId;
-    // Delegate to internal V3 implementation
-    this.v3Model = new SAPAILanguageModelV3Internal(modelId, settings, config);
+    this.internalModel = new SAPAILanguageModelInternal(modelId, settings, config);
   }
 
-  /**
-   * Generates a single completion (non-streaming).
-   *
-   * Delegates to V3 implementation and transforms the result to V2 format.
-   * Supports request cancellation via AbortSignal at the HTTP transport layer.
-   * @param options - The Vercel AI SDK V2 generation call options.
-   * @returns The generation result with content, usage, warnings, and provider metadata.
-   */
   async doGenerate(options: LanguageModelV2CallOptions): Promise<{
     content: LanguageModelV2Content[];
     finishReason: LanguageModelV2FinishReason;
@@ -110,39 +116,30 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     usage: LanguageModelV2Usage;
     warnings: LanguageModelV2CallWarning[];
   }> {
-    // Call internal V3 implementation
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
-    const v3Result = await this.v3Model.doGenerate(options as any);
+    const result = await this.internalModel.doGenerate(options as any);
 
-    // Transform V3 result to V2 format
+    // Return result in V2 format
     return {
-      content: v3Result.content as LanguageModelV2Content[],
-      finishReason: convertFinishReasonV3ToV2(v3Result.finishReason),
+      content: result.content as LanguageModelV2Content[],
+      finishReason: convertFinishReasonToV2(result.finishReason),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-      providerMetadata: v3Result.providerMetadata as any,
-      request: v3Result.request,
-      response: v3Result.response
+      providerMetadata: result.providerMetadata as any,
+      request: result.request,
+      response: result.response
         ? {
-            body: v3Result.response.body,
-            headers: v3Result.response.headers as SharedV2Headers | undefined,
-            id: v3Result.response.id,
-            modelId: v3Result.response.modelId,
-            timestamp: v3Result.response.timestamp,
+            body: result.response.body,
+            headers: result.response.headers as SharedV2Headers | undefined,
+            id: result.response.id,
+            modelId: result.response.modelId,
+            timestamp: result.response.timestamp,
           }
         : undefined,
-      usage: convertUsageV3ToV2(v3Result.usage),
-      warnings: convertWarningsV3ToV2(v3Result.warnings),
+      usage: convertUsageToV2(result.usage),
+      warnings: convertWarningsToV2(result.warnings),
     };
   }
 
-  /**
-   * Generates a streaming completion.
-   *
-   * Delegates to V3 implementation and transforms the stream to V2 format.
-   * Supports request cancellation via AbortSignal at the HTTP transport layer.
-   * @param options - The Vercel AI SDK V2 generation call options.
-   * @returns A stream result with readable stream of V2 stream parts.
-   */
   async doStream(options: LanguageModelV2CallOptions): Promise<{
     request?: {
       body?: unknown;
@@ -152,17 +149,15 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     };
     stream: ReadableStream<LanguageModelV2StreamPart>;
   }> {
-    // Call internal V3 implementation
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
-    const v3Result = await this.v3Model.doStream(options as any);
+    const result = await this.internalModel.doStream(options as any);
 
-    // Transform V3 stream to V2 stream
-    const v2Stream = new ReadableStream<LanguageModelV2StreamPart>({
+    // Transform stream to V2 format
+    const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
         try {
-          // Convert async generator to stream parts
-          for await (const v2Part of convertStreamV3ToV2(v3Result.stream)) {
-            controller.enqueue(v2Part);
+          for await (const part of convertStreamToV2(result.stream)) {
+            controller.enqueue(part);
           }
           controller.close();
         } catch (error) {
@@ -172,13 +167,13 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     });
 
     return {
-      request: v3Result.request,
-      response: v3Result.response
+      request: result.request,
+      response: result.response
         ? {
-            headers: v3Result.response.headers as SharedV2Headers | undefined,
+            headers: result.response.headers as SharedV2Headers | undefined,
           }
         : undefined,
-      stream: v2Stream,
+      stream,
     };
   }
 }

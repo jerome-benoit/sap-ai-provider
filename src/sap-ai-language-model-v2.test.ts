@@ -3,11 +3,11 @@
  *
  * These tests focus on:
  * 1. V2-specific properties (specificationVersion)
- * 2. Delegation to V3 implementation
+ * 2. Delegation to internal implementation
  * 3. Verification that V2 format is returned (without re-testing conversion logic)
  *
- * Business logic is tested in sap-ai-language-model.test.ts (V3).
- * Format conversions are unit-tested in sap-ai-adapters-v3-to-v2.test.ts.
+ * Business logic is tested in sap-ai-language-model.test.ts (internal implementation).
+ * Format conversions are unit-tested in the adapters test file.
  * This file does NOT duplicate the conversion tests - it only verifies delegation.
  */
 
@@ -59,8 +59,8 @@ describe("SAPAILanguageModelV2", () => {
     });
   });
 
-  describe("Delegation to V3", () => {
-    it("should delegate doGenerate to V3 model", async () => {
+  describe("Delegation to internal model", () => {
+    it("should delegate doGenerate to internal model", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
       const mockDoGenerate = vi.fn().mockResolvedValue({
@@ -71,7 +71,7 @@ describe("SAPAILanguageModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doGenerate = mockDoGenerate;
+      (model as any).internalModel.doGenerate = mockDoGenerate;
 
       await model.doGenerate({
         prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
@@ -80,10 +80,10 @@ describe("SAPAILanguageModelV2", () => {
       expect(mockDoGenerate).toHaveBeenCalledTimes(1);
     });
 
-    it("should delegate doStream to V3 model", async () => {
+    it("should delegate doStream to internal model", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
-      const mockV3Stream = new ReadableStream({
+      const mockInternalStream = new ReadableStream({
         start(controller) {
           controller.enqueue({
             finishReason: { raw: "stop", unified: "stop" },
@@ -94,10 +94,10 @@ describe("SAPAILanguageModelV2", () => {
         },
       });
 
-      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockV3Stream });
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doStream = mockDoStream;
+      (model as any).internalModel.doStream = mockDoStream;
 
       await model.doStream({
         prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
@@ -106,7 +106,7 @@ describe("SAPAILanguageModelV2", () => {
       expect(mockDoStream).toHaveBeenCalledTimes(1);
     });
 
-    it("should forward all call options to V3 doGenerate", async () => {
+    it("should forward all call options to internal doGenerate", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
       const mockDoGenerate = vi.fn().mockResolvedValue({
@@ -117,7 +117,7 @@ describe("SAPAILanguageModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doGenerate = mockDoGenerate;
+      (model as any).internalModel.doGenerate = mockDoGenerate;
 
       const controller = new AbortController();
       const options = {
@@ -134,10 +134,10 @@ describe("SAPAILanguageModelV2", () => {
       expect(mockDoGenerate).toHaveBeenCalledWith(options);
     });
 
-    it("should forward all call options to V3 doStream", async () => {
+    it("should forward all call options to internal doStream", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
-      const mockV3Stream = new ReadableStream({
+      const mockInternalStream = new ReadableStream({
         start(controller) {
           controller.enqueue({
             finishReason: { raw: "stop", unified: "stop" },
@@ -148,10 +148,10 @@ describe("SAPAILanguageModelV2", () => {
         },
       });
 
-      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockV3Stream });
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doStream = mockDoStream;
+      (model as any).internalModel.doStream = mockDoStream;
 
       const controller = new AbortController();
       const options = {
@@ -177,14 +177,14 @@ describe("SAPAILanguageModelV2", () => {
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doGenerate = mockDoGenerate;
+      (model as any).internalModel.doGenerate = mockDoGenerate;
 
       const result = await model.doGenerate({
         prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
       });
 
       // Verify V2 format (string finishReason, flat usage)
-      // Detailed conversion logic tested in sap-ai-adapters-v3-to-v2.test.ts
+      // Detailed conversion logic tested in the adapters test file
       expect(typeof result.finishReason).toBe("string");
       expect(result.usage).toHaveProperty("totalTokens");
     });
@@ -192,7 +192,7 @@ describe("SAPAILanguageModelV2", () => {
     it("should return V2 format from doStream (uses adapters)", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
-      const mockV3Stream = new ReadableStream({
+      const mockInternalStream = new ReadableStream({
         start(controller) {
           controller.enqueue({
             finishReason: { raw: "stop", unified: "stop" },
@@ -203,10 +203,10 @@ describe("SAPAILanguageModelV2", () => {
         },
       });
 
-      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockV3Stream });
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doStream = mockDoStream;
+      (model as any).internalModel.doStream = mockDoStream;
 
       const result = await model.doStream({
         prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
@@ -216,7 +216,7 @@ describe("SAPAILanguageModelV2", () => {
       const finish = parts.find((p) => p.type === "finish");
 
       // Verify V2 format (string finishReason, flat usage)
-      // Detailed conversion logic tested in sap-ai-adapters-v3-to-v2.test.ts
+      // Detailed conversion logic tested in the adapters test file
       expect(finish).toBeDefined();
       if (finish?.type === "finish") {
         expect(typeof finish.finishReason).toBe("string");
@@ -224,36 +224,36 @@ describe("SAPAILanguageModelV2", () => {
       }
     });
 
-    it("should propagate errors from V3 doGenerate", async () => {
+    it("should propagate errors from internal doGenerate", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
-      const mockError = new Error("V3 generation failed");
+      const mockError = new Error("Internal generation failed");
       const mockDoGenerate = vi.fn().mockRejectedValue(mockError);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doGenerate = mockDoGenerate;
+      (model as any).internalModel.doGenerate = mockDoGenerate;
 
       await expect(
         model.doGenerate({
           prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
         }),
-      ).rejects.toThrow("V3 generation failed");
+      ).rejects.toThrow("Internal generation failed");
     });
 
-    it("should propagate errors from V3 doStream", async () => {
+    it("should propagate errors from internal doStream", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
-      const mockError = new Error("V3 streaming failed");
+      const mockError = new Error("Internal streaming failed");
       const mockDoStream = vi.fn().mockRejectedValue(mockError);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).v3Model.doStream = mockDoStream;
+      (model as any).internalModel.doStream = mockDoStream;
 
       await expect(
         model.doStream({
           prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
         }),
-      ).rejects.toThrow("V3 streaming failed");
+      ).rejects.toThrow("Internal streaming failed");
     });
   });
 });

@@ -1,43 +1,43 @@
 /**
- * Adapters to convert Vercel AI SDK LanguageModelV3 formats to LanguageModelV2 formats.
+ * Adapters to convert internal Vercel AI SDK formats to LanguageModelV2 formats.
  *
- * This module provides transformation functions that convert V3 response formats
- * (used internally by the SAP AI Core implementation) to V2 formats
- * (exposed as the public API).
+ * This module provides transformation functions that convert internal response formats
+ * (used by the SAP AI Core implementation) to V2 formats (exposed as the public API).
  * @module sap-ai-adapters-v3-to-v2
  * @internal
  */
 
 import type {
+  // Internal types - aliased to hide implementation details
+  LanguageModelV3FinishReason as InternalFinishReason,
+  LanguageModelV3StreamPart as InternalStreamPart,
+  LanguageModelV3Usage as InternalUsage,
+  SharedV3Warning as InternalWarning,
   LanguageModelV2CallWarning,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
   LanguageModelV2Usage,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
-  SharedV3Warning,
 } from "@ai-sdk/provider";
 
 /**
- * Converts a V3 finish reason to V2 format.
+ * Converts an internal finish reason to V2 format.
  *
- * V3 format: `{ unified: string, raw?: string }`
+ * Internal format: `{ unified: string, raw?: string }`
  * V2 format: `string` (one of: 'stop', 'length', 'content-filter', 'tool-calls', 'error', 'other', 'unknown')
- * @param v3FinishReason - The V3 finish reason object
+ * @param internalFinishReason - The internal finish reason object
  * @returns The V2 finish reason string
  * @internal
  */
-export function convertFinishReasonV3ToV2(
-  v3FinishReason: LanguageModelV3FinishReason,
+export function convertFinishReasonToV2(
+  internalFinishReason: InternalFinishReason,
 ): LanguageModelV2FinishReason {
-  return v3FinishReason.unified;
+  return internalFinishReason.unified;
 }
 
 /**
- * Converts a V3 stream part to V2 format.
+ * Converts an internal stream part to V2 format.
  *
- * V3 stream events have more granular structure:
+ * Internal stream events have more granular structure:
  * - `text-start`, `text-delta`, `text-end` (with block IDs)
  * - `tool-input-start`, `tool-input-delta`, `tool-input-end`
  * - `finish` event with structured usage
@@ -47,51 +47,49 @@ export function convertFinishReasonV3ToV2(
  * The key transformations are:
  * - `finish` event: convert usage format
  * - `stream-start` event: convert warnings
- * @param v3Part - The V3 stream part
+ * @param internalPart - The internal stream part
  * @returns The V2 stream part
  * @internal
  */
-export function convertStreamPartV3ToV2(
-  v3Part: LanguageModelV3StreamPart,
-): LanguageModelV2StreamPart {
-  switch (v3Part.type) {
+export function convertStreamPartToV2(internalPart: InternalStreamPart): LanguageModelV2StreamPart {
+  switch (internalPart.type) {
     case "finish":
       return {
-        finishReason: convertFinishReasonV3ToV2(v3Part.finishReason),
-        // Cast providerMetadata as compatible between V2/V3
+        finishReason: convertFinishReasonToV2(internalPart.finishReason),
+        // Cast providerMetadata as compatible between formats
         // The type difference is only in index signature strictness
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-        providerMetadata: v3Part.providerMetadata as any,
+        providerMetadata: internalPart.providerMetadata as any,
         type: "finish",
-        usage: convertUsageV3ToV2(v3Part.usage),
+        usage: convertUsageToV2(internalPart.usage),
       };
 
     case "stream-start":
       return {
         type: "stream-start",
-        warnings: convertWarningsV3ToV2(v3Part.warnings),
+        warnings: convertWarningsToV2(internalPart.warnings),
       };
 
-    // All other event types are compatible between V2 and V3
+    // All other event types are compatible between internal and V2 formats
     default:
-      return v3Part as LanguageModelV2StreamPart;
+      return internalPart as LanguageModelV2StreamPart;
   }
 }
 
 /**
- * Transforms a V3 stream to a V2 stream.
+ * Transforms an internal stream to a V2 stream.
  *
- * This async generator function reads from a V3 ReadableStream and yields
+ * This async generator function reads from an internal ReadableStream and yields
  * V2-formatted stream parts, converting usage and finish reason formats on the fly.
- * @param v3Stream - The V3 ReadableStream
+ * @param internalStream - The internal ReadableStream
  * @yields {LanguageModelV2StreamPart} V2-formatted stream parts
  * @returns An async generator yielding V2 stream parts
  * @internal
  */
-export async function* convertStreamV3ToV2(
-  v3Stream: ReadableStream<LanguageModelV3StreamPart>,
+export async function* convertStreamToV2(
+  internalStream: ReadableStream<InternalStreamPart>,
 ): AsyncGenerator<LanguageModelV2StreamPart> {
-  const reader = v3Stream.getReader();
+  const reader = internalStream.getReader();
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -102,7 +100,7 @@ export async function* convertStreamV3ToV2(
         break;
       }
 
-      yield convertStreamPartV3ToV2(value);
+      yield convertStreamPartToV2(value);
     }
   } finally {
     reader.releaseLock();
@@ -110,9 +108,9 @@ export async function* convertStreamV3ToV2(
 }
 
 /**
- * Converts V3 usage information to V2 format.
+ * Converts internal usage information to V2 format.
  *
- * V3 format (nested):
+ * Internal format (nested):
  * ```
  * {
  *   inputTokens: { total, cacheRead, cacheWrite, noCache },
@@ -130,67 +128,70 @@ export async function* convertStreamV3ToV2(
  *   cachedInputTokens?: number
  * }
  * ```
- * @param v3Usage - The V3 usage object
+ * @param internalUsage - The internal usage object
  * @returns The V2 usage object
  * @internal
  */
-export function convertUsageV3ToV2(v3Usage: LanguageModelV3Usage): LanguageModelV2Usage {
+export function convertUsageToV2(internalUsage: InternalUsage): LanguageModelV2Usage {
   return {
-    cachedInputTokens: v3Usage.inputTokens.cacheRead,
-    inputTokens: v3Usage.inputTokens.total,
-    outputTokens: v3Usage.outputTokens.total,
-    reasoningTokens: v3Usage.outputTokens.reasoning,
+    cachedInputTokens: internalUsage.inputTokens.cacheRead,
+    inputTokens: internalUsage.inputTokens.total,
+    outputTokens: internalUsage.outputTokens.total,
+    reasoningTokens: internalUsage.outputTokens.reasoning,
     totalTokens:
-      v3Usage.inputTokens.total !== undefined && v3Usage.outputTokens.total !== undefined
-        ? v3Usage.inputTokens.total + v3Usage.outputTokens.total
+      internalUsage.inputTokens.total !== undefined &&
+      internalUsage.outputTokens.total !== undefined
+        ? internalUsage.inputTokens.total + internalUsage.outputTokens.total
         : undefined,
   };
 }
 
 /**
- * Converts an array of V3 warnings to V2 warnings.
- * @param v3Warnings - Array of V3 warning objects
+ * Converts an array of internal warnings to V2 warnings.
+ * @param internalWarnings - Array of internal warning objects
  * @returns Array of V2 warning objects
  * @internal
  */
-export function convertWarningsV3ToV2(v3Warnings: SharedV3Warning[]): LanguageModelV2CallWarning[] {
-  return v3Warnings.map(convertWarningV3ToV2);
+export function convertWarningsToV2(
+  internalWarnings: InternalWarning[],
+): LanguageModelV2CallWarning[] {
+  return internalWarnings.map(convertWarningToV2);
 }
 
 /**
- * Converts a V3 warning to V2 warning format.
+ * Converts an internal warning to V2 warning format.
  *
- * V3 warnings have a `feature` field for unsupported features.
+ * Internal warnings have a `feature` field for unsupported features.
  * V2 warnings use different types: 'unsupported-setting', 'unsupported-tool', or 'other'.
  *
  * Since we don't have detailed context about which setting/tool is unsupported,
- * we map V3 unsupported warnings to V2 'other' type with a descriptive message.
- * @param v3Warning - The V3 warning object
+ * we map internal unsupported warnings to V2 'other' type with a descriptive message.
+ * @param internalWarning - The internal warning object
  * @returns The V2 warning object
  * @internal
  */
-export function convertWarningV3ToV2(v3Warning: SharedV3Warning): LanguageModelV2CallWarning {
-  if (v3Warning.type === "unsupported") {
+export function convertWarningToV2(internalWarning: InternalWarning): LanguageModelV2CallWarning {
+  if (internalWarning.type === "unsupported") {
     return {
-      message: v3Warning.details
-        ? `Unsupported feature: ${v3Warning.feature}. ${v3Warning.details}`
-        : `Unsupported feature: ${v3Warning.feature}`,
+      message: internalWarning.details
+        ? `Unsupported feature: ${internalWarning.feature}. ${internalWarning.details}`
+        : `Unsupported feature: ${internalWarning.feature}`,
       type: "other",
     };
   }
 
-  if (v3Warning.type === "compatibility") {
+  if (internalWarning.type === "compatibility") {
     return {
-      message: v3Warning.details
-        ? `Compatibility mode: ${v3Warning.feature}. ${v3Warning.details}`
-        : `Compatibility mode: ${v3Warning.feature}`,
+      message: internalWarning.details
+        ? `Compatibility mode: ${internalWarning.feature}. ${internalWarning.details}`
+        : `Compatibility mode: ${internalWarning.feature}`,
       type: "other",
     };
   }
 
-  // V3 'other' type maps directly to V2 'other' type
+  // Internal 'other' type maps directly to V2 'other' type
   return {
-    message: v3Warning.message,
+    message: internalWarning.message,
     type: "other",
   };
 }

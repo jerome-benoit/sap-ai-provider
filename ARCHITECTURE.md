@@ -11,7 +11,7 @@ see [API Reference](./API_REFERENCE.md).
 **3-layer architecture** bridging your application to SAP AI services:
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
-- Implements Vercel AI SDK's `ProviderV3` interface
+- Implements Vercel AI SDK's `ProviderV2` interface (V2 facade over V3 internals)
 - Uses SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`) for API communication
 - Transforms messages bidirectionally (AI SDK ↔ SAP format)
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
@@ -70,9 +70,9 @@ Handler → SAP AI Core API
 ## Overview
 
 The SAP AI Provider is designed as a bridge between the Vercel AI SDK and
-SAP AI Core services. It implements the Vercel AI SDK's `ProviderV3` interface
-while handling the complexities of SAP AI Core's API, authentication, and data
-formats.
+SAP AI Core services. It implements the Vercel AI SDK's `ProviderV2` interface
+(as a facade over the V3 internal implementation) while handling the complexities
+of SAP AI Core's API, authentication, and data formats.
 
 ### High-Level Architecture
 
@@ -190,7 +190,7 @@ sequenceDiagram
         Note over Prov,SDK: Response Processing
         Prov->>Prov: Parse & validate
         Prov->>Prov: Extract content & tool calls
-        Prov-->>SDK: LanguageModelV3Result
+        Prov-->>SDK: LanguageModelV2Result
     end
 
     SDK-->>App: GenerateTextResult
@@ -307,7 +307,7 @@ src/
 
 #### `SAPAILanguageModel`
 
-- **Purpose**: Implementation of Vercel AI SDK's `LanguageModelV3`
+- **Purpose**: Implementation of Vercel AI SDK's `LanguageModelV2`
 - **Responsibilities**:
   - Request/response transformation
   - Streaming support
@@ -316,7 +316,7 @@ src/
 
 #### `SAPAIEmbeddingModel`
 
-- **Purpose**: Implementation of Vercel AI SDK's `EmbeddingModelV3`
+- **Purpose**: Implementation of Vercel AI SDK's `EmbeddingModelV2`
 - **Responsibilities**:
   - Embedding generation via `doEmbed()`
   - Batch size validation (`maxEmbeddingsPerCall`)
@@ -1012,7 +1012,7 @@ AI SDK types.
 The provider implements the factory pattern for model creation:
 
 ```typescript
-interface SAPAIProvider extends ProviderV3 {
+interface SAPAIProvider extends ProviderV2 {
   // Function call syntax
   (modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModel;
 
@@ -1157,7 +1157,7 @@ sequenceDiagram
         Note right of Factory: Config passed per-call<br/>(tenant-specific, not cached)
         Factory->>SDK: client.chatCompletion(...)
         SDK-->>Factory: response
-        Factory-->>LM: LanguageModelV3GenerateResult
+        Factory-->>LM: LanguageModelV2GenerateResult
     end
 
     rect rgb(240, 255, 255)
@@ -1176,20 +1176,20 @@ Strategies implement stateless interfaces - all tenant-specific configuration
 flows through method parameters, never cached in strategy instances:
 
 ```typescript
-// Language model strategy interface
+// Language model strategy interface (internal V3, adapted to V2 by facade)
 interface LanguageModelAPIStrategy {
   doGenerate(
     config: LanguageModelStrategyConfig, // Tenant config - passed per-call
     settings: SAPAIModelSettings, // Merged model settings
-    options: LanguageModelV3CallOptions, // AI SDK options
-  ): Promise<LanguageModelV3GenerateResult>;
+    options: LanguageModelV2CallOptions, // AI SDK options
+  ): Promise<LanguageModelV2GenerateResult>;
 
-  doStream(config: LanguageModelStrategyConfig, settings: SAPAIModelSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult>;
+  doStream(config: LanguageModelStrategyConfig, settings: SAPAIModelSettings, options: LanguageModelV2CallOptions): Promise<LanguageModelV2StreamResult>;
 }
 
-// Embedding model strategy interface
+// Embedding model strategy interface (internal V3, adapted to V2 by facade)
 interface EmbeddingModelAPIStrategy {
-  doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV3CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV3Result>;
+  doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV2CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV2Result>;
 }
 ```
 
