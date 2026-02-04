@@ -73,8 +73,8 @@
   "dependencies": {
     "@ai-sdk/provider": "^3.0.7",
     "@ai-sdk/provider-utils": "^4.0.13",
-    "@sap-ai-sdk/foundation-models": "^2.5.0",
-    "@sap-ai-sdk/orchestration": "^2.5.0",
+    "@sap-ai-sdk/foundation-models": "^2.6.0",
+    "@sap-ai-sdk/orchestration": "^2.6.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

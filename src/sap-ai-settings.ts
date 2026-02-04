@@ -13,16 +13,48 @@ export type AzureOpenAiChatExtensionConfiguration = NonNullable<
   AzureOpenAiChatCompletionParameters["data_sources"]
 >[number];
 
-/** Common model parameters shared between both APIs. */
+/**
+ * Common model parameters shared between both APIs.
+ *
+ * These parameters control text generation behavior and are validated by Zod schemas
+ * when passed via `providerOptions`.
+ */
 export interface CommonModelParams {
+  /**
+   * Frequency penalty to reduce repetition of token sequences.
+   * Range: -2.0 to 2.0
+   */
   readonly frequencyPenalty?: number;
+  /**
+   * Maximum number of tokens to generate.
+   * Range: Positive integer
+   */
   readonly maxTokens?: number;
-  /** Not supported by Amazon/Anthropic models. */
+  /**
+   * Number of completions to generate.
+   * Not supported by Amazon/Anthropic models.
+   * Range: Positive integer
+   */
   readonly n?: number;
+  /** Whether to enable parallel tool calls when multiple tools are available. */
   readonly parallel_tool_calls?: boolean;
+  /**
+   * Presence penalty to encourage talking about new topics.
+   * Range: -2.0 to 2.0
+   */
   readonly presencePenalty?: number;
+  /** Index signature for additional model-specific parameters. */
   readonly [key: string]: unknown;
+  /**
+   * Sampling temperature controlling randomness.
+   * Higher values (e.g., 1.0) make output more random, lower values (e.g., 0.2) more deterministic.
+   * Range: 0 to 2
+   */
   readonly temperature?: number;
+  /**
+   * Nucleus sampling parameter. Only tokens with cumulative probability up to `topP` are considered.
+   * Range: 0 to 1
+   */
   readonly topP?: number;
 }
 
@@ -113,7 +145,12 @@ export type PromptTemplateScope = "resource_group" | "tenant";
 /** Response format for structured output (OpenAI-compatible). */
 export type ResponseFormat = AzureOpenAiChatCompletionParameters["response_format"];
 
-/** Supported API types for SAP AI Core. */
+/**
+ * Supported API types for SAP AI Core.
+ *
+ * - `'orchestration'` - Full-featured API with data masking, content filtering, document grounding, and translation.
+ * - `'foundation-models'` - Direct model access with Azure OpenAI-specific parameters like `logprobs`, `seed`, and `dataSources`.
+ */
 export type SAPAIApiType = "foundation-models" | "orchestration";
 
 /** Union type for API-specific default settings configuration. */
@@ -135,10 +172,21 @@ export interface SAPAIEmbeddingSettings {
   readonly type?: "document" | "query" | "text";
 }
 
-/** Supported model IDs in SAP AI Core (availability depends on tenant configuration). */
+/**
+ * Supported model IDs in SAP AI Core.
+ *
+ * Model availability depends on tenant configuration and region.
+ * Common values include: `'gpt-4o'`, `'gpt-4o-mini'`, `'anthropic--claude-3.5-sonnet'`, `'gemini-1.5-pro'`.
+ * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/models-and-scenarios-in-generative-ai-hub|SAP AI Core Models}
+ */
 export type SAPAIModelId = ChatModel;
 
-/** Union type for model settings - supports both APIs. */
+/**
+ * Union type for model settings - supports both APIs.
+ *
+ * Use `FoundationModelsModelSettings` for Foundation Models API features (dataSources, logprobs, seed).
+ * Use `OrchestrationModelSettings` for Orchestration API features (filtering, grounding, masking, translation).
+ */
 export type SAPAIModelSettings = FoundationModelsModelSettings | OrchestrationModelSettings;
 
 /** Re-exported Azure OpenAI types from `@sap-ai-sdk/foundation-models`. */

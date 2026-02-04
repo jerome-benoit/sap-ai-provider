@@ -91,7 +91,32 @@ export interface SAPAIProviderSettings {
  * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
  * (VCAP_SERVICES on SAP BTP) or AICORE_SERVICE_KEY environment variable.
  * @param options - Provider configuration options.
- * @returns A configured SAP AI provider instance.
+ * @param options.api - Default API type: `'orchestration'` (default) or `'foundation-models'`.
+ * @param options.defaultSettings - Default model settings applied to every model instance.
+ * @param options.deploymentId - SAP AI Core deployment ID for automatic deployment resolution.
+ * @param options.destination - Custom SAP Cloud SDK destination configuration.
+ * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
+ * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
+ * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`).
+ * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.
+ * @returns A configured SAP AI provider instance that can be used as a callable or via methods.
+ * @example
+ * // Basic usage with defaults
+ * const provider = createSAPAIProvider();
+ * const model = provider('gpt-4o');
+ * @example
+ * // With custom configuration
+ * const provider = createSAPAIProvider({
+ *   api: 'foundation-models',
+ *   resourceGroup: 'production',
+ *   defaultSettings: { modelParams: { temperature: 0.7 } },
+ * });
+ * @example
+ * // Using provider methods
+ * const chatModel = provider.chat('gpt-4o');
+ * const embeddingModel = provider.embedding('text-embedding-ada-002');
+ * @see {@link SAPAIProviderSettings} for all configuration options.
+ * @see {@link SAPAIProvider} for the provider interface.
  */
 export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIProvider {
   if (options.defaultSettings?.modelParams) {

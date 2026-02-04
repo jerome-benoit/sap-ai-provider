@@ -1,4 +1,11 @@
-/** SAP AI Language Model - Vercel AI SDK LanguageModelV3 implementation for SAP AI Core. */
+/**
+ * SAP AI Language Model - Vercel AI SDK LanguageModelV3 implementation for SAP AI Core.
+ *
+ * This module provides the language model implementation that connects to SAP AI Core
+ * services (Orchestration API or Foundation Models API) for chat completions and streaming.
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/generate-text | Vercel AI SDK generateText()}
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/stream-text | Vercel AI SDK streamText()}
+ */
 import type {
   LanguageModelV3,
   LanguageModelV3CallOptions,
@@ -31,7 +38,42 @@ interface SAPAILanguageModelConfig {
   readonly providerApi?: SAPAIApiType;
 }
 
-/** SAP AI Language Model implementing Vercel AI SDK LanguageModelV3. */
+/**
+ * SAP AI Language Model implementing Vercel AI SDK LanguageModelV3.
+ *
+ * This class provides chat completion and streaming capabilities through SAP AI Core,
+ * supporting both the Orchestration API (with content filtering, grounding, masking,
+ * and translation) and Foundation Models API (direct Azure OpenAI access).
+ *
+ * Users typically don't instantiate this class directly. Instead, use the
+ * {@link createSAPAIProvider} factory function:
+ * @example
+ * ```typescript
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+ * import { generateText, streamText } from "ai";
+ *
+ * const provider = createSAPAIProvider();
+ * const model = provider("gpt-4o");
+ *
+ * // Non-streaming
+ * const { text } = await generateText({
+ *   model,
+ *   prompt: "Hello!",
+ * });
+ *
+ * // Streaming
+ * const result = streamText({
+ *   model,
+ *   prompt: "Tell me a story",
+ * });
+ *
+ * for await (const chunk of result.textStream) {
+ *   process.stdout.write(chunk);
+ * }
+ * ```
+ * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/generating-text | Vercel AI SDK Text Generation}
+ * @see {@link createSAPAIProvider} - Factory function to create provider instances
+ */
 export class SAPAILanguageModel implements LanguageModelV3 {
   readonly modelId: SAPAIModelId;
   readonly specificationVersion = "v3";

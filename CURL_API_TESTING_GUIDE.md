@@ -54,6 +54,53 @@ Service key contains: `clientid`, `clientsecret`, `url` (auth server),
 
 ⚠️ **Important:** Never commit credentials. Use environment variables.
 
+#### Extracting Values from AICORE_SERVICE_KEY
+
+Your `AICORE_SERVICE_KEY` environment variable contains a JSON object. Here's how
+to extract the required values:
+
+**Example AICORE_SERVICE_KEY structure:**
+
+```json
+{
+  "clientid": "sb-abc123!a12345|aicore!b123",
+  "clientsecret": "AbCdEf123456+ghIjKl==",
+  "url": "https://mysubaccount.authentication.eu10.hana.ondemand.com",
+  "serviceurls": {
+    "AI_API_URL": "https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com"
+  }
+}
+```
+
+**Extract values using jq (recommended):**
+
+```bash
+# Parse AICORE_SERVICE_KEY and extract individual values
+CLIENT_ID=$(echo "$AICORE_SERVICE_KEY" | jq -r '.clientid')
+CLIENT_SECRET=$(echo "$AICORE_SERVICE_KEY" | jq -r '.clientsecret')
+AUTH_URL=$(echo "$AICORE_SERVICE_KEY" | jq -r '.url')
+AI_API_URL=$(echo "$AICORE_SERVICE_KEY" | jq -r '.serviceurls.AI_API_URL')
+
+# Verify extraction succeeded
+echo "Client ID: ${CLIENT_ID:0:20}..."  # Show first 20 chars only
+echo "Auth URL: $AUTH_URL"
+echo "API URL: $AI_API_URL"
+```
+
+**Alternative: Extract using grep/sed (no jq required):**
+
+```bash
+# Extract values without jq (less robust but works in minimal environments)
+CLIENT_ID=$(echo "$AICORE_SERVICE_KEY" | grep -o '"clientid":"[^"]*' | cut -d'"' -f4)
+CLIENT_SECRET=$(echo "$AICORE_SERVICE_KEY" | grep -o '"clientsecret":"[^"]*' | cut -d'"' -f4)
+AUTH_URL=$(echo "$AICORE_SERVICE_KEY" | grep -o '"url":"[^"]*' | cut -d'"' -f4)
+AI_API_URL=$(echo "$AICORE_SERVICE_KEY" | grep -o '"AI_API_URL":"[^"]*' | cut -d'"' -f4)
+```
+
+> **Tip:** The `jq` approach is more reliable, especially when credentials
+> contain special characters like `+`, `=`, or `|`. Install jq via
+> `apt install jq`, `brew install jq`, or your package manager.
+
 ### Step 2: Get OAuth Token
 
 ```bash

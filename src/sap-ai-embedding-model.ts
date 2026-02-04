@@ -1,4 +1,11 @@
-/** SAP AI Embedding Model - Vercel AI SDK EmbeddingModelV3 implementation for SAP AI Core. */
+/**
+ * SAP AI Embedding Model - Vercel AI SDK EmbeddingModelV3 implementation for SAP AI Core.
+ *
+ * This module provides the embedding model implementation that connects to SAP AI Core
+ * services (Orchestration API or Foundation Models API) to generate vector embeddings.
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/embed | Vercel AI SDK embed()}
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/embed-many | Vercel AI SDK embedMany()}
+ */
 import type {
   EmbeddingModelV3,
   EmbeddingModelV3CallOptions,
@@ -24,7 +31,17 @@ import { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
 const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
 
-/** Model identifier for SAP AI embedding models. */
+/**
+ * Model identifier for SAP AI embedding models.
+ *
+ * Common embedding model IDs include:
+ * - `"text-embedding-ada-002"` - OpenAI Ada embedding model
+ * - `"text-embedding-3-small"` - OpenAI small embedding model
+ * - `"text-embedding-3-large"` - OpenAI large embedding model
+ *
+ * The actual available models depend on your SAP AI Core deployment configuration.
+ * @see {@link https://help.sap.com/docs/sap-ai-core | SAP AI Core Documentation}
+ */
 export type SAPAIEmbeddingModelId = string;
 
 /** @internal */
@@ -35,7 +52,37 @@ interface SAPAIEmbeddingModelConfig {
   readonly providerApi?: SAPAIApiType;
 }
 
-/** SAP AI Core Embedding Model implementing Vercel AI SDK EmbeddingModelV3. */
+/**
+ * SAP AI Core Embedding Model implementing Vercel AI SDK EmbeddingModelV3.
+ *
+ * This class provides embedding generation capabilities through SAP AI Core,
+ * supporting both the Orchestration API and Foundation Models API.
+ *
+ * Users typically don't instantiate this class directly. Instead, use the
+ * {@link createSAPAIProvider} factory function:
+ * @example
+ * ```typescript
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+ * import { embed, embedMany } from "ai";
+ *
+ * const provider = createSAPAIProvider();
+ * const embeddingModel = provider.embedding("text-embedding-ada-002");
+ *
+ * // Single embedding
+ * const { embedding } = await embed({
+ *   model: embeddingModel,
+ *   value: "Hello, world!",
+ * });
+ *
+ * // Multiple embeddings
+ * const { embeddings } = await embedMany({
+ *   model: embeddingModel,
+ *   values: ["Hello", "World"],
+ * });
+ * ```
+ * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/embeddings | Vercel AI SDK Embeddings}
+ * @see {@link createSAPAIProvider} - Factory function to create provider instances
+ */
 export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
   readonly maxEmbeddingsPerCall: number;
   readonly modelId: string;

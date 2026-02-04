@@ -33,8 +33,12 @@ export function isOrchestrationSettings(
 
 /**
  * Validates escapeTemplatePlaceholders option based on API type.
+ *
+ * Jinja2 template escaping is only supported by the Orchestration API.
  * @param api - SAP AI API type.
  * @param escapeTemplatePlaceholders - Whether to escape template placeholders.
+ * @throws {UnsupportedFeatureError} When escapeTemplatePlaceholders is true with Foundation Models API.
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateEscapeTemplatePlaceholders(
   api: SAPAIApiType,
@@ -51,7 +55,12 @@ export function validateEscapeTemplatePlaceholders(
 
 /**
  * Validates that Foundation Models-only options are not used with Orchestration API.
+ *
+ * Foundation Models-only features:
+ * - `dataSources` - Azure On Your Data configuration
  * @param settings - Settings to validate.
+ * @throws {UnsupportedFeatureError} When dataSources is set with Orchestration API.
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateFoundationModelsOnlyOptions(
   settings: SAPAIModelSettings | SAPAISettings | undefined,
@@ -71,7 +80,16 @@ export function validateFoundationModelsOnlyOptions(
 
 /**
  * Validates that Orchestration-only options are not used with Foundation Models API.
+ *
+ * Orchestration-only features:
+ * - `filtering` - Content filtering module
+ * - `grounding` - Document grounding module
+ * - `masking` - Data masking module
+ * - `translation` - Translation module
+ * - `tools` - SAP-format tool definitions (use AI SDK tools instead)
  * @param settings - Settings to validate.
+ * @throws {UnsupportedFeatureError} When any Orchestration-only feature is set with Foundation Models API.
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateOrchestrationOnlyOptions(
   settings: SAPAIModelSettings | SAPAISettings | undefined,
@@ -123,9 +141,14 @@ const FOUNDATION_MODELS_ONLY_FEATURES = ["dataSources"] as const;
 
 /**
  * Validates that switching APIs at invocation time is allowed.
- * @param fromApi - Source API type.
- * @param toApi - Target API type.
- * @param modelSettings - Model settings to validate.
+ *
+ * API switching is blocked when the model was configured with features
+ * that are specific to one API and incompatible with the target API.
+ * @param fromApi - Source API type (configured at model creation).
+ * @param toApi - Target API type (requested at invocation time).
+ * @param modelSettings - Model settings to validate for conflicts.
+ * @throws {ApiSwitchError} When the model has features incompatible with the target API.
+ * @see {@link ApiSwitchError}
  */
 export function validateApiSwitch(
   fromApi: SAPAIApiType,
@@ -233,7 +256,18 @@ export function validateApiInput(api: unknown): void {
 
 /**
  * Main validation function that performs all API-specific validations.
+ *
+ * This function orchestrates all validation checks:
+ * 1. Validates API type inputs
+ * 2. Checks for API switching conflicts
+ * 3. Validates API-specific feature usage
+ * 4. Validates template placeholder escaping
  * @param options - Validation options.
+ * @throws {Error} When an invalid API type is provided.
+ * @throws {ApiSwitchError} When attempting to switch APIs with incompatible settings.
+ * @throws {UnsupportedFeatureError} When using features not supported by the current API.
+ * @see {@link ApiSwitchError}
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateSettings(options: ValidateSettingsOptions): void {
   const { api, invocationSettings, modelApi, modelSettings } = options;

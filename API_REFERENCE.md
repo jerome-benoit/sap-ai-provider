@@ -1514,6 +1514,7 @@ type SAPAILanguageModelProviderOptions = {
     [key: string]: unknown; // Passthrough for custom params
   };
   placeholderValues?: Record<string, string>;
+  promptTemplateRef?: PromptTemplateRef;
 };
 ```
 
@@ -1526,6 +1527,7 @@ type SAPAILanguageModelProviderOptions = {
 | `includeReasoning`           | `boolean`                | Include assistant reasoning parts in the response                   |
 | `modelParams`                | `object`                 | Model generation parameters for this specific call                  |
 | `placeholderValues`          | `Record<string, string>` | Values for template placeholders (overrides settings values)        |
+| `promptTemplateRef`          | `PromptTemplateRef`      | Reference to a template in SAP AI Core's Prompt Registry            |
 
 **Example with placeholderValues:**
 
@@ -1977,14 +1979,18 @@ Implementation of Vercel AI SDK's `LanguageModelV3` interface.
 
 **Properties:**
 
-| Property                      | Type           | Description                           |
-| ----------------------------- | -------------- | ------------------------------------- |
-| `specificationVersion`        | `'v3'`         | API specification version             |
-| `defaultObjectGenerationMode` | `'json'`       | Default object generation mode        |
-| `supportsImageUrls`           | `true`         | Image URL support flag                |
-| `supportsStructuredOutputs`   | `true`         | Structured output support             |
-| `modelId`                     | `SAPAIModelId` | Current model identifier              |
-| `provider`                    | `string`       | Provider identifier (`'sap-ai.chat'`) |
+| Property                      | Type                       | Description                                         |
+| ----------------------------- | -------------------------- | --------------------------------------------------- |
+| `specificationVersion`        | `'v3'`                     | API specification version (readonly)                |
+| `modelId`                     | `SAPAIModelId`             | Current model identifier (readonly)                 |
+| `provider`                    | `string`                   | Provider identifier (getter, e.g., `'sap-ai.chat'`) |
+| `supportedUrls`               | `Record<string, RegExp[]>` | URL patterns for supported media (getter)           |
+| `supportsImageUrls`           | `true`                     | Image URL support flag (readonly)                   |
+| `supportsMultipleCompletions` | `true`                     | Multiple completions support (readonly)             |
+| `supportsParallelToolCalls`   | `true`                     | Parallel tool calls support (readonly)              |
+| `supportsStreaming`           | `true`                     | Streaming support (readonly)                        |
+| `supportsStructuredOutputs`   | `true`                     | Structured output support (readonly)                |
+| `supportsToolCalls`           | `true`                     | Tool calling support (readonly)                     |
 
 **Methods:**
 
@@ -2333,19 +2339,12 @@ advanced usage scenarios where direct access to SDK responses is needed:
 | `OrchestrationStreamChunkResponse` | Individual stream chunk         |
 | `OrchestrationEmbeddingResponse`   | Embedding response wrapper      |
 
-**Example:**
-
-```typescript
-import { OrchestrationClient, OrchestrationResponse } from "@jerome-benoit/sap-ai-provider";
-
-// For advanced scenarios requiring direct SDK access
-const client = new OrchestrationClient({
-  llm: { model_name: "gpt-4o" },
-});
-```
-
 > **Note:** Most users should use `createSAPAIProvider()` instead of these
-> low-level classes. These are exported for advanced integration scenarios.
+> low-level classes. These are re-exported from `@sap-ai-sdk/orchestration` for
+> advanced integration scenarios where direct SDK access is required.
+>
+> For `OrchestrationClient` usage, refer to the
+> [SAP AI SDK documentation](https://github.com/SAP/ai-sdk-js/tree/main/packages/orchestration).
 
 ---
 

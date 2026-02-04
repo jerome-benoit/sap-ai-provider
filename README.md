@@ -220,6 +220,21 @@ const result = await generateText({
 The `sapai` export provides a convenient default provider instance with
 automatic configuration from environment variables or service bindings.
 
+### Provider Methods
+
+The provider is callable and also exposes explicit methods:
+
+```typescript
+// Callable syntax (creates language model)
+const chatModel = provider("gpt-4o");
+
+// Explicit method syntax
+const chatModel = provider.chat("gpt-4o");
+const embeddingModel = provider.embedding("text-embedding-ada-002");
+```
+
+All methods accept an optional second parameter for model-specific settings.
+
 ## Authentication
 
 Authentication is handled automatically by the SAP AI SDK via the
@@ -275,17 +290,35 @@ const result = await generateText({
 [examples/example-streaming-chat.ts](./examples/example-streaming-chat.ts)
 
 ```typescript
-const result = streamText({
-  model: provider("gpt-4o"),
-  prompt: "Explain machine learning concepts.",
-});
+import { streamText, APICallError } from "ai";
 
-for await (const delta of result.textStream) {
-  process.stdout.write(delta);
+try {
+  const result = streamText({
+    model: provider("gpt-4o"),
+    prompt: "Explain machine learning concepts.",
+  });
+
+  for await (const delta of result.textStream) {
+    process.stdout.write(delta);
+  }
+
+  // Await final result to catch any errors that occurred during streaming
+  const finalResult = await result;
+  console.log("\n\nUsage:", finalResult.usage);
+} catch (error) {
+  if (error instanceof APICallError) {
+    console.error("API Error:", error.message);
+    // See Error Handling section for complete error type reference
+  }
+  throw error;
 }
 ```
 
 **Run it:** `npx tsx examples/example-streaming-chat.ts`
+
+> **Note:** For comprehensive error handling patterns, see the
+> [Error Handling](#error-handling) section and
+> [API Reference - Error Types](./API_REFERENCE.md#error-types).
 
 ### Model Configuration
 

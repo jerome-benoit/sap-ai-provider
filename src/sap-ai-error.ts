@@ -43,6 +43,8 @@ const HTTP_STATUS = {
  * });
  * // Throws: ApiSwitchError("orchestration", "foundation-models", "filtering")
  * ```
+ * @see {@link validateApiSwitch} - Function that throws this error
+ * @see {@link UnsupportedFeatureError} - Related error for features unsupported by an API
  */
 export class ApiSwitchError extends Error {
   /**
@@ -66,12 +68,27 @@ export class ApiSwitchError extends Error {
 
 /**
  * Error thrown when a feature is used with an incompatible API.
+ *
+ * Orchestration-only features (not supported by Foundation Models API):
+ * - Content filtering
+ * - Document grounding
+ * - Data masking
+ * - Translation
+ * - SAP-format tool definitions
+ * - Jinja2 template escaping
+ *
+ * Foundation Models-only features (not supported by Orchestration API):
+ * - Azure On Your Data (dataSources)
  * @example
  * ```typescript
  * // Thrown when using content filtering with Foundation Models API
  * throw new UnsupportedFeatureError("Content filtering", "foundation-models", "orchestration");
  * // Error message: "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
  * ```
+ * @see {@link validateOrchestrationOnlyOptions} - Throws when using Orchestration features with Foundation Models
+ * @see {@link validateFoundationModelsOnlyOptions} - Throws when using Foundation Models features with Orchestration
+ * @see {@link validateEscapeTemplatePlaceholders} - Throws when using Jinja2 escaping with Foundation Models
+ * @see {@link ApiSwitchError} - Related error for API switching conflicts
  */
 export class UnsupportedFeatureError extends Error {
   /**
