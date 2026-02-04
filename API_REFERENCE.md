@@ -16,7 +16,7 @@ consistently:
 - **Foundation Models API** - SAP AI Core's direct model access API with
   additional parameters like `logprobs`, `seed`, and `logit_bias`
 - **SAP AI Provider** or **this provider** - This npm package
-  (`@jerome-benoit/sap-ai-provider`)
+  (`@jerome-benoit/sap-ai-provider-v2`)
 - **Tool calling** - The capability of models to invoke external functions
   (equivalent to "function calling")
 
@@ -126,7 +126,7 @@ function createSAPAIProvider(options?: SAPAIProviderSettings): SAPAIProvider;
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider({
   resourceGroup: "default",
@@ -161,7 +161,7 @@ This is the quickest way to get started without explicit provider creation.
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { sapai } from "@jerome-benoit/sap-ai-provider";
+import { sapai } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
@@ -367,7 +367,7 @@ based on the conversation context. The provider handles:
 
 ```typescript
 import { generateText } from "ai";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { z } from "zod";
 
 const provider = createSAPAIProvider();
@@ -640,7 +640,7 @@ Key features:
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { embed, embedMany } from "ai";
 
 const provider = createSAPAIProvider();
@@ -690,7 +690,7 @@ Apply data masking to protect sensitive information before embedding generation
 (Orchestration API only):
 
 ```typescript
-import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
+import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const model = provider.textEmbeddingModel("text-embedding-ada-002", {
   masking: {
@@ -1001,7 +1001,7 @@ const settings: SAPAIProviderSettings = {
 **Example with provider name:**
 
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 // Create provider with name
@@ -1080,7 +1080,7 @@ the right API for your use case.
 #### Switching APIs
 
 ```typescript
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 // Provider-level: all models use this API by default
@@ -1167,7 +1167,7 @@ For type-safe API-specific configuration, use the discriminated union types:
   Foundation Models-only options (`dataSources`)
 
 ```typescript
-import type { OrchestrationModelSettings, FoundationModelsModelSettings } from "@jerome-benoit/sap-ai-provider";
+import type { OrchestrationModelSettings, FoundationModelsModelSettings } from "@jerome-benoit/sap-ai-provider-v2";
 
 // Type-safe Orchestration settings
 const orchSettings: OrchestrationModelSettings = {
@@ -1236,7 +1236,7 @@ not exposed through the Orchestration API.
 **Example with Foundation Models parameters:**
 
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 const provider = createSAPAIProvider({ api: "foundation-models" });
@@ -1364,7 +1364,7 @@ The default provider name constant. Use as key in `providerOptions` and `provide
 **Usage:**
 
 ```typescript
-import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 
 const result = await generateText({
   model: provider("gpt-4o"),
@@ -1401,7 +1401,7 @@ Zod schema for validating language model provider options.
 
 ```typescript
 import { generateText } from "ai";
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider();
 
@@ -1437,7 +1437,7 @@ Zod schema for validating embedding model provider options.
 
 ```typescript
 import { embed } from "ai";
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider();
 
@@ -1666,7 +1666,7 @@ array from the conversation messages.
 **Usage Examples:**
 
 ```typescript
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 const provider = createSAPAIProvider();
@@ -1999,8 +1999,8 @@ export type SAPAIDefaultSettingsConfig = OrchestrationDefaultSettings | Foundati
 **Example usage:**
 
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-import type { FoundationModelsDefaultSettings } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+import type { FoundationModelsDefaultSettings } from "@jerome-benoit/sap-ai-provider-v2";
 
 // Type-safe Foundation Models configuration
 const config: FoundationModelsDefaultSettings = {
@@ -2224,7 +2224,7 @@ Properties:
 Example:
 
 ```typescript
-import { UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
+import { UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider-v2";
 
 try {
   // Using filtering with Foundation Models API
@@ -2258,7 +2258,7 @@ Properties:
 Example:
 
 ```typescript
-import { ApiSwitchError } from "@jerome-benoit/sap-ai-provider";
+import { ApiSwitchError } from "@jerome-benoit/sap-ai-provider-v2";
 
 // Model configured with Orchestration-only feature
 const model = provider("gpt-4o", {
@@ -2469,7 +2469,7 @@ definitions.
 **Example:**
 
 ```typescript
-import type { ChatMessage, FilteringModule, GroundingModule } from "@jerome-benoit/sap-ai-provider";
+import type { ChatMessage, FilteringModule, GroundingModule } from "@jerome-benoit/sap-ai-provider-v2";
 
 // Type-safe module configuration
 const filtering: FilteringModule = {
@@ -2512,7 +2512,7 @@ type DeploymentConfig = {
 **Example:**
 
 ```typescript
-import { createSAPAIProvider, DeploymentConfig } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, DeploymentConfig } from "@jerome-benoit/sap-ai-provider-v2";
 
 const deploymentConfig: DeploymentConfig = {
   deploymentId: "d1234567-89ab-cdef-0123-456789abcdef",
@@ -2554,7 +2554,7 @@ function getProviderName(providerIdentifier: string): string;
 **Example:**
 
 ```typescript
-import { getProviderName } from "@jerome-benoit/sap-ai-provider";
+import { getProviderName } from "@jerome-benoit/sap-ai-provider-v2";
 
 getProviderName("sap-ai.chat"); // => "sap-ai"
 getProviderName("sap-ai-core.embedding"); // => "sap-ai-core"
@@ -2567,7 +2567,7 @@ This function is useful when working with dynamic provider names or when you
 need to access `providerMetadata` using the model's provider identifier:
 
 ```typescript
-import { createSAPAIProvider, getProviderName } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, getProviderName } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 const provider = createSAPAIProvider({ name: "my-sap" });
@@ -2610,7 +2610,7 @@ function resolveApi(providerApi: SAPAIApiType | undefined, modelApi: SAPAIApiTyp
 **Example:**
 
 ```typescript
-import { resolveApi } from "@jerome-benoit/sap-ai-provider";
+import { resolveApi } from "@jerome-benoit/sap-ai-provider-v2";
 
 resolveApi(undefined, undefined, undefined); // "orchestration"
 resolveApi("foundation-models", undefined, undefined); // "foundation-models"
@@ -2646,7 +2646,7 @@ function validateSettings(options: ValidateSettingsOptions): void;
 **Example:**
 
 ```typescript
-import { validateSettings, resolveApi } from "@jerome-benoit/sap-ai-provider";
+import { validateSettings, resolveApi } from "@jerome-benoit/sap-ai-provider-v2";
 
 const api = resolveApi(providerApi, modelApi, invocationApi);
 
@@ -2946,7 +2946,7 @@ function escapeOrchestrationPlaceholders(text: string): string;
 **Example:**
 
 ```typescript
-import { escapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+import { escapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider-v2";
 
 const userInput = "Use {{variable}} in your template";
 const escaped = escapeOrchestrationPlaceholders(userInput);
@@ -2988,7 +2988,7 @@ function unescapeOrchestrationPlaceholders(text: string): string;
 **Example:**
 
 ```typescript
-import { unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+import { unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider-v2";
 
 const escaped = "Use \\{{variable}} in your template";
 const original = unescapeOrchestrationPlaceholders(escaped);
@@ -3087,7 +3087,7 @@ The package exports a `VERSION` constant containing the current version string,
 injected at build time.
 
 ```typescript
-import { VERSION } from "@jerome-benoit/sap-ai-provider";
+import { VERSION } from "@jerome-benoit/sap-ai-provider-v2";
 
 console.log(`Using SAP AI Provider v${VERSION}`);
 // Output: "Using SAP AI Provider vX.Y.Z"

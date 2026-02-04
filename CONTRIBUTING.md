@@ -278,7 +278,7 @@ authentication setup.
 
   ```typescript
   // NOTE: This example uses relative imports for local development
-  // In your project, use: import { ... } from "@jerome-benoit/sap-ai-provider"
+  // In your project, use: import { ... } from "@jerome-benoit/sap-ai-provider-v2"
   ```
 
 **5. Documentation Verification**

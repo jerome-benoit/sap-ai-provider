@@ -79,12 +79,12 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 ## Quick Start
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider-v2 ai
 ```
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
@@ -116,7 +116,7 @@ try {
 
 | Task                | Code Pattern                                                              | Documentation                                                 |
 | ------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai`                           | [Installation](#installation)                                 |
+| **Install**         | `npm install @jerome-benoit/sap-ai-provider-v2 ai`                        | [Installation](#installation)                                 |
 | **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                                        | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
 | **Create Provider** | `createSAPAIProvider()` or use `sapai`                                    | [Provider Creation](#provider-creation)                       |
 | **Text Generation** | `generateText({ model: provider("gpt-4o"), prompt })`                     | [Basic Usage](#text-generation)                               |
@@ -131,17 +131,17 @@ try {
 **Requirements:** Node.js 18+ and Vercel AI SDK 5.0+ or 6.0+
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider-v2 ai
 ```
 
 Or with other package managers:
 
 ```bash
 # Yarn
-yarn add @jerome-benoit/sap-ai-provider ai
+yarn add @jerome-benoit/sap-ai-provider-v2 ai
 
 # pnpm
-pnpm add @jerome-benoit/sap-ai-provider ai
+pnpm add @jerome-benoit/sap-ai-provider-v2 ai
 ```
 
 ## Provider Creation
@@ -152,7 +152,7 @@ You can create an SAP AI provider in two ways:
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider({
   resourceGroup: "production",
@@ -175,7 +175,7 @@ The provider supports two SAP AI Core APIs:
 [API Reference - Foundation Models API](./API_REFERENCE.md#api-comparison-orchestration-vs-foundation-models)
 
 ```typescript
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 
 // Provider-level API selection
 const provider = createSAPAIProvider({
@@ -209,7 +209,7 @@ const result = await generateText({
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { sapai } from "@jerome-benoit/sap-ai-provider";
+import { sapai } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 // Use directly with auto-detected configuration
@@ -327,7 +327,7 @@ try {
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { generateText } from "ai";
 
 const provider = createSAPAIProvider();
@@ -359,7 +359,7 @@ search, and similarity matching.
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 import { embed, embedMany } from "ai";
 
 const provider = createSAPAIProvider();
@@ -438,7 +438,7 @@ modules.
 ```typescript
 import { generateText, tool } from "ai";
 import { z } from "zod";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider();
 
@@ -494,7 +494,7 @@ Use SAP's Data Privacy Integration to mask sensitive data:
 [API Reference - Data Masking](./API_REFERENCE.md#builddpimaskingproviderconfig)
 
 ```typescript
-import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
+import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const dpiConfig = buildDpiMaskingProvider({
   method: "anonymization",
@@ -508,7 +508,7 @@ const dpiConfig = buildDpiMaskingProvider({
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { buildAzureContentSafetyFilter, createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { buildAzureContentSafetyFilter, createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider({
   defaultSettings: {
@@ -601,7 +601,7 @@ Options are validated at runtime with Zod schemas.
 
 ```typescript
 import { generateText } from "ai";
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider();
 
@@ -774,7 +774,7 @@ complete upgrade instructions.**
 ## Important Note
 
 > **Third-Party Provider**: This SAP AI Provider
-> (`@jerome-benoit/sap-ai-provider`) is developed and maintained by
+> (`@jerome-benoit/sap-ai-provider-v2`) is developed and maintained by
 > jerome-benoit, not by SAP SE. While it uses the official SAP AI SDK and
 > integrates with SAP AI Core services, it is not an official SAP product.
 

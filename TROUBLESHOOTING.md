@@ -181,7 +181,7 @@ with `}}` (closing braces) are preserved.
 **Manual escaping utilities:**
 
 ```typescript
-import { escapeOrchestrationPlaceholders, unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
+import { escapeOrchestrationPlaceholders, unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider-v2";
 
 const escaped = escapeOrchestrationPlaceholders("Use {{?question}} to prompt");
 // Result: "Use {\u200B{?question}} to prompt"
@@ -259,7 +259,7 @@ other API:
 
    ```typescript
    import { generateText } from "ai";
-   import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+   import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider-v2";
 
    // Provider-level (affects all models)
    const provider = createSAPAIProvider({ api: "orchestration" }); // default
@@ -297,7 +297,7 @@ other API:
 3. **Handle the error gracefully:**
 
    ```typescript
-   import { UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
+   import { UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider-v2";
 
    try {
      await generateText({ model, prompt: "Hello" });
@@ -331,7 +331,7 @@ for complete feature comparison.
    ```typescript
    import "dotenv/config"; // Load environment variables
    import { streamText } from "ai";
-   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
    const provider = createSAPAIProvider();
 
@@ -441,7 +441,7 @@ You can control the verbosity:
 #### Option 1: Via provider configuration (recommended)
 
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider({
   logLevel: "warn", // 'error' | 'warn' | 'info' | 'debug' (default: 'warn')
@@ -487,7 +487,7 @@ Start simple, add features gradually:
 ```typescript
 import "dotenv/config"; // Load environment variables
 import { generateText } from "ai";
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 
 const provider = createSAPAIProvider();
 const result = await generateText({
