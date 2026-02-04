@@ -1,9 +1,4 @@
-/**
- * Foundation Models Embedding Model Strategy - Implementation using `@sap-ai-sdk/foundation-models`.
- *
- * This strategy is stateless - it holds only a reference to the AzureOpenAiEmbeddingClient class.
- * All tenant-specific configuration flows through method parameters for security.
- */
+/** Foundation Models embedding model strategy using `@sap-ai-sdk/foundation-models`. */
 import type {
   EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
@@ -28,41 +23,20 @@ import { buildModelDeployment, normalizeEmbedding } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
 /**
- * Type for the AzureOpenAiEmbeddingClient class constructor.
  * @internal
  */
 type AzureOpenAiEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
 
 /**
- * Foundation Models Embedding Model Strategy.
- *
- * Implements embedding operations using the SAP AI SDK Foundation Models API.
- * This class is stateless - it only holds a reference to the AzureOpenAiEmbeddingClient class.
  * @internal
  */
 export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPIStrategy {
   private readonly ClientClass: AzureOpenAiEmbeddingClientClass;
 
-  /**
-   * Creates a new FoundationModelsEmbeddingModelStrategy.
-   * @param ClientClass - The AzureOpenAiEmbeddingClient class from `@sap-ai-sdk/foundation-models`.
-   */
   constructor(ClientClass: AzureOpenAiEmbeddingClientClass) {
     this.ClientClass = ClientClass;
   }
 
-  /**
-   * Generates embeddings for the given input values.
-   *
-   * Validates input count, builds request, calls SAP AI SDK, and normalizes embeddings.
-   * @param config - The strategy configuration containing model and deployment info.
-   * @param settings - The embedding model settings.
-   * @param options - The call options including values to embed and abort signal.
-   * @param maxEmbeddingsPerCall - Maximum number of embeddings allowed per call.
-   * @returns The embedding result with vectors, usage, and metadata.
-   * @throws {TooManyEmbeddingValuesForCallError} If values exceed maxEmbeddingsPerCall.
-   * @throws {AISDKError} If the SAP AI SDK call fails.
-   */
   async doEmbed(
     config: EmbeddingModelStrategyConfig,
     settings: SAPAIEmbeddingSettings,
@@ -120,14 +94,6 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
     }
   }
 
-  /**
-   * Builds the embedding request parameters.
-   * @param values - The input strings to embed.
-   * @param settings - The embedding model settings.
-   * @param sapOptions - Provider options from the call.
-   * @returns The Azure OpenAI embedding parameters.
-   * @internal
-   */
   private buildRequest(
     values: string[],
     settings: SAPAIEmbeddingSettings,
@@ -144,13 +110,6 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
     } as AzureOpenAiEmbeddingParameters;
   }
 
-  /**
-   * Creates an SAP AI SDK AzureOpenAiEmbeddingClient with the given configuration.
-   * @param config - The strategy configuration containing deployment info.
-   * @param modelVersion - Optional model version for deployment resolution.
-   * @returns A new AzureOpenAiEmbeddingClient instance.
-   * @internal
-   */
   private createClient(
     config: EmbeddingModelStrategyConfig,
     modelVersion?: string,

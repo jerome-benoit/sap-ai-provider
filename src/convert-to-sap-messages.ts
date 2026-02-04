@@ -14,51 +14,39 @@ import {
 import { Buffer } from "node:buffer";
 
 /**
- * Converts Vercel AI SDK prompt format to SAP AI SDK ChatMessage format.
- *
- * Supports text messages, multi-modal (text + images), tool calls/results, and reasoning parts.
- * Images must be data URLs or HTTPS URLs. Audio and non-image files are not supported.
- * Reasoning parts are dropped by default; enable `includeReasoning` to preserve as `<think>...</think>`.
- * @module convert-to-sap-messages
- * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/prompt-engineering Vercel AI SDK Prompt Engineering}
- * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/orchestration SAP AI Core Orchestration}
+ * Options for converting Vercel AI SDK prompts to SAP AI SDK messages.
+ * @see {@link convertToSAPMessages}
  */
-
-/** Options for converting Vercel AI SDK prompts to SAP AI SDK messages. */
 export interface ConvertToSAPMessagesOptions {
   /**
-   * Escape template delimiters (`{{`, `{%`, `{#`) to prevent SAP orchestration template conflicts.
+   * Whether to escape Jinja2 template delimiters (`{{`, `{%`, `{#`) in message content.
+   * This prevents SAP orchestration from interpreting user content as template syntax.
    * @default true
    */
   readonly escapeTemplatePlaceholders?: boolean;
-
   /**
-   * Include assistant reasoning parts as `<think>...</think>` markers.
+   * Whether to include assistant reasoning parts (wrapped in `<think>` tags).
    * @default false
    */
   readonly includeReasoning?: boolean;
 }
 
 /**
- * Zero-width space used to break template delimiters in orchestration content.
  * @internal
  */
 const ZERO_WIDTH_SPACE = "\u200B";
 
 /**
- * Regex matching template opening delimiters: `{{`, `{%`, `{#`.
  * @internal
  */
 const JINJA2_DELIMITERS_PATTERN = /\{(?=[{%#])/g;
 
 /**
- * Regex matching escaped template delimiters for unescaping.
  * @internal
  */
 const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%#])`, "g");
 
 /**
- * Multi-modal content item for user messages.
  * @internal
  */
 interface UserContentItem {
@@ -70,19 +58,20 @@ interface UserContentItem {
 }
 
 /**
- * Converts Vercel AI SDK prompt format to SAP AI SDK ChatMessage format.
- * @param prompt - The Vercel AI SDK prompt to convert.
- * @param options - Conversion settings.
- * @returns Array of SAP AI SDK compatible ChatMessage objects.
- * @throws {UnsupportedFunctionalityError} When unsupported message types are encountered.
- * @example
- * ```typescript
- * const prompt = [
- *   { role: 'system', content: 'You are a helpful assistant.' },
- *   { role: 'user', content: [{ type: 'text', text: 'Hello!' }] }
- * ];
- * const sapMessages = convertToSAPMessages(prompt);
- * ```
+ * Converts Vercel AI SDK prompt to SAP AI SDK ChatMessage array.
+ *
+ * Handles all Vercel AI SDK message types:
+ * - `system` → `SystemChatMessage`
+ * - `user` (text/images) → `UserChatMessage`
+ * - `assistant` (text/tool-calls) → `AssistantChatMessage`
+ * - `tool` (tool results) → `ToolChatMessage`
+ * @param prompt - The Vercel AI SDK LanguageModelV3Prompt to convert.
+ * @param options - Conversion options.
+ * @param options.escapeTemplatePlaceholders - Whether to escape Jinja2 template delimiters (default: true).
+ * @param options.includeReasoning - Whether to include assistant reasoning parts (default: false).
+ * @returns SAP AI SDK ChatMessage array ready for orchestration requests.
+ * @throws {UnsupportedFunctionalityError} When encountering unsupported content types or file formats.
+ * @throws {InvalidPromptError} When encountering unsupported message roles.
  */
 export function convertToSAPMessages(
   prompt: LanguageModelV3Prompt,
@@ -92,11 +81,6 @@ export function convertToSAPMessages(
   const includeReasoning = options.includeReasoning ?? false;
   const escapeTemplatePlaceholders = options.escapeTemplatePlaceholders ?? true;
 
-  /**
-   * Conditionally escapes text content based on the escapeTemplatePlaceholders option.
-   * @param text - The text to potentially escape.
-   * @returns The escaped or original text.
-   */
   const maybeEscape = (text: string): string =>
     escapeTemplatePlaceholders ? escapeOrchestrationPlaceholders(text) : text;
 
@@ -295,9 +279,13 @@ export function convertToSAPMessages(
 }
 
 /**
- * Escapes template delimiters (`{{`, `{%`, `{#`) by inserting zero-width spaces.
- * @param text - The text content to escape.
- * @returns Text with delimiters escaped (e.g., `{{` → `{\u200B{`).
+ * Escapes Jinja2 template delimiters by inserting zero-width spaces.
+ *
+ * Converts `{{`, `{%`, `{#` to `{\u200B{`, `{\u200B%`, `{\u200B#` respectively.
+ * This prevents SAP orchestration from interpreting user content as template syntax.
+ * @param text - The text to escape.
+ * @returns The escaped text with zero-width spaces inserted.
+ * @see {@link unescapeOrchestrationPlaceholders} for the reverse operation.
  */
 export function escapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
@@ -306,8 +294,11 @@ export function escapeOrchestrationPlaceholders(text: string): string {
 
 /**
  * Reverses escaping by removing zero-width spaces from template delimiters.
- * @param text - The escaped text content.
- * @returns Original text with `{{`, `{%`, `{#` restored.
+ *
+ * Useful for processing model responses that may contain escaped delimiters.
+ * @param text - The text to unescape.
+ * @returns The unescaped text with zero-width spaces removed.
+ * @see {@link escapeOrchestrationPlaceholders} for the escaping operation.
  */
 export function unescapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;

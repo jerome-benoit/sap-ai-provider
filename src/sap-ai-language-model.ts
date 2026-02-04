@@ -1,15 +1,17 @@
+/**
+ * SAP AI Language Model - Vercel AI SDK LanguageModelV3 implementation for SAP AI Core.
+ *
+ * This module provides the language model implementation that connects to SAP AI Core
+ * services (Orchestration API or Foundation Models API) for chat completions and streaming.
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/generate-text | Vercel AI SDK generateText()}
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/stream-text | Vercel AI SDK streamText()}
+ */
 import type {
   LanguageModelV3,
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamResult,
 } from "@ai-sdk/provider";
-/**
- * SAP AI Language Model - Vercel AI SDK LanguageModelV3 implementation for SAP AI Core.
- *
- * This is a thin wrapper that delegates to API-specific strategies (Orchestration or Foundation Models).
- * Strategy selection happens at invocation time using the late-binding pattern.
- */
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
@@ -32,32 +34,52 @@ import {
 } from "./sap-ai-strategy.js";
 import { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
-/**
- * Internal configuration for SAP AI Language Model.
- * @internal
- */
+/** @internal */
 interface SAPAILanguageModelConfig {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
-  /** Provider-level API setting for fallback during API resolution. */
   readonly providerApi?: SAPAIApiType;
 }
 
 /**
  * SAP AI Language Model implementing Vercel AI SDK LanguageModelV3.
  *
- * Features: text generation, tool calling, multi-modal input, data masking, content filtering.
- * Supports: Azure OpenAI, Google Vertex AI, AWS Bedrock, AI Core open source models.
+ * This class provides chat completion and streaming capabilities through SAP AI Core,
+ * supporting both the Orchestration API (with content filtering, grounding, masking,
+ * and translation) and Foundation Models API (direct Azure OpenAI access).
  *
- * This class is a thin wrapper that delegates to API-specific strategies:
- * - Orchestration API: filtering, grounding, masking, translation, SAP-format tools
- * - Foundation Models API: dataSources (Azure On Your Data), logprobs, seed, etc.
+ * Users typically don't instantiate this class directly. Instead, use the
+ * {@link createSAPAIProvider} factory function:
+ * @example
+ * ```typescript
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+ * import { generateText, streamText } from "ai";
+ *
+ * const provider = createSAPAIProvider();
+ * const model = provider("gpt-4o");
+ *
+ * // Non-streaming
+ * const { text } = await generateText({
+ *   model,
+ *   prompt: "Hello!",
+ * });
+ *
+ * // Streaming
+ * const result = streamText({
+ *   model,
+ *   prompt: "Tell me a story",
+ * });
+ *
+ * for await (const chunk of result.textStream) {
+ *   process.stdout.write(chunk);
+ * }
+ * ```
+ * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/generating-text | Vercel AI SDK Text Generation}
+ * @see {@link createSAPAIProvider} - Factory function to create provider instances
  */
 export class SAPAILanguageModel implements LanguageModelV3 {
-  /** The model identifier. */
   readonly modelId: SAPAIModelId;
-  /** The Vercel AI SDK specification version. */
   readonly specificationVersion = "v3";
 
   /**
@@ -70,19 +92,10 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     return this._capabilities;
   }
 
-  /**
-   * Gets the provider identifier string.
-   * @returns The provider identifier.
-   */
   get provider(): string {
     return this.config.provider;
   }
 
-  /**
-   * Gets the supported URL patterns for image input.
-   * Returns empty object if the model doesn't support image inputs.
-   * @returns A mapping of MIME type patterns to URL regex patterns.
-   */
   get supportedUrls(): Record<string, RegExp[]> {
     if (!this.capabilities.supportsImageInputs) {
       return {};
@@ -150,12 +163,9 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   private readonly settings: SAPAISettings;
 
   /**
-   * Creates a new SAP AI Language Model instance.
-   *
-   * This is the main implementation that handles all SAP AI Core orchestration logic.
-   * @param modelId - The model identifier (e.g., 'gpt-4o', 'claude-3-5-sonnet', 'gemini-2.0-flash').
-   * @param settings - Model configuration settings (temperature, max tokens, filtering, etc.).
-   * @param config - SAP AI Core deployment and destination configuration.
+   * @param modelId - Model identifier.
+   * @param settings - Model settings.
+   * @param config - Model configuration.
    * @internal
    */
   constructor(modelId: SAPAIModelId, settings: SAPAISettings, config: SAPAILanguageModelConfig) {
@@ -167,15 +177,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     this.modelId = modelId;
   }
 
-  /**
-   * Generates a single completion (non-streaming).
-   *
-   * Implements late-binding: resolves API at invocation time, validates settings,
-   * gets the appropriate strategy, and delegates the call.
-   * Supports request cancellation via AbortSignal at the HTTP transport layer.
-   * @param options - The Vercel AI SDK V3 generation call options.
-   * @returns The generation result with content, usage, warnings, and provider metadata.
-   */
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
     const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
@@ -207,15 +208,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     return strategy.doGenerate(strategyConfig, this.settings, options);
   }
 
-  /**
-   * Generates a streaming completion.
-   *
-   * Implements late-binding: resolves API at invocation time, validates settings,
-   * gets the appropriate strategy, and delegates the call.
-   * Supports request cancellation via AbortSignal at the HTTP transport layer.
-   * @param options - The Vercel AI SDK V3 generation call options.
-   * @returns A stream result with async iterable stream parts.
-   */
   async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
     const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({
@@ -247,11 +239,6 @@ export class SAPAILanguageModel implements LanguageModelV3 {
     return strategy.doStream(strategyConfig, this.settings, options);
   }
 
-  /**
-   * Checks if a URL is supported for image input (HTTPS or data:image/*).
-   * @param url - The URL to check.
-   * @returns True if the URL is supported for image input, false if model doesn't support images.
-   */
   supportsUrl(url: URL): boolean {
     if (!this.capabilities.supportsImageInputs) {
       return false;

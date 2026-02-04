@@ -4,33 +4,68 @@ alwaysApply: true
 
 # Project Structure Guide
 
-This repository provides an SAP AI Core provider compatible with the Vercel AI
+This repository provides an SAP AI Provider compatible with the Vercel AI
 SDK. Use these anchors to navigate the codebase quickly.
+
+## Source Files
+
+```text
+src/
+├── index.ts                                        # Public API exports
+├── sap-ai-provider.ts                              # Main provider factory
+├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
+├── sap-ai-language-model.ts                        # Language model (API-agnostic)
+├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
+├── sap-ai-settings.ts                              # Settings and type definitions
+├── sap-ai-error.ts                                 # Error handling system
+├── sap-ai-validation.ts                            # API resolution & validation
+├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
+├── strategy-utils.ts                               # Shared strategy utilities
+├── orchestration-language-model-strategy.ts       # Orchestration API strategy
+├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
+├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
+├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
+├── convert-to-sap-messages.ts                     # Message format conversion
+├── deep-merge.ts                                   # Deep merge utility
+└── version.ts                                      # Package version constant
+```
 
 ## Entry Points and Core Modules
 
 - Main package entry: [src/index.ts](mdc:src/index.ts)
   - Re-exports provider factory and types.
-- Provider factory and default instance:
-  [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
-  - `createSAPAIProvider(options)` returns a provider function for model
-    creation.
-  - `sapai` default instance uses default configuration (auto-detects service
-    binding or AICORE_SERVICE_KEY env var).
-- Language model implementation:
-  [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
-  - Implements Vercel AI SDK `LanguageModelV3` contract (v4.0.0+).
-  - Supports text, tool calls, streaming, structured outputs (varies by model
-    family).
-- Embedding model implementation:
-  [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
-  - Implements Vercel AI SDK `EmbeddingModelV3` contract.
-  - Supports single and batch embedding generation.
-- Message templating:
-  [src/convert-to-sap-messages.ts](mdc:src/convert-to-sap-messages.ts)
-- Settings and model IDs: [src/sap-ai-settings.ts](mdc:src/sap-ai-settings.ts)
-  - Also re-exports all SAP AI SDK types for convenience.
-- Error handling helpers: [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts)
+- Provider factory: [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
+  - `createSAPAIProvider(options)` returns a provider function.
+  - `sapai` default instance auto-detects service binding or AICORE_SERVICE_KEY.
+- Provider options: [src/sap-ai-provider-options.ts](mdc:src/sap-ai-provider-options.ts)
+  - Zod schemas for provider configuration validation.
+- Language model: [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
+  - Implements `LanguageModelV3` contract (API-agnostic, delegates to strategies).
+- Embedding model: [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
+  - Implements `EmbeddingModelV3` contract.
+- Settings and types: [src/sap-ai-settings.ts](mdc:src/sap-ai-settings.ts)
+  - Re-exports SAP AI SDK types.
+- Error handling: [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts)
+- API validation: [src/sap-ai-validation.ts](mdc:src/sap-ai-validation.ts)
+  - API resolution hierarchy and feature validation.
+- Strategy factory: [src/sap-ai-strategy.ts](mdc:src/sap-ai-strategy.ts)
+  - Lazy loading and caching of API strategies.
+- Strategy utilities: [src/strategy-utils.ts](mdc:src/strategy-utils.ts)
+  - Shared streaming and response building.
+- Message conversion: [src/convert-to-sap-messages.ts](mdc:src/convert-to-sap-messages.ts)
+- Deep merge utility: [src/deep-merge.ts](mdc:src/deep-merge.ts)
+- Version constant: [src/version.ts](mdc:src/version.ts)
+
+## API Strategy Files
+
+- Orchestration language model:
+  [src/orchestration-language-model-strategy.ts](mdc:src/orchestration-language-model-strategy.ts)
+- Orchestration embedding model:
+  [src/orchestration-embedding-model-strategy.ts](mdc:src/orchestration-embedding-model-strategy.ts)
+- Foundation Models language model:
+  [src/foundation-models-language-model-strategy.ts](mdc:src/foundation-models-language-model-strategy.ts)
+- Foundation Models embedding model:
+  [src/foundation-models-embedding-model-strategy.ts](mdc:src/foundation-models-embedding-model-strategy.ts)
 
 ## Build, Types, and Distribution
 

@@ -1,16 +1,16 @@
-/**
- * Orchestration Embedding Model Strategy - Implementation using `@sap-ai-sdk/orchestration`.
- *
- * This strategy is stateless - it holds only a reference to the OrchestrationEmbeddingClient class.
- * All tenant-specific configuration flows through method parameters for security.
- */
+/** Orchestration embedding model strategy using `@sap-ai-sdk/orchestration`. */
 import type {
   EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
   SharedV3ProviderMetadata,
 } from "@ai-sdk/provider";
-import type { EmbeddingModelConfig, OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
+import type {
+  EmbeddingModelConfig,
+  EmbeddingModuleConfig,
+  MaskingModule,
+  OrchestrationEmbeddingClient,
+} from "@sap-ai-sdk/orchestration";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -25,41 +25,20 @@ import { normalizeEmbedding } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
 /**
- * Type for the OrchestrationEmbeddingClient class constructor.
  * @internal
  */
 type OrchestrationEmbeddingClientClass = typeof OrchestrationEmbeddingClient;
 
 /**
- * Orchestration Embedding Model Strategy.
- *
- * Implements embedding operations using the SAP AI SDK Orchestration API.
- * This class is stateless - it only holds a reference to the OrchestrationEmbeddingClient class.
  * @internal
  */
 export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStrategy {
   private readonly ClientClass: OrchestrationEmbeddingClientClass;
 
-  /**
-   * Creates a new OrchestrationEmbeddingModelStrategy.
-   * @param ClientClass - The OrchestrationEmbeddingClient class from `@sap-ai-sdk/orchestration`.
-   */
   constructor(ClientClass: OrchestrationEmbeddingClientClass) {
     this.ClientClass = ClientClass;
   }
 
-  /**
-   * Generates embeddings for the given input values.
-   *
-   * Validates input count, merges settings, calls SAP AI SDK, and normalizes embeddings.
-   * @param config - The embedding model strategy configuration.
-   * @param settings - The SAP AI embedding settings.
-   * @param options - The Vercel AI SDK embedding call options.
-   * @param maxEmbeddingsPerCall - Maximum number of embeddings allowed per call.
-   * @returns A Promise resolving to the embedding result.
-   * @throws {TooManyEmbeddingValuesForCallError} If values exceed maxEmbeddingsPerCall.
-   * @throws {AISDKError} If the SAP AI SDK call fails.
-   */
   async doEmbed(
     config: EmbeddingModelStrategyConfig,
     settings: SAPAIEmbeddingSettings,
@@ -92,6 +71,7 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
         settings.modelParams as Record<string, unknown> | undefined,
         sapOptions?.modelParams,
         settings.modelVersion,
+        settings.masking,
       );
 
       const response = await client.embed(
@@ -129,20 +109,12 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
     }
   }
 
-  /**
-   * Creates an SAP AI SDK OrchestrationEmbeddingClient with merged configuration.
-   * @param config - The embedding model strategy configuration.
-   * @param settingsModelParams - Model parameters from settings.
-   * @param perCallModelParams - Per-call model parameters to merge with settings.
-   * @param modelVersion - Optional model version to use.
-   * @returns A configured SAP AI SDK embedding client instance.
-   * @internal
-   */
   private createClient(
     config: EmbeddingModelStrategyConfig,
     settingsModelParams?: Record<string, unknown>,
     perCallModelParams?: Record<string, unknown>,
     modelVersion?: string,
+    masking?: MaskingModule,
   ): OrchestrationEmbeddingClient {
     const mergedParams = deepMerge(settingsModelParams ?? {}, perCallModelParams ?? {});
     const hasParams = Object.keys(mergedParams).length > 0;
@@ -155,10 +127,11 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
       },
     };
 
-    return new this.ClientClass(
-      { embeddings: embeddingConfig },
-      config.deploymentConfig,
-      config.destination,
-    );
+    const moduleConfig: EmbeddingModuleConfig = {
+      embeddings: embeddingConfig,
+      ...(masking && Object.keys(masking as object).length > 0 ? { masking } : {}),
+    };
+
+    return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
   }
 }

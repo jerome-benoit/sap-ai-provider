@@ -1,6 +1,6 @@
-# SAP AI Core Provider Architecture
+# SAP AI Provider Architecture
 
-This document provides a detailed overview of the SAP AI Core Provider's
+This document provides a detailed overview of the SAP AI Provider's
 architecture, internal components, and integration patterns.
 
 **For general usage**, see [README](./README.md). **For API documentation**,
@@ -69,7 +69,7 @@ Handler → SAP AI Core API
 
 ## Overview
 
-The SAP AI Core Provider is designed as a bridge between the Vercel AI SDK and
+The SAP AI Provider is designed as a bridge between the Vercel AI SDK and
 SAP AI Core services. It implements the Vercel AI SDK's `ProviderV3` interface
 while handling the complexities of SAP AI Core's API, authentication, and data
 formats.
@@ -1258,7 +1258,7 @@ Consider tracking:
 4. **Rate Limiting**: Client-side rate limiting to prevent 429s (e.g., token
    bucket or sliding window algorithm)
 
-This architecture ensures the SAP AI Core Provider is robust, scalable, and
+This architecture ensures the SAP AI Provider is robust, scalable, and
 maintainable while providing a seamless integration experience with the Vercel
 AI SDK.
 

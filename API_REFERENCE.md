@@ -1,6 +1,6 @@
 # API Reference
 
-Complete API documentation for the SAP AI Core Provider.
+Complete API documentation for the SAP AI Provider.
 
 ## Terminology
 
@@ -15,7 +15,7 @@ consistently:
   content filtering, document grounding, and translation capabilities
 - **Foundation Models API** - SAP AI Core's direct model access API with
   additional parameters like `logprobs`, `seed`, and `logit_bias`
-- **SAP AI Core Provider** or **this provider** - This npm package
+- **SAP AI Provider** or **this provider** - This npm package
   (`@jerome-benoit/sap-ai-provider`)
 - **Tool calling** - The capability of models to invoke external functions
   (equivalent to "function calling")
@@ -69,6 +69,7 @@ consistently:
 - [Types](#types)
   - [`SAPAIModelId`](#sapaimodelid)
   - [`SAPAIApiType`](#sapaiapitype)
+  - [`PromptTemplateRef`](#prompttemplateref)
   - [`DpiEntities`](#dpientities)
 - [Classes](#classes)
   - [`SAPAILanguageModel`](#sapailanguagemodel)
@@ -111,7 +112,7 @@ consistently:
 
 ### `createSAPAIProvider(options?)`
 
-Creates an SAP AI Core provider instance.
+Creates an SAP AI Provider instance.
 
 **Signature:**
 
@@ -205,7 +206,7 @@ try {
 
 ### Supported Models
 
-The SAP AI Core Provider supports all models available through SAP AI Core
+The SAP AI Provider supports all models available through SAP AI Core
 via the `@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models` packages.
 
 > **Note:** The models listed below are representative examples. Actual model
@@ -687,6 +688,32 @@ const model = provider.embedding("text-embedding-3-large", {
 });
 ```
 
+#### Embeddings with Data Masking
+
+Apply data masking to protect sensitive information before embedding generation
+(Orchestration API only):
+
+```typescript
+import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
+
+const model = provider.embedding("text-embedding-ada-002", {
+  masking: {
+    masking_providers: [
+      buildDpiMaskingProvider({
+        method: "anonymization",
+        entities: [{ type: "profile-person" }, { type: "profile-email" }, { type: "profile-phone" }],
+      }),
+    ],
+  },
+});
+
+// PII in text will be anonymized before embedding
+const { embedding } = await embed({
+  model,
+  value: "Contact John Smith at john.smith@example.com or call 555-1234",
+});
+```
+
 **Embedding Types:**
 
 | Type       | Use Case                                 | Example                         |
@@ -757,13 +784,14 @@ Configuration options for embedding models.
 
 **Properties:**
 
-| Property               | Type                   | Default           | Description                                          |
-| ---------------------- | ---------------------- | ----------------- | ---------------------------------------------------- |
-| `api`                  | `SAPAIApiType`         | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`) |
-| `maxEmbeddingsPerCall` | `number`               | `2048`            | Maximum values per API call                          |
-| `modelVersion`         | `string`               | -                 | Specific version of the model                        |
-| `type`                 | `EmbeddingType`        | `'text'`          | Embedding type                                       |
-| `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                            |
+| Property               | Type                   | Default           | Description                                               |
+| ---------------------- | ---------------------- | ----------------- | --------------------------------------------------------- |
+| `api`                  | `SAPAIApiType`         | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
+| `maxEmbeddingsPerCall` | `number`               | `2048`            | Maximum values per API call                               |
+| `modelVersion`         | `string`               | -                 | Specific version of the model                             |
+| `type`                 | `EmbeddingType`        | `'text'`          | Embedding type                                            |
+| `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                                 |
+| `masking`              | `MaskingModule`        | -                 | Data masking configuration (DPI) - Orchestration API only |
 
 **EmbeddingType Values:**
 
@@ -883,7 +911,7 @@ textEmbeddingModel(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSett
 #### `provider.languageModel(modelId, settings?)`
 
 ProviderV3-compliant method for creating language model instances. This is the
-standard way to create language models in AI SDK v4+.
+standard way to create language models in Vercel AI SDK.
 
 **Signature:**
 
@@ -911,7 +939,7 @@ const model2 = provider("gpt-4o", { modelParams: { temperature: 0.7 } });
 #### `provider.embeddingModel(modelId, settings?)`
 
 ProviderV3-compliant method for creating embedding model instances. This is the
-standard way to create embedding models in AI SDK v4+.
+standard way to create embedding models in Vercel AI SDK.
 
 **Signature:**
 
@@ -1049,30 +1077,31 @@ console.log(result.providerMetadata?.["sap-ai-core"]);
 
 ### API Comparison: Orchestration vs Foundation Models
 
-The SAP AI Core Provider supports two APIs. Use this feature matrix to choose
+The SAP AI Provider supports two APIs. Use this feature matrix to choose
 the right API for your use case.
 
 #### Feature Matrix
 
-| Feature                         | Orchestration | Foundation Models | Notes                                          |
-| ------------------------------- | :-----------: | :---------------: | ---------------------------------------------- |
-| **Chat Completions**            |      ✅       |        ✅         | Both APIs support chat completions             |
-| **Streaming**                   |      ✅       |        ✅         | Both APIs support streaming responses          |
-| **Tool Calling**                |      ✅       |        ✅         | Both APIs support tool calling                 |
-| **Embeddings**                  |      ✅       |        ✅         | Both APIs support embeddings                   |
-| **Structured Output (JSON)**    |      ✅       |        ✅         | Both APIs support JSON mode and schemas        |
-| **Data Masking (DPI)**          |      ✅       |        ❌         | Anonymize/pseudonymize PII via SAP DPI         |
-| **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters      |
-| **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration           |
-| **Translation**                 |      ✅       |        ❌         | SAP Document Translation service               |
-| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for Jinja2 safety |
-| **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                   |
-| **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB   |
-| **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters          |
-| **Deterministic Sampling**      |      ❌       |        ✅         | `seed` parameter for reproducible outputs      |
-| **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation         |
-| **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities     |
-| **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring          |
+| Feature                         | Orchestration | Foundation Models | Notes                                                 |
+| ------------------------------- | :-----------: | :---------------: | ----------------------------------------------------- |
+| **Chat Completions**            |      ✅       |        ✅         | Both APIs support chat completions                    |
+| **Streaming**                   |      ✅       |        ✅         | Both APIs support streaming responses                 |
+| **Tool Calling**                |      ✅       |        ✅         | Both APIs support tool calling                        |
+| **Embeddings**                  |      ✅       |        ✅         | Both APIs support embeddings                          |
+| **Structured Output (JSON)**    |      ✅       |        ✅         | Both APIs support JSON mode and schemas               |
+| **Data Masking (DPI)**          |      ✅       |        ❌         | Anonymize/pseudonymize PII via SAP DPI                |
+| **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters             |
+| **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration                  |
+| **Translation**                 |      ✅       |        ❌         | SAP Document Translation service                      |
+| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for Jinja2 safety        |
+| **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                          |
+| **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB          |
+| **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters                 |
+| **Deterministic Sampling**      |      ❌       |        ✅         | `seed` parameter for reproducible outputs             |
+| **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation                |
+| **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities            |
+| **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring                 |
+| **Tool Choice Control**         |      ✅       |        ✅         | `toolChoice` for `required`, `none`, or specific tool |
 
 #### When to Use Each API
 
@@ -1126,16 +1155,19 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                   | Default | Description                                                                                                             |
-| ---------------------------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `modelVersion`               | `string`               | -       | Specific model version                                                                                                  |
-| `includeReasoning`           | `boolean`              | -       | Whether to include assistant reasoning parts in SAP prompt conversion (may contain internal reasoning)                  |
-| `escapeTemplatePlaceholders` | `boolean`              | `true`  | Escape template delimiters (`{{`, `{%`, `{#`) in message content to prevent conflicts with SAP orchestration templating |
-| `modelParams`                | `ModelParams`          | -       | Model generation parameters                                                                                             |
-| `masking`                    | `MaskingModule`        | -       | Data masking configuration (DPI)                                                                                        |
-| `filtering`                  | `FilteringModule`      | -       | Content filtering configuration                                                                                         |
-| `responseFormat`             | `ResponseFormatConfig` | -       | Response format specification                                                                                           |
-| `tools`                      | `ChatCompletionTool[]` | -       | Tool definitions in SAP AI SDK format                                                                                   |
+| Property                     | Type                     | Default | Description                                      |
+| ---------------------------- | ------------------------ | ------- | ------------------------------------------------ |
+| `modelVersion`               | `string`                 | -       | Specific model version                           |
+| `includeReasoning`           | `boolean`                | `false` | Include reasoning parts in SAP prompt conversion |
+| `escapeTemplatePlaceholders` | `boolean`                | `true`  | Escape template delimiters to prevent conflicts  |
+| `modelParams`                | `ModelParams`            | -       | Model generation parameters                      |
+| `masking`                    | `MaskingModule`          | -       | Data masking configuration (DPI)                 |
+| `filtering`                  | `FilteringModule`        | -       | Content filtering configuration                  |
+| `grounding`                  | `GroundingModule`        | -       | Document grounding configuration                 |
+| `placeholderValues`          | `Record<string, string>` | -       | Default values for template placeholders         |
+| `promptTemplateRef`          | `PromptTemplateRef`      | -       | Reference to a Prompt Registry template          |
+| `responseFormat`             | `ResponseFormatConfig`   | -       | Response format specification                    |
+| `tools`                      | `ChatCompletionTool[]`   | -       | Tool definitions in SAP AI SDK format            |
 
 **Example:**
 
@@ -1473,6 +1505,8 @@ TypeScript type inferred from the Zod schema for language model options.
 
 ```typescript
 type SAPAILanguageModelProviderOptions = {
+  api?: "orchestration" | "foundation-models";
+  escapeTemplatePlaceholders?: boolean;
   includeReasoning?: boolean;
   modelParams?: {
     frequencyPenalty?: number;
@@ -1484,7 +1518,87 @@ type SAPAILanguageModelProviderOptions = {
     topP?: number;
     [key: string]: unknown; // Passthrough for custom params
   };
+  placeholderValues?: Record<string, string>;
+  promptTemplateRef?: PromptTemplateRef;
 };
+```
+
+**Properties:**
+
+| Property                     | Type                     | Description                                                         |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------------- |
+| `api`                        | `string`                 | Override API selection (`'orchestration'` or `'foundation-models'`) |
+| `escapeTemplatePlaceholders` | `boolean`                | Escape template delimiters to prevent SAP templating conflicts      |
+| `includeReasoning`           | `boolean`                | Include assistant reasoning parts in the response                   |
+| `modelParams`                | `object`                 | Model generation parameters for this specific call                  |
+| `placeholderValues`          | `Record<string, string>` | Values for template placeholders (overrides settings values)        |
+| `promptTemplateRef`          | `PromptTemplateRef`      | Reference to a template in SAP AI Core's Prompt Registry            |
+
+**Example with placeholderValues:**
+
+```typescript
+const { text } = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "What are the key benefits of this product?",
+  providerOptions: {
+    "sap-ai": {
+      placeholderValues: {
+        product: "SAP Cloud SDK",
+        version: "1.0",
+      },
+    },
+  },
+});
+```
+
+**Example with grounding placeholders:**
+
+```typescript
+// When using grounding with orchestration templates
+const { text } = await generateText({
+  model: provider("gpt-4o", {
+    grounding: {
+      // grounding configuration
+    },
+  }),
+  prompt: "{​{groundingInput}}", // Template placeholder
+  providerOptions: {
+    "sap-ai": {
+      escapeTemplatePlaceholders: false, // Required for template usage
+      placeholderValues: {
+        groundingInput: "What is SAP?",
+        groundingOutput: "", // Will be populated by grounding
+      },
+    },
+  },
+});
+```
+
+**Example with settings and providerOptions merge:**
+
+```typescript
+// Default placeholders in settings, override per-request in providerOptions
+const model = provider("gpt-4o", {
+  escapeTemplatePlaceholders: false,
+  placeholderValues: {
+    product: "SAP Cloud SDK", // Default product
+    language: "English", // Default language
+  },
+});
+
+// Per-request override: product is overridden, language uses default
+const { text } = await generateText({
+  model,
+  prompt: "Describe the features of the product.",
+  providerOptions: {
+    "sap-ai": {
+      placeholderValues: {
+        product: "SAP S/4HANA", // Override default product
+        // language: "English" inherited from settings
+      },
+    },
+  },
+});
 ```
 
 ---
@@ -1555,6 +1669,111 @@ detailed feature matrix.
 
 ---
 
+### `PromptTemplateRef`
+
+Reference to a template in SAP AI Core's Prompt Registry.
+
+**Types:**
+
+```typescript
+// Scope determines where the template is accessible
+export type PromptTemplateScope = "tenant" | "resource_group";
+
+// Reference by template ID
+export interface PromptTemplateRefByID {
+  readonly id: string;
+  readonly scope?: PromptTemplateScope; // Default: "tenant"
+}
+
+// Reference by scenario/name/version
+export interface PromptTemplateRefByScenarioNameVersion {
+  readonly scenario: string;
+  readonly name: string;
+  readonly version: string;
+  readonly scope?: PromptTemplateScope; // Default: "tenant"
+}
+
+// Union type for both reference methods
+export type PromptTemplateRef = PromptTemplateRefByID | PromptTemplateRefByScenarioNameVersion;
+```
+
+**Description:**
+
+The Prompt Registry allows you to manage prompt templates centrally in SAP AI Core
+and reference them in your application. When `promptTemplateRef` is provided, the
+orchestration config uses `template_ref` instead of building an inline `template`
+array from the conversation messages.
+
+**Usage Examples:**
+
+```typescript
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+
+const provider = createSAPAIProvider();
+
+// Reference by ID (simplest form)
+const modelById = provider("gpt-4o", {
+  promptTemplateRef: { id: "my-template-id" },
+});
+
+// Reference by ID with explicit scope
+const modelByIdWithScope = provider("gpt-4o", {
+  promptTemplateRef: {
+    id: "my-template-id",
+    scope: "resource_group",
+  },
+});
+
+// Reference by scenario/name/version
+const modelByScenario = provider("gpt-4o", {
+  promptTemplateRef: {
+    scenario: "customer-support",
+    name: "greeting-template",
+    version: "latest",
+  },
+});
+
+// Override via providerOptions at invocation time
+const result = await generateText({
+  model: modelById,
+  prompt: "Hello",
+  providerOptions: {
+    [SAP_AI_PROVIDER_NAME]: {
+      promptTemplateRef: { id: "different-template" },
+    },
+  },
+});
+```
+
+**With Placeholder Values:**
+
+Prompt Registry templates often contain placeholders. Use `placeholderValues` to
+provide values for these placeholders:
+
+```typescript
+const model = provider("gpt-4o", {
+  promptTemplateRef: {
+    scenario: "customer-support",
+    name: "personalized-greeting",
+    version: "1.0.0",
+  },
+  placeholderValues: {
+    customerName: "Alice",
+    supportTopic: "billing",
+  },
+});
+```
+
+> **Note:** `promptTemplateRef` is only available with the Orchestration API (default).
+> It is not supported with the Foundation Models API.
+
+**See Also:**
+
+- [SAP AI Core Prompt Registry Documentation](https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/prompt-registry)
+
+---
+
 ### API-Specific Settings Types
 
 The following types provide type-safe configuration for each API. They are
@@ -1576,6 +1795,8 @@ export interface OrchestrationModelSettings {
   readonly masking?: MaskingModule;
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
+  readonly placeholderValues?: Record<string, string>;
+  readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
   readonly tools?: ChatCompletionTool[];
   readonly translation?: TranslationModule;
@@ -1589,6 +1810,7 @@ export interface OrchestrationModelSettings {
 - `masking` - Data anonymization via SAP DPI
 - `translation` - Input/output translation
 - `escapeTemplatePlaceholders` - Prevent template syntax conflicts
+- `promptTemplateRef` - Reference templates from SAP AI Core Prompt Registry
 
 #### `FoundationModelsModelSettings`
 
@@ -1762,22 +1984,23 @@ Implementation of Vercel AI SDK's `LanguageModelV3` interface.
 
 **Properties:**
 
-| Property                      | Type                     | Description                                     |
-| ----------------------------- | ------------------------ | ----------------------------------------------- |
-| `specificationVersion`        | `'v3'`                   | API specification version                       |
-| `capabilities`                | `SAPAIModelCapabilities` | Dynamic model capabilities (see below)          |
-| `supportsImageUrls`           | `boolean`                | Image URL support (model-dependent)             |
-| `supportsMultipleCompletions` | `boolean`                | Multiple completions support (model-dependent)  |
-| `supportsParallelToolCalls`   | `boolean`                | Parallel tool calls support (model-dependent)   |
-| `supportsStreaming`           | `boolean`                | Streaming support (model-dependent)             |
-| `supportsStructuredOutputs`   | `boolean`                | Structured output support (model-dependent)     |
-| `supportsToolCalls`           | `boolean`                | Tool/function calling support (model-dependent) |
-| `modelId`                     | `SAPAIModelId`           | Current model identifier                        |
-| `provider`                    | `string`                 | Provider identifier (`'sap-ai.chat'`)           |
+| Property                      | Type                       | Description                                            |
+| ----------------------------- | -------------------------- | ------------------------------------------------------ |
+| `specificationVersion`        | `'v3'`                     | API specification version (readonly)                   |
+| `modelId`                     | `SAPAIModelId`             | Current model identifier (readonly)                    |
+| `provider`                    | `string`                   | Provider identifier (getter, e.g., `'sap-ai.chat'`)    |
+| `capabilities`                | `SAPAIModelCapabilities`   | Dynamic model capabilities (getter, cached)            |
+| `supportedUrls`               | `Record<string, RegExp[]>` | URL patterns for supported media (getter)              |
+| `supportsImageUrls`           | `boolean`                  | Image URL support (getter, model-dependent)            |
+| `supportsMultipleCompletions` | `boolean`                  | Multiple completions support (getter, model-dependent) |
+| `supportsParallelToolCalls`   | `boolean`                  | Parallel tool calls support (getter, model-dependent)  |
+| `supportsStreaming`           | `boolean`                  | Streaming support (getter, model-dependent)            |
+| `supportsStructuredOutputs`   | `boolean`                  | Structured output support (getter, model-dependent)    |
+| `supportsToolCalls`           | `boolean`                  | Tool calling support (getter, model-dependent)         |
 
 > **Note:** Model capabilities are now dynamically determined based on the model vendor
 > and type. Use `getSAPAIModelCapabilities(modelId)` to query capabilities programmatically.
-> See [Model Capabilities](#model-capabilities-detection) for details.
+> See [Model Capabilities Detection](#model-capabilities-detection) for details.
 
 **Methods:**
 
@@ -2236,19 +2459,12 @@ advanced usage scenarios where direct access to SDK responses is needed:
 | `OrchestrationStreamChunkResponse` | Individual stream chunk         |
 | `OrchestrationEmbeddingResponse`   | Embedding response wrapper      |
 
-**Example:**
-
-```typescript
-import { OrchestrationClient, OrchestrationResponse } from "@jerome-benoit/sap-ai-provider";
-
-// For advanced scenarios requiring direct SDK access
-const client = new OrchestrationClient({
-  llm: { model_name: "gpt-4o" },
-});
-```
-
 > **Note:** Most users should use `createSAPAIProvider()` instead of these
-> low-level classes. These are exported for advanced integration scenarios.
+> low-level classes. These are re-exported from `@sap-ai-sdk/orchestration` for
+> advanced integration scenarios where direct SDK access is required.
+>
+> For `OrchestrationClient` usage, refer to the
+> [SAP AI SDK documentation](https://github.com/SAP/ai-sdk-js/tree/main/packages/orchestration).
 
 ---
 
@@ -2272,16 +2488,17 @@ definitions.
 
 **Configuration Types:**
 
-| Type                        | Description                             |
-| --------------------------- | --------------------------------------- |
-| `ChatCompletionRequest`     | Full chat completion request structure  |
-| `ChatCompletionTool`        | Tool definition for function calling    |
-| `FunctionObject`            | Function schema within a tool           |
-| `LlmModelDetails`           | Model configuration details             |
-| `LlmModelParams`            | Model-specific parameters               |
-| `OrchestrationConfigRef`    | Reference to a stored configuration     |
-| `OrchestrationModuleConfig` | Full orchestration module configuration |
-| `PromptTemplatingModule`    | Prompt template configuration           |
+| Type                                    | Description                             |
+| --------------------------------------- | --------------------------------------- |
+| `AzureOpenAiChatExtensionConfiguration` | Azure OpenAI data source configuration  |
+| `ChatCompletionRequest`                 | Full chat completion request structure  |
+| `ChatCompletionTool`                    | Tool definition for function calling    |
+| `FunctionObject`                        | Function schema within a tool           |
+| `LlmModelDetails`                       | Model configuration details             |
+| `LlmModelParams`                        | Model-specific parameters               |
+| `OrchestrationConfigRef`                | Reference to a stored configuration     |
+| `OrchestrationModuleConfig`             | Full orchestration module configuration |
+| `PromptTemplatingModule`                | Prompt template configuration           |
 
 **Module Configuration Types:**
 
@@ -2683,7 +2900,18 @@ const provider = createSAPAIProvider({
 });
 
 // Now queries will be grounded in your documents
-const model = provider("gpt-4o");
+const { text } = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "What is SAP?",
+  providerOptions: {
+    "sap-ai": {
+      escapeTemplatePlaceholders: false, // Required for grounding templates
+      placeholderValues: {
+        "?question": "What is SAP?", // Maps to input placeholder
+      },
+    },
+  },
+});
 ```
 
 **Run it:** `npx tsx examples/example-document-grounding.ts`

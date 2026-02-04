@@ -1,7 +1,7 @@
 # Environment Setup
 
 Complete guide for setting up authentication and environment configuration for
-the SAP AI Core Provider.
+the SAP AI Provider.
 
 > **Quick Start:** For a shorter introduction, see the
 > [README Quick Start](./README.md#quick-start). **API Details:** For

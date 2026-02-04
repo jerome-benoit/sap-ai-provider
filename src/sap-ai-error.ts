@@ -1,6 +1,4 @@
-/**
- * Error conversion utilities for SAP AI Core to Vercel AI SDK error types.
- */
+/** Error conversion utilities for SAP AI Core to Vercel AI SDK error types. */
 import type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
@@ -45,6 +43,8 @@ const HTTP_STATUS = {
  * });
  * // Throws: ApiSwitchError("orchestration", "foundation-models", "filtering")
  * ```
+ * @see {@link validateApiSwitch} - Function that throws this error
+ * @see {@link UnsupportedFeatureError} - Related error for features unsupported by an API
  */
 export class ApiSwitchError extends Error {
   /**
@@ -68,12 +68,27 @@ export class ApiSwitchError extends Error {
 
 /**
  * Error thrown when a feature is used with an incompatible API.
+ *
+ * Orchestration-only features (not supported by Foundation Models API):
+ * - Content filtering
+ * - Document grounding
+ * - Data masking
+ * - Translation
+ * - SAP-format tool definitions
+ * - Jinja2 template escaping
+ *
+ * Foundation Models-only features (not supported by Orchestration API):
+ * - Azure On Your Data (dataSources)
  * @example
  * ```typescript
  * // Thrown when using content filtering with Foundation Models API
  * throw new UnsupportedFeatureError("Content filtering", "foundation-models", "orchestration");
  * // Error message: "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
  * ```
+ * @see {@link validateOrchestrationOnlyOptions} - Throws when using Orchestration features with Foundation Models
+ * @see {@link validateFoundationModelsOnlyOptions} - Throws when using Foundation Models features with Orchestration
+ * @see {@link validateEscapeTemplatePlaceholders} - Throws when using Jinja2 escaping with Foundation Models
+ * @see {@link ApiSwitchError} - Related error for API switching conflicts
  */
 export class UnsupportedFeatureError extends Error {
   /**
@@ -97,12 +112,12 @@ export class UnsupportedFeatureError extends Error {
 
 /**
  * Converts SAP AI SDK OrchestrationErrorResponse to Vercel AI SDK APICallError.
- * @param errorResponse - The error response from SAP AI SDK.
- * @param context - Optional context for error details.
- * @param context.requestBody - The original request body.
- * @param context.responseHeaders - The response headers.
- * @param context.url - The request URL.
- * @returns An appropriate Vercel AI SDK error type.
+ * @param errorResponse - SAP orchestration error response.
+ * @param context - Request context.
+ * @param context.requestBody - Original request body.
+ * @param context.responseHeaders - Response headers.
+ * @param context.url - Request URL.
+ * @returns Vercel AI SDK error.
  */
 export function convertSAPErrorToAPICallError(
   errorResponse: OrchestrationErrorResponse,
@@ -205,13 +220,13 @@ export function convertSAPErrorToAPICallError(
 
 /**
  * Converts a generic error to an appropriate Vercel AI SDK error.
- * @param error - The error to convert.
- * @param context - Optional context for error details.
- * @param context.operation - The operation name for error messages.
- * @param context.requestBody - The original request body.
- * @param context.responseHeaders - The response headers.
- * @param context.url - The request URL.
- * @returns An appropriate Vercel AI SDK error type.
+ * @param error - Error to convert.
+ * @param context - Request context.
+ * @param context.operation - Operation name.
+ * @param context.requestBody - Original request body.
+ * @param context.responseHeaders - Response headers.
+ * @param context.url - Request URL.
+ * @returns Vercel AI SDK error.
  */
 export function convertToAISDKError(
   error: unknown,
@@ -483,8 +498,8 @@ export function convertToAISDKError(
 
 /**
  * Normalizes various header formats to a string record.
- * @param headers - The headers to normalize (various formats accepted).
- * @returns The normalized headers, or undefined if empty or invalid.
+ * @param headers - Headers to normalize.
+ * @returns Normalized headers record.
  */
 export function normalizeHeaders(headers: unknown): Record<string, string> | undefined {
   if (!headers || typeof headers !== "object") return undefined;
@@ -507,19 +522,18 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
 }
 
 /**
- * Creates an APICallError with automatic response extraction and optional message enrichment.
- * @param error - The original error to extract response data from.
- * @param options - Error configuration options.
- * @param options.enrichMessage - Whether to append response body to message.
- * @param options.isRetryable - Whether the error should be retried.
- * @param options.message - The error message.
- * @param options.statusCode - The HTTP status code.
- * @param context - Optional context for error details.
- * @param context.operation - The operation that failed.
- * @param context.requestBody - The original request body.
- * @param context.responseHeaders - Pre-extracted response headers (if available).
- * @param context.url - The request URL.
- * @returns A configured APICallError instance with extracted response data.
+ * @param error - Original error.
+ * @param options - Error options.
+ * @param options.enrichMessage - Whether to enrich message with response body.
+ * @param options.isRetryable - Whether error is retryable.
+ * @param options.message - Error message.
+ * @param options.statusCode - HTTP status code.
+ * @param context - Request context.
+ * @param context.operation - Operation name.
+ * @param context.requestBody - Original request body.
+ * @param context.responseHeaders - Response headers.
+ * @param context.url - Request URL.
+ * @returns API call error.
  * @internal
  */
 function createAPICallError(
@@ -559,10 +573,9 @@ function createAPICallError(
 }
 
 /**
- * Extracts model identifier from error message or location.
- * @param message - The error message to parse.
- * @param location - Optional error location string.
- * @returns The extracted model identifier, or undefined if not found.
+ * @param message - Error message.
+ * @param location - Error location.
+ * @returns Extracted model identifier.
  * @internal
  */
 function extractModelIdentifier(message: string, location?: string): string | undefined {
@@ -590,9 +603,8 @@ function extractModelIdentifier(message: string, location?: string): string | un
 }
 
 /**
- * Extracts the root cause from an error, handling ErrorWithCause chains.
- * @param error - The error to extract the root cause from.
- * @returns The root cause if it's an axios error, undefined otherwise.
+ * @param error - Error to extract Axios error from.
+ * @returns Axios error if found.
  * @internal
  */
 function getAxiosError(
@@ -614,9 +626,8 @@ function getAxiosError(
 }
 
 /**
- * Extracts and formats axios response body from an error.
- * @param error - The error to extract response body from.
- * @returns The formatted response body, or undefined if not available.
+ * @param error - Error to extract response body from.
+ * @returns Serialized response body.
  * @internal
  */
 function getAxiosResponseBody(error: unknown): string | undefined {
@@ -626,9 +637,8 @@ function getAxiosResponseBody(error: unknown): string | undefined {
 }
 
 /**
- * Extracts response headers from an Axios error.
- * @param error - The error to extract headers from.
- * @returns The response headers, or undefined if not available.
+ * @param error - Error to extract response headers from.
+ * @returns Normalized response headers.
  * @internal
  */
 function getAxiosResponseHeaders(error: unknown): Record<string, string> | undefined {
@@ -638,9 +648,8 @@ function getAxiosResponseHeaders(error: unknown): Record<string, string> | undef
 }
 
 /**
- * Maps SAP error codes to HTTP status codes (100-599 range, fallback to 500).
- * @param code - The SAP error code to map.
- * @returns The corresponding HTTP status code (500 if unmappable).
+ * @param code - SAP error code.
+ * @returns HTTP status code.
  * @internal
  */
 function getStatusCodeFromSAPError(code?: number): number {
@@ -654,9 +663,8 @@ function getStatusCodeFromSAPError(code?: number): number {
 }
 
 /**
- * Type guard for SAP AI SDK OrchestrationErrorResponse.
- * @param error - The value to check.
- * @returns True if the value is an OrchestrationErrorResponse.
+ * @param error - Error to check.
+ * @returns True if error is an orchestration error response.
  * @internal
  */
 function isOrchestrationErrorResponse(error: unknown): error is OrchestrationErrorResponse {
@@ -701,9 +709,8 @@ function isOrchestrationErrorResponse(error: unknown): error is OrchestrationErr
 }
 
 /**
- * Checks if HTTP status code is retryable (408, 409, 429, 5xx).
- * @param statusCode - The HTTP status code to check.
- * @returns True if the request should be retried.
+ * @param statusCode - HTTP status code.
+ * @returns True if error is retryable.
  * @internal
  */
 function isRetryable(statusCode: number): boolean {
@@ -716,10 +723,9 @@ function isRetryable(statusCode: number): boolean {
 }
 
 /**
- * Serializes and truncates axios response data for error messages.
- * @param data - The response data to serialize.
- * @param maxLength - Maximum length before truncation.
- * @returns Serialized and truncated string, or undefined if data is undefined.
+ * @param data - Data to serialize.
+ * @param maxLength - Maximum output length.
+ * @returns Serialized data.
  * @internal
  */
 function serializeAxiosResponseData(data: unknown, maxLength = 2000): string | undefined {
@@ -743,9 +749,8 @@ function serializeAxiosResponseData(data: unknown, maxLength = 2000): string | u
 }
 
 /**
- * Attempts to extract a SAP error from an error message.
- * @param message - The error message to parse for embedded JSON.
- * @returns The extracted error object, or null if not found.
+ * @param message - Error message to parse.
+ * @returns Extracted SAP error or null.
  * @internal
  */
 function tryExtractSAPErrorFromMessage(message: string): unknown {

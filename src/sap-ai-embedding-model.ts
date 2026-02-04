@@ -1,11 +1,11 @@
 /**
  * SAP AI Embedding Model - Vercel AI SDK EmbeddingModelV3 implementation for SAP AI Core.
  *
- * This is a thin wrapper that delegates to API-specific strategies (Orchestration or Foundation Models).
- * Strategy selection happens at invocation time using the late-binding pattern.
- * @module sap-ai-embedding-model
+ * This module provides the embedding model implementation that connects to SAP AI Core
+ * services (Orchestration API or Foundation Models API) to generate vector embeddings.
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/embed | Vercel AI SDK embed()}
+ * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/embed-many | Vercel AI SDK embedMany()}
  */
-
 import type {
   EmbeddingModelV3,
   EmbeddingModelV3CallOptions,
@@ -29,60 +29,75 @@ import {
 } from "./sap-ai-strategy.js";
 import { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
-/** Default maximum embeddings per API call (OpenAI limit). */
 const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
 
-/** Model identifier for SAP AI embedding models (e.g., 'text-embedding-ada-002'). */
+/**
+ * Model identifier for SAP AI embedding models.
+ *
+ * Common embedding model IDs include:
+ * - `"text-embedding-ada-002"` - OpenAI Ada embedding model
+ * - `"text-embedding-3-small"` - OpenAI small embedding model
+ * - `"text-embedding-3-large"` - OpenAI large embedding model
+ *
+ * The actual available models depend on your SAP AI Core deployment configuration.
+ * @see {@link https://help.sap.com/docs/sap-ai-core | SAP AI Core Documentation}
+ */
 export type SAPAIEmbeddingModelId = string;
 
-/**
- * Internal configuration for SAP AI Embedding Model.
- * @internal
- */
+/** @internal */
 interface SAPAIEmbeddingModelConfig {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
-  /** Provider-level API setting for fallback during API resolution. */
   readonly providerApi?: SAPAIApiType;
 }
 
 /**
  * SAP AI Core Embedding Model implementing Vercel AI SDK EmbeddingModelV3.
  *
- * This class is a thin wrapper that delegates to API-specific strategies:
- * - Orchestration API: uses OrchestrationEmbeddingClient
- * - Foundation Models API: uses AzureOpenAiEmbeddingClient
+ * This class provides embedding generation capabilities through SAP AI Core,
+ * supporting both the Orchestration API and Foundation Models API.
+ *
+ * Users typically don't instantiate this class directly. Instead, use the
+ * {@link createSAPAIProvider} factory function:
  * @example
  * ```typescript
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+ * import { embed, embedMany } from "ai";
+ *
+ * const provider = createSAPAIProvider();
+ * const embeddingModel = provider.embedding("text-embedding-ada-002");
+ *
+ * // Single embedding
  * const { embedding } = await embed({
- *   model: provider.embedding('text-embedding-ada-002'),
- *   value: 'Hello, world!'
+ *   model: embeddingModel,
+ *   value: "Hello, world!",
+ * });
+ *
+ * // Multiple embeddings
+ * const { embeddings } = await embedMany({
+ *   model: embeddingModel,
+ *   values: ["Hello", "World"],
  * });
  * ```
+ * @see {@link https://sdk.vercel.ai/docs/ai-sdk-core/embeddings | Vercel AI SDK Embeddings}
+ * @see {@link createSAPAIProvider} - Factory function to create provider instances
  */
 export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
-  /** Maximum number of embeddings per API call. */
   readonly maxEmbeddingsPerCall: number;
-  /** The model identifier. */
   readonly modelId: string;
-  /** The provider identifier string. */
   readonly provider: string;
-  /** The Vercel AI SDK specification version. */
   readonly specificationVersion = "v3" as const;
-  /** Whether the model supports parallel API calls. */
   readonly supportsParallelCalls: boolean = true;
 
   private readonly config: SAPAIEmbeddingModelConfig;
   private readonly settings: SAPAIEmbeddingSettings;
 
   /**
-   * Creates a new SAP AI Embedding Model instance.
-   *
-   * This is the main implementation that handles all SAP AI Core embedding logic.
-   * @param modelId - The model identifier (e.g., 'text-embedding-ada-002', 'text-embedding-3-small').
-   * @param settings - Model configuration settings (embedding type, model parameters, etc.).
-   * @param config - SAP AI Core deployment and destination configuration.
+   * @param modelId - Model identifier.
+   * @param settings - Model settings.
+   * @param config - Model configuration.
+   * @internal
    */
   constructor(
     modelId: SAPAIEmbeddingModelId,
@@ -99,14 +114,6 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
     this.maxEmbeddingsPerCall = settings.maxEmbeddingsPerCall ?? DEFAULT_MAX_EMBEDDINGS_PER_CALL;
   }
 
-  /**
-   * Generates embeddings for the given input values.
-   *
-   * Implements late-binding: resolves API at invocation time, validates settings,
-   * gets the appropriate strategy, and delegates the call.
-   * @param options - The Vercel AI SDK V3 embedding call options.
-   * @returns The embedding result with vectors, usage data, and warnings.
-   */
   async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result> {
     const providerName = getProviderName(this.config.provider);
     const sapOptions = await parseProviderOptions({

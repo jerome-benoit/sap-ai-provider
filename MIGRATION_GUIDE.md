@@ -1,6 +1,6 @@
 # Migration Guide
 
-Guide for migrating between versions of the SAP AI Core Provider.
+Guide for migrating between versions of the SAP AI Provider.
 
 ## Table of Contents
 
@@ -71,7 +71,7 @@ Guide for migrating between versions of the SAP AI Core Provider.
 ## Overview
 
 This guide helps you migrate your application when upgrading to newer versions
-of the SAP AI Core Provider. It covers breaking changes, deprecations, and new
+of the SAP AI Provider. It covers breaking changes, deprecations, and new
 features.
 
 ---
@@ -529,7 +529,7 @@ exponential backoff.
 - Authentication via `AICORE_SERVICE_KEY` environment variable (no more
   `serviceKey` option)
 - Uses official SAP AI SDK for authentication and API communication
-- Requires Vercel AI Vercel AI SDK v5.0+ (v6.0+ recommended)
+- Requires Vercel AI SDK v5.0+ (v6.0+ recommended)
 
 **New Features:**
 

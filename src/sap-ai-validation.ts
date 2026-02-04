@@ -1,9 +1,4 @@
-/**
- * Validation functions for SAP AI API-specific features.
- *
- * Ensures that API-specific options are used correctly and provides clear error messages
- * for API-specific feature misconfigurations.
- */
+/** Validation functions for SAP AI API-specific features. */
 import type {
   FoundationModelsModelSettings,
   OrchestrationModelSettings,
@@ -15,9 +10,9 @@ import type {
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
- * Type guard to check if settings are for Foundation Models API.
- * @param settings - The settings to check
- * @returns True if settings are for Foundation Models API
+ * Type guard for Foundation Models API settings.
+ * @param settings - Settings to check.
+ * @returns True if settings are for Foundation Models API.
  */
 export function isFoundationModelsSettings(
   settings: SAPAIModelSettings | SAPAISettings,
@@ -26,9 +21,9 @@ export function isFoundationModelsSettings(
 }
 
 /**
- * Type guard to check if settings are for Orchestration API.
- * @param settings - The settings to check
- * @returns True if settings are for Orchestration API (api is undefined or "orchestration")
+ * Type guard for Orchestration API settings.
+ * @param settings - Settings to check.
+ * @returns True if settings are for Orchestration API.
  */
 export function isOrchestrationSettings(
   settings: SAPAIModelSettings | SAPAISettings,
@@ -39,14 +34,11 @@ export function isOrchestrationSettings(
 /**
  * Validates escapeTemplatePlaceholders option based on API type.
  *
- * Rules:
- * - If api=foundation-models AND escapeTemplatePlaceholders=true explicitly -> throw error
- * - If api=foundation-models AND escapeTemplatePlaceholders=false explicitly -> no-op (allowed)
- * - If api=foundation-models AND escapeTemplatePlaceholders not set -> ignore (no escaping)
- * - If api=orchestration -> default to true, apply escaping
- * @param api - The selected API type
- * @param escapeTemplatePlaceholders - The explicit value (undefined if not set)
- * @throws {UnsupportedFeatureError} If escapeTemplatePlaceholders=true with Foundation Models API
+ * Jinja2 template escaping is only supported by the Orchestration API.
+ * @param api - SAP AI API type.
+ * @param escapeTemplatePlaceholders - Whether to escape template placeholders.
+ * @throws {UnsupportedFeatureError} When escapeTemplatePlaceholders is true with Foundation Models API.
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateEscapeTemplatePlaceholders(
   api: SAPAIApiType,
@@ -63,16 +55,18 @@ export function validateEscapeTemplatePlaceholders(
 
 /**
  * Validates that Foundation Models-only options are not used with Orchestration API.
- * Throws UnsupportedFeatureError if any Foundation Models-only feature is present.
- * @param settings - The model settings to validate
- * @throws {UnsupportedFeatureError} If Foundation Models-only features are used with Orchestration API
+ *
+ * Foundation Models-only features:
+ * - `dataSources` - Azure On Your Data configuration
+ * @param settings - Settings to validate.
+ * @throws {UnsupportedFeatureError} When dataSources is set with Orchestration API.
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateFoundationModelsOnlyOptions(
   settings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
   if (!settings) return;
 
-  // Type guard: Check if settings could have FM-only options
   const fmSettings = settings as FoundationModelsModelSettings;
 
   if (fmSettings.dataSources !== undefined) {
@@ -86,16 +80,22 @@ export function validateFoundationModelsOnlyOptions(
 
 /**
  * Validates that Orchestration-only options are not used with Foundation Models API.
- * Throws UnsupportedFeatureError if any Orchestration-only feature is present.
- * @param settings - The model settings to validate
- * @throws {UnsupportedFeatureError} If Orchestration-only features are used with Foundation Models API
+ *
+ * Orchestration-only features:
+ * - `filtering` - Content filtering module
+ * - `grounding` - Document grounding module
+ * - `masking` - Data masking module
+ * - `translation` - Translation module
+ * - `tools` - SAP-format tool definitions (use AI SDK tools instead)
+ * @param settings - Settings to validate.
+ * @throws {UnsupportedFeatureError} When any Orchestration-only feature is set with Foundation Models API.
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateOrchestrationOnlyOptions(
   settings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
   if (!settings) return;
 
-  // Type guard: Check if settings could have orchestration-only options
   const orchSettings = settings as OrchestrationModelSettings;
 
   if (orchSettings.filtering !== undefined) {
@@ -124,7 +124,6 @@ export function validateOrchestrationOnlyOptions(
 }
 
 /**
- * Features that are specific to Orchestration API.
  * @internal
  */
 const ORCHESTRATION_ONLY_FEATURES = [
@@ -136,31 +135,29 @@ const ORCHESTRATION_ONLY_FEATURES = [
 ] as const;
 
 /**
- * Features that are specific to Foundation Models API.
  * @internal
  */
 const FOUNDATION_MODELS_ONLY_FEATURES = ["dataSources"] as const;
 
 /**
  * Validates that switching APIs at invocation time is allowed.
- * Throws ApiSwitchError if the model was configured with features incompatible with the target API.
- * @param fromApi - The API the model was configured with
- * @param toApi - The API being switched to at invocation time
- * @param modelSettings - The model's configured settings
- * @throws {ApiSwitchError} If the model has features incompatible with the target API
+ *
+ * API switching is blocked when the model was configured with features
+ * that are specific to one API and incompatible with the target API.
+ * @param fromApi - Source API type (configured at model creation).
+ * @param toApi - Target API type (requested at invocation time).
+ * @param modelSettings - Model settings to validate for conflicts.
+ * @throws {ApiSwitchError} When the model has features incompatible with the target API.
+ * @see {@link ApiSwitchError}
  */
 export function validateApiSwitch(
   fromApi: SAPAIApiType,
   toApi: SAPAIApiType,
   modelSettings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
-  // No switch happening
   if (fromApi === toApi) return;
-
-  // No settings to conflict
   if (!modelSettings) return;
 
-  // Switching from Orchestration to Foundation Models
   if (fromApi === "orchestration" && toApi === "foundation-models") {
     const orchSettings = modelSettings as OrchestrationModelSettings;
 
@@ -171,7 +168,6 @@ export function validateApiSwitch(
     }
   }
 
-  // Switching from Foundation Models to Orchestration
   if (fromApi === "foundation-models" && toApi === "orchestration") {
     const fmSettings = modelSettings as FoundationModelsModelSettings;
 
@@ -184,46 +180,37 @@ export function validateApiSwitch(
 }
 
 /**
- * Valid API type values.
  * @internal
  */
 const VALID_API_TYPES: readonly SAPAIApiType[] = ["orchestration", "foundation-models"];
 
-/**
- * Options for the main validation function.
- */
+/** Options for the main validation function. */
 export interface ValidateSettingsOptions {
-  /** The resolved API type to use */
   readonly api: SAPAIApiType;
-  /** Invocation-time settings (per-call overrides) */
   readonly invocationSettings?: {
     readonly api?: SAPAIApiType;
     readonly escapeTemplatePlaceholders?: boolean;
   };
-  /** The API the model was originally configured with (for switch detection) */
   readonly modelApi?: SAPAIApiType;
-  /** Model-level settings (configured at model creation) */
   readonly modelSettings?: SAPAIModelSettings | SAPAISettings;
 }
 
 /**
  * Gets the effective escapeTemplatePlaceholders value based on API and settings.
- * @param api - The selected API type
- * @param modelSettings - Model-level settings
- * @param invocationEscape - Invocation-level override
- * @returns The effective value to use for message conversion
+ * @param api - SAP AI API type.
+ * @param modelSettings - Model settings.
+ * @param invocationEscape - Invocation-level escape setting.
+ * @returns Effective escapeTemplatePlaceholders value.
  */
 export function getEffectiveEscapeTemplatePlaceholders(
   api: SAPAIApiType,
   modelSettings: SAPAIModelSettings | SAPAISettings | undefined,
   invocationEscape: boolean | undefined,
 ): boolean {
-  // Foundation Models API never escapes
   if (api === "foundation-models") {
     return false;
   }
 
-  // Orchestration API: invocation > model > default (true)
   if (invocationEscape !== undefined) {
     return invocationEscape;
   }
@@ -234,22 +221,15 @@ export function getEffectiveEscapeTemplatePlaceholders(
     return modelValue;
   }
 
-  // Default for Orchestration
   return true;
 }
 
 /**
  * Resolves the effective API type using the full precedence chain.
- *
- * Precedence (highest to lowest):
- * 1. Invocation-time override (providerOptions.api)
- * 2. Model-level setting (settings.api at model creation)
- * 3. Provider-level setting (createSAPAIProvider({ api }))
- * 4. System default ('orchestration')
- * @param providerApi - Provider-level API setting
- * @param modelApi - Model-level API setting
- * @param invocationApi - Invocation-time API override
- * @returns The resolved API type to use
+ * @param providerApi - Provider-level API type.
+ * @param modelApi - Model-level API type.
+ * @param invocationApi - Invocation-level API type.
+ * @returns Resolved API type.
  */
 export function resolveApi(
   providerApi: SAPAIApiType | undefined,
@@ -261,12 +241,9 @@ export function resolveApi(
 
 /**
  * Validates that the API value is a valid SAPAIApiType.
- * Treats undefined as unset (valid - will use default).
- * @param api - The API value to validate
- * @throws {Error} If the API value is invalid (not undefined and not a valid API type)
+ * @param api - API value to validate.
  */
 export function validateApiInput(api: unknown): void {
-  // undefined is valid - means "use default"
   if (api === undefined) return;
 
   if (typeof api !== "string" || !VALID_API_TYPES.includes(api as SAPAIApiType)) {
@@ -279,17 +256,18 @@ export function validateApiInput(api: unknown): void {
 
 /**
  * Main validation function that performs all API-specific validations.
- * Call this before creating a strategy or making an API call.
  *
- * Validates:
- * 1. API input value is valid
- * 2. API switch is allowed (if invocation-time API differs from model API)
- * 3. API-specific options are compatible with selected API
- * 4. escapeTemplatePlaceholders is valid for selected API
- * @param options - Validation options including API, settings, and context
- * @throws {Error} If API value is invalid
- * @throws {ApiSwitchError} If API switch is not allowed due to conflicting features
- * @throws {UnsupportedFeatureError} If API-specific features are used with wrong API
+ * This function orchestrates all validation checks:
+ * 1. Validates API type inputs
+ * 2. Checks for API switching conflicts
+ * 3. Validates API-specific feature usage
+ * 4. Validates template placeholder escaping
+ * @param options - Validation options.
+ * @throws {Error} When an invalid API type is provided.
+ * @throws {ApiSwitchError} When attempting to switch APIs with incompatible settings.
+ * @throws {UnsupportedFeatureError} When using features not supported by the current API.
+ * @see {@link ApiSwitchError}
+ * @see {@link UnsupportedFeatureError}
  */
 export function validateSettings(options: ValidateSettingsOptions): void {
   const { api, invocationSettings, modelApi, modelSettings } = options;
@@ -299,7 +277,6 @@ export function validateSettings(options: ValidateSettingsOptions): void {
     validateApiInput(invocationSettings.api);
   }
 
-  // Treat modelApi === undefined as "orchestration" (the default) when checking for API switches
   if (invocationSettings?.api !== undefined) {
     const effectiveModelApi = modelApi ?? "orchestration";
     if (effectiveModelApi !== invocationSettings.api) {
