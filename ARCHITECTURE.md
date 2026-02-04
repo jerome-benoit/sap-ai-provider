@@ -30,8 +30,8 @@ Handler → SAP AI Core API
   - [Component Interaction Map](#component-interaction-map)
   - [Detailed Component Flow](#detailed-component-flow)
   - [Component Responsibilities](#component-responsibilities)
-    - [`SAPAIProvider`](#sapaiprovider)
-    - [`SAPAILanguageModel`](#sapailanguagemodel)
+    - [V2 Facade Layer (Public API)](#v2-facade-layer-public-api)
+    - [Internal Implementation Layer (V3)](#internal-implementation-layer-v3)
     - [`Authentication System`](#authentication-system)
     - [`Message Conversion`](#message-conversion)
 - [Request/Response Flow](#requestresponse-flow)
@@ -275,20 +275,31 @@ graph TB
 ```text
 src/
 ├── index.ts                                        # Public API exports
-├── sap-ai-provider.ts                              # Main provider factory
+│
+│   # V2 Facade Layer (Public API - ProviderV2/LanguageModelV2/EmbeddingModelV2)
+├── sap-ai-provider-v2.ts                           # V2 provider factory (ProviderV2 interface)
+├── sap-ai-language-model-v2.ts                     # V2 language model (LanguageModelV2 interface)
+├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (EmbeddingModelV2 interface)
+├── sap-ai-adapters-v3-to-v2.ts                     # Type adapters (internal V3 → public V2)
+│
+│   # Internal Implementation Layer (V3 internals, not exported directly)
+├── sap-ai-provider.ts                              # Internal provider factory (V3)
 ├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
-├── sap-ai-language-model.ts                        # Language model (API-agnostic)
-├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
+├── sap-ai-language-model.ts                        # Internal language model (V3)
+├── sap-ai-embedding-model.ts                       # Internal embedding model (V3)
 ├── sap-ai-settings.ts                              # Settings and type definitions
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
-├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
+│
+│   # API Strategy Implementations
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
 ├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
+│
+│   # Utilities
 ├── convert-to-sap-messages.ts                     # Message format conversion
 ├── deep-merge.ts                                   # Deep merge utility
 └── version.ts                                      # Package version constant
@@ -296,27 +307,65 @@ src/
 
 ### Component Responsibilities
 
-#### `SAPAIProvider`
+#### V2 Facade Layer (Public API)
 
-- **Purpose**: Factory for creating language and embedding model instances
+##### `SAPAIProviderV2` (`sap-ai-provider-v2.ts`)
+
+- **Purpose**: Public provider factory implementing `ProviderV2` interface
+- **Responsibilities**:
+  - Creates `SAPAILanguageModelV2` and `SAPAIEmbeddingModelV2` instances
+  - Exposes `textEmbeddingModel()` (ProviderV2 standard method)
+  - Configuration validation and propagation
+  - Authentication setup delegation
+
+##### `SAPAILanguageModelV2` (`sap-ai-language-model-v2.ts`)
+
+- **Purpose**: Public language model implementing `LanguageModelV2` interface
+- **Responsibilities**:
+  - Wraps internal V3 implementation
+  - Converts V3 responses to V2 format via adapters
+  - Exposes `doGenerate()` and `doStream()` with V2 signatures
+
+##### `SAPAIEmbeddingModelV2` (`sap-ai-embedding-model-v2.ts`)
+
+- **Purpose**: Public embedding model implementing `EmbeddingModelV2` interface
+- **Responsibilities**:
+  - Wraps internal V3 implementation
+  - Exposes `doEmbed()` with V2 signature
+  - Converts warnings to V2 format
+
+##### `sap-ai-adapters-v3-to-v2.ts`
+
+- **Purpose**: Type transformation utilities
+- **Responsibilities**:
+  - `convertFinishReasonToV2()` - Converts structured finish reason to string
+  - `convertUsageToV2()` - Converts usage format
+  - `convertWarningsToV2()` - Converts warning format
+  - `convertStreamToV2()` - Transforms stream parts
+
+#### Internal Implementation Layer (V3)
+
+##### `SAPAIProvider` (`sap-ai-provider.ts`)
+
+- **Purpose**: Internal provider factory (V3 implementation)
 - **Responsibilities**:
   - Authentication management
   - Configuration validation
-  - Model instance creation (language and embedding)
+  - Internal model instance creation
   - Base URL and deployment management
 
-#### `SAPAILanguageModel`
+##### `SAPAILanguageModel` (`sap-ai-language-model.ts`)
 
-- **Purpose**: Implementation of Vercel AI SDK's `LanguageModelV2`
+- **Purpose**: Internal language model (V3 implementation)
 - **Responsibilities**:
   - Request/response transformation
   - Streaming support
   - Tool calling implementation
   - Multi-modal input handling
 
-#### `SAPAIEmbeddingModel`
+##### `SAPAIEmbeddingModel` (`sap-ai-embedding-model.ts`)
 
-- **Purpose**: Implementation of Vercel AI SDK's `EmbeddingModelV2`
+- **Purpose**: Internal embedding model (V3 implementation)
 - **Responsibilities**:
   - Embedding generation via `doEmbed()`
   - Batch size validation (`maxEmbeddingsPerCall`)

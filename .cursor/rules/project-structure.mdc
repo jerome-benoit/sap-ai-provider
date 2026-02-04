@@ -12,19 +12,31 @@ SDK. Use these anchors to navigate the codebase quickly.
 ```text
 src/
 ├── index.ts                                        # Public API exports
-├── sap-ai-provider.ts                              # Main provider factory
+│
+│   # V2 Facade Layer (Public API - ProviderV2/LanguageModelV2/EmbeddingModelV2)
+├── sap-ai-provider-v2.ts                           # V2 provider factory (ProviderV2)
+├── sap-ai-language-model-v2.ts                     # V2 language model (LanguageModelV2)
+├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (EmbeddingModelV2)
+├── sap-ai-adapters-v3-to-v2.ts                     # Type adapters (V3 internal → V2 public)
+│
+│   # Internal Implementation Layer (V3 internals)
+├── sap-ai-provider.ts                              # Internal provider factory (V3)
 ├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
-├── sap-ai-language-model.ts                        # Language model (API-agnostic)
-├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
+├── sap-ai-language-model.ts                        # Internal language model (V3)
+├── sap-ai-embedding-model.ts                       # Internal embedding model (V3)
 ├── sap-ai-settings.ts                              # Settings and type definitions
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
+│
+│   # API Strategy Implementations
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
 ├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
+│
+│   # Utilities
 ├── convert-to-sap-messages.ts                     # Message format conversion
 ├── deep-merge.ts                                   # Deep merge utility
 └── version.ts                                      # Package version constant
@@ -33,16 +45,31 @@ src/
 ## Entry Points and Core Modules
 
 - Main package entry: [src/index.ts](mdc:src/index.ts)
-  - Re-exports provider factory and types.
-- Provider factory: [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
-  - `createSAPAIProvider(options)` returns a provider function.
+  - Re-exports V2 provider factory and types (exports V2 facades as public API).
+
+### V2 Facade Layer (Public API)
+
+- V2 Provider factory: [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
+  - `createSAPAIProvider(options)` returns a `ProviderV2` compliant provider.
   - `sapai` default instance auto-detects service binding or AICORE_SERVICE_KEY.
+  - Exposes `textEmbeddingModel()` (ProviderV2 standard method).
+- V2 Language model: [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)
+  - Implements `LanguageModelV2` contract, wraps internal V3 implementation.
+- V2 Embedding model: [src/sap-ai-embedding-model-v2.ts](mdc:src/sap-ai-embedding-model-v2.ts)
+  - Implements `EmbeddingModelV2` contract, wraps internal V3 implementation.
+- V3→V2 Adapters: [src/sap-ai-adapters-v3-to-v2.ts](mdc:src/sap-ai-adapters-v3-to-v2.ts)
+  - Type transformation utilities (finish reason, usage, warnings, stream parts).
+
+### Internal Implementation Layer (V3)
+
+- Internal provider: [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
+  - Internal V3 implementation (not directly exported).
 - Provider options: [src/sap-ai-provider-options.ts](mdc:src/sap-ai-provider-options.ts)
   - Zod schemas for provider configuration validation.
-- Language model: [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
-  - Implements `LanguageModelV3` contract (API-agnostic, delegates to strategies).
-- Embedding model: [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
-  - Implements `EmbeddingModelV3` contract.
+- Internal language model: [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
+  - Implements `LanguageModelV3` contract internally (API-agnostic, delegates to strategies).
+- Internal embedding model: [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
+  - Implements `EmbeddingModelV3` contract internally.
 - Settings and types: [src/sap-ai-settings.ts](mdc:src/sap-ai-settings.ts)
   - Re-exports SAP AI SDK types.
 - Error handling: [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts)

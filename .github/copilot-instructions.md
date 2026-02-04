@@ -110,20 +110,27 @@ This should complete in under 15 seconds total and all commands should pass.
 ├── examples/              # Example usage files (10 examples)
 ├── src/                   # TypeScript source code
 │   ├── index.ts                                      # Public API exports
-│   ├── sap-ai-provider.ts                            # Main provider factory
+│   │   # V2 Facade Layer (Public API)
+│   ├── sap-ai-provider-v2.ts                         # V2 provider factory (ProviderV2)
+│   ├── sap-ai-language-model-v2.ts                   # V2 language model (LanguageModelV2)
+│   ├── sap-ai-embedding-model-v2.ts                  # V2 embedding model (EmbeddingModelV2)
+│   ├── sap-ai-adapters-v3-to-v2.ts                   # Type adapters (V3→V2)
+│   │   # Internal Implementation Layer (V3)
+│   ├── sap-ai-provider.ts                            # Internal provider factory (V3)
 │   ├── sap-ai-provider-options.ts                    # Provider options & Zod schemas
-│   ├── sap-ai-language-model.ts                      # Language model (API-agnostic)
-│   ├── sap-ai-embedding-model.ts                     # Embedding model (API-agnostic)
+│   ├── sap-ai-language-model.ts                      # Internal language model (V3)
+│   ├── sap-ai-embedding-model.ts                     # Internal embedding model (V3)
 │   ├── sap-ai-settings.ts                            # Settings and type definitions
 │   ├── sap-ai-error.ts                               # Error handling system
 │   ├── sap-ai-validation.ts                          # API resolution & validation
 │   ├── sap-ai-strategy.ts                            # Strategy factory (lazy loading)
 │   ├── strategy-utils.ts                             # Shared strategy utilities
-│   ├── base-language-model-strategy.ts              # Base class for language model strategies (Template Method)
+│   │   # API Strategy Implementations
 │   ├── orchestration-language-model-strategy.ts     # Orchestration API strategy
 │   ├── orchestration-embedding-model-strategy.ts    # Orchestration embedding strategy
 │   ├── foundation-models-language-model-strategy.ts # Foundation Models API strategy
 │   ├── foundation-models-embedding-model-strategy.ts# Foundation Models embedding strategy
+│   │   # Utilities
 │   ├── convert-to-sap-messages.ts                   # Message format conversion
 │   ├── deep-merge.ts                                 # Deep merge utility
 │   └── version.ts                                    # Package version constant
@@ -146,12 +153,19 @@ This should complete in under 15 seconds total and all commands should pass.
 
 ### Key Files to Understand
 
-**Core Source Code:**
+**Core Source Code (V2 Public API):**
 
 - **`src/index.ts`**: Main export file - start here to understand the public API
-- **`src/sap-ai-provider.ts`**: Core provider implementation
-- **`src/sap-ai-language-model.ts`**: Main language model logic
-- **`src/sap-ai-embedding-model.ts`**: Embedding model for vector generation
+- **`src/sap-ai-provider-v2.ts`**: V2 provider factory (`ProviderV2` interface)
+- **`src/sap-ai-language-model-v2.ts`**: V2 language model (`LanguageModelV2` interface)
+- **`src/sap-ai-embedding-model-v2.ts`**: V2 embedding model (`EmbeddingModelV2` interface)
+- **`src/sap-ai-adapters-v3-to-v2.ts`**: Type adapters for V3→V2 conversion
+
+**Internal Implementation (V3):**
+
+- **`src/sap-ai-provider.ts`**: Internal provider implementation (V3)
+- **`src/sap-ai-language-model.ts`**: Internal language model logic (V3)
+- **`src/sap-ai-embedding-model.ts`**: Internal embedding model (V3)
 - **`package.json`**: All available npm scripts and dependencies
 - **`examples/`**: Working examples of how to use the library
 
