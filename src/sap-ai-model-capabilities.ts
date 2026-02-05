@@ -83,6 +83,12 @@ export type SAPAIModelVendor =
   | "mistralai";
 
 /**
+ * Module-level cache for model capabilities to avoid repeated computation.
+ * @internal
+ */
+const capabilitiesCache = new Map<string, SAPAIModelCapabilities>();
+
+/**
  * Default capabilities for models without specific overrides.
  * @internal
  */
@@ -126,8 +132,9 @@ const MODEL_SPECIFIC_CAPABILITIES: {
   pattern: RegExp;
 }[] = [
   {
+    // Matches claude-2, claude-2.0, claude-2.1, but not claude-20
     capabilities: { supportsParallelToolCalls: false, supportsStructuredOutputs: false },
-    pattern: /^anthropic--claude-2/,
+    pattern: /^anthropic--claude-2($|[.-])/,
   },
   {
     capabilities: {
@@ -136,7 +143,7 @@ const MODEL_SPECIFIC_CAPABILITIES: {
       supportsStructuredOutputs: false,
       supportsToolCalls: false,
     },
-    pattern: /^amazon--titan/,
+    pattern: /^amazon--titan-(text|embed)/,
   },
   {
     capabilities: {
@@ -145,6 +152,11 @@ const MODEL_SPECIFIC_CAPABILITIES: {
       supportsToolCalls: false,
     },
     pattern: /^(meta--llama-2|aicore--llama-2)/,
+  },
+  {
+    // Llama 3.2+ Vision models support image inputs
+    capabilities: { supportsImageInputs: true, supportsToolCalls: true },
+    pattern: /^(meta--llama-?3\.[2-9][0-9]*|aicore--llama-?3\.[2-9][0-9]*).*vision/i,
   },
   {
     // Matches both "llama-3.1" and "llama3.1" formats for version 3.1+
@@ -205,8 +217,14 @@ export function getModelVendor(modelId: string): "unknown" | SAPAIModelVendor {
  * ```
  */
 export function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabilities {
-  const vendor = getModelVendor(modelId);
   const normalizedModelId = modelId.toLowerCase();
+
+  const cached = capabilitiesCache.get(normalizedModelId);
+  if (cached) {
+    return cached;
+  }
+
+  const vendor = getModelVendor(modelId);
 
   let capabilities: SAPAIModelCapabilities = { ...DEFAULT_CAPABILITIES };
 
@@ -221,7 +239,9 @@ export function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabiliti
     }
   }
 
-  return Object.freeze({ ...capabilities, vendor });
+  const result = Object.freeze({ ...capabilities, vendor });
+  capabilitiesCache.set(normalizedModelId, result);
+  return result;
 }
 
 /**

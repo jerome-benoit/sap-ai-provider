@@ -167,21 +167,40 @@ describe("sap-ai-model-capabilities", () => {
             expect(capabilities.supportsToolCalls).toBe(true);
           },
         );
+
+        it("should not match hypothetical claude-20 models", () => {
+          const capabilities = getSAPAIModelCapabilities("anthropic--claude-20-turbo");
+
+          // Should fall back to vendor defaults (anthropic), not claude-2 specific
+          expect(capabilities.supportsParallelToolCalls).toBe(true);
+          expect(capabilities.supportsStructuredOutputs).toBe(true);
+        });
       });
 
       describe("Amazon Titan models", () => {
-        it.each(["amazon--titan-text-express", "amazon--titan-text-lite", "amazon--titan-embed"])(
-          "should have limited capabilities for %s",
-          (modelId) => {
-            const capabilities = getSAPAIModelCapabilities(modelId);
+        it.each([
+          "amazon--titan-text-express",
+          "amazon--titan-text-lite",
+          "amazon--titan-embed-text-v1",
+          "amazon--titan-embed-text-v2",
+        ])("should have limited capabilities for %s", (modelId) => {
+          const capabilities = getSAPAIModelCapabilities(modelId);
 
-            expect(capabilities.supportsN).toBe(false);
-            expect(capabilities.supportsImageInputs).toBe(false);
-            expect(capabilities.supportsParallelToolCalls).toBe(false);
-            expect(capabilities.supportsStructuredOutputs).toBe(false);
-            expect(capabilities.supportsToolCalls).toBe(false);
-          },
-        );
+          expect(capabilities.supportsN).toBe(false);
+          expect(capabilities.supportsImageInputs).toBe(false);
+          expect(capabilities.supportsParallelToolCalls).toBe(false);
+          expect(capabilities.supportsStructuredOutputs).toBe(false);
+          expect(capabilities.supportsToolCalls).toBe(false);
+        });
+
+        it("should not match other Amazon models", () => {
+          const capabilities = getSAPAIModelCapabilities("amazon--nova-pro");
+
+          // Should fall back to vendor defaults (amazon), not titan-specific
+          expect(capabilities.supportsN).toBe(false); // Amazon vendor default
+          expect(capabilities.supportsToolCalls).toBe(true);
+          expect(capabilities.supportsImageInputs).toBe(true);
+        });
       });
 
       describe("Llama 2 models", () => {
@@ -216,6 +235,26 @@ describe("sap-ai-model-capabilities", () => {
 
           expect(capabilities.supportsToolCalls).toBe(true);
           expect(capabilities.supportsImageInputs).toBe(false);
+          expect(capabilities.supportsStructuredOutputs).toBe(false);
+        });
+      });
+
+      describe("Llama 3.2 Vision models", () => {
+        it.each([
+          "meta--llama-3.2-11b-vision",
+          "meta--llama-3.2-90b-vision",
+          "meta--llama-3.2-11b-vision-instruct",
+          "meta--llama-3.2-90b-vision-instruct",
+          "aicore--llama-3.2-11b-vision",
+          "aicore--llama3.2-90b-vision",
+          // Case insensitive
+          "meta--llama-3.2-90b-Vision",
+          "meta--llama-3.2-90b-VISION-instruct",
+        ])("should support image inputs for %s", (modelId) => {
+          const capabilities = getSAPAIModelCapabilities(modelId);
+
+          expect(capabilities.supportsImageInputs).toBe(true);
+          expect(capabilities.supportsToolCalls).toBe(true);
           expect(capabilities.supportsStructuredOutputs).toBe(false);
         });
       });
