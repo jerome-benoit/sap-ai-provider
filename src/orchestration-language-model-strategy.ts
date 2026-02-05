@@ -351,7 +351,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * @param settings - Model settings.
    * @param options - Call options.
    * @param commonParts - Common build result.
-   * @param configRef - The config reference.
+   * @param _configRef - The config reference (unused, passed for signature consistency).
    * @param warnings - Warnings array to populate.
    * @returns Request body and warnings.
    * @internal
@@ -360,7 +360,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
-    configRef: OrchestrationConfigRef,
+    _configRef: OrchestrationConfigRef,
     warnings: SharedV3Warning[],
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
     warnings.push(...this.collectConfigRefIgnoredWarnings(settings, options));
