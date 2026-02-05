@@ -311,7 +311,7 @@ other API:
    ```
 
 **Reference:** See
-[API Reference - API Selection](./API_REFERENCE.md#api-selection-orchestration-vs-foundation-models)
+[API Reference - API Comparison](./API_REFERENCE.md#api-comparison-orchestration-vs-foundation-models)
 for complete feature comparison.
 
 ## Streaming Issues

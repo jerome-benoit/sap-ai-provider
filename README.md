@@ -291,7 +291,8 @@ const result = await generateText({
 [examples/example-streaming-chat.ts](./examples/example-streaming-chat.ts)
 
 ```typescript
-import { APICallError, streamText } from "ai";
+import { streamText } from "ai";
+import { APICallError } from "@ai-sdk/provider";
 
 try {
   const result = streamText({
@@ -663,17 +664,11 @@ error handling across providers.
 - **Streaming**: Iterate `textStream` correctly; don't mix `generateText` and
   `streamText`
 
-**For comprehensive troubleshooting, see
-[Troubleshooting Guide](./TROUBLESHOOTING.md)** with detailed solutions for:
+**For detailed solutions**, see **[Troubleshooting Guide](./TROUBLESHOOTING.md)**
+covering authentication, model discovery, rate limiting, server errors,
+streaming, and tool calling.
 
-- [Authentication Failed (401)](./TROUBLESHOOTING.md#problem-authentication-failed-or-401-errors)
-- [Model Not Found (404)](./TROUBLESHOOTING.md#problem-404-modeldeployment-not-found)
-- [Rate Limit (429)](./TROUBLESHOOTING.md#problem-429-rate-limit-exceeded)
-- [Server Errors (500-504)](./TROUBLESHOOTING.md#problem-500502503504-server-errors)
-- [Streaming Issues](./TROUBLESHOOTING.md#streaming-issues)
-- [Tool Calling Problems](./TROUBLESHOOTING.md#tool-calling-issues)
-
-Error code reference table:
+**Error codes:**
 [API Reference - HTTP Status Codes](./API_REFERENCE.md#http-status-code-reference)
 
 ## Performance

@@ -119,6 +119,7 @@ This should complete in under 15 seconds total and all commands should pass.
 │   ├── sap-ai-validation.ts                          # API resolution & validation
 │   ├── sap-ai-strategy.ts                            # Strategy factory (lazy loading)
 │   ├── strategy-utils.ts                             # Shared strategy utilities
+│   ├── base-language-model-strategy.ts              # Base class for language model strategies (Template Method)
 │   ├── orchestration-language-model-strategy.ts     # Orchestration API strategy
 │   ├── orchestration-embedding-model-strategy.ts    # Orchestration embedding strategy
 │   ├── foundation-models-language-model-strategy.ts # Foundation Models API strategy
