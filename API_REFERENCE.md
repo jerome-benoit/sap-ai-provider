@@ -70,6 +70,7 @@ consistently:
   - [`SAPAIModelId`](#sapaimodelid)
   - [`SAPAIApiType`](#sapaiapitype)
   - [`PromptTemplateRef`](#prompttemplateref)
+  - [`OrchestrationConfigRef`](#orchestrationconfigref)
   - [`DpiEntities`](#dpientities)
 - [Classes](#classes)
   - [`SAPAILanguageModel`](#sapailanguagemodel)
@@ -1432,16 +1433,17 @@ Zod schema for validating language model provider options.
 
 **Validated Fields:**
 
-| Field                             | Type               | Description                                         |
-| --------------------------------- | ------------------ | --------------------------------------------------- |
-| `includeReasoning`                | `boolean`          | Whether to include assistant reasoning in responses |
-| `modelParams.temperature`         | `number (0-2)`     | Sampling temperature                                |
-| `modelParams.maxTokens`           | `positive integer` | Maximum tokens to generate                          |
-| `modelParams.topP`                | `number (0-1)`     | Nucleus sampling parameter                          |
-| `modelParams.frequencyPenalty`    | `number (-2 to 2)` | Frequency penalty                                   |
-| `modelParams.presencePenalty`     | `number (-2 to 2)` | Presence penalty                                    |
-| `modelParams.n`                   | `positive integer` | Number of completions                               |
-| `modelParams.parallel_tool_calls` | `boolean`          | Enable parallel tool calls                          |
+| Field                             | Type                     | Description                                                           |
+| --------------------------------- | ------------------------ | --------------------------------------------------------------------- |
+| `includeReasoning`                | `boolean`                | Whether to include assistant reasoning in responses                   |
+| `orchestrationConfigRef`          | `OrchestrationConfigRef` | Reference to a stored orchestration configuration (Orchestration API) |
+| `modelParams.temperature`         | `number (0-2)`           | Sampling temperature                                                  |
+| `modelParams.maxTokens`           | `positive integer`       | Maximum tokens to generate                                            |
+| `modelParams.topP`                | `number (0-1)`           | Nucleus sampling parameter                                            |
+| `modelParams.frequencyPenalty`    | `number (-2 to 2)`       | Frequency penalty                                                     |
+| `modelParams.presencePenalty`     | `number (-2 to 2)`       | Presence penalty                                                      |
+| `modelParams.n`                   | `positive integer`       | Number of completions                                                 |
+| `modelParams.parallel_tool_calls` | `boolean`                | Enable parallel tool calls                                            |
 
 **Example:**
 
@@ -1521,6 +1523,7 @@ type SAPAILanguageModelProviderOptions = {
     topP?: number;
     [key: string]: unknown; // Passthrough for custom params
   };
+  orchestrationConfigRef?: OrchestrationConfigRef;
   placeholderValues?: Record<string, string>;
   promptTemplateRef?: PromptTemplateRef;
 };
@@ -1534,6 +1537,7 @@ type SAPAILanguageModelProviderOptions = {
 | `escapeTemplatePlaceholders` | `boolean`                | Escape template delimiters to prevent SAP templating conflicts      |
 | `includeReasoning`           | `boolean`                | Include assistant reasoning parts in the response                   |
 | `modelParams`                | `object`                 | Model generation parameters for this specific call                  |
+| `orchestrationConfigRef`     | `OrchestrationConfigRef` | Reference to a stored orchestration configuration                   |
 | `placeholderValues`          | `Record<string, string>` | Values for template placeholders (overrides settings values)        |
 | `promptTemplateRef`          | `PromptTemplateRef`      | Reference to a template in SAP AI Core's Prompt Registry            |
 
@@ -1777,6 +1781,112 @@ const model = provider("gpt-4o", {
 
 ---
 
+### `OrchestrationConfigRef`
+
+Reference to a complete orchestration configuration stored in SAP AI Core.
+
+**Types:**
+
+```typescript
+// Reference by configuration ID
+export interface OrchestrationConfigRefById {
+  readonly id: string;
+}
+
+// Reference by scenario/name/version
+export interface OrchestrationConfigRefByScenarioNameVersion {
+  readonly scenario: string;
+  readonly name: string;
+  readonly version: string;
+}
+
+// Union type for both reference methods
+export type OrchestrationConfigRef = OrchestrationConfigRefById | OrchestrationConfigRefByScenarioNameVersion;
+```
+
+**Description:**
+
+The `orchestrationConfigRef` allows you to reference a complete orchestration
+configuration stored in SAP AI Core instead of specifying individual modules
+(filtering, masking, grounding, etc.) in your code. When `orchestrationConfigRef`
+is provided, the configuration is fetched from SAP AI Core and used to create
+the `OrchestrationClient`.
+
+**Important Behavior:** When using `orchestrationConfigRef`, local module
+settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
+responseFormat, modelParams, modelVersion) are **ignored** with a warning. Only
+`messages` and `placeholderValues` are passed through to the stored
+configuration.
+
+**Usage Examples:**
+
+```typescript
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+
+const provider = createSAPAIProvider();
+
+// Reference by ID (simplest form)
+const modelById = provider("gpt-4o", {
+  orchestrationConfigRef: { id: "my-config-id" },
+});
+
+// Reference by scenario/name/version
+const modelByScenario = provider("gpt-4o", {
+  orchestrationConfigRef: {
+    scenario: "customer-support",
+    name: "standard-config",
+    version: "1.0.0",
+  },
+});
+
+// Override via providerOptions at invocation time
+const result = await generateText({
+  model: provider("gpt-4o"),
+  prompt: "Hello",
+  providerOptions: {
+    [SAP_AI_PROVIDER_NAME]: {
+      orchestrationConfigRef: { id: "different-config" },
+    },
+  },
+});
+```
+
+**With Placeholder Values:**
+
+Stored orchestration configurations may contain template placeholders. Use
+`placeholderValues` to provide values for these placeholders:
+
+```typescript
+const model = provider("gpt-4o", {
+  orchestrationConfigRef: {
+    scenario: "customer-support",
+    name: "personalized-config",
+    version: "1.0.0",
+  },
+  placeholderValues: {
+    customerName: "Alice",
+    supportTopic: "billing",
+  },
+});
+```
+
+**Difference from `promptTemplateRef`:**
+
+- `promptTemplateRef` - References only a **prompt template** from the Prompt
+  Registry. You still configure modules (filtering, masking, etc.) locally.
+- `orchestrationConfigRef` - References a **complete orchestration configuration**
+  including all modules. Local module settings are ignored.
+
+> **Note:** `orchestrationConfigRef` is only available with the Orchestration
+> API (default). It is not supported with the Foundation Models API.
+
+**See Also:**
+
+- [SAP AI Core Configuration Documentation](https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide)
+
+---
+
 ### API-Specific Settings Types
 
 The following types provide type-safe configuration for each API. They are
@@ -1798,6 +1908,7 @@ export interface OrchestrationModelSettings {
   readonly masking?: MaskingModule;
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
+  readonly orchestrationConfigRef?: OrchestrationConfigRef;
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
@@ -1814,6 +1925,7 @@ export interface OrchestrationModelSettings {
 - `translation` - Input/output translation
 - `escapeTemplatePlaceholders` - Prevent template syntax conflicts
 - `promptTemplateRef` - Reference templates from SAP AI Core Prompt Registry
+- `orchestrationConfigRef` - Reference complete configurations from SAP AI Core
 
 #### `FoundationModelsModelSettings`
 

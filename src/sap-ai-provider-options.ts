@@ -134,6 +134,24 @@ export const promptTemplateRefSchema = z.union([
 ]);
 
 /** @internal */
+export const orchestrationConfigRefByIdSchema = z.object({
+  id: z.string().min(1, "Config ID cannot be empty"),
+});
+
+/** @internal */
+export const orchestrationConfigRefByScenarioNameVersionSchema = z.object({
+  name: z.string().min(1, "Config name cannot be empty"),
+  scenario: z.string().min(1, "Scenario cannot be empty"),
+  version: z.string().min(1, "Version cannot be empty"),
+});
+
+/** @internal */
+export const orchestrationConfigRefSchema = z.union([
+  orchestrationConfigRefByIdSchema,
+  orchestrationConfigRefByScenarioNameVersionSchema,
+]);
+
+/** @internal */
 export const sapAILanguageModelProviderOptions = lazySchema(() =>
   zodSchema(
     z.object({
@@ -141,6 +159,7 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
       escapeTemplatePlaceholders: z.boolean().optional(),
       includeReasoning: z.boolean().optional(),
       modelParams: modelParamsSchema.optional(),
+      orchestrationConfigRef: orchestrationConfigRefSchema.optional(),
       placeholderValues: z.record(z.string(), z.string()).optional(),
       promptTemplateRef: promptTemplateRefSchema.optional(),
     }),

@@ -5,6 +5,7 @@ import type {
   FilteringModule,
   GroundingModule,
   MaskingModule,
+  OrchestrationConfigRef,
   TranslationModule,
 } from "@sap-ai-sdk/orchestration";
 
@@ -115,6 +116,15 @@ export interface OrchestrationModelSettings {
   readonly masking?: MaskingModule;
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
+  /**
+   * Reference to a complete orchestration configuration stored in SAP AI Core Prompt Registry.
+   * When provided, local module settings (filtering, masking, grounding, translation, tools,
+   * promptTemplateRef, responseFormat) are ignored as the full configuration is managed
+   * by the referenced config. Only `placeholderValues` and messages are passed through.
+   * @example { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
+   * @example { scenario: "customer-support", name: "prod-config", version: "1.0.0" }
+   */
+  readonly orchestrationConfigRef?: OrchestrationConfigRef;
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;

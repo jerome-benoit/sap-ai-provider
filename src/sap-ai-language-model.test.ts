@@ -32,6 +32,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         };
     static lastChatCompletionRequest: unknown;
     static lastChatCompletionRequestConfig: unknown;
+    static lastConstructorConfig: unknown;
 
     static lastStreamAbortSignal: unknown;
 
@@ -183,6 +184,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         },
       };
     });
+
+    constructor(config: unknown) {
+      MockOrchestrationClient.lastConstructorConfig = config;
+    }
 
     static setChatCompletionError(error: Error) {
       MockOrchestrationClient.chatCompletionError = error;
@@ -509,6 +514,14 @@ describe("SAPAILanguageModel", () => {
     expect(body).toHaveProperty("messages");
   };
 
+  const expectRequestBodyHasMessagesHistory = (result: { request?: { body?: unknown } }) => {
+    const body: unknown = result.request?.body;
+    expect(body).toBeTruthy();
+    expect(typeof body).toBe("object");
+    expect(body).toHaveProperty("messagesHistory");
+    expect(body).not.toHaveProperty("messages");
+  };
+
   const expectToOmitKeys = (value: unknown, keys: string[]) => {
     expect(value).toBeTruthy();
     expect(typeof value).toBe("object");
@@ -519,6 +532,7 @@ describe("SAPAILanguageModel", () => {
   };
 
   interface MockClientInterface {
+    lastConstructorConfig?: unknown;
     lastRequest: unknown;
     lastRequestConfig: unknown;
     lastStreamAbortSignal: unknown;
@@ -535,6 +549,7 @@ describe("SAPAILanguageModel", () => {
     const client = OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
       lastChatCompletionRequestConfig: unknown;
+      lastConstructorConfig: unknown;
       lastStreamAbortSignal: unknown;
       lastStreamConfig: unknown;
       lastStreamRequest: unknown;
@@ -545,6 +560,7 @@ describe("SAPAILanguageModel", () => {
       setStreamSetupError?: (error: Error) => void;
     };
     return {
+      lastConstructorConfig: client.lastConstructorConfig,
       lastRequest: client.lastChatCompletionRequest,
       lastRequestConfig: client.lastChatCompletionRequestConfig,
       lastStreamAbortSignal: client.lastStreamAbortSignal,
@@ -721,6 +737,11 @@ describe("SAPAILanguageModel", () => {
   const getLastOrchStreamRequest = async () => {
     const MockClient = await getMockOrchClient();
     return MockClient.lastStreamRequest as OrchestrationChatCompletionRequest;
+  };
+
+  const getLastOrchClientConfig = async () => {
+    const MockClient = await getMockOrchClient();
+    return MockClient.lastConstructorConfig as { promptTemplating?: { prompt?: unknown } };
   };
 
   const expectRequestBodyHasMessagesAndNoWarnings = (result: {
@@ -3779,7 +3800,7 @@ describe("SAPAILanguageModel", () => {
         await resetMockStateForApi("orchestration");
       });
 
-      it("should include template_ref by ID in request body when set in settings", async () => {
+      it("should include template_ref by ID in client config when set in settings", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: { id: "my-template-id" },
         });
@@ -3787,15 +3808,20 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "my-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "my-template-id",
+        });
       });
 
-      it("should include template_ref by scenario/name/version with scope in request body", async () => {
+      it("should include template_ref by scenario/name/version with scope in client config", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: {
             name: "my-template",
@@ -3808,12 +3834,15 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
           name: "my-template",
           scenario: "my-scenario",
           scope: "resource_group",
@@ -3821,7 +3850,7 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should include template_ref from providerOptions in request body", async () => {
+      it("should include template_ref from providerOptions in client config", async () => {
         const model = createOrchModel("gpt-4o");
 
         const prompt = createPrompt("Hello");
@@ -3834,12 +3863,17 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "provider-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "provider-template-id",
+        });
       });
 
       it("should override settings promptTemplateRef with providerOptions", async () => {
@@ -3857,12 +3891,18 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "provider-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        // providerOptions should override settings
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "provider-template-id",
+        });
       });
 
       it("should not include template_ref when promptTemplateRef is not provided", async () => {
@@ -3871,14 +3911,16 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
+        // Without promptTemplateRef, should use messages (not messagesHistory)
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).not.toHaveProperty("template_ref");
+        // Without promptTemplateRef, client config should use template array, not template_ref
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).not.toHaveProperty("template_ref");
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template");
       });
 
-      it("should include template_ref in stream request body", async () => {
+      it("should include template_ref in client config for stream request", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: { id: "stream-template-id" },
         });
@@ -3886,12 +3928,17 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doStream({ prompt });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchStreamRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "stream-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "stream-template-id",
+        });
       });
 
       it("should override settings promptTemplateRef with providerOptions in stream request", async () => {
@@ -3913,12 +3960,252 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchStreamRequest();
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        // providerOptions should override settings
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "provider-override-id",
+        });
+      });
+    });
 
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "provider-override-id" });
+    describe("orchestrationConfigRef", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      it("should use configRef by ID when set in settings", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "my-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
+      });
+
+      it("should use configRef by scenario/name/version when set in settings", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            name: "my-config",
+            scenario: "my-scenario",
+            version: "1.0.0",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({
+          name: "my-config",
+          scenario: "my-scenario",
+          version: "1.0.0",
+        });
+      });
+
+      it("should use configRef from providerOptions", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "provider-config-id" },
+            },
+          },
+        });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "provider-config-id" });
+      });
+
+      it("should override settings orchestrationConfigRef with providerOptions", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "settings-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "provider-config-id" },
+            },
+          },
+        });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // providerOptions should override settings
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "provider-config-id" });
+      });
+
+      it("should generate warnings when local settings are ignored due to configRef", async () => {
+        const model = createOrchModel("gpt-4o", {
+          filtering: {
+            output: {
+              filters: [{ config: {}, type: "azure_content_safety" as const }],
+            },
+          },
+          orchestrationConfigRef: { id: "my-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "filtering");
+      });
+
+      it("should ignore promptTemplateRef when orchestrationConfigRef is set in settings", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "my-config-id" },
+          promptTemplateRef: { id: "ignored-template-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
+
+        // promptTemplateRef is ignored with warning when configRef is set
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "promptTemplateRef");
+      });
+
+      it("should ignore promptTemplateRef when orchestrationConfigRef is set in providerOptions", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "my-config-id" },
+              promptTemplateRef: { id: "ignored-template-id" },
+            },
+          },
+        });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
+
+        // promptTemplateRef is ignored with warning when configRef is set
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "providerOptions.promptTemplateRef");
+      });
+
+      it("should include placeholderValues when using configRef", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "my-config-id" },
+          placeholderValues: {
+            customerName: "Alice",
+            topic: "billing",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // placeholderValues are included in request body when using configRef
+        const request = await getLastOrchRequest();
+        expect(request).toHaveProperty("placeholderValues");
+        expect(request.placeholderValues).toEqual({
+          customerName: "Alice",
+          topic: "billing",
+        });
+      });
+
+      it("should use configRef in stream request", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "stream-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({ prompt });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "stream-config-id" });
+      });
+
+      it("should override settings orchestrationConfigRef with providerOptions in stream request", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            name: "settings-config",
+            scenario: "settings-scenario",
+            version: "1.0.0",
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doStream({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "provider-override-id" },
+            },
+          },
+        });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // providerOptions should override settings
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "provider-override-id" });
       });
     });
 

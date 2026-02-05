@@ -111,6 +111,9 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   protected createClient(
     config: LanguageModelStrategyConfig,
     settings: FoundationModelsModelSettings,
+    // Foundation Models doesn't use commonParts for client creation - required by base class
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): FoundationModelsClient {
     const modelDeployment = buildModelDeployment(config, settings.modelVersion);
     return new this.ClientClass(modelDeployment, config.destination);

@@ -9,6 +9,7 @@ import {
   embeddingModelParamsSchema,
   getProviderName,
   modelParamsSchema,
+  orchestrationConfigRefSchema,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
   type SAPAIEmbeddingProviderOptions,
@@ -259,6 +260,46 @@ describe("sapAILanguageModelProviderOptions", () => {
         });
       }
     });
+
+    it("should accept orchestrationConfigRef with id", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: {
+            id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+        });
+      }
+    });
+
+    it("should accept orchestrationConfigRef with scenario/name/version", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: {
+            name: "prod-config",
+            scenario: "customer-support",
+            version: "1.0.0",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          orchestrationConfigRef: {
+            name: "prod-config",
+            scenario: "customer-support",
+            version: "1.0.0",
+          },
+        });
+      }
+    });
   });
 
   describe("validation constraints", () => {
@@ -349,6 +390,56 @@ describe("sapAILanguageModelProviderOptions", () => {
         schema: sapAILanguageModelProviderOptions,
         value: {
           promptTemplateRef: { name: "test", scenario: "test", version: "" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject orchestrationConfigRef with empty id", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: { id: "" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject orchestrationConfigRef with missing scenario fields", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: { scenario: "test" }, // missing name and version
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject orchestrationConfigRef with empty scenario", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: { name: "test", scenario: "", version: "1.0" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject orchestrationConfigRef with empty name", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: { name: "", scenario: "test", version: "1.0" },
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject orchestrationConfigRef with empty version", async () => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: { name: "test", scenario: "test", version: "" },
         },
       });
       expect(result.success).toBe(false);
@@ -704,6 +795,99 @@ describe("validateModelParamsWithWarnings", () => {
       const topPWarning = warnings.find((w) => w.type === "other" && w.message.includes("topP"));
       expect(tempWarning).toBeDefined();
       expect(topPWarning).toBeDefined();
+    });
+  });
+});
+
+describe("orchestrationConfigRefSchema", () => {
+  describe("valid config references", () => {
+    it("should accept config ref with id", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept config ref with scenario/name/version", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        name: "prod-config",
+        scenario: "customer-support",
+        version: "1.0.0",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept config ref with UUID id", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        id: "12345678-1234-1234-1234-123456789abc",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept config ref with simple string id", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        id: "my-config",
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("invalid config references", () => {
+    it("should reject empty id", () => {
+      const result = orchestrationConfigRefSchema.safeParse({ id: "" });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject empty scenario", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        name: "test",
+        scenario: "",
+        version: "1.0",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject empty name", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        name: "",
+        scenario: "test",
+        version: "1.0",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject empty version", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        name: "test",
+        scenario: "test",
+        version: "",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject missing fields in scenario form", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        scenario: "test",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject partial scenario/name (missing version)", () => {
+      const result = orchestrationConfigRefSchema.safeParse({
+        name: "test",
+        scenario: "test",
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject empty object", () => {
+      const result = orchestrationConfigRefSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it("should reject non-string id", () => {
+      const result = orchestrationConfigRefSchema.safeParse({ id: 123 });
+      expect(result.success).toBe(false);
     });
   });
 });

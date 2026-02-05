@@ -100,7 +100,7 @@ export abstract class BaseLanguageModelStrategy<
       const commonParts = await this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
-      const client = this.createClient(config, settings);
+      const client = this.createClient(config, settings, commonParts);
 
       const response = await this.executeApiCall(client, request, options.abortSignal ?? undefined);
 
@@ -131,7 +131,7 @@ export abstract class BaseLanguageModelStrategy<
       const commonParts = await this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
-      const client = this.createClient(config, settings);
+      const client = this.createClient(config, settings, commonParts);
 
       const streamResponse = await this.executeStreamCall(
         client,
@@ -241,12 +241,14 @@ export abstract class BaseLanguageModelStrategy<
    * Creates the appropriate SDK client for this API.
    * @param config - Strategy configuration.
    * @param settings - Model settings.
+   * @param commonParts - Common build result (messages, options, etc.).
    * @returns SDK client instance.
    * @internal
    */
   protected abstract createClient(
     config: LanguageModelStrategyConfig,
     settings: TSettings,
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): TClient;
 
   /**
@@ -279,16 +281,16 @@ export abstract class BaseLanguageModelStrategy<
 
   /**
    * Returns whether to escape template placeholders for this API.
-   * @param sapOptions - Parsed provider options.
-   * @param settings - Model settings.
+   * @param _sapOptions - Parsed provider options (unused in base implementation).
+   * @param _settings - Model settings (unused in base implementation).
    * @returns false by default; Orchestration strategy overrides to return true.
    * @internal
    */
   protected getEscapeTemplatePlaceholders(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    sapOptions: Record<string, unknown> | undefined,
+    _sapOptions: Record<string, unknown> | undefined,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    settings: TSettings,
+    _settings: TSettings,
   ): boolean {
     return false;
   }
