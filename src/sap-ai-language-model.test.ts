@@ -4015,7 +4015,7 @@ describe("SAPAILanguageModel", () => {
         expectWarningMessageContains(result.warnings, "filtering");
       });
 
-      it("should ignore promptTemplateRef when orchestrationConfigRef is set", async () => {
+      it("should ignore promptTemplateRef when orchestrationConfigRef is set in settings", async () => {
         const model = createOrchModel("gpt-4o", {
           orchestrationConfigRef: { id: "my-config-id" },
           promptTemplateRef: { id: "ignored-template-id" },
@@ -4036,6 +4036,34 @@ describe("SAPAILanguageModel", () => {
         expect(result.warnings.length).toBeGreaterThan(0);
         expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
         expectWarningMessageContains(result.warnings, "promptTemplateRef");
+      });
+
+      it("should ignore promptTemplateRef when orchestrationConfigRef is set in providerOptions", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({
+          prompt,
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: { id: "my-config-id" },
+              promptTemplateRef: { id: "ignored-template-id" },
+            },
+          },
+        });
+
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
+
+        // promptTemplateRef is ignored with warning when configRef is set
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "providerOptions.promptTemplateRef");
       });
 
       it("should include placeholderValues when using configRef", async () => {

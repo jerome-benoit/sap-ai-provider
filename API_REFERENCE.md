@@ -1807,7 +1807,7 @@ the `OrchestrationClient`.
 **Important Behavior:** When using `orchestrationConfigRef`, local module
 settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
 responseFormat, modelParams, modelVersion) are **ignored** with a warning. Only
-`messagesHistory` and `placeholderValues` are passed through to the stored
+`messages` and `placeholderValues` are passed through to the stored
 configuration.
 
 **Usage Examples:**

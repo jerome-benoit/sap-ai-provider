@@ -134,6 +134,13 @@ const CONFIG_REF_IGNORED_MODULES = [
 ] as const;
 
 /**
+ * Provider options that are ignored when using orchestrationConfigRef.
+ * Subset of CONFIG_REF_IGNORED_MODULES that can be passed via providerOptions.
+ * @internal
+ */
+const CONFIG_REF_IGNORED_PROVIDER_OPTIONS = ["promptTemplateRef", "modelParams"] as const;
+
+/**
  * Checks if a value is a valid OrchestrationConfigRef.
  * @param value - The value to check.
  * @returns True if the value is a valid OrchestrationConfigRef.
@@ -363,7 +370,9 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     _configRef: OrchestrationConfigRef,
     warnings: SharedV3Warning[],
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
-    warnings.push(...this.collectConfigRefIgnoredWarnings(settings, options));
+    warnings.push(
+      ...this.collectConfigRefIgnoredWarnings(settings, options, commonParts.sapOptions),
+    );
 
     // Merge placeholder values (settings < providerOptions)
     const mergedPlaceholderValues = deepMerge(
@@ -588,12 +597,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * Collects warnings for settings that will be ignored when using orchestrationConfigRef.
    * @param settings - The orchestration model settings.
    * @param options - The call options (for tools and responseFormat).
+   * @param sapOptions - Parsed provider options (for promptTemplateRef in providerOptions).
    * @returns Array of warnings for ignored settings.
    * @internal
    */
   private collectConfigRefIgnoredWarnings(
     settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
+    sapOptions: Record<string, unknown> | undefined,
   ): SharedV3Warning[] {
     const warnings: SharedV3Warning[] = [];
     const ignoredSettings: string[] = [];
@@ -605,6 +616,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
           continue; // Skip empty objects
         }
         ignoredSettings.push(key);
+      }
+    }
+
+    for (const key of CONFIG_REF_IGNORED_PROVIDER_OPTIONS) {
+      if (sapOptions?.[key] && !settings[key as keyof OrchestrationModelSettings]) {
+        ignoredSettings.push(`providerOptions.${key}`);
       }
     }
 
