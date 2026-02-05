@@ -22,6 +22,16 @@ import { validateModelParamsWithWarnings } from "./sap-ai-provider-options.js";
 /**
  * @internal
  */
+export interface AISDKTool {
+  description?: string;
+  inputSchema?: unknown;
+  name: string;
+  type: string;
+}
+
+/**
+ * @internal
+ */
 export type AISDKToolChoice =
   | { toolName: string; type: "tool" }
   | { type: "auto" }
@@ -242,16 +252,6 @@ export interface ToolCallInProgress {
   didEmitInputStart: boolean;
   id: string;
   toolName?: string;
-}
-
-/**
- * @internal
- */
-interface AISDKTool {
-  description?: string;
-  inputSchema?: unknown;
-  name: string;
-  type: string;
 }
 
 /**

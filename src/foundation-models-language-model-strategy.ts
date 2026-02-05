@@ -1,55 +1,40 @@
 /** Foundation Models language model strategy using `@sap-ai-sdk/foundation-models`. */
-import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamResult,
-  SharedV3Warning,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provider";
 import type {
   AzureOpenAiChatClient,
   AzureOpenAiChatCompletionParameters,
   AzureOpenAiChatCompletionTool,
 } from "@sap-ai-sdk/foundation-models";
+import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
+import type { FoundationModelsModelSettings } from "./sap-ai-settings.js";
+import type { LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
-import type { FoundationModelsModelSettings, SAPAIModelSettings } from "./sap-ai-settings.js";
-import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
-
-import { convertToSAPMessages } from "./convert-to-sap-messages.js";
-import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
-import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
 import {
-  buildGenerateResult,
+  BaseLanguageModelStrategy,
+  type CommonBuildResult,
+  type StreamCallResponse,
+} from "./base-language-model-strategy.js";
+import {
+  type AISDKTool,
   buildModelDeployment,
-  buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
-  createAISDKRequestBodySummary,
-  createStreamTransformer,
-  mapToolChoice,
   type ParamMapping,
+  type SAPToolChoice,
   type SDKResponse,
   type SDKStreamChunk,
-  StreamIdGenerator,
 } from "./strategy-utils.js";
-import { VERSION } from "./version.js";
+
+/** @internal */
+type FoundationModelsClient = InstanceType<typeof AzureOpenAiChatClient>;
 
 /**
+ * Foundation Models API parameter mappings.
  * @internal
  */
-const PARAM_MAPPINGS: readonly ParamMapping[] = [
-  { camelCaseKey: "maxTokens", optionKey: "maxOutputTokens", outputKey: "max_tokens" },
-  { camelCaseKey: "temperature", optionKey: "temperature", outputKey: "temperature" },
-  { camelCaseKey: "topP", optionKey: "topP", outputKey: "top_p" },
-  {
-    camelCaseKey: "frequencyPenalty",
-    optionKey: "frequencyPenalty",
-    outputKey: "frequency_penalty",
-  },
-  { camelCaseKey: "presencePenalty", optionKey: "presencePenalty", outputKey: "presence_penalty" },
-  { camelCaseKey: "seed", optionKey: "seed", outputKey: "seed" },
-  { camelCaseKey: "parallel_tool_calls", outputKey: "parallel_tool_calls" },
+const FOUNDATION_MODELS_PARAM_MAPPINGS: readonly ParamMapping[] = [
+  ...BaseLanguageModelStrategy.COMMON_PARAM_MAPPINGS,
   { camelCaseKey: "logprobs", outputKey: "logprobs" },
   { camelCaseKey: "topLogprobs", outputKey: "top_logprobs" },
   { camelCaseKey: "logitBias", outputKey: "logit_bias" },
@@ -58,157 +43,64 @@ const PARAM_MAPPINGS: readonly ParamMapping[] = [
 ] as const;
 
 /**
+ * Language model strategy for the Foundation Models API.
+ *
+ * Provides direct access to Azure OpenAI models with parameters like:
+ * - logprobs
+ * - seed
+ * - dataSources (On Your Data)
  * @internal
  */
-type AzureOpenAiChatClientClass = typeof AzureOpenAiChatClient;
+export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStrategy<
+  FoundationModelsClient,
+  AzureOpenAiChatCompletionParameters,
+  FoundationModelsModelSettings
+> {
+  private readonly ClientClass: typeof AzureOpenAiChatClient;
 
-/**
- * @internal
- */
-export class FoundationModelsLanguageModelStrategy implements LanguageModelAPIStrategy {
-  private readonly ClientClass: AzureOpenAiChatClientClass;
-
-  constructor(ClientClass: AzureOpenAiChatClientClass) {
+  constructor(ClientClass: typeof AzureOpenAiChatClient) {
+    super();
     this.ClientClass = ClientClass;
   }
 
-  async doGenerate(
+  protected buildRequest(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: FoundationModelsModelSettings,
     options: LanguageModelV3CallOptions,
-  ): Promise<LanguageModelV3GenerateResult> {
-    try {
-      const { request, warnings } = await this.buildRequest(config, settings, options);
-
-      const client = this.createClient(config, settings.modelVersion);
-
-      const response = await client.run(
-        request,
-        options.abortSignal ? { signal: options.abortSignal } : undefined,
-      );
-
-      return buildGenerateResult({
-        modelId: config.modelId,
-        providerName: getProviderName(config.provider),
-        requestBody: request,
-        response: response as SDKResponse,
-        responseHeaders: normalizeHeaders(response.rawResponse.headers),
-        version: VERSION,
-        warnings,
-      });
-    } catch (error) {
-      throw convertToAISDKError(error, {
-        operation: "doGenerate",
-        requestBody: createAISDKRequestBodySummary(options),
-        url: "sap-ai:foundation-models",
-      });
-    }
-  }
-
-  async doStream(
-    config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
-    options: LanguageModelV3CallOptions,
-  ): Promise<LanguageModelV3StreamResult> {
-    try {
-      const { request, warnings } = await this.buildRequest(config, settings, options);
-
-      const client = this.createClient(config, settings.modelVersion);
-
-      const streamResponse = await client.stream(request, options.abortSignal);
-
-      const idGenerator = new StreamIdGenerator();
-      const responseId = idGenerator.generateResponseId();
-
-      const transformedStream = createStreamTransformer({
-        convertToAISDKError,
-        idGenerator,
-        includeRawChunks: options.includeRawChunks ?? false,
-        modelId: config.modelId,
-        options,
-        providerName: getProviderName(config.provider),
-        responseId,
-        sdkStream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
-        streamResponseGetFinishReason: () => streamResponse.getFinishReason(),
-        streamResponseGetTokenUsage: () => streamResponse.getTokenUsage(),
-        url: "sap-ai:foundation-models",
-        version: VERSION,
-        warnings,
-      });
-
-      return {
-        request: {
-          body: request as unknown,
-        },
-        stream: transformedStream,
-      };
-    } catch (error) {
-      throw convertToAISDKError(error, {
-        operation: "doStream",
-        requestBody: createAISDKRequestBodySummary(options),
-        url: "sap-ai:foundation-models",
-      });
-    }
-  }
-
-  private async buildRequest(
-    config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
-    options: LanguageModelV3CallOptions,
-  ): Promise<{
-    request: AzureOpenAiChatCompletionParameters;
-    warnings: SharedV3Warning[];
-  }> {
-    const providerName = getProviderName(config.provider);
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
+  ): {
+    readonly request: AzureOpenAiChatCompletionParameters;
+    readonly warnings: SharedV3Warning[];
+  } {
     const warnings: SharedV3Warning[] = [];
 
-    const fmSettings = settings as FoundationModelsModelSettings;
-
-    const messages = convertToSAPMessages(options.prompt, {
-      escapeTemplatePlaceholders: sapOptions?.escapeTemplatePlaceholders ?? false,
-      includeReasoning: sapOptions?.includeReasoning ?? fmSettings.includeReasoning ?? false,
-    });
-
-    const toolsResult = convertToolsToSAPFormat<AzureOpenAiChatCompletionTool>(options.tools);
-    const tools = toolsResult.tools;
+    // Tools conversion (FM doesn't support settings.tools)
+    const toolsResult = convertToolsToSAPFormat<AzureOpenAiChatCompletionTool>(
+      options.tools as AISDKTool[] | undefined,
+    );
     warnings.push(...toolsResult.warnings);
 
-    const { modelParams, warnings: paramWarnings } = buildModelParams({
-      options,
-      paramMappings: PARAM_MAPPINGS,
-      providerModelParams: sapOptions?.modelParams as Record<string, unknown> | undefined,
-      settingsModelParams: fmSettings.modelParams as Record<string, unknown> | undefined,
-    });
-    warnings.push(...paramWarnings);
-
-    const toolChoice = mapToolChoice(options.toolChoice);
-
+    // Response format conversion
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
       options.responseFormat,
-      fmSettings.responseFormat,
+      settings.responseFormat,
     );
     if (responseFormatWarning) {
       warnings.push(responseFormatWarning);
     }
 
+    const { toolChoice } = commonParts;
+
     const request: AzureOpenAiChatCompletionParameters = {
-      messages: messages as AzureOpenAiChatCompletionParameters["messages"],
-      ...modelParams,
-      ...(tools && tools.length > 0 ? { tools } : {}),
+      messages: commonParts.messages as AzureOpenAiChatCompletionParameters["messages"],
+      ...commonParts.modelParams,
+      ...(toolsResult.tools?.length ? { tools: toolsResult.tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
-      ...(fmSettings.dataSources &&
-      Array.isArray(fmSettings.dataSources) &&
-      fmSettings.dataSources.length > 0
+      ...(settings.dataSources?.length
         ? {
             data_sources:
-              fmSettings.dataSources as AzureOpenAiChatCompletionParameters["data_sources"],
+              settings.dataSources as AzureOpenAiChatCompletionParameters["data_sources"],
           }
         : {}),
     };
@@ -216,11 +108,50 @@ export class FoundationModelsLanguageModelStrategy implements LanguageModelAPISt
     return { request, warnings };
   }
 
-  private createClient(
+  protected createClient(
     config: LanguageModelStrategyConfig,
-    modelVersion?: string,
-  ): InstanceType<AzureOpenAiChatClientClass> {
-    const modelDeployment = buildModelDeployment(config, modelVersion);
+    settings: FoundationModelsModelSettings,
+  ): FoundationModelsClient {
+    const modelDeployment = buildModelDeployment(config, settings.modelVersion);
     return new this.ClientClass(modelDeployment, config.destination);
+  }
+
+  protected async executeApiCall(
+    client: FoundationModelsClient,
+    request: AzureOpenAiChatCompletionParameters,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<SDKResponse> {
+    const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
+
+    return {
+      getContent: () => response.getContent(),
+      getFinishReason: () => response.getFinishReason(),
+      getTokenUsage: () => response.getTokenUsage(),
+      getToolCalls: () => response.getToolCalls(),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
+      rawResponse: { headers: response.rawResponse.headers },
+    };
+  }
+
+  protected async executeStreamCall(
+    client: FoundationModelsClient,
+    request: AzureOpenAiChatCompletionParameters,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<StreamCallResponse> {
+    const streamResponse = await client.stream(request, abortSignal);
+
+    return {
+      getFinishReason: () => streamResponse.getFinishReason(),
+      getTokenUsage: () => streamResponse.getTokenUsage(),
+      stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+    };
+  }
+
+  protected getParamMappings(): readonly ParamMapping[] {
+    return FOUNDATION_MODELS_PARAM_MAPPINGS;
+  }
+
+  protected getUrl(): string {
+    return "sap-ai:foundation-models";
   }
 }
