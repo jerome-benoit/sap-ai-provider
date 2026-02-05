@@ -49,6 +49,12 @@ import {
 const RESOLVED_CONFIG_REF_KEY = "_resolvedConfigRef" as const;
 
 /**
+ * Internal key for storing resolved promptTemplateRef in sapOptions.
+ * @internal
+ */
+const RESOLVED_PROMPT_TEMPLATE_REF_KEY = "_resolvedPromptTemplateRef" as const;
+
+/**
  * Extended prompt templating interface for type-safe access.
  * @internal
  */
@@ -80,6 +86,26 @@ type SAPModelParams = LlmModelParams & {
   stop?: string[];
   top_k?: number;
 };
+
+/**
+ * Builds the template_ref object from a PromptTemplateRef.
+ * @param ref - Template reference (by ID or by name/scenario/version).
+ * @returns The template_ref object for SDK consumption.
+ * @internal
+ */
+function buildTemplateRefObject(ref: PromptTemplateRef): Record<string, unknown> {
+  return isTemplateRefById(ref)
+    ? {
+        id: ref.id,
+        ...(ref.scope && { scope: ref.scope }),
+      }
+    : {
+        name: ref.name,
+        scenario: ref.scenario,
+        version: ref.version,
+        ...(ref.scope && { scope: ref.scope }),
+      };
+}
 
 /**
  * Type guard for template reference by ID.
@@ -174,8 +200,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       schema: sapAILanguageModelProviderOptions,
     });
 
-    // Resolve configRef ONCE here - available to createClient and buildRequest
     const configRef = this.resolveConfigRef(sapOptions, settings);
+    const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
 
     const warnings: SharedV3Warning[] = [];
 
@@ -203,6 +229,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       sapOptions: {
         ...sapOptions,
         [RESOLVED_CONFIG_REF_KEY]: configRef,
+        [RESOLVED_PROMPT_TEMPLATE_REF_KEY]: promptTemplateRef,
       },
       toolChoice,
       warnings,
@@ -217,7 +244,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
     const warnings: SharedV3Warning[] = [];
 
-    // Read configRef resolved in buildCommonParts
     const configRef = commonParts.sapOptions?.[RESOLVED_CONFIG_REF_KEY] as
       | OrchestrationConfigRef
       | undefined;
@@ -226,7 +252,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       return this.buildConfigRefRequest(settings, options, commonParts, configRef, warnings);
     }
 
-    // Standard mode: build full orchestration request
     return this.buildStandardRequest(config, settings, options, commonParts, warnings);
   }
 
@@ -235,7 +260,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): OrchestrationClientInstance {
-    // Read configRef resolved in buildCommonParts
     const configRef = commonParts.sapOptions?.[RESOLVED_CONFIG_REF_KEY] as
       | OrchestrationConfigRef
       | undefined;
@@ -244,15 +268,21 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       return new this.ClientClass(configRef, config.deploymentConfig, config.destination);
     }
 
-    // Standard mode: create client with minimal config
-    // The full config will be passed with each request
+    const promptTemplateRef = commonParts.sapOptions?.[RESOLVED_PROMPT_TEMPLATE_REF_KEY] as
+      | PromptTemplateRef
+      | undefined;
+
+    const promptConfig = promptTemplateRef
+      ? this.buildTemplateRefPromptConfig(promptTemplateRef)
+      : { template: [] as ChatMessage[] };
+
     const minimalConfig: OrchestrationModuleConfig = {
       promptTemplating: {
         model: {
           name: config.modelId,
           ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
         },
-        prompt: { template: [] },
+        prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
       },
     };
     return new this.ClientClass(minimalConfig, config.deploymentConfig, config.destination);
@@ -333,7 +363,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     configRef: OrchestrationConfigRef,
     warnings: SharedV3Warning[],
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
-    // Collect warnings for ignored settings
     warnings.push(...this.collectConfigRefIgnoredWarnings(settings, options));
 
     // Merge placeholder values (settings < providerOptions)
@@ -396,9 +425,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): OrchestrationModuleConfig {
     const { modelParams, promptTemplateRef, responseFormat, tools } = params;
 
-    // Build prompt configuration
     const promptConfig = promptTemplateRef
-      ? this.buildTemplateRefConfig(promptTemplateRef, tools, responseFormat)
+      ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools, responseFormat)
       : this.buildInlineTemplateConfig(tools, responseFormat);
 
     return {
@@ -431,6 +459,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * @param orchestrationConfig - Module configuration.
    * @param placeholderValues - Optional placeholder values.
    * @param toolChoice - Optional tool choice.
+   * @param hasTemplateRef - Whether template_ref mode is active.
    * @returns Request body.
    * @internal
    */
@@ -439,18 +468,20 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     orchestrationConfig: OrchestrationModuleConfig,
     placeholderValues: Record<string, string> | undefined,
     toolChoice: SAPToolChoice | undefined,
+    hasTemplateRef: boolean,
   ): Record<string, unknown> {
     const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
 
+    // In template_ref mode, SDK uses messagesHistory (not messages)
+    // In inline template mode, SDK adds messages to the template array
+    const messagesField = hasTemplateRef ? { messagesHistory: messages } : { messages };
+
     return {
-      messages,
+      ...messagesField,
       model: {
         ...orchestrationConfig.promptTemplating.model,
       },
       ...(placeholderValues ? { placeholderValues } : {}),
-      ...(promptTemplating.prompt.template_ref
-        ? { template_ref: promptTemplating.prompt.template_ref }
-        : {}),
       ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(promptTemplating.prompt.response_format
@@ -502,16 +533,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     const { toolChoice } = commonParts;
 
-    // Template reference resolution
-    const rawTemplateRef = commonParts.sapOptions?.promptTemplateRef ?? settings.promptTemplateRef;
-    const promptTemplateRef: PromptTemplateRef | undefined =
-      rawTemplateRef &&
-      typeof rawTemplateRef === "object" &&
-      ("id" in rawTemplateRef || "name" in rawTemplateRef)
-        ? (rawTemplateRef as PromptTemplateRef)
-        : undefined;
+    const promptTemplateRef = commonParts.sapOptions?.[RESOLVED_PROMPT_TEMPLATE_REF_KEY] as
+      | PromptTemplateRef
+      | undefined;
 
-    // Build orchestration module configuration
     const orchestrationConfig = this.buildOrchestrationModuleConfig(config, settings, {
       modelParams: commonParts.modelParams as SAPModelParams,
       promptTemplateRef,
@@ -528,42 +553,32 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const placeholderValues =
       Object.keys(mergedPlaceholderValues).length > 0 ? mergedPlaceholderValues : undefined;
 
-    // Build final request body
     const request = this.buildRequestBody(
       commonParts.messages,
       orchestrationConfig,
       placeholderValues,
       toolChoice,
+      Boolean(promptTemplateRef),
     );
 
     return { request, warnings };
   }
 
   /**
-   * Builds prompt configuration for template reference.
+   * Builds prompt configuration for template reference with optional tools/response_format.
    * @param ref - Template reference.
    * @param tools - Optional tools.
    * @param responseFormat - Optional response format.
    * @returns Prompt configuration.
    * @internal
    */
-  private buildTemplateRefConfig(
+  private buildTemplateRefPromptConfig(
     ref: PromptTemplateRef,
-    tools: ChatCompletionTool[] | undefined,
-    responseFormat: unknown,
+    tools?: ChatCompletionTool[],
+    responseFormat?: unknown,
   ): Record<string, unknown> {
     return {
-      template_ref: isTemplateRefById(ref)
-        ? {
-            id: ref.id,
-            ...(ref.scope && { scope: ref.scope }),
-          }
-        : {
-            name: ref.name,
-            scenario: ref.scenario,
-            version: ref.version,
-            ...(ref.scope && { scope: ref.scope }),
-          },
+      template_ref: buildTemplateRefObject(ref),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
     };
@@ -583,7 +598,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const warnings: SharedV3Warning[] = [];
     const ignoredSettings: string[] = [];
 
-    // Check settings-level configurations
     for (const key of CONFIG_REF_IGNORED_MODULES) {
       const value = settings[key as keyof OrchestrationModelSettings];
       if (value !== undefined) {
@@ -594,7 +608,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       }
     }
 
-    // Check call-level options
     if (options.tools && options.tools.length > 0) {
       ignoredSettings.push("options.tools");
     }
@@ -633,6 +646,32 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     if (configRefCandidate && isOrchestrationConfigRef(configRefCandidate)) {
       return configRefCandidate;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Resolves promptTemplateRef from provider options or settings.
+   *
+   * Provider options take priority over settings.
+   * @param sapOptions - Parsed provider options from commonParts.
+   * @param settings - The model settings.
+   * @returns The resolved prompt template reference or undefined.
+   * @internal
+   */
+  private resolvePromptTemplateRef(
+    sapOptions: Record<string, unknown> | undefined,
+    settings: OrchestrationModelSettings,
+  ): PromptTemplateRef | undefined {
+    const rawTemplateRef = sapOptions?.promptTemplateRef ?? settings.promptTemplateRef;
+
+    if (
+      rawTemplateRef &&
+      typeof rawTemplateRef === "object" &&
+      ("id" in rawTemplateRef || "name" in rawTemplateRef)
+    ) {
+      return rawTemplateRef as PromptTemplateRef;
     }
 
     return undefined;

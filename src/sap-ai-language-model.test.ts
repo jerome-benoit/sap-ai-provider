@@ -32,6 +32,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         };
     static lastChatCompletionRequest: unknown;
     static lastChatCompletionRequestConfig: unknown;
+    static lastConstructorConfig: unknown;
 
     static lastStreamAbortSignal: unknown;
 
@@ -183,6 +184,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         },
       };
     });
+
+    constructor(config: unknown) {
+      MockOrchestrationClient.lastConstructorConfig = config;
+    }
 
     static setChatCompletionError(error: Error) {
       MockOrchestrationClient.chatCompletionError = error;
@@ -527,6 +532,7 @@ describe("SAPAILanguageModel", () => {
   };
 
   interface MockClientInterface {
+    lastConstructorConfig?: unknown;
     lastRequest: unknown;
     lastRequestConfig: unknown;
     lastStreamAbortSignal: unknown;
@@ -543,6 +549,7 @@ describe("SAPAILanguageModel", () => {
     const client = OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
       lastChatCompletionRequestConfig: unknown;
+      lastConstructorConfig: unknown;
       lastStreamAbortSignal: unknown;
       lastStreamConfig: unknown;
       lastStreamRequest: unknown;
@@ -553,6 +560,7 @@ describe("SAPAILanguageModel", () => {
       setStreamSetupError?: (error: Error) => void;
     };
     return {
+      lastConstructorConfig: client.lastConstructorConfig,
       lastRequest: client.lastChatCompletionRequest,
       lastRequestConfig: client.lastChatCompletionRequestConfig,
       lastStreamAbortSignal: client.lastStreamAbortSignal,
@@ -729,6 +737,11 @@ describe("SAPAILanguageModel", () => {
   const getLastOrchStreamRequest = async () => {
     const MockClient = await getMockOrchClient();
     return MockClient.lastStreamRequest as OrchestrationChatCompletionRequest;
+  };
+
+  const getLastOrchClientConfig = async () => {
+    const MockClient = await getMockOrchClient();
+    return MockClient.lastConstructorConfig as { promptTemplating?: { prompt?: unknown } };
   };
 
   const expectRequestBodyHasMessagesAndNoWarnings = (result: {
@@ -3715,7 +3728,7 @@ describe("SAPAILanguageModel", () => {
         await resetMockStateForApi("orchestration");
       });
 
-      it("should include template_ref by ID in request body when set in settings", async () => {
+      it("should include template_ref by ID in client config when set in settings", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: { id: "my-template-id" },
         });
@@ -3723,15 +3736,20 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "my-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "my-template-id",
+        });
       });
 
-      it("should include template_ref by scenario/name/version with scope in request body", async () => {
+      it("should include template_ref by scenario/name/version with scope in client config", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: {
             name: "my-template",
@@ -3744,12 +3762,15 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
           name: "my-template",
           scenario: "my-scenario",
           scope: "resource_group",
@@ -3757,7 +3778,7 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should include template_ref from providerOptions in request body", async () => {
+      it("should include template_ref from providerOptions in client config", async () => {
         const model = createOrchModel("gpt-4o");
 
         const prompt = createPrompt("Hello");
@@ -3770,12 +3791,17 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "provider-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "provider-template-id",
+        });
       });
 
       it("should override settings promptTemplateRef with providerOptions", async () => {
@@ -3793,12 +3819,18 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "provider-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        // providerOptions should override settings
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "provider-template-id",
+        });
       });
 
       it("should not include template_ref when promptTemplateRef is not provided", async () => {
@@ -3807,14 +3839,16 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
+        // Without promptTemplateRef, should use messages (not messagesHistory)
         expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).not.toHaveProperty("template_ref");
+        // Without promptTemplateRef, client config should use template array, not template_ref
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).not.toHaveProperty("template_ref");
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template");
       });
 
-      it("should include template_ref in stream request body", async () => {
+      it("should include template_ref in client config for stream request", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: { id: "stream-template-id" },
         });
@@ -3822,12 +3856,17 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doStream({ prompt });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchStreamRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "stream-template-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "stream-template-id",
+        });
       });
 
       it("should override settings promptTemplateRef with providerOptions in stream request", async () => {
@@ -3849,12 +3888,18 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
+        // promptTemplateRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
 
-        const request = await getLastOrchStreamRequest();
-
-        expect(request).toHaveProperty("template_ref");
-        expect(request.template_ref).toEqual({ id: "provider-override-id" });
+        // template_ref is in client config (not request body) when using promptTemplateRef
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
+        // providerOptions should override settings
+        expect(
+          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
+        ).toEqual({
+          id: "provider-override-id",
+        });
       });
     });
 
