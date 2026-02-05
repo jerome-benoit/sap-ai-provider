@@ -198,7 +198,7 @@ try {
 ## Models
 
 > **Architecture Context:** For model integration and message conversion
-> details, see [Architecture - Model Support](./ARCHITECTURE.md#model-support).
+> details, see [Architecture - Component Architecture](./ARCHITECTURE.md#component-architecture).
 
 ### Supported Models
 
@@ -1089,7 +1089,7 @@ the right API for your use case.
 | **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters             |
 | **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration                  |
 | **Translation**                 |      ✅       |        ❌         | SAP Document Translation service                      |
-| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for Jinja2 safety        |
+| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for SAP template safety  |
 | **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                          |
 | **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB          |
 | **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters                 |
@@ -1807,8 +1807,8 @@ the `OrchestrationClient`.
 **Important Behavior:** When using `orchestrationConfigRef`, local module
 settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
 responseFormat, modelParams, modelVersion) are **ignored** with a warning. Only
-`messages` and `placeholderValues` are passed through. This aligns with SAP SDK
-behavior where the stored configuration takes precedence.
+`messagesHistory` and `placeholderValues` are passed through to the stored
+configuration.
 
 **Usage Examples:**
 
@@ -3138,7 +3138,7 @@ For the current package version, see [package.json](./package.json).
 ### Dependencies
 
 - **Vercel AI SDK:** v5.0+ or v6.0+ (`ai` package)
-- **SAP AI SDK:** ^2.5.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
+- **SAP AI SDK:** ^2.6.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
 - **Node.js:** >= 18
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

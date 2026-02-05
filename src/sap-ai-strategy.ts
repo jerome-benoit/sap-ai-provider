@@ -33,17 +33,23 @@ export interface EmbeddingModelStrategyConfig {
   readonly provider: string;
 }
 
-/** @internal */
-export interface LanguageModelAPIStrategy {
+/**
+ * Strategy interface for language model API implementations.
+ * @template TSettings - The model settings type, defaults to SAPAIModelSettings for backward compatibility
+ * @internal
+ */
+export interface LanguageModelAPIStrategy<
+  TSettings extends SAPAIModelSettings = SAPAIModelSettings,
+> {
   doGenerate(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: TSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult>;
 
   doStream(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: TSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult>;
 }

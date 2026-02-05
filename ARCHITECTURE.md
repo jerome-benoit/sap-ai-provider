@@ -284,6 +284,7 @@ src/
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
+├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
@@ -985,7 +986,7 @@ mechanisms.
 Key types for model configuration:
 
 - **`SAPAIModelId`**: String union of supported models (e.g., "gpt-4o",
-  "claude-3.5-sonnet", "gemini-1.5-pro") with flexibility for custom models
+  "anthropic--claude-3.5-sonnet", "gemini-1.5-pro") with flexibility for custom models
 - **`SAPAISettings`**: Interface with `modelVersion`, `modelParams` (maxTokens,
   temperature, topP, etc.), `safePrompt`, and `structuredOutputs` options
 
@@ -1057,6 +1058,7 @@ graph TB
 
     subgraph "Language Model Strategies"
         LMStrategy[LanguageModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doGenerate()<br/>• doStream()]
+        BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts()<br/>• abstract buildRequest()]
         OrchLM[OrchestrationLanguageModelStrategy]
         FMLM[FoundationModelsLanguageModelStrategy]
     end
@@ -1089,8 +1091,9 @@ graph TB
     Factory -->|lazy import| OrchEM
     Factory -->|lazy import| FMEM
 
-    LMStrategy -.->|implements| OrchLM
-    LMStrategy -.->|implements| FMLM
+    BaseLM -.->|implements| LMStrategy
+    OrchLM -.->|extends| BaseLM
+    FMLM -.->|extends| BaseLM
     EMStrategy -.->|implements| OrchEM
     EMStrategy -.->|implements| FMEM
 
@@ -1189,6 +1192,37 @@ interface EmbeddingModelAPIStrategy {
   doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV3CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV3Result>;
 }
 ```
+
+#### Template Method Pattern (Base Strategy)
+
+The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
+to consolidate shared logic while allowing API-specific customization:
+
+```typescript
+// Base class with Template Method pattern
+abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
+  // Template method - defines the algorithm skeleton
+  async doGenerate(config, settings, options): Promise<LanguageModelV3GenerateResult> {
+    const commonParts = this.buildCommonParts(config, settings, options);
+    const request = this.buildRequest(config, settings, options, commonParts);
+    const client = this.createClient(config);
+    const response = await this.executeApiCall(client, request, options);
+    return this.processResponse(response, commonParts);
+  }
+
+  // Common logic shared by all strategies
+  protected buildCommonParts(config, settings, options): CommonParts { /* ... */ }
+
+  // Primitive operations - implemented by subclasses
+  protected abstract buildRequest(...): ApiRequest;
+  protected abstract createClient(config): ApiClient;
+  protected abstract executeApiCall(client, request, options): Promise<ApiResponse>;
+}
+```
+
+The concrete strategies (`OrchestrationLanguageModelStrategy` and
+`FoundationModelsLanguageModelStrategy`) extend this base class and implement
+only the API-specific primitive operations.
 
 #### API Selection Hierarchy
 

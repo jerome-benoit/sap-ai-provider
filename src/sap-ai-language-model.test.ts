@@ -509,6 +509,14 @@ describe("SAPAILanguageModel", () => {
     expect(body).toHaveProperty("messages");
   };
 
+  const expectRequestBodyHasMessagesHistory = (result: { request?: { body?: unknown } }) => {
+    const body: unknown = result.request?.body;
+    expect(body).toBeTruthy();
+    expect(typeof body).toBe("object");
+    expect(body).toHaveProperty("messagesHistory");
+    expect(body).not.toHaveProperty("messages");
+  };
+
   const expectToOmitKeys = (value: unknown, keys: string[]) => {
     expect(value).toBeTruthy();
     expect(typeof value).toBe("object");
@@ -3863,12 +3871,9 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchRequest();
-
-        // When using configRef, the request contains messages but no orchestration_config
-        expect(request).toHaveProperty("messages");
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
       });
 
       it("should use configRef by scenario/name/version when set in settings", async () => {
@@ -3883,11 +3888,8 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("messages");
+        expectRequestBodyHasMessagesHistory(result);
       });
 
       it("should use configRef from providerOptions", async () => {
@@ -3903,11 +3905,8 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("messages");
+        expectRequestBodyHasMessagesHistory(result);
       });
 
       it("should override settings orchestrationConfigRef with providerOptions", async () => {
@@ -3925,11 +3924,8 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("messages");
+        expectRequestBodyHasMessagesHistory(result);
       });
 
       it("should generate warnings when local settings are ignored due to configRef", async () => {
@@ -3963,11 +3959,11 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
+
+        expectRequestBodyHasMessagesHistory(result);
 
         const request = await getLastOrchRequest();
 
-        expect(request).toHaveProperty("messages");
         expect(request).toHaveProperty("placeholderValues");
         expect(request.placeholderValues).toEqual({
           customerName: "Alice",
@@ -3983,11 +3979,8 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const result = await model.doStream({ prompt });
-        expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchStreamRequest();
-
-        expect(request).toHaveProperty("messages");
+        expectRequestBodyHasMessagesHistory(result);
       });
 
       it("should override settings orchestrationConfigRef with providerOptions in stream request", async () => {
@@ -4009,11 +4002,8 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
-        expectRequestBodyHasMessages(result);
 
-        const request = await getLastOrchStreamRequest();
-
-        expect(request).toHaveProperty("messages");
+        expectRequestBodyHasMessagesHistory(result);
       });
     });
 

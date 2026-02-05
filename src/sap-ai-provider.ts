@@ -148,16 +148,11 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
     const mergedSettings: SAPAISettings = {
-      ...options.defaultSettings,
-      ...settings,
+      ...(deepMerge(
+        options.defaultSettings as Record<string, unknown> | undefined,
+        settings as Record<string, unknown>,
+      ) as SAPAISettings),
       api: settings.api ?? options.defaultSettings?.api ?? providerApi,
-      filtering: settings.filtering ?? options.defaultSettings?.filtering,
-      masking: settings.masking ?? options.defaultSettings?.masking,
-      modelParams: deepMerge(
-        options.defaultSettings?.modelParams ?? {},
-        settings.modelParams ?? {},
-      ),
-      tools: settings.tools ?? options.defaultSettings?.tools,
     };
 
     return new SAPAILanguageModel(modelId, mergedSettings, {
