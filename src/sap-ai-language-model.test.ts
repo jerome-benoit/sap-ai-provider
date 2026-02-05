@@ -3920,7 +3920,7 @@ describe("SAPAILanguageModel", () => {
         // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
-        // Verify configRef is passed to OrchestrationClient constructor
+        // configRef is passed to OrchestrationClient constructor
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({ id: "my-config-id" });
       });
@@ -3938,9 +3938,10 @@ describe("SAPAILanguageModel", () => {
 
         const result = await model.doGenerate({ prompt });
 
+        // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
-        // Verify configRef is passed to OrchestrationClient constructor
+        // configRef is passed to OrchestrationClient constructor
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({
           name: "my-config",
@@ -3963,9 +3964,10 @@ describe("SAPAILanguageModel", () => {
           },
         });
 
+        // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
-        // Verify configRef is passed to OrchestrationClient constructor
+        // configRef is passed to OrchestrationClient constructor
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({ id: "provider-config-id" });
       });
@@ -3986,9 +3988,10 @@ describe("SAPAILanguageModel", () => {
           },
         });
 
+        // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
-        // Verify providerOptions configRef takes priority
+        // providerOptions should override settings
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({ id: "provider-config-id" });
       });
@@ -4022,14 +4025,14 @@ describe("SAPAILanguageModel", () => {
 
         const result = await model.doGenerate({ prompt });
 
-        // Should use configRef mode (messagesHistory)
+        // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
-        // Verify configRef is passed to OrchestrationClient constructor
+        // configRef is passed to OrchestrationClient constructor
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({ id: "my-config-id" });
 
-        // Should generate warning about ignored promptTemplateRef
+        // promptTemplateRef is ignored with warning when configRef is set
         expect(result.warnings.length).toBeGreaterThan(0);
         expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
         expectWarningMessageContains(result.warnings, "promptTemplateRef");
@@ -4048,10 +4051,11 @@ describe("SAPAILanguageModel", () => {
 
         const result = await model.doGenerate({ prompt });
 
+        // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
+        // placeholderValues are included in request body when using configRef
         const request = await getLastOrchRequest();
-
         expect(request).toHaveProperty("placeholderValues");
         expect(request.placeholderValues).toEqual({
           customerName: "Alice",
@@ -4068,9 +4072,10 @@ describe("SAPAILanguageModel", () => {
 
         const result = await model.doStream({ prompt });
 
+        // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
 
-        // Verify configRef is passed to OrchestrationClient constructor
+        // configRef is passed to OrchestrationClient constructor
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({ id: "stream-config-id" });
       });
@@ -4095,11 +4100,12 @@ describe("SAPAILanguageModel", () => {
           },
         });
 
-        // Verify providerOptions configRef takes priority
+        // configRef mode uses messagesHistory, not messages
+        expectRequestBodyHasMessagesHistory(result);
+
+        // providerOptions should override settings
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig).toEqual({ id: "provider-override-id" });
-
-        expectRequestBodyHasMessagesHistory(result);
       });
     });
 
