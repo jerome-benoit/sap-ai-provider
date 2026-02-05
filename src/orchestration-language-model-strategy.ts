@@ -20,6 +20,7 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
+import { deepMerge } from "./deep-merge.js";
 import {
   type AISDKTool,
   convertResponseFormat,
@@ -144,29 +145,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       tools,
     });
 
-    // Placeholder values merging
-    const settingsPlaceholders = settings.placeholderValues;
-    const sapOptionsPlaceholders = commonParts.sapOptions?.placeholderValues as
-      | Record<string, string>
-      | undefined;
-    const hasSettingsPlaceholders =
-      settingsPlaceholders && Object.keys(settingsPlaceholders).length > 0;
-    const hasSapOptionsPlaceholders =
-      sapOptionsPlaceholders && Object.keys(sapOptionsPlaceholders).length > 0;
-    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- Intentional: need OR semantics, not nullish coalescing
-    const hasPlaceholders = hasSettingsPlaceholders || hasSapOptionsPlaceholders;
-
-    const mergedPlaceholderValues: Record<string, string> | undefined = hasPlaceholders
-      ? {
-          ...(settingsPlaceholders ?? {}),
-          ...(sapOptionsPlaceholders ?? {}),
-        }
-      : undefined;
+    // Placeholder values merging (settings < providerOptions)
+    const mergedPlaceholderValues = deepMerge(
+      settings.placeholderValues as Record<string, unknown> | undefined,
+      commonParts.sapOptions?.placeholderValues as Record<string, unknown> | undefined,
+    ) as Record<string, string>;
 
     const placeholderValues =
-      mergedPlaceholderValues && Object.keys(mergedPlaceholderValues).length > 0
-        ? mergedPlaceholderValues
-        : undefined;
+      Object.keys(mergedPlaceholderValues).length > 0 ? mergedPlaceholderValues : undefined;
 
     // Build final request body
     const request = this.buildRequestBody(
