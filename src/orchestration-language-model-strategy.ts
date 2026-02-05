@@ -1,10 +1,5 @@
 /** Orchestration language model strategy using `@sap-ai-sdk/orchestration`. */
-import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamResult,
-  SharedV3Warning,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provider";
 import type {
   ChatCompletionTool,
   ChatMessage,
@@ -13,36 +8,30 @@ import type {
   OrchestrationModuleConfig,
 } from "@sap-ai-sdk/orchestration";
 
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
-
 import type {
   OrchestrationModelSettings,
   PromptTemplateRef,
   PromptTemplateRefByID,
   SAPAIModelSettings,
 } from "./sap-ai-settings.js";
-import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
-import { convertToSAPMessages } from "./convert-to-sap-messages.js";
-import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
-import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
 import {
-  buildGenerateResult,
-  buildModelParams,
+  BaseLanguageModelStrategy,
+  type CommonBuildResult,
+} from "./base-language-model-strategy.js";
+import {
+  type AISDKTool,
   convertResponseFormat,
   convertToolsToSAPFormat,
-  createAISDKRequestBodySummary,
-  createStreamTransformer,
-  mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
   type SDKStreamChunk,
-  StreamIdGenerator,
 } from "./strategy-utils.js";
-import { VERSION } from "./version.js";
 
 /**
+ * Extended prompt templating interface for type-safe access.
  * @internal
  */
 interface ExtendedPromptTemplating {
@@ -55,6 +44,7 @@ interface ExtendedPromptTemplating {
 }
 
 /**
+ * SAP model parameters with orchestration-specific fields.
  * @internal
  */
 type SAPModelParams = LlmModelParams & {
@@ -65,8 +55,9 @@ type SAPModelParams = LlmModelParams & {
 };
 
 /**
- * @param ref - Prompt template reference.
- * @returns True if template reference is by ID.
+ * Type guard for template reference by ID.
+ * @param ref - Template reference.
+ * @returns True if reference is by ID.
  * @internal
  */
 function isTemplateRefById(ref: PromptTemplateRef): ref is PromptTemplateRefByID {
@@ -74,278 +65,291 @@ function isTemplateRefById(ref: PromptTemplateRef): ref is PromptTemplateRefByID
 }
 
 /**
+ * Orchestration API parameter mappings.
+ * Extends common mappings with orchestration-specific parameters.
  * @internal
  */
-const PARAM_MAPPINGS: readonly ParamMapping[] = [
-  { camelCaseKey: "maxTokens", optionKey: "maxOutputTokens", outputKey: "max_tokens" },
-  { camelCaseKey: "temperature", optionKey: "temperature", outputKey: "temperature" },
-  { camelCaseKey: "topP", optionKey: "topP", outputKey: "top_p" },
+const ORCHESTRATION_PARAM_MAPPINGS: readonly ParamMapping[] = [
+  ...BaseLanguageModelStrategy.COMMON_PARAM_MAPPINGS,
   { camelCaseKey: "topK", optionKey: "topK", outputKey: "top_k" },
-  {
-    camelCaseKey: "frequencyPenalty",
-    optionKey: "frequencyPenalty",
-    outputKey: "frequency_penalty",
-  },
-  { camelCaseKey: "presencePenalty", optionKey: "presencePenalty", outputKey: "presence_penalty" },
-  { camelCaseKey: "seed", optionKey: "seed", outputKey: "seed" },
-  { camelCaseKey: "parallel_tool_calls", outputKey: "parallel_tool_calls" },
 ] as const;
 
 /**
+ * Language model strategy for the Orchestration API.
+ *
+ * Provides support for:
+ * - Content filtering
+ * - Data masking
+ * - Document grounding
+ * - Translation
+ * - Prompt templates
  * @internal
  */
-type OrchestrationClientClass = typeof OrchestrationClient;
+export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrategy {
+  private readonly ClientClass: typeof OrchestrationClient;
 
-/**
- * @internal
- */
-export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrategy {
-  private readonly ClientClass: OrchestrationClientClass;
-
-  constructor(ClientClass: OrchestrationClientClass) {
+  constructor(ClientClass: typeof OrchestrationClient) {
+    super();
     this.ClientClass = ClientClass;
   }
 
-  async doGenerate(
+  protected buildRequest(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
-  ): Promise<LanguageModelV3GenerateResult> {
-    try {
-      const { messages, orchestrationConfig, placeholderValues, toolChoice, warnings } =
-        await this.buildOrchestrationConfig(config, settings, options);
-
-      const client = this.createClient(config, orchestrationConfig);
-
-      const requestBody = this.buildRequestBody(
-        messages,
-        orchestrationConfig,
-        placeholderValues,
-        toolChoice,
-      );
-
-      const response = await client.chatCompletion(
-        requestBody,
-        options.abortSignal ? { signal: options.abortSignal } : undefined,
-      );
-
-      return buildGenerateResult({
-        modelId: config.modelId,
-        providerName: getProviderName(config.provider),
-        requestBody,
-        response: response as SDKResponse,
-        responseHeaders: normalizeHeaders(response.rawResponse.headers),
-        version: VERSION,
-        warnings,
-      });
-    } catch (error) {
-      throw convertToAISDKError(error, {
-        operation: "doGenerate",
-        requestBody: createAISDKRequestBodySummary(options),
-        url: "sap-ai:orchestration",
-      });
-    }
-  }
-
-  async doStream(
-    config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
-    options: LanguageModelV3CallOptions,
-  ): Promise<LanguageModelV3StreamResult> {
-    try {
-      const { messages, orchestrationConfig, placeholderValues, toolChoice, warnings } =
-        await this.buildOrchestrationConfig(config, settings, options);
-
-      const client = this.createClient(config, orchestrationConfig);
-
-      const requestBody = this.buildRequestBody(
-        messages,
-        orchestrationConfig,
-        placeholderValues,
-        toolChoice,
-      );
-
-      const streamResponse = await client.stream(requestBody, options.abortSignal, {
-        promptTemplating: { include_usage: true },
-      });
-
-      const idGenerator = new StreamIdGenerator();
-      const responseId = idGenerator.generateResponseId();
-
-      const transformedStream = createStreamTransformer({
-        convertToAISDKError,
-        idGenerator,
-        includeRawChunks: options.includeRawChunks ?? false,
-        modelId: config.modelId,
-        options,
-        providerName: getProviderName(config.provider),
-        responseId,
-        sdkStream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
-        streamResponseGetFinishReason: () => streamResponse.getFinishReason(),
-        streamResponseGetTokenUsage: () => streamResponse.getTokenUsage(),
-        url: "sap-ai:orchestration",
-        version: VERSION,
-        warnings,
-      });
-
-      return {
-        request: {
-          body: requestBody as unknown,
-        },
-        stream: transformedStream,
-      };
-    } catch (error) {
-      throw convertToAISDKError(error, {
-        operation: "doStream",
-        requestBody: createAISDKRequestBodySummary(options),
-        url: "sap-ai:orchestration",
-      });
-    }
-  }
-
-  private async buildOrchestrationConfig(
-    config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
-    options: LanguageModelV3CallOptions,
-  ): Promise<{
-    messages: ChatMessage[];
-    orchestrationConfig: OrchestrationModuleConfig;
-    placeholderValues?: Record<string, string>;
-    toolChoice?: SAPToolChoice;
-    warnings: SharedV3Warning[];
-  }> {
-    const providerName = getProviderName(config.provider);
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
+    commonParts: CommonBuildResult,
+  ): Promise<{ readonly request: unknown; readonly warnings: SharedV3Warning[] }> {
     const warnings: SharedV3Warning[] = [];
 
-    const orchSettings = settings as OrchestrationModelSettings;
+    // Resolve tools with orchestration-specific priority (settings.tools can override)
+    const tools = this.resolveTools(settings, options, warnings);
 
-    const messages = convertToSAPMessages(options.prompt, {
-      escapeTemplatePlaceholders:
-        sapOptions?.escapeTemplatePlaceholders ?? orchSettings.escapeTemplatePlaceholders ?? true,
-      includeReasoning: sapOptions?.includeReasoning ?? orchSettings.includeReasoning ?? false,
-    });
-
-    let tools: ChatCompletionTool[] | undefined;
-    const settingsTools = orchSettings.tools;
-    const optionsTools = options.tools;
-
-    if (settingsTools && settingsTools.length > 0 && optionsTools && optionsTools.length > 0) {
-      warnings.push({
-        message:
-          "Both settings.tools and call options.tools were provided; preferring call options.tools.",
-        type: "other",
-      });
-    }
-
-    if (settingsTools && settingsTools.length > 0 && (!optionsTools || optionsTools.length === 0)) {
-      tools = settingsTools;
-    } else if (optionsTools && optionsTools.length > 0) {
-      const toolsResult = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools);
-      tools = toolsResult.tools;
-      warnings.push(...toolsResult.warnings);
-    }
-
-    const { modelParams: baseModelParams, warnings: paramWarnings } = buildModelParams({
-      options,
-      paramMappings: PARAM_MAPPINGS,
-      providerModelParams: sapOptions?.modelParams as Record<string, unknown> | undefined,
-      settingsModelParams: orchSettings.modelParams as Record<string, unknown> | undefined,
-    });
-    const modelParams = baseModelParams as SAPModelParams;
-    warnings.push(...paramWarnings);
-
-    const toolChoice = mapToolChoice(options.toolChoice);
-
+    // Response format conversion
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
       options.responseFormat,
-      orchSettings.responseFormat,
+      settings.responseFormat,
     );
     if (responseFormatWarning) {
       warnings.push(responseFormatWarning);
     }
 
-    const promptTemplateRef = sapOptions?.promptTemplateRef ?? orchSettings.promptTemplateRef;
+    const toolChoice = commonParts.toolChoice as SAPToolChoice;
 
-    // Type assertion: SDK's Xor type doesn't allow tools/response_format alongside template_ref
-    const promptConfig: Record<string, unknown> = promptTemplateRef
-      ? {
-          template_ref: isTemplateRefById(promptTemplateRef)
-            ? {
-                id: promptTemplateRef.id,
-                ...(promptTemplateRef.scope && { scope: promptTemplateRef.scope }),
-              }
-            : {
-                name: promptTemplateRef.name,
-                scenario: promptTemplateRef.scenario,
-                version: promptTemplateRef.version,
-                ...(promptTemplateRef.scope && { scope: promptTemplateRef.scope }),
-              },
-          ...(tools && tools.length > 0 ? { tools } : {}),
-          ...(responseFormat ? { response_format: responseFormat } : {}),
-        }
-      : {
-          template: [],
-          ...(tools && tools.length > 0 ? { tools } : {}),
-          ...(responseFormat ? { response_format: responseFormat } : {}),
-        };
-
-    const orchestrationConfig: OrchestrationModuleConfig = {
-      promptTemplating: {
-        model: {
-          name: config.modelId,
-          params: modelParams,
-          ...(orchSettings.modelVersion ? { version: orchSettings.modelVersion } : {}),
-        },
-        prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
-      },
-      ...(orchSettings.masking && Object.keys(orchSettings.masking as object).length > 0
-        ? { masking: orchSettings.masking }
-        : {}),
-      ...(orchSettings.filtering && Object.keys(orchSettings.filtering as object).length > 0
-        ? { filtering: orchSettings.filtering }
-        : {}),
-      ...(orchSettings.grounding && Object.keys(orchSettings.grounding as object).length > 0
-        ? { grounding: orchSettings.grounding }
-        : {}),
-      ...(orchSettings.translation && Object.keys(orchSettings.translation as object).length > 0
-        ? { translation: orchSettings.translation }
-        : {}),
-    };
-
-    const mergedPlaceholderValues =
-      orchSettings.placeholderValues || sapOptions?.placeholderValues
-        ? {
-            ...orchSettings.placeholderValues,
-            ...sapOptions?.placeholderValues,
-          }
+    // Template reference resolution
+    const rawTemplateRef = commonParts.sapOptions?.promptTemplateRef ?? settings.promptTemplateRef;
+    const promptTemplateRef: PromptTemplateRef | undefined =
+      rawTemplateRef &&
+      typeof rawTemplateRef === "object" &&
+      ("id" in rawTemplateRef || "name" in rawTemplateRef)
+        ? (rawTemplateRef as PromptTemplateRef)
         : undefined;
+
+    // Build orchestration module configuration
+    const orchestrationConfig = this.buildOrchestrationModuleConfig(config, settings, {
+      modelParams: commonParts.modelParams as SAPModelParams,
+      promptTemplateRef,
+      responseFormat,
+      tools,
+    });
+
+    // Placeholder values merging
+    const settingsPlaceholders = settings.placeholderValues;
+    const sapOptionsPlaceholders = commonParts.sapOptions?.placeholderValues as
+      | Record<string, string>
+      | undefined;
+    const hasSettingsPlaceholders =
+      settingsPlaceholders && Object.keys(settingsPlaceholders).length > 0;
+    const hasSapOptionsPlaceholders =
+      sapOptionsPlaceholders && Object.keys(sapOptionsPlaceholders).length > 0;
+    const hasPlaceholders = hasSettingsPlaceholders ?? hasSapOptionsPlaceholders;
+
+    const mergedPlaceholderValues: Record<string, string> | undefined = hasPlaceholders
+      ? {
+          ...(settingsPlaceholders ?? {}),
+          ...(sapOptionsPlaceholders ?? {}),
+        }
+      : undefined;
+
     const placeholderValues =
       mergedPlaceholderValues && Object.keys(mergedPlaceholderValues).length > 0
         ? mergedPlaceholderValues
         : undefined;
 
-    return {
-      messages,
+    // Build final request body
+    const request = this.buildRequestBody(
+      commonParts.messages as ChatMessage[],
       orchestrationConfig,
       placeholderValues,
       toolChoice,
-      warnings,
+    );
+
+    return Promise.resolve({ request, warnings });
+  }
+
+  protected createClient(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+  ): InstanceType<typeof OrchestrationClient> {
+    const orchSettings = settings as OrchestrationModelSettings;
+    // Create a minimal config with just the model for client initialization
+    // The full config will be passed with each request
+    const minimalConfig: OrchestrationModuleConfig = {
+      promptTemplating: {
+        model: {
+          name: config.modelId,
+          ...(orchSettings.modelVersion ? { version: orchSettings.modelVersion } : {}),
+        },
+        prompt: { template: [] },
+      },
+    };
+    return new this.ClientClass(minimalConfig, config.deploymentConfig, config.destination);
+  }
+
+  protected async executeApiCall(
+    client: unknown,
+    request: unknown,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<SDKResponse> {
+    const orchestrationClient = client as InstanceType<typeof OrchestrationClient>;
+    const response = await orchestrationClient.chatCompletion(
+      request as Record<string, unknown>,
+      abortSignal ? { signal: abortSignal } : undefined,
+    );
+
+    return {
+      getContent: () => response.getContent(),
+      getFinishReason: () => response.getFinishReason(),
+      getTokenUsage: () => response.getTokenUsage(),
+      getToolCalls: () => response.getToolCalls(),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
+      rawResponse: { headers: response.rawResponse.headers },
     };
   }
 
+  protected async executeStreamCall(
+    client: unknown,
+    request: unknown,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<{
+    readonly getFinishReason: () => null | string | undefined;
+    readonly getTokenUsage: () =>
+      | null
+      | undefined
+      | { completion_tokens?: number; prompt_tokens?: number };
+    readonly stream: AsyncIterable<SDKStreamChunk>;
+  }> {
+    const orchestrationClient = client as InstanceType<typeof OrchestrationClient>;
+    const streamResponse = await orchestrationClient.stream(
+      request as Record<string, unknown>,
+      abortSignal,
+      { promptTemplating: { include_usage: true } },
+    );
+
+    return {
+      getFinishReason: () => streamResponse.getFinishReason(),
+      getTokenUsage: () => streamResponse.getTokenUsage(),
+      stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+    };
+  }
+
+  protected getEscapeTemplatePlaceholders(
+    sapOptions: Record<string, unknown> | undefined,
+    settings: SAPAIModelSettings,
+  ): boolean {
+    const orchSettings = settings as OrchestrationModelSettings;
+    return (
+      (sapOptions?.escapeTemplatePlaceholders as boolean | undefined) ??
+      orchSettings.escapeTemplatePlaceholders ??
+      true
+    );
+  }
+
+  protected getIncludeReasoning(
+    sapOptions: Record<string, unknown> | undefined,
+    settings: SAPAIModelSettings,
+  ): boolean {
+    const orchSettings = settings as OrchestrationModelSettings;
+    return (
+      (sapOptions?.includeReasoning as boolean | undefined) ??
+      orchSettings.includeReasoning ??
+      false
+    );
+  }
+
+  protected getParamMappings(): readonly ParamMapping[] {
+    return ORCHESTRATION_PARAM_MAPPINGS;
+  }
+
+  protected getUrl(): string {
+    return "sap-ai:orchestration";
+  }
+
+  /**
+   * Builds inline template configuration.
+   * @param tools - Optional tools.
+   * @param responseFormat - Optional response format.
+   * @returns Prompt configuration.
+   * @internal
+   */
+  private buildInlineTemplateConfig(
+    tools: ChatCompletionTool[] | undefined,
+    responseFormat: unknown,
+  ): Record<string, unknown> {
+    return {
+      template: [],
+      ...(tools && tools.length > 0 ? { tools } : {}),
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    };
+  }
+
+  /**
+   * Builds the orchestration module configuration.
+   * @param config - Strategy configuration.
+   * @param settings - Model settings.
+   * @param params - Build parameters.
+   * @param params.modelParams - LLM model parameters.
+   * @param params.promptTemplateRef - Optional prompt template reference.
+   * @param params.responseFormat - Optional response format specification.
+   * @param params.tools - Optional tools for function calling.
+   * @returns Orchestration module configuration.
+   * @internal
+   */
+  private buildOrchestrationModuleConfig(
+    config: LanguageModelStrategyConfig,
+    settings: OrchestrationModelSettings,
+    params: {
+      readonly modelParams: SAPModelParams;
+      readonly promptTemplateRef?: PromptTemplateRef;
+      readonly responseFormat?: unknown;
+      readonly tools?: ChatCompletionTool[];
+    },
+  ): OrchestrationModuleConfig {
+    const { modelParams, promptTemplateRef, responseFormat, tools } = params;
+
+    // Build prompt configuration
+    const promptConfig = promptTemplateRef
+      ? this.buildTemplateRefConfig(promptTemplateRef, tools, responseFormat)
+      : this.buildInlineTemplateConfig(tools, responseFormat);
+
+    return {
+      promptTemplating: {
+        model: {
+          name: config.modelId,
+          params: modelParams,
+          ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
+        },
+        prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
+      },
+      ...(settings.masking && Object.keys(settings.masking as object).length > 0
+        ? { masking: settings.masking }
+        : {}),
+      ...(settings.filtering && Object.keys(settings.filtering as object).length > 0
+        ? { filtering: settings.filtering }
+        : {}),
+      ...(settings.grounding && Object.keys(settings.grounding as object).length > 0
+        ? { grounding: settings.grounding }
+        : {}),
+      ...(settings.translation && Object.keys(settings.translation as object).length > 0
+        ? { translation: settings.translation }
+        : {}),
+    };
+  }
+
+  /**
+   * Builds the final request body for the orchestration API.
+   * @param messages - Chat messages.
+   * @param orchestrationConfig - Module configuration.
+   * @param placeholderValues - Optional placeholder values.
+   * @param toolChoice - Optional tool choice.
+   * @returns Request body.
+   * @internal
+   */
   private buildRequestBody(
     messages: ChatMessage[],
     orchestrationConfig: OrchestrationModuleConfig,
-    placeholderValues?: Record<string, string>,
-    toolChoice?: SAPToolChoice,
+    placeholderValues: Record<string, string> | undefined,
+    toolChoice: SAPToolChoice | undefined,
   ): Record<string, unknown> {
-    // Type assertion: SDK type doesn't expose prompt.tools/response_format/template_ref properties
     const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
 
     return {
@@ -377,10 +381,76 @@ export class OrchestrationLanguageModelStrategy implements LanguageModelAPIStrat
     };
   }
 
-  private createClient(
-    config: LanguageModelStrategyConfig,
-    orchConfig: OrchestrationModuleConfig,
-  ): InstanceType<OrchestrationClientClass> {
-    return new this.ClientClass(orchConfig, config.deploymentConfig, config.destination);
+  /**
+   * Builds prompt configuration for template reference.
+   * @param ref - Template reference.
+   * @param tools - Optional tools.
+   * @param responseFormat - Optional response format.
+   * @returns Prompt configuration.
+   * @internal
+   */
+  private buildTemplateRefConfig(
+    ref: PromptTemplateRef,
+    tools: ChatCompletionTool[] | undefined,
+    responseFormat: unknown,
+  ): Record<string, unknown> {
+    return {
+      template_ref: isTemplateRefById(ref)
+        ? {
+            id: ref.id,
+            ...(ref.scope && { scope: ref.scope }),
+          }
+        : {
+            name: ref.name,
+            scenario: ref.scenario,
+            version: ref.version,
+            ...(ref.scope && { scope: ref.scope }),
+          },
+      ...(tools && tools.length > 0 ? { tools } : {}),
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    };
+  }
+
+  /**
+   * Resolves tools from settings or options with orchestration-specific priority.
+   *
+   * Orchestration allows tools to be defined in settings (unlike Foundation Models),
+   * with options.tools taking priority.
+   * @param settings - Model settings.
+   * @param options - Call options.
+   * @param warnings - Warnings array to populate.
+   * @returns Resolved tools or undefined.
+   * @internal
+   */
+  private resolveTools(
+    settings: OrchestrationModelSettings,
+    options: LanguageModelV3CallOptions,
+    warnings: SharedV3Warning[],
+  ): ChatCompletionTool[] | undefined {
+    const settingsTools = settings.tools;
+    const optionsTools = options.tools;
+
+    if (settingsTools && settingsTools.length > 0 && optionsTools && optionsTools.length > 0) {
+      warnings.push({
+        message:
+          "Both settings.tools and call options.tools were provided; preferring call options.tools.",
+        type: "other",
+      });
+    }
+
+    // Use settingsTools directly if available and no optionsTools
+    // (settingsTools are already in SAP format)
+    if (settingsTools && settingsTools.length > 0 && (!optionsTools || optionsTools.length === 0)) {
+      return settingsTools;
+    }
+
+    // Convert optionsTools from AI SDK format to SAP format
+    if (optionsTools && optionsTools.length > 0) {
+      const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools as AISDKTool[]);
+      warnings.push(...result.warnings);
+      return result.tools;
+    }
+
+    return undefined;
   }
 }
