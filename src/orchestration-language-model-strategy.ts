@@ -141,7 +141,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       settingsPlaceholders && Object.keys(settingsPlaceholders).length > 0;
     const hasSapOptionsPlaceholders =
       sapOptionsPlaceholders && Object.keys(sapOptionsPlaceholders).length > 0;
-    const hasPlaceholders = hasSettingsPlaceholders ?? hasSapOptionsPlaceholders;
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- Intentional: need OR semantics, not nullish coalescing
+    const hasPlaceholders = hasSettingsPlaceholders || hasSapOptionsPlaceholders;
 
     const mergedPlaceholderValues: Record<string, string> | undefined = hasPlaceholders
       ? {

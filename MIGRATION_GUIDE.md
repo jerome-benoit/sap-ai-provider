@@ -936,7 +936,7 @@ If you encounter issues during migration:
 1. **Check Documentation:**
    - [README](./README.md)
    - [API Reference](./API_REFERENCE.md)
-   - [Troubleshooting](./README.md#troubleshooting) section
+   - [Troubleshooting Guide](./TROUBLESHOOTING.md)
 
 2. **Search Issues:**
    - [GitHub Issues](https://github.com/jerome-benoit/sap-ai-provider/issues)
