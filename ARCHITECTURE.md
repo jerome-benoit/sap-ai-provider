@@ -1196,8 +1196,7 @@ interface EmbeddingModelAPIStrategy {
 #### Template Method Pattern (Base Strategy)
 
 The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
-to consolidate common logic (~67% code reduction) while allowing API-specific
-customization:
+to consolidate shared logic while allowing API-specific customization:
 
 ```typescript
 // Base class with Template Method pattern

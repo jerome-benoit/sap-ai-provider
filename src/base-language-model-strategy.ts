@@ -1,10 +1,11 @@
-/** Base language model strategy consolidating shared logic between Orchestration and Foundation Models APIs. */
+/** Base class for language model strategies using the Template Method pattern. */
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamResult,
   SharedV3Warning,
 } from "@ai-sdk/provider";
+import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
@@ -21,6 +22,7 @@ import {
   createStreamTransformer,
   mapToolChoice,
   type ParamMapping,
+  type SAPToolChoice,
   type SDKResponse,
   type SDKStreamChunk,
   StreamIdGenerator,
@@ -29,29 +31,46 @@ import { VERSION } from "./version.js";
 
 /**
  * Result of building common parts for a language model request.
+ * @template TMessages - The message array type (e.g., `ChatMessage[]`, `AzureOpenAiChatCompletionRequestMessage[]`)
+ * @template TToolChoice - The tool choice type (e.g., `SAPToolChoice`)
  * @internal
  */
-export interface CommonBuildResult {
-  readonly messages: unknown[];
+export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToolChoice = unknown> {
+  readonly messages: TMessages;
   readonly modelParams: Record<string, unknown>;
   readonly providerName: string;
   readonly sapOptions: Record<string, unknown> | undefined;
-  readonly toolChoice: unknown;
+  readonly toolChoice: TToolChoice;
   readonly warnings: SharedV3Warning[];
 }
 
 /**
- * Abstract base class consolidating shared logic between Orchestration and Foundation Models strategies.
- *
- * Implements the Template Method pattern for language model strategies:
- * - Template methods: {@link doGenerate}, {@link doStream}
- * - Primitive operations: {@link buildRequest}, {@link createClient}, {@link executeApiCall}, {@link executeStreamCall}
- * - Configuration hooks: {@link getParamMappings}, {@link getEscapeTemplatePlaceholders}, {@link getIncludeReasoning}, {@link getUrl}
+ * Stream response shape returned by executeStreamCall.
  * @internal
  */
-export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
+export interface StreamCallResponse {
+  readonly getFinishReason: () => null | string | undefined;
+  readonly getTokenUsage: () =>
+    | null
+    | undefined
+    | { completion_tokens?: number; prompt_tokens?: number };
+  readonly stream: AsyncIterable<SDKStreamChunk>;
+}
+
+/**
+ * Abstract base class for language model strategies using the Template Method pattern.
+ * @template TClient - The SDK client type (e.g., AzureOpenAiChatClient, OrchestrationClient).
+ * @template TRequest - The API request type (e.g., AzureOpenAiChatCompletionParameters).
+ * @template TSettings - The model settings type extending SAPAIModelSettings.
+ * @internal
+ */
+export abstract class BaseLanguageModelStrategy<
+  TClient,
+  TRequest,
+  TSettings extends SAPAIModelSettings = SAPAIModelSettings,
+> implements LanguageModelAPIStrategy<TSettings> {
   /**
-   * Common parameter mappings shared by both Orchestration and Foundation Models APIs.
+   * Common parameter mappings for language model APIs.
    * @internal
    */
   static readonly COMMON_PARAM_MAPPINGS: readonly ParamMapping[] = [
@@ -74,12 +93,12 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
 
   async doGenerate(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: TSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
       const commonParts = await this.buildCommonParts(config, settings, options);
-      const { request, warnings } = await this.buildRequest(config, settings, options, commonParts);
+      const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings);
 
@@ -105,12 +124,12 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
 
   async doStream(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: TSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
       const commonParts = await this.buildCommonParts(config, settings, options);
-      const { request, warnings } = await this.buildRequest(config, settings, options, commonParts);
+      const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings);
 
@@ -156,23 +175,17 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
 
   /**
    * Builds common parts shared between doGenerate and doStream.
-   *
-   * Consolidates:
-   * - Provider options parsing
-   * - Message conversion
-   * - Model parameter building
-   * - Tool choice mapping
    * @param config - Strategy configuration.
    * @param settings - Model settings.
    * @param options - AI SDK call options.
-   * @returns Common build result.
+   * @returns Common build result with typed messages and tool choice.
    * @internal
    */
   protected async buildCommonParts(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: TSettings,
     options: LanguageModelV3CallOptions,
-  ): Promise<CommonBuildResult> {
+  ): Promise<CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>> {
     const providerName = getProviderName(config.provider);
 
     const sapOptions = await parseProviderOptions({
@@ -219,10 +232,10 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
    */
   protected abstract buildRequest(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
+    settings: TSettings,
     options: LanguageModelV3CallOptions,
-    commonParts: CommonBuildResult,
-  ): Promise<{ readonly request: unknown; readonly warnings: SharedV3Warning[] }>;
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
+  ): { readonly request: TRequest; readonly warnings: SharedV3Warning[] };
 
   /**
    * Creates the appropriate SDK client for this API.
@@ -233,8 +246,8 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
    */
   protected abstract createClient(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
-  ): unknown;
+    settings: TSettings,
+  ): TClient;
 
   /**
    * Executes the non-streaming API call.
@@ -245,8 +258,8 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
    * @internal
    */
   protected abstract executeApiCall(
-    client: unknown,
-    request: unknown,
+    client: TClient,
+    request: TRequest,
     abortSignal: AbortSignal | undefined,
   ): Promise<SDKResponse>;
 
@@ -259,41 +272,44 @@ export abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrat
    * @internal
    */
   protected abstract executeStreamCall(
-    client: unknown,
-    request: unknown,
+    client: TClient,
+    request: TRequest,
     abortSignal: AbortSignal | undefined,
-  ): Promise<{
-    readonly getFinishReason: () => null | string | undefined;
-    readonly getTokenUsage: () =>
-      | null
-      | undefined
-      | { completion_tokens?: number; prompt_tokens?: number };
-    readonly stream: AsyncIterable<SDKStreamChunk>;
-  }>;
+  ): Promise<StreamCallResponse>;
 
   /**
    * Returns whether to escape template placeholders for this API.
    * @param sapOptions - Parsed provider options.
    * @param settings - Model settings.
-   * @returns Whether to escape template placeholders.
+   * @returns false by default; Orchestration strategy overrides to return true.
    * @internal
    */
-  protected abstract getEscapeTemplatePlaceholders(
+  protected getEscapeTemplatePlaceholders(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     sapOptions: Record<string, unknown> | undefined,
-    settings: SAPAIModelSettings,
-  ): boolean;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    settings: TSettings,
+  ): boolean {
+    return false;
+  }
 
   /**
    * Returns whether to include reasoning in the response.
    * @param sapOptions - Parsed provider options.
    * @param settings - Model settings.
-   * @returns Whether to include reasoning.
+   * @returns Whether to include reasoning (checks sapOptions then settings, defaults to false).
    * @internal
    */
-  protected abstract getIncludeReasoning(
+  protected getIncludeReasoning(
     sapOptions: Record<string, unknown> | undefined,
-    settings: SAPAIModelSettings,
-  ): boolean;
+    settings: TSettings,
+  ): boolean {
+    return (
+      (sapOptions?.includeReasoning as boolean | undefined) ??
+      (settings as SAPAIModelSettings & { includeReasoning?: boolean }).includeReasoning ??
+      false
+    );
+  }
 
   /**
    * Returns the parameter mappings specific to this API strategy.

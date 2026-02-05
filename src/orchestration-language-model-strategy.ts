@@ -12,13 +12,13 @@ import type {
   OrchestrationModelSettings,
   PromptTemplateRef,
   PromptTemplateRefByID,
-  SAPAIModelSettings,
 } from "./sap-ai-settings.js";
 import type { LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import {
   BaseLanguageModelStrategy,
   type CommonBuildResult,
+  type StreamCallResponse,
 } from "./base-language-model-strategy.js";
 import {
   type AISDKTool,
@@ -43,6 +43,15 @@ interface ExtendedPromptTemplating {
   };
 }
 
+/** @internal */
+type OrchestrationClientInstance = InstanceType<typeof OrchestrationClient>;
+
+/**
+ * Orchestration request body type.
+ * @internal
+ */
+type OrchestrationRequest = Record<string, unknown>;
+
 /**
  * SAP model parameters with orchestration-specific fields.
  * @internal
@@ -66,7 +75,6 @@ function isTemplateRefById(ref: PromptTemplateRef): ref is PromptTemplateRefByID
 
 /**
  * Orchestration API parameter mappings.
- * Extends common mappings with orchestration-specific parameters.
  * @internal
  */
 const ORCHESTRATION_PARAM_MAPPINGS: readonly ParamMapping[] = [
@@ -85,7 +93,11 @@ const ORCHESTRATION_PARAM_MAPPINGS: readonly ParamMapping[] = [
  * - Prompt templates
  * @internal
  */
-export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrategy {
+export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrategy<
+  OrchestrationClientInstance,
+  OrchestrationRequest,
+  OrchestrationModelSettings
+> {
   private readonly ClientClass: typeof OrchestrationClient;
 
   constructor(ClientClass: typeof OrchestrationClient) {
@@ -97,8 +109,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
-    commonParts: CommonBuildResult,
-  ): Promise<{ readonly request: unknown; readonly warnings: SharedV3Warning[] }> {
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
+  ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
     const warnings: SharedV3Warning[] = [];
 
     // Resolve tools with orchestration-specific priority (settings.tools can override)
@@ -113,7 +125,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       warnings.push(responseFormatWarning);
     }
 
-    const toolChoice = commonParts.toolChoice as SAPToolChoice;
+    const { toolChoice } = commonParts;
 
     // Template reference resolution
     const rawTemplateRef = commonParts.sapOptions?.promptTemplateRef ?? settings.promptTemplateRef;
@@ -158,27 +170,26 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     // Build final request body
     const request = this.buildRequestBody(
-      commonParts.messages as ChatMessage[],
+      commonParts.messages,
       orchestrationConfig,
       placeholderValues,
       toolChoice,
     );
 
-    return Promise.resolve({ request, warnings });
+    return { request, warnings };
   }
 
   protected createClient(
     config: LanguageModelStrategyConfig,
-    settings: SAPAIModelSettings,
-  ): InstanceType<typeof OrchestrationClient> {
-    const orchSettings = settings as OrchestrationModelSettings;
+    settings: OrchestrationModelSettings,
+  ): OrchestrationClientInstance {
     // Create a minimal config with just the model for client initialization
     // The full config will be passed with each request
     const minimalConfig: OrchestrationModuleConfig = {
       promptTemplating: {
         model: {
           name: config.modelId,
-          ...(orchSettings.modelVersion ? { version: orchSettings.modelVersion } : {}),
+          ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
         },
         prompt: { template: [] },
       },
@@ -187,13 +198,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   }
 
   protected async executeApiCall(
-    client: unknown,
-    request: unknown,
+    client: OrchestrationClientInstance,
+    request: OrchestrationRequest,
     abortSignal: AbortSignal | undefined,
   ): Promise<SDKResponse> {
-    const orchestrationClient = client as InstanceType<typeof OrchestrationClient>;
-    const response = await orchestrationClient.chatCompletion(
-      request as Record<string, unknown>,
+    const response = await client.chatCompletion(
+      request,
       abortSignal ? { signal: abortSignal } : undefined,
     );
 
@@ -208,23 +218,13 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   }
 
   protected async executeStreamCall(
-    client: unknown,
-    request: unknown,
+    client: OrchestrationClientInstance,
+    request: OrchestrationRequest,
     abortSignal: AbortSignal | undefined,
-  ): Promise<{
-    readonly getFinishReason: () => null | string | undefined;
-    readonly getTokenUsage: () =>
-      | null
-      | undefined
-      | { completion_tokens?: number; prompt_tokens?: number };
-    readonly stream: AsyncIterable<SDKStreamChunk>;
-  }> {
-    const orchestrationClient = client as InstanceType<typeof OrchestrationClient>;
-    const streamResponse = await orchestrationClient.stream(
-      request as Record<string, unknown>,
-      abortSignal,
-      { promptTemplating: { include_usage: true } },
-    );
+  ): Promise<StreamCallResponse> {
+    const streamResponse = await client.stream(request, abortSignal, {
+      promptTemplating: { include_usage: true },
+    });
 
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
@@ -235,25 +235,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   protected getEscapeTemplatePlaceholders(
     sapOptions: Record<string, unknown> | undefined,
-    settings: SAPAIModelSettings,
+    settings: OrchestrationModelSettings,
   ): boolean {
-    const orchSettings = settings as OrchestrationModelSettings;
     return (
       (sapOptions?.escapeTemplatePlaceholders as boolean | undefined) ??
-      orchSettings.escapeTemplatePlaceholders ??
+      settings.escapeTemplatePlaceholders ??
       true
-    );
-  }
-
-  protected getIncludeReasoning(
-    sapOptions: Record<string, unknown> | undefined,
-    settings: SAPAIModelSettings,
-  ): boolean {
-    const orchSettings = settings as OrchestrationModelSettings;
-    return (
-      (sapOptions?.includeReasoning as boolean | undefined) ??
-      orchSettings.includeReasoning ??
-      false
     );
   }
 
