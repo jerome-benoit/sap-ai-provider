@@ -281,16 +281,16 @@ export abstract class BaseLanguageModelStrategy<
 
   /**
    * Returns whether to escape template placeholders for this API.
-   * @param sapOptions - Parsed provider options.
-   * @param settings - Model settings.
+   * @param _sapOptions - Parsed provider options (unused in base implementation).
+   * @param _settings - Model settings (unused in base implementation).
    * @returns false by default; Orchestration strategy overrides to return true.
    * @internal
    */
   protected getEscapeTemplatePlaceholders(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    sapOptions: Record<string, unknown> | undefined,
+    _sapOptions: Record<string, unknown> | undefined,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    settings: TSettings,
+    _settings: TSettings,
   ): boolean {
     return false;
   }
