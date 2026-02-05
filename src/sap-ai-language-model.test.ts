@@ -3919,6 +3919,10 @@ describe("SAPAILanguageModel", () => {
 
         // configRef mode uses messagesHistory, not messages
         expectRequestBodyHasMessagesHistory(result);
+
+        // Verify configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
       });
 
       it("should use configRef by scenario/name/version when set in settings", async () => {
@@ -3935,6 +3939,14 @@ describe("SAPAILanguageModel", () => {
         const result = await model.doGenerate({ prompt });
 
         expectRequestBodyHasMessagesHistory(result);
+
+        // Verify configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({
+          name: "my-config",
+          scenario: "my-scenario",
+          version: "1.0.0",
+        });
       });
 
       it("should use configRef from providerOptions", async () => {
@@ -3952,6 +3964,10 @@ describe("SAPAILanguageModel", () => {
         });
 
         expectRequestBodyHasMessagesHistory(result);
+
+        // Verify configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "provider-config-id" });
       });
 
       it("should override settings orchestrationConfigRef with providerOptions", async () => {
@@ -3971,6 +3987,10 @@ describe("SAPAILanguageModel", () => {
         });
 
         expectRequestBodyHasMessagesHistory(result);
+
+        // Verify providerOptions configRef takes priority
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "provider-config-id" });
       });
 
       it("should generate warnings when local settings are ignored due to configRef", async () => {
@@ -3990,6 +4010,29 @@ describe("SAPAILanguageModel", () => {
         expect(result.warnings.length).toBeGreaterThan(0);
         expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
         expectWarningMessageContains(result.warnings, "filtering");
+      });
+
+      it("should ignore promptTemplateRef when orchestrationConfigRef is set", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: { id: "my-config-id" },
+          promptTemplateRef: { id: "ignored-template-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        // Should use configRef mode (messagesHistory)
+        expectRequestBodyHasMessagesHistory(result);
+
+        // Verify configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
+
+        // Should generate warning about ignored promptTemplateRef
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "promptTemplateRef");
       });
 
       it("should include placeholderValues when using configRef", async () => {
@@ -4026,6 +4069,10 @@ describe("SAPAILanguageModel", () => {
         const result = await model.doStream({ prompt });
 
         expectRequestBodyHasMessagesHistory(result);
+
+        // Verify configRef is passed to OrchestrationClient constructor
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "stream-config-id" });
       });
 
       it("should override settings orchestrationConfigRef with providerOptions in stream request", async () => {
@@ -4047,6 +4094,10 @@ describe("SAPAILanguageModel", () => {
             },
           },
         });
+
+        // Verify providerOptions configRef takes priority
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "provider-override-id" });
 
         expectRequestBodyHasMessagesHistory(result);
       });
