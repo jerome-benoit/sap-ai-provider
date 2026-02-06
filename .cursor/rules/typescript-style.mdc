@@ -39,6 +39,10 @@ configuration and code style.
 
 - The provider function must not be invoked with `new` (explicitly guarded in
   [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)).
+- The internal implementation uses V3 types (`LanguageModelV3`, `EmbeddingModelV3`)
+  while the public API exposes V2 types via adapters.
 - When adding model capabilities, ensure `SAPAILanguageModel` maintains the
-  `LanguageModelV3` contract (see
+  internal `LanguageModelV3` contract (see
   [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)).
+- When modifying V2 facade files, ensure V3→V2 adapters transform types correctly
+  (see [src/sap-ai-adapters-v3-to-v2.ts](mdc:src/sap-ai-adapters-v3-to-v2.ts)).

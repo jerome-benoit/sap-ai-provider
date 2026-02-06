@@ -53,10 +53,10 @@ The `ProviderV2` interface exposes:
 
 ## Recommended API Usage
 
-- Text generation: `generateText` with `model: provider(\"<modelId>\")`.
+- Text generation: `generateText` with `model: provider("<modelId>")`.
 - Streaming: `streamText` for SSE token streams.
 - Structured outputs: `generateObject` when the model supports JSON schema.
-- Embeddings: `embed` or `embedMany` with `model: provider.textEmbeddingModel(\"<modelId>\")`.
+- Embeddings: `embed` or `embedMany` with `model: provider.textEmbeddingModel("<modelId>")`.
 
 ## Example Code
 

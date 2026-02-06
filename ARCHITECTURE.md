@@ -294,6 +294,7 @@ src/
 ├── strategy-utils.ts                               # Shared strategy utilities
 │
 │   # API Strategy Implementations
+├── base-language-model-strategy.ts               # Base class for language model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
@@ -1221,24 +1222,25 @@ sequenceDiagram
 
 #### Strategy Interface Design
 
-Strategies implement stateless interfaces - all tenant-specific configuration
-flows through method parameters, never cached in strategy instances:
+Strategies implement stateless interfaces using **internal V3 types** - all
+tenant-specific configuration flows through method parameters, never cached in
+strategy instances. The V2 facade adapts these V3 results to V2 format:
 
 ```typescript
-// Language model strategy interface (internal V3, adapted to V2 by facade)
+// Language model strategy interface (internal V3 types)
 interface LanguageModelAPIStrategy {
   doGenerate(
     config: LanguageModelStrategyConfig, // Tenant config - passed per-call
     settings: SAPAIModelSettings, // Merged model settings
-    options: LanguageModelV2CallOptions, // AI SDK options
-  ): Promise<LanguageModelV2GenerateResult>;
+    options: LanguageModelV3CallOptions, // AI SDK V3 options
+  ): Promise<LanguageModelV3GenerateResult>;
 
-  doStream(config: LanguageModelStrategyConfig, settings: SAPAIModelSettings, options: LanguageModelV2CallOptions): Promise<LanguageModelV2StreamResult>;
+  doStream(config: LanguageModelStrategyConfig, settings: SAPAIModelSettings, options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult>;
 }
 
-// Embedding model strategy interface (internal V3, adapted to V2 by facade)
+// Embedding model strategy interface (internal V3 types)
 interface EmbeddingModelAPIStrategy {
-  doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV2CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV2Result>;
+  doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV3CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV3Result>;
 }
 ```
 
