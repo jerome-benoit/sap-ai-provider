@@ -443,6 +443,19 @@ describe("convertStreamPartToV2", () => {
     }
   });
 
+  it("should not include undefined optional properties on tool-call", () => {
+    const v2Part = convertStreamPartToV2({
+      input: "{}",
+      toolCallId: "call-1",
+      toolName: "tool",
+      type: "tool-call",
+    });
+
+    expect(v2Part?.type).toBe("tool-call");
+    expect(v2Part).not.toHaveProperty("providerExecuted");
+    expect(v2Part).not.toHaveProperty("providerMetadata");
+  });
+
   it("should remove V3-only fields (dynamic, title) from tool-input-start", () => {
     const v2Part = convertStreamPartToV2({
       dynamic: true,
@@ -468,6 +481,18 @@ describe("convertStreamPartToV2", () => {
     if (v2Part?.type === "tool-input-start") {
       expect(v2Part.providerExecuted).toBe(true);
     }
+  });
+
+  it("should not include undefined optional properties on tool-input-start", () => {
+    const v2Part = convertStreamPartToV2({
+      id: "input-1",
+      toolName: "searchTool",
+      type: "tool-input-start",
+    });
+
+    expect(v2Part?.type).toBe("tool-input-start");
+    expect(v2Part).not.toHaveProperty("providerExecuted");
+    expect(v2Part).not.toHaveProperty("providerMetadata");
   });
 
   it("should pass through tool-input-delta and tool-input-end", () => {
@@ -519,12 +544,35 @@ describe("convertStreamPartToV2", () => {
     }
   });
 
+  it("should not include undefined optional properties on tool-result", () => {
+    const v2Part = convertStreamPartToV2({
+      result: {},
+      toolCallId: "call-1",
+      toolName: "tool",
+      type: "tool-result",
+    });
+
+    expect(v2Part?.type).toBe("tool-result");
+    expect(v2Part).not.toHaveProperty("isError");
+    expect(v2Part).not.toHaveProperty("providerExecuted");
+    expect(v2Part).not.toHaveProperty("providerMetadata");
+  });
+
   it("should pass through error and raw events unchanged", () => {
     const errorPart = { error: new Error("test"), type: "error" as const };
     const rawPart = { rawValue: { data: 1 }, type: "raw" as const };
 
     expect(convertStreamPartToV2(errorPart)).toEqual(errorPart);
     expect(convertStreamPartToV2(rawPart)).toEqual(rawPart);
+  });
+
+  it("should passthrough unknown event types for forward compatibility", () => {
+    const unknownPart = { customField: "value", type: "unknown-future-type" };
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+    const v2Part = convertStreamPartToV2(unknownPart as any);
+
+    expect(v2Part).toEqual(unknownPart);
   });
 
   it("should return null for V3-only tool-approval-request", () => {
