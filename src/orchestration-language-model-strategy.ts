@@ -418,6 +418,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * @param params.modelParams - LLM model parameters.
    * @param params.promptTemplateRef - Optional prompt template reference.
    * @param params.responseFormat - Optional response format specification.
+   * @param params.toolChoice - Optional tool choice specification.
    * @param params.tools - Optional tools for function calling.
    * @returns Orchestration module configuration.
    * @internal
@@ -429,20 +430,27 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       readonly modelParams: SAPModelParams;
       readonly promptTemplateRef?: PromptTemplateRef;
       readonly responseFormat?: unknown;
+      readonly toolChoice?: SAPToolChoice;
       readonly tools?: ChatCompletionTool[];
     },
   ): OrchestrationModuleConfig {
-    const { modelParams, promptTemplateRef, responseFormat, tools } = params;
+    const { modelParams, promptTemplateRef, responseFormat, toolChoice, tools } = params;
 
     const promptConfig = promptTemplateRef
       ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools, responseFormat)
       : this.buildInlineTemplateConfig(tools, responseFormat);
 
+    // Include tool_choice in model.params because the SDK filters request-level options
+    // See: https://github.com/SAP/ai-sdk-js/issues/1500
+    const effectiveModelParams = toolChoice
+      ? { ...modelParams, tool_choice: toolChoice }
+      : modelParams;
+
     return {
       promptTemplating: {
         model: {
           name: config.modelId,
-          params: modelParams,
+          params: effectiveModelParams,
           ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
         },
         prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
@@ -467,7 +475,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * @param messages - Chat messages.
    * @param orchestrationConfig - Module configuration.
    * @param placeholderValues - Optional placeholder values.
-   * @param toolChoice - Optional tool choice.
    * @param hasTemplateRef - Whether template_ref mode is active.
    * @returns Request body.
    * @internal
@@ -476,7 +483,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     messages: ChatMessage[],
     orchestrationConfig: OrchestrationModuleConfig,
     placeholderValues: Record<string, string> | undefined,
-    toolChoice: SAPToolChoice | undefined,
     hasTemplateRef: boolean,
   ): Record<string, unknown> {
     const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
@@ -485,6 +491,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     // In inline template mode, SDK adds messages to the template array
     const messagesField = hasTemplateRef ? { messagesHistory: messages } : { messages };
 
+    // Note: tool_choice is passed via model.params (not request level) because the SDK
+    // filters out request-level options. See: https://github.com/SAP/ai-sdk-js/issues/1500
     return {
       ...messagesField,
       model: {
@@ -492,7 +500,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       },
       ...(placeholderValues ? { placeholderValues } : {}),
       ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
-      ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(promptTemplating.prompt.response_format
         ? { response_format: promptTemplating.prompt.response_format }
         : {}),
@@ -550,6 +557,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       modelParams: commonParts.modelParams as SAPModelParams,
       promptTemplateRef,
       responseFormat,
+      toolChoice,
       tools,
     });
 
@@ -566,7 +574,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       commonParts.messages,
       orchestrationConfig,
       placeholderValues,
-      toolChoice,
       Boolean(promptTemplateRef),
     );
 

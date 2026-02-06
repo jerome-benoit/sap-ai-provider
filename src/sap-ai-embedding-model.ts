@@ -126,9 +126,9 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
 
     validateSettings({
       api: effectiveApi,
+      embeddingSettings: this.settings,
       invocationSettings: sapOptions ? { api: sapOptions.api } : undefined,
       modelApi: this.settings.api,
-      modelSettings: this.settings.api ? { api: this.settings.api } : undefined,
     });
 
     const strategy = await getOrCreateEmbeddingModelStrategy(effectiveApi);

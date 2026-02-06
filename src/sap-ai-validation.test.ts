@@ -3,19 +3,24 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { SAPAIModelSettings } from "./sap-ai-settings";
+import type { SAPAIEmbeddingSettings, SAPAIModelSettings } from "./sap-ai-settings";
 
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error";
 import {
   getEffectiveEscapeTemplatePlaceholders,
   resolveApi,
   validateApiInput,
-  validateApiSwitch,
-  validateEscapeTemplatePlaceholders,
-  validateFoundationModelsOnlyOptions,
-  validateOrchestrationOnlyOptions,
   validateSettings,
 } from "./sap-ai-validation";
+
+/**
+ * Helper to create mock embedding settings for testing.
+ * @param partial - Partial settings object to convert.
+ * @returns The mock settings cast to SAPAIEmbeddingSettings.
+ */
+function mockEmbeddingSettings(partial: Record<string, unknown>): SAPAIEmbeddingSettings {
+  return partial as SAPAIEmbeddingSettings;
+}
 
 /**
  * Helper to create mock settings for testing.
@@ -80,337 +85,6 @@ describe("resolveApi", () => {
   });
 });
 
-describe("validateOrchestrationOnlyOptions", () => {
-  it("should pass with undefined settings", () => {
-    expect(() => {
-      validateOrchestrationOnlyOptions(undefined);
-    }).not.toThrow();
-  });
-
-  it("should pass with empty settings", () => {
-    expect(() => {
-      validateOrchestrationOnlyOptions(mockSettings({}));
-    }).not.toThrow();
-  });
-
-  it("should pass with Foundation Models settings (no Orch-only options)", () => {
-    expect(() => {
-      validateOrchestrationOnlyOptions(
-        mockSettings({
-          api: "foundation-models",
-          dataSources: [],
-          includeReasoning: true,
-        }),
-      );
-    }).not.toThrow();
-  });
-
-  it("should throw UnsupportedFeatureError for filtering", () => {
-    const settings = mockSettings({ filtering: { input: {} } });
-
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(/Content filtering is not supported with Foundation Models API/);
-  });
-
-  it("should throw UnsupportedFeatureError for grounding", () => {
-    const settings = mockSettings({
-      grounding: { config: {}, type: "document_grounding_service" },
-    });
-
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(/Document grounding is not supported with Foundation Models API/);
-  });
-
-  it("should throw UnsupportedFeatureError for masking", () => {
-    const settings = mockSettings({
-      masking: { masking_providers: [] },
-    });
-
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(/Data masking is not supported with Foundation Models API/);
-  });
-
-  it("should throw UnsupportedFeatureError for translation", () => {
-    const settings = mockSettings({
-      translation: { input: { config: {}, type: "sap_document_translation" } },
-    });
-
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(/Translation is not supported with Foundation Models API/);
-  });
-
-  it("should throw UnsupportedFeatureError for tools", () => {
-    const settings = mockSettings({
-      tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
-    });
-
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(/SAP-format tool definitions.*is not supported with Foundation Models API/);
-  });
-
-  it("should check features in order (filtering first)", () => {
-    const settings = mockSettings({
-      filtering: { input: {} },
-      grounding: { type: "document_grounding_service" },
-    });
-
-    expect(() => {
-      validateOrchestrationOnlyOptions(settings);
-    }).toThrow(/Content filtering/);
-  });
-});
-
-describe("validateFoundationModelsOnlyOptions", () => {
-  it("should pass with undefined settings", () => {
-    expect(() => {
-      validateFoundationModelsOnlyOptions(undefined);
-    }).not.toThrow();
-  });
-
-  it("should pass with empty settings", () => {
-    expect(() => {
-      validateFoundationModelsOnlyOptions(mockSettings({}));
-    }).not.toThrow();
-  });
-
-  it("should pass with Orchestration settings (no FM-only options)", () => {
-    expect(() => {
-      validateFoundationModelsOnlyOptions(
-        mockSettings({
-          api: "orchestration",
-          filtering: { input: {} },
-          includeReasoning: true,
-        }),
-      );
-    }).not.toThrow();
-  });
-
-  it("should throw UnsupportedFeatureError for dataSources", () => {
-    const settings = mockSettings({
-      api: "foundation-models",
-      dataSources: [
-        {
-          parameters: {
-            authentication: { type: "system_assigned_managed_identity" },
-            endpoint: "https://search.example.com",
-            index_name: "my-index",
-          },
-          type: "azure_search",
-        },
-      ],
-    });
-
-    expect(() => {
-      validateFoundationModelsOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-    expect(() => {
-      validateFoundationModelsOnlyOptions(settings);
-    }).toThrow(/Azure On Your Data \(dataSources\) is not supported with Orchestration API/);
-  });
-
-  it("should throw with empty dataSources array (still !== undefined)", () => {
-    const settings = mockSettings({
-      api: "foundation-models",
-      dataSources: [],
-    });
-
-    expect(() => {
-      validateFoundationModelsOnlyOptions(settings);
-    }).toThrow(UnsupportedFeatureError);
-  });
-});
-
-describe("validateEscapeTemplatePlaceholders", () => {
-  describe("with Foundation Models API", () => {
-    it("should throw when escapeTemplatePlaceholders=true explicitly", () => {
-      expect(() => {
-        validateEscapeTemplatePlaceholders("foundation-models", true);
-      }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateEscapeTemplatePlaceholders("foundation-models", true);
-      }).toThrow(/escapeTemplatePlaceholders.*is not supported with Foundation Models API/);
-    });
-
-    it("should pass when escapeTemplatePlaceholders=false", () => {
-      expect(() => {
-        validateEscapeTemplatePlaceholders("foundation-models", false);
-      }).not.toThrow();
-    });
-
-    it("should pass when escapeTemplatePlaceholders=undefined", () => {
-      expect(() => {
-        validateEscapeTemplatePlaceholders("foundation-models", undefined);
-      }).not.toThrow();
-    });
-  });
-
-  describe("with Orchestration API", () => {
-    it("should pass when escapeTemplatePlaceholders=true", () => {
-      expect(() => {
-        validateEscapeTemplatePlaceholders("orchestration", true);
-      }).not.toThrow();
-    });
-
-    it("should pass when escapeTemplatePlaceholders=false", () => {
-      expect(() => {
-        validateEscapeTemplatePlaceholders("orchestration", false);
-      }).not.toThrow();
-    });
-
-    it("should pass when escapeTemplatePlaceholders=undefined", () => {
-      expect(() => {
-        validateEscapeTemplatePlaceholders("orchestration", undefined);
-      }).not.toThrow();
-    });
-  });
-});
-
-describe("validateApiSwitch", () => {
-  it("should pass when APIs are the same (no switch)", () => {
-    const settings = mockSettings({ filtering: { input: {} } });
-    expect(() => {
-      validateApiSwitch("orchestration", "orchestration", settings);
-    }).not.toThrow();
-  });
-
-  it("should pass when settings are undefined", () => {
-    expect(() => {
-      validateApiSwitch("orchestration", "foundation-models", undefined);
-    }).not.toThrow();
-  });
-
-  it("should pass when switching with no conflicting features", () => {
-    const settings = mockSettings({
-      includeReasoning: true,
-      modelParams: { temperature: 0.7 },
-    });
-    expect(() => {
-      validateApiSwitch("orchestration", "foundation-models", settings);
-    }).not.toThrow();
-  });
-
-  describe("switching from Orchestration to Foundation Models", () => {
-    it("should throw ApiSwitchError for filtering", () => {
-      const settings = mockSettings({ filtering: { input: {} } });
-
-      expect(() => {
-        validateApiSwitch("orchestration", "foundation-models", settings);
-      }).toThrow(ApiSwitchError);
-
-      try {
-        validateApiSwitch("orchestration", "foundation-models", settings);
-      } catch (e) {
-        expect(e).toBeInstanceOf(ApiSwitchError);
-        const error = e as ApiSwitchError;
-        expect(error.fromApi).toBe("orchestration");
-        expect(error.toApi).toBe("foundation-models");
-        expect(error.conflictingFeature).toBe("filtering");
-      }
-    });
-
-    it("should throw ApiSwitchError for grounding", () => {
-      const settings = mockSettings({
-        grounding: { config: {}, type: "document_grounding_service" },
-      });
-
-      expect(() => {
-        validateApiSwitch("orchestration", "foundation-models", settings);
-      }).toThrow(ApiSwitchError);
-    });
-
-    it("should throw ApiSwitchError for masking", () => {
-      const settings = mockSettings({ masking: { masking_providers: [] } });
-
-      expect(() => {
-        validateApiSwitch("orchestration", "foundation-models", settings);
-      }).toThrow(ApiSwitchError);
-    });
-
-    it("should throw ApiSwitchError for translation", () => {
-      const settings = mockSettings({
-        translation: { input: { type: "sap_document_translation" } },
-      });
-
-      expect(() => {
-        validateApiSwitch("orchestration", "foundation-models", settings);
-      }).toThrow(ApiSwitchError);
-    });
-
-    it("should throw ApiSwitchError for tools", () => {
-      const settings = mockSettings({
-        tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
-      });
-
-      expect(() => {
-        validateApiSwitch("orchestration", "foundation-models", settings);
-      }).toThrow(ApiSwitchError);
-    });
-  });
-
-  describe("switching from Foundation Models to Orchestration", () => {
-    it("should throw ApiSwitchError for dataSources", () => {
-      const settings = mockSettings({
-        api: "foundation-models",
-        dataSources: [
-          {
-            parameters: {
-              authentication: { type: "system_assigned_managed_identity" },
-              endpoint: "https://search.example.com",
-              index_name: "my-index",
-            },
-            type: "azure_search",
-          },
-        ],
-      });
-
-      expect(() => {
-        validateApiSwitch("foundation-models", "orchestration", settings);
-      }).toThrow(ApiSwitchError);
-
-      try {
-        validateApiSwitch("foundation-models", "orchestration", settings);
-      } catch (e) {
-        expect(e).toBeInstanceOf(ApiSwitchError);
-        const error = e as ApiSwitchError;
-        expect(error.fromApi).toBe("foundation-models");
-        expect(error.toApi).toBe("orchestration");
-        expect(error.conflictingFeature).toBe("dataSources");
-      }
-    });
-
-    it("should pass when FM settings have no dataSources", () => {
-      const settings = mockSettings({
-        api: "foundation-models",
-        includeReasoning: true,
-      });
-
-      expect(() => {
-        validateApiSwitch("foundation-models", "orchestration", settings);
-      }).not.toThrow();
-    });
-  });
-});
-
 describe("validateApiInput", () => {
   it("should pass for 'orchestration'", () => {
     expect(() => {
@@ -471,154 +145,741 @@ describe("validateApiInput", () => {
 });
 
 describe("validateSettings", () => {
-  it("should pass with valid Orchestration settings", () => {
-    expect(() => {
-      validateSettings({
-        api: "orchestration",
-        modelSettings: mockSettings({
-          filtering: { input: {} },
-          includeReasoning: true,
-        }),
-      });
-    }).not.toThrow();
-  });
-
-  it("should pass with valid Foundation Models settings", () => {
-    expect(() => {
-      validateSettings({
-        api: "foundation-models",
-        modelSettings: mockSettings({
-          api: "foundation-models",
-          dataSources: [],
-          includeReasoning: true,
-        }),
-      });
-    }).not.toThrow();
-  });
-
-  it("should throw for Orchestration features with Foundation Models API", () => {
-    expect(() => {
-      validateSettings({
-        api: "foundation-models",
-        modelSettings: mockSettings({ filtering: { input: {} } }),
-      });
-    }).toThrow(UnsupportedFeatureError);
-  });
-
-  it("should throw for Foundation Models features with Orchestration API", () => {
-    expect(() => {
-      validateSettings({
-        api: "orchestration",
-        modelSettings: mockSettings({
-          api: "foundation-models",
-          dataSources: [
-            {
-              parameters: {
-                authentication: { type: "system_assigned_managed_identity" },
-                endpoint: "https://test.com",
-                index_name: "idx",
-              },
-              type: "azure_search",
-            },
-          ],
-        }),
-      });
-    }).toThrow(UnsupportedFeatureError);
-  });
-
-  it("should validate API switch when invocation API differs", () => {
-    expect(() => {
-      validateSettings({
-        api: "foundation-models",
-        invocationSettings: {
-          api: "foundation-models",
-        },
-        modelApi: "orchestration",
-        modelSettings: mockSettings({ filtering: { input: {} } }),
-      });
-    }).toThrow(ApiSwitchError);
-  });
-
-  it("should throw ApiSwitchError when modelApi is undefined but model has orchestration features and invocation switches to foundation-models", () => {
-    expect(() => {
-      validateSettings({
-        api: "orchestration", // effective API from provider
-        invocationSettings: {
-          api: "foundation-models", // user tries to switch at invocation time
-        },
-        modelApi: undefined, // default - should be treated as "orchestration"
-        modelSettings: mockSettings({ filtering: { input: {} } }), // orchestration-only feature
-      });
-    }).toThrow(ApiSwitchError);
-
-    try {
-      validateSettings({
-        api: "orchestration",
-        invocationSettings: {
-          api: "foundation-models",
-        },
-        modelApi: undefined,
-        modelSettings: mockSettings({ filtering: { input: {} } }),
-      });
-    } catch (e) {
-      expect(e).toBeInstanceOf(ApiSwitchError);
-      const error = e as ApiSwitchError;
-      expect(error.message).toContain("orchestration");
-      expect(error.message).toContain("foundation-models");
-      expect(error.conflictingFeature).toBe("filtering");
-    }
-  });
-
-  it("should not throw when modelApi is undefined and invocation explicitly sets orchestration (no API switch)", () => {
-    expect(() => {
-      validateSettings({
-        api: "orchestration", // effective API after resolution (invocation takes precedence)
-        invocationSettings: {
-          api: "orchestration", // user explicitly uses orchestration
-        },
-        modelApi: undefined, // default - treated as "orchestration"
-        modelSettings: mockSettings({ filtering: { input: {} } }), // orchestration-only feature is fine
-      });
-    }).not.toThrow();
-  });
-
-  it("should validate invocation-level escapeTemplatePlaceholders", () => {
-    expect(() => {
-      validateSettings({
-        api: "foundation-models",
-        invocationSettings: {
-          escapeTemplatePlaceholders: true,
-        },
-      });
-    }).toThrow(UnsupportedFeatureError);
-  });
-
-  it("should validate model-level escapeTemplatePlaceholders", () => {
-    expect(() => {
-      validateSettings({
-        api: "foundation-models",
-        modelSettings: mockSettings({ escapeTemplatePlaceholders: true }),
-      });
-    }).toThrow(UnsupportedFeatureError);
-  });
-
-  it("should validate API input values", () => {
-    expect(() => {
-      validateSettings({
-        api: "invalid" as "orchestration",
-      });
-    }).toThrow(/Invalid API type/);
-  });
-
-  it("should validate invocation API input values", () => {
-    expect(() => {
-      validateSettings({
-        api: "orchestration",
-        invocationSettings: {
+  describe("API input validation", () => {
+    it("should validate API input values", () => {
+      expect(() => {
+        validateSettings({
           api: "invalid" as "orchestration",
-        },
+        });
+      }).toThrow(/Invalid API type/);
+    });
+
+    it("should validate invocation API input values", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          invocationSettings: {
+            api: "invalid" as "orchestration",
+          },
+        });
+      }).toThrow(/Invalid API type/);
+    });
+  });
+
+  describe("Orchestration-only model settings with Foundation Models API", () => {
+    it("should pass with undefined settings", () => {
+      expect(() => {
+        validateSettings({ api: "foundation-models" });
+      }).not.toThrow();
+    });
+
+    it("should pass with empty settings", () => {
+      expect(() => {
+        validateSettings({ api: "foundation-models", modelSettings: mockSettings({}) });
+      }).not.toThrow();
+    });
+
+    it("should pass with Foundation Models settings (no Orch-only options)", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            api: "foundation-models",
+            dataSources: [],
+            includeReasoning: true,
+          }),
+        });
+      }).not.toThrow();
+    });
+
+    it("should throw UnsupportedFeatureError for filtering", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({ filtering: { input: {} } }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({ filtering: { input: {} } }),
+        });
+      }).toThrow(/Content filtering.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for grounding", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            grounding: { config: {}, type: "document_grounding_service" },
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            grounding: { config: {}, type: "document_grounding_service" },
+          }),
+        });
+      }).toThrow(/Document grounding.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for masking", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({ masking: { masking_providers: [] } }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({ masking: { masking_providers: [] } }),
+        });
+      }).toThrow(/Data masking.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for translation", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            translation: { input: { config: {}, type: "sap_document_translation" } },
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            translation: { input: { config: {}, type: "sap_document_translation" } },
+          }),
+        });
+      }).toThrow(/Translation.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for tools", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
+          }),
+        });
+      }).toThrow(/SAP-format tool definitions.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for orchestrationConfigRef", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+          }),
+        });
+      }).toThrow(/orchestrationConfigRef.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for placeholderValues", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({ placeholderValues: { key: "value" } }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({ placeholderValues: { key: "value" } }),
+        });
+      }).toThrow(/placeholderValues.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw UnsupportedFeatureError for promptTemplateRef", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            promptTemplateRef: { id: "template-id", scope: "global" },
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            promptTemplateRef: { id: "template-id", scope: "global" },
+          }),
+        });
+      }).toThrow(/promptTemplateRef.*will be ignored by Foundation Models API/);
+    });
+
+    it("should check features in order (filtering first)", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            filtering: { input: {} },
+            grounding: { type: "document_grounding_service" },
+          }),
+        });
+      }).toThrow(/Content filtering/);
+    });
+  });
+
+  describe("Orchestration-only invocation settings with Foundation Models API", () => {
+    it("should throw UnsupportedFeatureError for orchestrationConfigRef", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          invocationSettings: {
+            orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+          },
+        });
+      }).toThrow(UnsupportedFeatureError);
+    });
+
+    it("should throw UnsupportedFeatureError for placeholderValues", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          invocationSettings: {
+            placeholderValues: { key: "value" },
+          },
+        });
+      }).toThrow(UnsupportedFeatureError);
+    });
+
+    it("should throw UnsupportedFeatureError for promptTemplateRef", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          invocationSettings: {
+            promptTemplateRef: { id: "template-id", scope: "global" },
+          },
+        });
+      }).toThrow(UnsupportedFeatureError);
+    });
+
+    it("should allow orchestration-only invocation options with Orchestration API", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          invocationSettings: {
+            orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+            placeholderValues: { key: "value" },
+            promptTemplateRef: { id: "template-id", scope: "global" },
+          },
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe("Orchestration-only embedding settings with Foundation Models API", () => {
+    it("should pass with undefined embedding settings", () => {
+      expect(() => {
+        validateSettings({ api: "foundation-models" });
+      }).not.toThrow();
+    });
+
+    it("should pass with empty embedding settings", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          embeddingSettings: mockEmbeddingSettings({}),
+        });
+      }).not.toThrow();
+    });
+
+    it("should pass with embedding settings that do not include masking", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          embeddingSettings: mockEmbeddingSettings({
+            api: "foundation-models",
+            modelParams: { dimensions: 256 },
+            modelVersion: "2024-05-13",
+          }),
+        });
+      }).not.toThrow();
+    });
+
+    it("should throw UnsupportedFeatureError for masking", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          embeddingSettings: mockEmbeddingSettings({
+            masking: { masking_providers: [] },
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          embeddingSettings: mockEmbeddingSettings({
+            masking: { masking_providers: [] },
+          }),
+        });
+      }).toThrow(/Data masking.*will be ignored by Foundation Models API/);
+    });
+
+    it("should throw with masking configuration with providers", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          embeddingSettings: mockEmbeddingSettings({
+            masking: {
+              masking_providers: [
+                {
+                  entities: [{ type: "profile-email" }],
+                  method: "anonymization",
+                  type: "sap_data_privacy_integration",
+                },
+              ],
+            },
+          }),
+        });
+      }).toThrow(/Data masking.*will be ignored by Foundation Models API/);
+    });
+
+    it("should allow embedding masking with Orchestration API", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          embeddingSettings: mockEmbeddingSettings({
+            masking: { masking_providers: [] },
+          }),
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe("Foundation Models-only options with Orchestration API", () => {
+    it("should pass with undefined settings", () => {
+      expect(() => {
+        validateSettings({ api: "orchestration" });
+      }).not.toThrow();
+    });
+
+    it("should pass with empty settings", () => {
+      expect(() => {
+        validateSettings({ api: "orchestration", modelSettings: mockSettings({}) });
+      }).not.toThrow();
+    });
+
+    it("should pass with Orchestration settings (no FM-only options)", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          modelSettings: mockSettings({
+            api: "orchestration",
+            filtering: { input: {} },
+            includeReasoning: true,
+          }),
+        });
+      }).not.toThrow();
+    });
+
+    it("should throw UnsupportedFeatureError for dataSources", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          modelSettings: mockSettings({
+            api: "foundation-models",
+            dataSources: [
+              {
+                parameters: {
+                  authentication: { type: "system_assigned_managed_identity" },
+                  endpoint: "https://search.example.com",
+                  index_name: "my-index",
+                },
+                type: "azure_search",
+              },
+            ],
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          modelSettings: mockSettings({
+            api: "foundation-models",
+            dataSources: [
+              {
+                parameters: {
+                  authentication: { type: "system_assigned_managed_identity" },
+                  endpoint: "https://search.example.com",
+                  index_name: "my-index",
+                },
+                type: "azure_search",
+              },
+            ],
+          }),
+        });
+      }).toThrow(/Azure On Your Data \(dataSources\).*will be ignored by Orchestration API/);
+    });
+
+    it("should throw with empty dataSources array (still !== undefined)", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          modelSettings: mockSettings({
+            api: "foundation-models",
+            dataSources: [],
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+    });
+  });
+
+  describe("escapeTemplatePlaceholders validation", () => {
+    describe("with Foundation Models API", () => {
+      it("should throw when escapeTemplatePlaceholders=true at invocation level", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: {
+              escapeTemplatePlaceholders: true,
+            },
+          });
+        }).toThrow(UnsupportedFeatureError);
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: {
+              escapeTemplatePlaceholders: true,
+            },
+          });
+        }).toThrow(/escapeTemplatePlaceholders.*will be ignored by Foundation Models API/);
       });
-    }).toThrow(/Invalid API type/);
+
+      it("should throw when escapeTemplatePlaceholders=true at model level", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            modelSettings: mockSettings({ escapeTemplatePlaceholders: true }),
+          });
+        }).toThrow(UnsupportedFeatureError);
+      });
+
+      it("should pass when escapeTemplatePlaceholders=false at invocation level", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: {
+              escapeTemplatePlaceholders: false,
+            },
+          });
+        }).not.toThrow();
+      });
+
+      it("should pass when escapeTemplatePlaceholders=undefined", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: {},
+          });
+        }).not.toThrow();
+      });
+    });
+
+    describe("with Orchestration API", () => {
+      it("should pass when escapeTemplatePlaceholders=true", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: {
+              escapeTemplatePlaceholders: true,
+            },
+          });
+        }).not.toThrow();
+      });
+
+      it("should pass when escapeTemplatePlaceholders=false", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: {
+              escapeTemplatePlaceholders: false,
+            },
+          });
+        }).not.toThrow();
+      });
+
+      it("should pass when escapeTemplatePlaceholders=undefined", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: {},
+          });
+        }).not.toThrow();
+      });
+    });
+  });
+
+  describe("API switching validation", () => {
+    it("should pass when APIs are the same (no switch)", () => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          invocationSettings: { api: "orchestration" },
+          modelApi: "orchestration",
+          modelSettings: mockSettings({ filtering: { input: {} } }),
+        });
+      }).not.toThrow();
+    });
+
+    it("should pass when switching with no conflicting features", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          invocationSettings: { api: "foundation-models" },
+          modelApi: "orchestration",
+          modelSettings: mockSettings({
+            includeReasoning: true,
+            modelParams: { temperature: 0.7 },
+          }),
+        });
+      }).not.toThrow();
+    });
+
+    describe("switching from Orchestration to Foundation Models", () => {
+      it("should throw ApiSwitchError for filtering", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({ filtering: { input: {} } }),
+          });
+        }).toThrow(ApiSwitchError);
+
+        try {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({ filtering: { input: {} } }),
+          });
+        } catch (e) {
+          expect(e).toBeInstanceOf(ApiSwitchError);
+          const error = e as ApiSwitchError;
+          expect(error.fromApi).toBe("orchestration");
+          expect(error.toApi).toBe("foundation-models");
+          expect(error.conflictingFeature).toBe("filtering");
+        }
+      });
+
+      it("should throw ApiSwitchError for grounding", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({
+              grounding: { config: {}, type: "document_grounding_service" },
+            }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+
+      it("should throw ApiSwitchError for masking", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({ masking: { masking_providers: [] } }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+
+      it("should throw ApiSwitchError for translation", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({
+              translation: { input: { type: "sap_document_translation" } },
+            }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+
+      it("should throw ApiSwitchError for tools", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({
+              tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
+            }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+
+      it("should throw ApiSwitchError for orchestrationConfigRef", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({
+              orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+            }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+
+      it("should throw ApiSwitchError for placeholderValues", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({ placeholderValues: { key: "value" } }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+
+      it("should throw ApiSwitchError for promptTemplateRef", () => {
+        expect(() => {
+          validateSettings({
+            api: "foundation-models",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: "orchestration",
+            modelSettings: mockSettings({
+              promptTemplateRef: { id: "template-id", scope: "global" },
+            }),
+          });
+        }).toThrow(ApiSwitchError);
+      });
+    });
+
+    describe("switching from Foundation Models to Orchestration", () => {
+      it("should throw ApiSwitchError for dataSources", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: { api: "orchestration" },
+            modelApi: "foundation-models",
+            modelSettings: mockSettings({
+              api: "foundation-models",
+              dataSources: [
+                {
+                  parameters: {
+                    authentication: { type: "system_assigned_managed_identity" },
+                    endpoint: "https://search.example.com",
+                    index_name: "my-index",
+                  },
+                  type: "azure_search",
+                },
+              ],
+            }),
+          });
+        }).toThrow(ApiSwitchError);
+
+        try {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: { api: "orchestration" },
+            modelApi: "foundation-models",
+            modelSettings: mockSettings({
+              api: "foundation-models",
+              dataSources: [
+                {
+                  parameters: {
+                    authentication: { type: "system_assigned_managed_identity" },
+                    endpoint: "https://search.example.com",
+                    index_name: "my-index",
+                  },
+                  type: "azure_search",
+                },
+              ],
+            }),
+          });
+        } catch (e) {
+          expect(e).toBeInstanceOf(ApiSwitchError);
+          const error = e as ApiSwitchError;
+          expect(error.fromApi).toBe("foundation-models");
+          expect(error.toApi).toBe("orchestration");
+          expect(error.conflictingFeature).toBe("dataSources");
+        }
+      });
+
+      it("should pass when FM settings have no dataSources", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: { api: "orchestration" },
+            modelApi: "foundation-models",
+            modelSettings: mockSettings({
+              api: "foundation-models",
+              includeReasoning: true,
+            }),
+          });
+        }).not.toThrow();
+      });
+    });
+
+    describe("implicit API switching (modelApi undefined)", () => {
+      it("should throw ApiSwitchError when modelApi is undefined but model has orchestration features and invocation switches to foundation-models", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: undefined,
+            modelSettings: mockSettings({ filtering: { input: {} } }),
+          });
+        }).toThrow(ApiSwitchError);
+
+        try {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: { api: "foundation-models" },
+            modelApi: undefined,
+            modelSettings: mockSettings({ filtering: { input: {} } }),
+          });
+        } catch (e) {
+          expect(e).toBeInstanceOf(ApiSwitchError);
+          const error = e as ApiSwitchError;
+          expect(error.message).toContain("orchestration");
+          expect(error.message).toContain("foundation-models");
+          expect(error.conflictingFeature).toBe("filtering");
+        }
+      });
+
+      it("should not throw when modelApi is undefined and invocation explicitly sets orchestration (no API switch)", () => {
+        expect(() => {
+          validateSettings({
+            api: "orchestration",
+            invocationSettings: { api: "orchestration" },
+            modelApi: undefined,
+            modelSettings: mockSettings({ filtering: { input: {} } }),
+          });
+        }).not.toThrow();
+      });
+    });
   });
 });
 

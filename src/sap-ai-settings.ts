@@ -245,6 +245,10 @@ export interface SAPAISettings {
   readonly modelParams?: CommonModelParams;
   readonly modelVersion?: string;
   /** Orchestration API only. */
+  readonly orchestrationConfigRef?: OrchestrationConfigRef;
+  /** Orchestration API only. */
+  readonly placeholderValues?: Record<string, string>;
+  /** Orchestration API only. */
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
   readonly tools?: ChatCompletionTool[];
