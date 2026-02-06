@@ -248,6 +248,20 @@ describe("convertWarningToV2", () => {
     });
   });
 
+  it("should convert compatibility warning without details", () => {
+    const internalWarning = {
+      feature: "some-feature",
+      type: "compatibility" as const,
+    };
+
+    const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
+
+    expect(v2Warning).toEqual({
+      message: "Compatibility mode: some-feature",
+      type: "other",
+    });
+  });
+
   it("should convert other warning", () => {
     const internalWarning = {
       message: "Some other warning",
@@ -443,6 +457,19 @@ describe("convertStreamPartToV2", () => {
     expect(v2Part).not.toHaveProperty("title");
   });
 
+  it("should preserve providerExecuted on tool-input-start", () => {
+    const v2Part = convertStreamPartToV2({
+      id: "input-1",
+      providerExecuted: true,
+      toolName: "searchTool",
+      type: "tool-input-start",
+    });
+
+    if (v2Part?.type === "tool-input-start") {
+      expect(v2Part.providerExecuted).toBe(true);
+    }
+  });
+
   it("should pass through tool-input-delta and tool-input-end", () => {
     expect(convertStreamPartToV2({ delta: "{}", id: "1", type: "tool-input-delta" })?.type).toBe(
       "tool-input-delta",
@@ -476,6 +503,20 @@ describe("convertStreamPartToV2", () => {
     });
 
     expect(v2Part).not.toHaveProperty("preliminary");
+  });
+
+  it("should preserve isError on tool-result", () => {
+    const v2Part = convertStreamPartToV2({
+      isError: true,
+      result: { error: "something failed" },
+      toolCallId: "call-1",
+      toolName: "tool",
+      type: "tool-result",
+    });
+
+    if (v2Part?.type === "tool-result") {
+      expect(v2Part.isError).toBe(true);
+    }
   });
 
   it("should pass through error and raw events unchanged", () => {
@@ -535,6 +576,40 @@ describe("convertStreamPartToV2", () => {
     expect(v2Part?.type).toBe("source");
     if (v2Part?.type === "source") {
       expect(v2Part.sourceType).toBe("document");
+    }
+  });
+
+  it("should cast providerMetadata on source (url)", () => {
+    const v2Part = convertStreamPartToV2({
+      id: "src-3",
+      providerMetadata: { provider: { relevance: 0.95 } },
+      sourceType: "url",
+      title: "Source with metadata",
+      type: "source",
+      url: "https://example.com/doc",
+    });
+
+    expect(v2Part?.type).toBe("source");
+    if (v2Part?.type === "source" && v2Part.sourceType === "url") {
+      expect(v2Part.providerMetadata).toEqual({ provider: { relevance: 0.95 } });
+    }
+  });
+
+  it("should cast providerMetadata and preserve filename on source (document)", () => {
+    const v2Part = convertStreamPartToV2({
+      filename: "report.pdf",
+      id: "src-4",
+      mediaType: "application/pdf",
+      providerMetadata: { provider: { pageCount: 10 } },
+      sourceType: "document",
+      title: "Document with metadata",
+      type: "source",
+    });
+
+    expect(v2Part?.type).toBe("source");
+    if (v2Part?.type === "source" && v2Part.sourceType === "document") {
+      expect(v2Part.providerMetadata).toEqual({ provider: { pageCount: 10 } });
+      expect(v2Part.filename).toBe("report.pdf");
     }
   });
 
