@@ -55,6 +55,12 @@ const RESOLVED_CONFIG_REF_KEY = "_resolvedConfigRef" as const;
 const RESOLVED_PROMPT_TEMPLATE_REF_KEY = "_resolvedPromptTemplateRef" as const;
 
 /**
+ * Internal key for storing resolved tools in sapOptions.
+ * @internal
+ */
+const RESOLVED_TOOLS_KEY = "_resolvedTools" as const;
+
+/**
  * Extended prompt templating interface for type-safe access.
  * @internal
  */
@@ -229,6 +235,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     const toolChoice = mapToolChoice(options.toolChoice);
 
+    const tools = this.resolveTools(settings, options, warnings);
+
     return {
       messages,
       modelParams,
@@ -237,6 +245,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         ...sapOptions,
         [RESOLVED_CONFIG_REF_KEY]: configRef,
         [RESOLVED_PROMPT_TEMPLATE_REF_KEY]: promptTemplateRef,
+        [RESOLVED_TOOLS_KEY]: tools,
       },
       toolChoice,
       warnings,
@@ -279,11 +288,13 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       | PromptTemplateRef
       | undefined;
 
-    const promptConfig = promptTemplateRef
-      ? this.buildTemplateRefPromptConfig(promptTemplateRef)
-      : { template: [] as ChatMessage[] };
+    const tools = commonParts.sapOptions?.[RESOLVED_TOOLS_KEY] as ChatCompletionTool[] | undefined;
 
-    const minimalConfig: OrchestrationModuleConfig = {
+    const promptConfig = promptTemplateRef
+      ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools)
+      : this.buildInlineTemplateConfig(tools, undefined);
+
+    const clientConfig: OrchestrationModuleConfig = {
       promptTemplating: {
         model: {
           name: config.modelId,
@@ -292,7 +303,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
       },
     };
-    return new this.ClientClass(minimalConfig, config.deploymentConfig, config.destination);
+    return new this.ClientClass(clientConfig, config.deploymentConfig, config.destination);
   }
 
   protected async executeApiCall(
@@ -535,8 +546,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
     warnings: SharedV3Warning[],
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
-    // Resolve tools with orchestration-specific priority (settings.tools can override)
-    const tools = this.resolveTools(settings, options, warnings);
+    const tools = commonParts.sapOptions?.[RESOLVED_TOOLS_KEY] as ChatCompletionTool[] | undefined;
 
     // Response format conversion
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
