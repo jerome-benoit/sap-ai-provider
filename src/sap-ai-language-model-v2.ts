@@ -26,9 +26,9 @@ import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-setting
 
 import {
   convertFinishReasonToV2,
-  convertStreamToV2,
   convertUsageToV2,
   convertWarningsToV2,
+  createV2StreamFromInternal,
 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAILanguageModel as SAPAILanguageModelInternal } from "./sap-ai-language-model.js";
 
@@ -152,20 +152,6 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = await this.internalModel.doStream(options as any);
 
-    // Transform stream to V2 format
-    const stream = new ReadableStream<LanguageModelV2StreamPart>({
-      async start(controller) {
-        try {
-          for await (const part of convertStreamToV2(result.stream)) {
-            controller.enqueue(part);
-          }
-          controller.close();
-        } catch (error) {
-          controller.error(error);
-        }
-      },
-    });
-
     return {
       request: result.request,
       response: result.response
@@ -173,7 +159,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
             headers: result.response.headers as SharedV2Headers | undefined,
           }
         : undefined,
-      stream,
+      stream: createV2StreamFromInternal(result.stream),
     };
   }
 }

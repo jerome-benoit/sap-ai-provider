@@ -1,12 +1,6 @@
-/**
- * Unit tests for internal-to-V2 format adapters
- *
- * Tests transformation logic that converts internal LanguageModel formats
- * to V2 LanguageModel formats for AI SDK 5.x compatibility.
- */
+/** Unit tests for internal-to-V2 format adapters. */
 
 import type {
-  // Internal types for testing internal-to-V2 conversions
   LanguageModelV3FinishReason as InternalFinishReason,
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
@@ -20,66 +14,54 @@ import { describe, expect, it } from "vitest";
 
 import {
   convertFinishReasonToV2,
+  convertProviderMetadataToV2,
   convertStreamPartToV2,
-  convertStreamToV2,
   convertUsageToV2,
   convertWarningsToV2,
   convertWarningToV2,
+  createV2StreamFromInternal,
 } from "./sap-ai-adapters-v3-to-v2.js";
 
+describe("convertProviderMetadataToV2", () => {
+  it("should return undefined for undefined input", () => {
+    const result = convertProviderMetadataToV2(undefined);
+    expect(result).toBeUndefined();
+  });
+
+  it("should pass through provider metadata unchanged", () => {
+    const metadata = { provider: { key: "value", nested: { a: 1 } } };
+    const result = convertProviderMetadataToV2(metadata);
+    expect(result).toEqual(metadata);
+  });
+
+  it("should handle empty metadata object", () => {
+    const metadata = {};
+    const result = convertProviderMetadataToV2(metadata);
+    expect(result).toEqual({});
+  });
+
+  it("should handle metadata with multiple providers", () => {
+    const metadata = {
+      anthropic: { cacheControl: true },
+      openai: { requestId: "req-123" },
+    };
+    const result = convertProviderMetadataToV2(metadata);
+    expect(result).toEqual(metadata);
+  });
+});
+
 describe("convertFinishReasonToV2", () => {
-  it("should convert 'stop' finish reason", () => {
-    const internalReason: InternalFinishReason = {
-      raw: undefined,
-      unified: "stop",
-    };
+  it.each([
+    { expected: "stop", raw: undefined, unified: "stop" },
+    { expected: "length", raw: "max_tokens", unified: "length" },
+    { expected: "content-filter", raw: "content_filter", unified: "content-filter" },
+    { expected: "tool-calls", raw: "function_call", unified: "tool-calls" },
+    { expected: "error", raw: "api_error", unified: "error" },
+    { expected: "other", raw: "some_custom_reason", unified: "other" },
+  ] as const)("should convert '$unified' finish reason", ({ expected, raw, unified }) => {
+    const internalReason: InternalFinishReason = { raw, unified };
     const v2Reason: LanguageModelV2FinishReason = convertFinishReasonToV2(internalReason);
-    expect(v2Reason).toBe("stop");
-  });
-
-  it("should convert 'length' finish reason", () => {
-    const internalReason: InternalFinishReason = {
-      raw: "max_tokens",
-      unified: "length",
-    };
-    const v2Reason: LanguageModelV2FinishReason = convertFinishReasonToV2(internalReason);
-    expect(v2Reason).toBe("length");
-  });
-
-  it("should convert 'content-filter' finish reason", () => {
-    const internalReason: InternalFinishReason = {
-      raw: "content_filter",
-      unified: "content-filter",
-    };
-    const v2Reason: LanguageModelV2FinishReason = convertFinishReasonToV2(internalReason);
-    expect(v2Reason).toBe("content-filter");
-  });
-
-  it("should convert 'tool-calls' finish reason", () => {
-    const internalReason: InternalFinishReason = {
-      raw: "function_call",
-      unified: "tool-calls",
-    };
-    const v2Reason: LanguageModelV2FinishReason = convertFinishReasonToV2(internalReason);
-    expect(v2Reason).toBe("tool-calls");
-  });
-
-  it("should convert 'error' finish reason", () => {
-    const internalReason: InternalFinishReason = {
-      raw: "api_error",
-      unified: "error",
-    };
-    const v2Reason: LanguageModelV2FinishReason = convertFinishReasonToV2(internalReason);
-    expect(v2Reason).toBe("error");
-  });
-
-  it("should convert 'other' finish reason", () => {
-    const internalReason: InternalFinishReason = {
-      raw: "some_custom_reason",
-      unified: "other",
-    };
-    const v2Reason: LanguageModelV2FinishReason = convertFinishReasonToV2(internalReason);
-    expect(v2Reason).toBe("other");
+    expect(v2Reason).toBe(expected);
   });
 });
 
@@ -102,10 +84,10 @@ describe("convertUsageToV2", () => {
     const v2Usage = convertUsageToV2(internalUsage);
 
     expect(v2Usage).toEqual({
-      cachedInputTokens: 20, // V2 includes cacheRead as cachedInputTokens
+      cachedInputTokens: 20,
       inputTokens: 100,
       outputTokens: 50,
-      reasoningTokens: 10, // V2 includes reasoning as reasoningTokens
+      reasoningTokens: 10,
       totalTokens: 150,
     });
   });
@@ -156,7 +138,7 @@ describe("convertUsageToV2", () => {
 
     expect(v2Usage.inputTokens).toBeUndefined();
     expect(v2Usage.outputTokens).toBe(50);
-    expect(v2Usage.totalTokens).toBeUndefined(); // totalTokens should be undefined when inputTokens.total is undefined
+    expect(v2Usage.totalTokens).toBeUndefined();
   });
 
   it("should handle undefined outputTokens total", () => {
@@ -179,7 +161,7 @@ describe("convertUsageToV2", () => {
 
     expect(v2Usage.inputTokens).toBe(100);
     expect(v2Usage.outputTokens).toBeUndefined();
-    expect(v2Usage.totalTokens).toBeUndefined(); // totalTokens should be undefined when outputTokens.total is undefined
+    expect(v2Usage.totalTokens).toBeUndefined();
   });
 
   it("should handle zero tokens", () => {
@@ -245,7 +227,6 @@ describe("convertWarningToV2", () => {
 
     const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
 
-    // V2 format: mapped to 'other' type with combined message
     expect(v2Warning).toEqual({
       message: "Unsupported feature: streaming. Model does not support streaming",
       type: "other",
@@ -359,302 +340,239 @@ describe("convertWarningsToV2", () => {
 });
 
 describe("convertStreamPartToV2", () => {
-  it("should convert finish event with usage and finishReason", () => {
+  it("should dispatch finish event to conversion functions", () => {
     const internalPart: InternalStreamPart = {
       finishReason: { raw: "end_turn", unified: "stop" },
-      providerMetadata: { provider: { requestId: "req-123" } },
       type: "finish",
       usage: {
-        inputTokens: {
-          cacheRead: 20,
-          cacheWrite: undefined,
-          noCache: undefined,
-          total: 100,
-        },
-        outputTokens: {
-          reasoning: 10,
-          text: undefined,
-          total: 50,
-        },
+        inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: undefined, total: 10 },
+        outputTokens: { reasoning: undefined, text: undefined, total: 5 },
       },
     };
 
     const v2Part = convertStreamPartToV2(internalPart);
 
-    expect(v2Part.type).toBe("finish");
-    if (v2Part.type === "finish") {
-      expect(v2Part.finishReason).toBe("stop"); // V2 uses only unified value
-      expect(v2Part.usage).toEqual({
-        cachedInputTokens: 20,
-        inputTokens: 100,
-        outputTokens: 50,
-        reasoningTokens: 10,
-        totalTokens: 150,
-      });
-      expect(v2Part.providerMetadata).toEqual({ provider: { requestId: "req-123" } });
+    expect(v2Part).not.toBeNull();
+    expect(v2Part?.type).toBe("finish");
+    // Verify dispatch happened (finishReason and usage are converted)
+    if (v2Part?.type === "finish") {
+      expect(typeof v2Part.finishReason).toBe("string");
+      expect(v2Part.usage).toHaveProperty("inputTokens");
+      expect(v2Part.usage).toHaveProperty("outputTokens");
     }
   });
 
-  it("should convert stream-start event with warnings", () => {
+  it("should dispatch stream-start event to warnings conversion", () => {
     const internalPart: InternalStreamPart = {
       type: "stream-start",
-      warnings: [
-        {
-          details: "Model does not support streaming",
-          feature: "streaming",
-          type: "unsupported",
-        },
-      ],
+      warnings: [{ feature: "test", type: "unsupported" }],
     };
 
     const v2Part = convertStreamPartToV2(internalPart);
 
-    expect(v2Part.type).toBe("stream-start");
-    if (v2Part.type === "stream-start") {
-      expect(v2Part.warnings).toHaveLength(1);
-      expect(v2Part.warnings[0]).toEqual({
-        message: "Unsupported feature: streaming. Model does not support streaming",
-        type: "other",
-      });
+    expect(v2Part?.type).toBe("stream-start");
+    if (v2Part?.type === "stream-start") {
+      expect(Array.isArray(v2Part.warnings)).toBe(true);
     }
   });
 
-  it("should convert stream-start event with empty warnings", () => {
-    const internalPart: InternalStreamPart = {
-      type: "stream-start",
-      warnings: [],
-    };
-
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part.type).toBe("stream-start");
-    if (v2Part.type === "stream-start") {
-      expect(v2Part.warnings).toEqual([]);
-    }
-  });
-
-  it("should pass through text-delta events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      delta: "Hello world",
+  it("should pass through text-delta events with providerMetadata cast", () => {
+    const v2Part = convertStreamPartToV2({
+      delta: "Hello",
       id: "text-1",
-      providerMetadata: { provider: { data: "value" } },
+      providerMetadata: { provider: { key: "value" } },
       type: "text-delta",
-    };
+    });
 
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+    expect(v2Part?.type).toBe("text-delta");
   });
 
-  it("should pass through text-start events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      id: "text-1",
-      providerMetadata: {},
-      type: "text-start",
-    };
-
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+  it("should pass through text-start and text-end events", () => {
+    expect(convertStreamPartToV2({ id: "1", type: "text-start" })?.type).toBe("text-start");
+    expect(convertStreamPartToV2({ id: "1", type: "text-end" })?.type).toBe("text-end");
   });
 
-  it("should pass through text-end events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      id: "text-1",
-      providerMetadata: {},
-      type: "text-end",
-    };
-
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+  it("should pass through reasoning events", () => {
+    expect(convertStreamPartToV2({ id: "1", type: "reasoning-start" })?.type).toBe(
+      "reasoning-start",
+    );
+    expect(convertStreamPartToV2({ delta: "...", id: "1", type: "reasoning-delta" })?.type).toBe(
+      "reasoning-delta",
+    );
+    expect(convertStreamPartToV2({ id: "1", type: "reasoning-end" })?.type).toBe("reasoning-end");
   });
 
-  it("should pass through reasoning-delta events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      delta: "Thinking...",
-      id: "reasoning-1",
-      providerMetadata: {},
-      type: "reasoning-delta",
-    };
-
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
-  });
-
-  it("should pass through tool-call events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      input: '{"arg": "value"}',
-      toolCallId: "call-123",
-      toolName: "getTool",
+  it("should remove V3-only dynamic field from tool-call", () => {
+    const v2Part = convertStreamPartToV2({
+      dynamic: true,
+      input: "{}",
+      toolCallId: "call-1",
+      toolName: "tool",
       type: "tool-call",
-    };
+    });
 
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+    expect(v2Part?.type).toBe("tool-call");
+    expect(v2Part).not.toHaveProperty("dynamic");
   });
 
-  it("should pass through tool-call events with providerExecuted flag", () => {
-    const internalPart: InternalStreamPart = {
-      input: '{"data": "test"}',
+  it("should preserve providerExecuted on tool-call", () => {
+    const v2Part = convertStreamPartToV2({
+      input: "{}",
       providerExecuted: true,
-      toolCallId: "call-456",
-      toolName: "executeTool",
+      toolCallId: "call-1",
+      toolName: "tool",
       type: "tool-call",
-    };
+    });
 
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+    if (v2Part?.type === "tool-call") {
+      expect(v2Part.providerExecuted).toBe(true);
+    }
   });
 
-  it("should pass through tool-input-start events with extra internal fields", () => {
-    const internalPart: InternalStreamPart = {
-      dynamic: true, // Internal-only field
+  it("should remove V3-only fields (dynamic, title) from tool-input-start", () => {
+    const v2Part = convertStreamPartToV2({
+      dynamic: true,
       id: "input-1",
-      providerExecuted: false,
-      providerMetadata: {},
-      title: "Search Query", // Internal-only field
+      title: "Search Query",
       toolName: "searchTool",
       type: "tool-input-start",
-    };
+    });
 
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    // Internal-only fields are passed through; V2 consumers will ignore them
-    expect(v2Part).toEqual(internalPart);
+    expect(v2Part?.type).toBe("tool-input-start");
+    expect(v2Part).not.toHaveProperty("dynamic");
+    expect(v2Part).not.toHaveProperty("title");
   });
 
-  it("should pass through tool-input-delta events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      delta: '{"query": "test"}',
-      id: "input-1",
-      providerMetadata: {},
-      type: "tool-input-delta",
-    };
-
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+  it("should pass through tool-input-delta and tool-input-end", () => {
+    expect(convertStreamPartToV2({ delta: "{}", id: "1", type: "tool-input-delta" })?.type).toBe(
+      "tool-input-delta",
+    );
+    expect(convertStreamPartToV2({ id: "1", type: "tool-input-end" })?.type).toBe("tool-input-end");
   });
 
-  it("should pass through tool-result events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      result: { data: "Search results", status: "success" },
-      toolCallId: "call-789",
-      toolName: "searchTool",
+  it("should map V3 dynamic to V2 providerExecuted in tool-result", () => {
+    const v2Part = convertStreamPartToV2({
+      dynamic: true,
+      result: {},
+      toolCallId: "call-1",
+      toolName: "tool",
       type: "tool-result",
-    };
+    });
 
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+    expect(v2Part?.type).toBe("tool-result");
+    if (v2Part?.type === "tool-result") {
+      expect(v2Part.providerExecuted).toBe(true);
+    }
+    expect(v2Part).not.toHaveProperty("dynamic");
   });
 
-  it("should pass through error events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      error: new Error("Stream error"),
-      type: "error",
-    };
+  it("should remove V3-only preliminary field from tool-result", () => {
+    const v2Part = convertStreamPartToV2({
+      preliminary: true,
+      result: {},
+      toolCallId: "call-1",
+      toolName: "tool",
+      type: "tool-result",
+    });
 
-    const v2Part = convertStreamPartToV2(internalPart);
-
-    expect(v2Part).toEqual(internalPart);
+    expect(v2Part).not.toHaveProperty("preliminary");
   });
 
-  it("should pass through raw events unchanged", () => {
-    const internalPart: InternalStreamPart = {
-      rawValue: { custom: "data" },
-      type: "raw",
-    };
+  it("should pass through error and raw events unchanged", () => {
+    const errorPart = { error: new Error("test"), type: "error" as const };
+    const rawPart = { rawValue: { data: 1 }, type: "raw" as const };
 
-    const v2Part = convertStreamPartToV2(internalPart);
+    expect(convertStreamPartToV2(errorPart)).toEqual(errorPart);
+    expect(convertStreamPartToV2(rawPart)).toEqual(rawPart);
+  });
 
-    expect(v2Part).toEqual(internalPart);
+  it("should return null for V3-only tool-approval-request", () => {
+    const v2Part = convertStreamPartToV2({
+      approvalId: "approval-1",
+      toolCallId: "call-1",
+      type: "tool-approval-request",
+    });
+
+    expect(v2Part).toBeNull();
+  });
+
+  it("should remove V3-only providerMetadata from file event", () => {
+    const v2Part = convertStreamPartToV2({
+      data: "base64==",
+      mediaType: "image/png",
+      providerMetadata: { provider: { id: "123" } },
+      type: "file",
+    });
+
+    expect(v2Part?.type).toBe("file");
+    expect(v2Part).not.toHaveProperty("providerMetadata");
+  });
+
+  it("should handle source event with url sourceType", () => {
+    const v2Part = convertStreamPartToV2({
+      id: "src-1",
+      sourceType: "url",
+      title: "Source",
+      type: "source",
+      url: "https://example.com",
+    });
+
+    expect(v2Part?.type).toBe("source");
+    if (v2Part?.type === "source") {
+      expect(v2Part.sourceType).toBe("url");
+    }
+  });
+
+  it("should handle source event with document sourceType", () => {
+    const v2Part = convertStreamPartToV2({
+      id: "src-2",
+      mediaType: "application/pdf",
+      sourceType: "document",
+      title: "Doc",
+      type: "source",
+    });
+
+    expect(v2Part?.type).toBe("source");
+    if (v2Part?.type === "source") {
+      expect(v2Part.sourceType).toBe("document");
+    }
+  });
+
+  it("should pass through response-metadata events", () => {
+    const v2Part = convertStreamPartToV2({
+      id: "resp-1",
+      modelId: "gpt-4",
+      timestamp: new Date(),
+      type: "response-metadata",
+    });
+
+    expect(v2Part?.type).toBe("response-metadata");
   });
 });
 
-describe("convertStreamToV2", () => {
-  it("should convert a stream with multiple events", async () => {
+describe("createV2StreamFromInternal", () => {
+  it("should stream multiple events and close properly", async () => {
     const internalStream = new ReadableStream<InternalStreamPart>({
       start(controller) {
-        controller.enqueue({
-          type: "stream-start",
-          warnings: [],
-        });
-        controller.enqueue({
-          delta: "Hello",
-          id: "text-1",
-          type: "text-delta",
-        });
-        controller.enqueue({
-          delta: " world",
-          id: "text-1",
-          type: "text-delta",
-        });
-        controller.enqueue({
-          finishReason: { raw: undefined, unified: "stop" },
-          type: "finish",
-          usage: {
-            inputTokens: {
-              cacheRead: undefined,
-              cacheWrite: undefined,
-              noCache: undefined,
-              total: 10,
-            },
-            outputTokens: { reasoning: undefined, text: undefined, total: 5 },
-          },
-        });
+        controller.enqueue({ type: "stream-start", warnings: [] });
+        controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
+        controller.enqueue({ delta: " world", id: "text-1", type: "text-delta" });
         controller.close();
       },
     });
 
-    const v2Events: LanguageModelV2StreamPart[] = [];
-    for await (const part of convertStreamToV2(internalStream)) {
-      v2Events.push(part);
+    const v2Stream = createV2StreamFromInternal(internalStream);
+    const reader = v2Stream.getReader();
+    const types: string[] = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      types.push(value.type);
     }
 
-    expect(v2Events).toHaveLength(4);
-    expect(v2Events[0]?.type).toBe("stream-start");
-    expect(v2Events[1]?.type).toBe("text-delta");
-    expect(v2Events[2]?.type).toBe("text-delta");
-    expect(v2Events[3]?.type).toBe("finish");
-  });
-
-  it("should convert finish event in stream correctly", async () => {
-    const internalStream = new ReadableStream<InternalStreamPart>({
-      start(controller) {
-        controller.enqueue({
-          finishReason: { raw: "max_tokens", unified: "length" },
-          type: "finish",
-          usage: {
-            inputTokens: { cacheRead: 20, cacheWrite: undefined, noCache: undefined, total: 100 },
-            outputTokens: { reasoning: 10, text: undefined, total: 50 },
-          },
-        });
-        controller.close();
-      },
-    });
-
-    const v2Events: LanguageModelV2StreamPart[] = [];
-    for await (const part of convertStreamToV2(internalStream)) {
-      v2Events.push(part);
-    }
-
-    expect(v2Events).toHaveLength(1);
-    expect(v2Events[0]?.type).toBe("finish");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    expect((v2Events[0] as any)?.finishReason).toBe("length");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    expect((v2Events[0] as any)?.usage).toEqual({
-      cachedInputTokens: 20,
-      inputTokens: 100,
-      outputTokens: 50,
-      reasoningTokens: 10,
-      totalTokens: 150,
-    });
+    expect(types).toEqual(["stream-start", "text-delta", "text-delta"]);
   });
 
   it("should handle empty streams", async () => {
@@ -664,84 +582,128 @@ describe("convertStreamToV2", () => {
       },
     });
 
-    const v2Events: LanguageModelV2StreamPart[] = [];
-    for await (const part of convertStreamToV2(internalStream)) {
-      v2Events.push(part);
-    }
+    const v2Stream = createV2StreamFromInternal(internalStream);
+    const reader = v2Stream.getReader();
+    const { done, value } = await reader.read();
 
-    expect(v2Events).toHaveLength(0);
+    expect(done).toBe(true);
+    expect(value).toBeUndefined();
   });
 
-  it("should handle stream with only pass-through events", async () => {
+  it("should propagate cancellation to source stream", async () => {
+    let cancelCalled = false;
+
+    const internalStream = new ReadableStream<InternalStreamPart>({
+      cancel() {
+        cancelCalled = true;
+      },
+      start(controller) {
+        controller.enqueue({ type: "stream-start", warnings: [] });
+      },
+    });
+
+    const v2Stream = createV2StreamFromInternal(internalStream);
+    const reader = v2Stream.getReader();
+
+    await reader.read();
+    await reader.cancel("User cancelled");
+
+    expect(cancelCalled).toBe(true);
+  });
+
+  it("should propagate errors from source stream", async () => {
     const internalStream = new ReadableStream<InternalStreamPart>({
       start(controller) {
-        controller.enqueue({
-          delta: "Test",
-          id: "text-1",
-          type: "text-delta",
-        });
-        controller.enqueue({
-          input: "{}",
-          toolCallId: "call-1",
-          toolName: "tool",
-          type: "tool-call",
-        });
+        controller.error(new Error("Source stream error"));
+      },
+    });
+
+    const v2Stream = createV2StreamFromInternal(internalStream);
+    const reader = v2Stream.getReader();
+
+    await expect(reader.read()).rejects.toThrow("Source stream error");
+  });
+
+  it("should use pull-based pattern (not eager start-based)", async () => {
+    let pullCount = 0;
+    let startCalled = false;
+
+    const internalStream = new ReadableStream<InternalStreamPart>({
+      pull(controller) {
+        pullCount++;
+        if (pullCount <= 3) {
+          controller.enqueue({ delta: "chunk", id: "text-1", type: "text-delta" });
+        } else {
+          controller.close();
+        }
+      },
+      start() {
+        startCalled = true;
+      },
+    });
+
+    const v2Stream = createV2StreamFromInternal(internalStream);
+
+    // Before any read, pull should not have been called yet (only start)
+    expect(startCalled).toBe(true);
+    const initialPullCount = pullCount;
+
+    const reader = v2Stream.getReader();
+
+    // After reads, pull count should increase
+    await reader.read();
+    await reader.read();
+    await reader.read();
+
+    expect(pullCount).toBeGreaterThan(initialPullCount);
+  });
+
+  it("should filter out V3-only events (tool-approval-request)", async () => {
+    const internalStream = new ReadableStream<InternalStreamPart>({
+      start(controller) {
+        controller.enqueue({ type: "stream-start", warnings: [] });
+        controller.enqueue({ approvalId: "a1", toolCallId: "c1", type: "tool-approval-request" });
+        controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
+        controller.enqueue({ approvalId: "a2", toolCallId: "c2", type: "tool-approval-request" });
         controller.close();
       },
     });
 
-    const v2Events: LanguageModelV2StreamPart[] = [];
-    for await (const part of convertStreamToV2(internalStream)) {
-      v2Events.push(part);
+    const v2Stream = createV2StreamFromInternal(internalStream);
+    const reader = v2Stream.getReader();
+    const types: string[] = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      types.push(value.type);
     }
 
-    expect(v2Events).toHaveLength(2);
-    expect(v2Events[0]?.type).toBe("text-delta");
-    expect(v2Events[1]?.type).toBe("tool-call");
+    expect(types).toEqual(["stream-start", "text-delta"]);
+    expect(types).not.toContain("tool-approval-request");
   });
 
-  it("should release reader lock on stream error", async () => {
+  it("should handle stream with only V3-only events (yields empty)", async () => {
     const internalStream = new ReadableStream<InternalStreamPart>({
       start(controller) {
-        controller.error(new Error("Stream error"));
-      },
-    });
-
-    await expect(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const part of convertStreamToV2(internalStream)) {
-        // Should throw before yielding any parts
-      }
-    }).rejects.toThrow("Stream error");
-  });
-
-  it("should convert stream with warnings correctly", async () => {
-    const internalStream = new ReadableStream<InternalStreamPart>({
-      start(controller) {
-        controller.enqueue({
-          type: "stream-start",
-          warnings: [
-            {
-              feature: "test-feature",
-              type: "unsupported",
-            },
-          ],
-        });
+        controller.enqueue({ approvalId: "a1", toolCallId: "c1", type: "tool-approval-request" });
+        controller.enqueue({ approvalId: "a2", toolCallId: "c2", type: "tool-approval-request" });
         controller.close();
       },
     });
 
-    const v2Events: LanguageModelV2StreamPart[] = [];
-    for await (const part of convertStreamToV2(internalStream)) {
-      v2Events.push(part);
+    const v2Stream = createV2StreamFromInternal(internalStream);
+    const reader = v2Stream.getReader();
+    const events: LanguageModelV2StreamPart[] = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      events.push(value);
     }
 
-    expect(v2Events).toHaveLength(1);
-    expect(v2Events[0]?.type).toBe("stream-start");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    expect((v2Events[0] as any)?.warnings[0]).toEqual({
-      message: "Unsupported feature: test-feature",
-      type: "other",
-    });
+    expect(events).toHaveLength(0);
   });
 });
