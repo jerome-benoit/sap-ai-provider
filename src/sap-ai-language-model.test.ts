@@ -4541,6 +4541,29 @@ describe("SAPAILanguageModel", () => {
               (tool as { function?: { name?: unknown } }).function?.name === "settings_tool",
           ),
         ).toBe(false);
+
+        // tools are in client config (not just request body) for proper SDK routing
+        const clientConfig = await getLastOrchClientConfig();
+        const clientTools =
+          (clientConfig.promptTemplating?.prompt as { tools?: unknown[] }).tools ?? [];
+
+        expect(clientTools).toBeDefined();
+        expect(
+          clientTools.some(
+            (tool) =>
+              typeof tool === "object" &&
+              tool !== null &&
+              (tool as { function?: { name?: unknown } }).function?.name === "call_tool",
+          ),
+        ).toBe(true);
+        expect(
+          clientTools.some(
+            (tool) =>
+              typeof tool === "object" &&
+              tool !== null &&
+              (tool as { function?: { name?: unknown } }).function?.name === "settings_tool",
+          ),
+        ).toBe(false);
       });
 
       it("should use tools from settings when provided", async () => {
@@ -4594,6 +4617,22 @@ describe("SAPAILanguageModel", () => {
 
           expect(customTool).toBeDefined();
         }
+
+        // tools are in client config (not just request body) for proper SDK routing
+        const clientConfig = await getLastOrchClientConfig();
+        const clientTools =
+          (clientConfig.promptTemplating?.prompt as { tools?: unknown[] }).tools ?? [];
+
+        expect(clientTools).toBeDefined();
+        expect(Array.isArray(clientTools)).toBe(true);
+        expect(
+          clientTools.some(
+            (tool) =>
+              typeof tool === "object" &&
+              tool !== null &&
+              (tool as { function?: { name?: unknown } }).function?.name === "custom_tool",
+          ),
+        ).toBe(true);
       });
     });
 
