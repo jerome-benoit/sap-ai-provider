@@ -9,9 +9,7 @@
 
 import type {
   EmbeddingModelV2,
-  // Internal type - aliased to hide implementation details
   EmbeddingModelV3CallOptions as InternalCallOptions,
-  // Internal type - aliased to hide implementation details
   SharedV3ProviderMetadata as InternalProviderMetadata,
   SharedV2Headers,
   SharedV2ProviderMetadata,
@@ -152,8 +150,8 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
 
 /**
  * Casts internal provider metadata to V2 format.
- * @param metadata - The internal provider metadata to cast.
- * @returns The metadata cast to V2 format, or undefined if input is undefined.
+ * @param metadata - Internal provider metadata.
+ * @returns V2 provider metadata.
  * @internal
  */
 function castProviderMetadataToV2(
