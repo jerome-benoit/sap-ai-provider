@@ -323,7 +323,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): SharedV3Warning[] {
     const warnings: SharedV3Warning[] = [];
 
-    // Warn if translation is configured but delimiters are not set
     if (settings.translation && hasKeys(settings.translation)) {
       if (!settings.streamOptions?.delimiters || settings.streamOptions.delimiters.length === 0) {
         warnings.push({
