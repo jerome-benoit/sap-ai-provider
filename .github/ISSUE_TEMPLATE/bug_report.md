@@ -35,7 +35,7 @@ A clear and concise description of the bug.
 ### Environment
 
 - **Package Version:** <!-- e.g., 2.0.0 -->
-- **Node.js Version:** <!-- e.g., 18.17.0 -->
+- **Node.js Version:** <!-- e.g., 20.18.0 -->
 - **OS:** <!-- e.g., macOS 14.0, Ubuntu 22.04, Windows 11 -->
 - **Vercel AI SDK Version:** <!-- e.g., 6.0.0 -->
 

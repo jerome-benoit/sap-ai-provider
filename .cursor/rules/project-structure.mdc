@@ -118,7 +118,7 @@ src/
 
 ## Runtime Requirements
 
-- Node.js >= 18 (see `engines` in [package.json](mdc:package.json)).
+- Node.js >= 20 (see `engines` in [package.json](mdc:package.json)).
 - Authentication is handled automatically by SAP AI SDK:
   - On SAP BTP: Uses service binding (VCAP_SERVICES)
   - Locally: Uses AICORE_SERVICE_KEY environment variable

@@ -26,7 +26,7 @@ publish (see [package.json](mdc:package.json)).
 
 ## Node Engine
 
-- Requires Node >= 18 (see `engines` in [package.json](mdc:package.json)).
+- Requires Node >= 20 (see `engines` in [package.json](mdc:package.json)).
 
 ## Verification
 
