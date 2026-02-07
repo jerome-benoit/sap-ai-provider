@@ -35,6 +35,7 @@ import {
   buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
+  hasKeys,
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
@@ -161,7 +162,7 @@ function copyOrchestrationModules(
 ): void {
   for (const key of ORCHESTRATION_MODULE_KEYS) {
     const value = source[key];
-    if (value && Object.keys(value as object).length > 0) {
+    if (value && hasKeys(value as object)) {
       target[key] = value;
     }
   }
@@ -411,8 +412,9 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       commonParts.sapOptions?.placeholderValues as Record<string, unknown> | undefined,
     ) as Record<string, string>;
 
-    const placeholderValues =
-      Object.keys(mergedPlaceholderValues).length > 0 ? mergedPlaceholderValues : undefined;
+    const placeholderValues = hasKeys(mergedPlaceholderValues)
+      ? mergedPlaceholderValues
+      : undefined;
 
     // In configRef mode, SDK uses messagesHistory (not messages)
     const request: OrchestrationRequest = {
@@ -585,8 +587,9 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       commonParts.sapOptions?.placeholderValues as Record<string, unknown> | undefined,
     ) as Record<string, string>;
 
-    const placeholderValues =
-      Object.keys(mergedPlaceholderValues).length > 0 ? mergedPlaceholderValues : undefined;
+    const placeholderValues = hasKeys(mergedPlaceholderValues)
+      ? mergedPlaceholderValues
+      : undefined;
 
     const request = this.buildRequestBody(
       commonParts.messages,

@@ -17,6 +17,7 @@ import { convertToAISDKError } from "./sap-ai-error.js";
 import {
   buildEmbeddingResult,
   buildModelDeployment,
+  hasKeys,
   normalizeEmbedding,
   prepareEmbeddingCall,
 } from "./strategy-utils.js";
@@ -80,16 +81,16 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
   private buildRequest(
     values: string[],
     settings: SAPAIEmbeddingSettings,
-    sapOptions: undefined | { modelParams?: Record<string, unknown> },
+    embeddingOptions: undefined | { modelParams?: Record<string, unknown> },
   ): AzureOpenAiEmbeddingParameters {
     const mergedParams = deepMerge(
       settings.modelParams as Record<string, unknown> | undefined,
-      sapOptions?.modelParams,
+      embeddingOptions?.modelParams,
     );
 
     return {
       input: values,
-      ...(Object.keys(mergedParams).length > 0 ? mergedParams : {}),
+      ...(hasKeys(mergedParams) ? mergedParams : {}),
     } as AzureOpenAiEmbeddingParameters;
   }
 

@@ -1018,11 +1018,11 @@ export function extractToolParameters(tool: LanguageModelV3FunctionTool): Extrac
     }
   }
 
-  if (inputSchema && Object.keys(inputSchema).length > 0) {
+  if (inputSchema && hasKeys(inputSchema)) {
     const hasProperties =
       inputSchema.properties &&
       typeof inputSchema.properties === "object" &&
-      Object.keys(inputSchema.properties).length > 0;
+      hasKeys(inputSchema.properties);
 
     if (hasProperties) {
       return { parameters: buildSAPToolParameters(inputSchema) };
@@ -1042,6 +1042,16 @@ export function hasCallableParse(
   obj: Record<string, unknown>,
 ): obj is Record<string, unknown> & { parse: (...args: unknown[]) => unknown } {
   return typeof obj.parse === "function";
+}
+
+/**
+ * Checks if an object has at least one own enumerable property.
+ * @param obj - The object to check.
+ * @returns True if the object has one or more keys.
+ * @internal
+ */
+export function hasKeys(obj: object): boolean {
+  return Object.keys(obj).length > 0;
 }
 
 /**

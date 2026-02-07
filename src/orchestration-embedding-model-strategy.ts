@@ -18,6 +18,7 @@ import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import {
   buildEmbeddingResult,
+  hasKeys,
   normalizeEmbedding,
   prepareEmbeddingCall,
 } from "./strategy-utils.js";
@@ -99,19 +100,18 @@ export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStr
     masking?: MaskingModule,
   ): OrchestrationEmbeddingClient {
     const mergedParams = deepMerge(settingsModelParams ?? {}, perCallModelParams ?? {});
-    const hasParams = Object.keys(mergedParams).length > 0;
 
     const embeddingConfig: EmbeddingModelConfig = {
       model: {
         name: config.modelId,
-        ...(hasParams ? { params: mergedParams } : {}),
+        ...(hasKeys(mergedParams) ? { params: mergedParams } : {}),
         ...(modelVersion ? { version: modelVersion } : {}),
       },
     };
 
     const moduleConfig: EmbeddingModuleConfig = {
       embeddings: embeddingConfig,
-      ...(masking && Object.keys(masking as object).length > 0 ? { masking } : {}),
+      ...(masking && hasKeys(masking as object) ? { masking } : {}),
     };
 
     return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
