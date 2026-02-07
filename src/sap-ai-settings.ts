@@ -265,10 +265,13 @@ export interface SAPAISettings {
   readonly api?: SAPAIApiType;
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
+  /** Orchestration API only. */
   readonly filtering?: FilteringModule;
+  /** Orchestration API only. */
   readonly grounding?: GroundingModule;
   /** @default false */
   readonly includeReasoning?: boolean;
+  /** Orchestration API only. */
   readonly masking?: MaskingModule;
   readonly modelParams?: CommonModelParams;
   readonly modelVersion?: string;
@@ -279,7 +282,11 @@ export interface SAPAISettings {
   /** Orchestration API only. */
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
+  /** Orchestration API only. */
+  readonly streamOptions?: OrchestrationStreamOptions;
+  /** Orchestration API only. */
   readonly tools?: ChatCompletionTool[];
+  /** Orchestration API only. */
   readonly translation?: TranslationModule;
 }
 

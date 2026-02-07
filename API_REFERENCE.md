@@ -1191,7 +1191,7 @@ console.log("Response:", result.text);
 
 ### `OrchestrationStreamOptions`
 
-Stream options for controlling how post-LLM modules (translation, masking) process
+Stream options for controlling how post-LLM modules (translation, masking, filtering) process
 streaming responses. Only available with the Orchestration API.
 
 **Properties:**

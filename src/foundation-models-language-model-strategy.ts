@@ -128,7 +128,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       getFinishReason: () => response.getFinishReason(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       rawResponse: { headers: response.rawResponse.headers },
     };
   }
@@ -137,7 +137,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
     abortSignal: AbortSignal | undefined,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Required by base class signature
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: FoundationModelsModelSettings,
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
