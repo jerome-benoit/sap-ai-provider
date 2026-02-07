@@ -1205,22 +1205,25 @@ streaming responses. Only available with the Orchestration API.
 **Example:**
 
 ```typescript
-import { buildTranslationConfig } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, buildTranslationConfig } from "@jerome-benoit/sap-ai-provider";
+import { streamText } from "ai";
+
+const provider = createSAPAIProvider();
+
+// Configure stream options at model level
+const model = provider("gpt-4o", {
+  translation: {
+    output: buildTranslationConfig("output", { targetLanguage: "de" }),
+  },
+  streamOptions: {
+    chunkSize: 50,
+    delimiters: [".", "!", "?"],
+  },
+});
 
 const result = await streamText({
-  model: sapai("gpt-4o"),
-  prompt: "Translate this to German",
-  providerOptions: {
-    sapai: {
-      translation: {
-        output: buildTranslationConfig("output", { targetLanguage: "de" }),
-      },
-      streamOptions: {
-        chunkSize: 50,
-        delimiters: [".", "!", "?"],
-      },
-    },
-  },
+  model,
+  prompt: "Explain AI in simple terms",
 });
 ```
 

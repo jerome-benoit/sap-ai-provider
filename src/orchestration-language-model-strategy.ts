@@ -323,6 +323,11 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): SharedV3Warning[] {
     const warnings: SharedV3Warning[] = [];
 
+    // Skip warning if orchestrationConfigRef is set (local module settings are ignored)
+    if (settings.orchestrationConfigRef) {
+      return warnings;
+    }
+
     if (settings.translation && hasKeys(settings.translation)) {
       if (!settings.streamOptions?.delimiters || settings.streamOptions.delimiters.length === 0) {
         warnings.push({
@@ -590,17 +595,17 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     outputFiltering?: { overlap: number };
     promptTemplating: { include_usage: boolean };
   } {
-    const hasNonEmptyDelimiters =
-      Array.isArray(streamOptions?.delimiters) && streamOptions.delimiters.length > 0;
+    const delimiters = streamOptions?.delimiters;
+    const hasNonEmptyDelimiters = Array.isArray(delimiters) && delimiters.length > 0;
     const hasGlobalOptions = streamOptions?.chunkSize !== undefined || hasNonEmptyDelimiters;
 
     return {
       promptTemplating: { include_usage: true },
       ...(hasGlobalOptions && {
         global: {
-          ...(streamOptions.chunkSize !== undefined && { chunk_size: streamOptions.chunkSize }),
+          ...(streamOptions?.chunkSize !== undefined && { chunk_size: streamOptions.chunkSize }),
           ...(hasNonEmptyDelimiters && {
-            delimiters: [...(streamOptions.delimiters as string[])],
+            delimiters: Array.from(delimiters),
           }),
         },
       }),
