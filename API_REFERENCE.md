@@ -54,6 +54,7 @@ consistently:
   - [`SAPAIProviderSettings`](#sapaiprovidersettings)
   - [`SAPAISettings`](#sapaisettings)
   - [`ModelParams`](#modelparams)
+  - [`OrchestrationStreamOptions`](#orchestrationstreamoptions)
   - [`SAPAIServiceKey`](#sapaiservicekey)
   - [`MaskingModuleConfig`](#maskingmoduleconfig)
   - [`DpiConfig`](#dpiconfig)
@@ -1195,22 +1196,24 @@ streaming responses. Only available with the Orchestration API.
 
 **Properties:**
 
-| Property                 | Type       | Default | Description                                                   |
-| ------------------------ | ---------- | ------- | ------------------------------------------------------------- |
-| `chunkSize`              | `number`   | -       | Number of tokens to buffer before processing post-LLM modules |
-| `delimiters`             | `string[]` | -       | Sentence delimiters for chunking (e.g., `[".", "!", "?"]`)    |
-| `outputFilteringOverlap` | `number`   | -       | Token overlap for output filtering context                    |
+| Property                 | Type                | Description                                                            |
+| ------------------------ | ------------------- | ---------------------------------------------------------------------- |
+| `chunkSize`              | `number`            | Characters to buffer before post-LLM processing (range: 1-10000)       |
+| `delimiters`             | `readonly string[]` | Sentence delimiters for chunking (e.g., `[".", "!", "?"]`)             |
+| `outputFilteringOverlap` | `number`            | Characters from previous chunks for filtering context (range: 0-10000) |
 
 **Example:**
 
 ```typescript
+import { buildTranslationConfig } from "@jerome-benoit/sap-ai-provider";
+
 const result = await streamText({
   model: sapai("gpt-4o"),
   prompt: "Translate this to German",
   providerOptions: {
     sapai: {
       translation: {
-        output_language: "de",
+        output: buildTranslationConfig("output", { targetLanguage: "de" }),
       },
       streamOptions: {
         chunkSize: 50,
