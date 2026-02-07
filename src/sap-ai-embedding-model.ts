@@ -36,7 +36,6 @@ const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
  *
  * Common embedding model IDs include:
  * - `"text-embedding-3-small"` - OpenAI small embedding model (recommended)
- * - `"text-embedding-3-small"` - OpenAI small embedding model
  * - `"text-embedding-3-large"` - OpenAI large embedding model
  *
  * The actual available models depend on your SAP AI Core deployment configuration.

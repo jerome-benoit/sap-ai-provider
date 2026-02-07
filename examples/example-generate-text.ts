@@ -36,7 +36,7 @@ async function generateTextExample() {
   try {
     const provider = createSAPAIProvider();
 
-    // Generate text with GPT-4o
+    // Generate text with gpt-4.1
     console.log("🤖 Testing gpt-4.1...");
     const { finishReason, text, usage } = await generateText({
       messages: [

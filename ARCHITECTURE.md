@@ -80,7 +80,7 @@ The diagram below illustrates the complete architecture of the SAP AI Provider,
 showing how it integrates your application with SAP AI Core through the Vercel
 AI SDK. The provider layer handles OAuth2 authentication, message transformation
 between AI SDK and SAP formats, and error handling. SAP AI Core routes requests
-to various AI models (OpenAI GPT, Anthropic Claude, Google Gemini, Amazon Nova,
+to various AI models (OpenAI, Anthropic Claude, Google Gemini, Amazon Nova,
 and open-source models).
 
 ```mermaid
@@ -103,7 +103,7 @@ graph TB
     end
 
     subgraph "AI Models"
-        GPT[OpenAI GPT-4/4o]
+        GPT[OpenAI gpt-4.1]
         Claude[Anthropic Claude]
         Gemini[Google Gemini]
         Nova[Amazon Nova]
@@ -356,7 +356,7 @@ sequenceDiagram
     participant Auth as Auth System
     participant Transform as Message Transformer
     participant SAP as SAP AI Core
-    participant Model as AI Model (GPT-4o, Claude, etc.)
+    participant Model as AI Model (gpt-4.1, Claude, etc.)
 
     rect rgb(230, 240, 255)
         Note over App,SDK: 1. Application Layer

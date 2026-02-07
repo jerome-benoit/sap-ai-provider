@@ -204,7 +204,7 @@ via the `@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models` packages
 
 **Supported Providers:**
 
-- **OpenAI** (via Azure) - GPT-4o, o-series reasoning models
+- **OpenAI** (via Azure) - gpt-4.1, o-series reasoning models
 - **Anthropic Claude** (via AWS Bedrock) - Claude 3.x, 4.x models
 - **Google Gemini** (via GCP Vertex AI) - Gemini 2.x models
 - **Amazon Nova** (via AWS Bedrock) - Nova models
@@ -353,7 +353,7 @@ const calculatorTool = {
 
 ### Parallel Tool Calls
 
-Some models (GPT-4o, Claude, Amazon Nova) can call multiple tools
+Some models (gpt-4.1, Claude, Amazon Nova) can call multiple tools
 simultaneously:
 
 ```typescript
@@ -482,7 +482,7 @@ const result = await generateText({
 
 ### Best Practices
 
-1. **Model Selection:** Use GPT-4o, Claude, or Amazon Nova for multi-tool
+1. **Model Selection:** Use gpt-4.1, Claude, or Amazon Nova for multi-tool
    applications
 2. **Tool Descriptions:** Write clear, specific descriptions of what each tool
    does
