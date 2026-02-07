@@ -461,6 +461,25 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
 
 type APIType = "foundation-models" | "orchestration";
 
+/**
+ * Reads all parts from a language model stream.
+ * @param stream - The stream to read from.
+ * @returns An array of all stream parts.
+ */
+async function readAllStreamParts(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const parts: LanguageModelV3StreamPart[] = [];
+  const reader = stream.getReader();
+
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+  }
+
+  return parts;
+}
+
 describe("SAPAILanguageModel", () => {
   const orchestrationConfig = {
     deploymentConfig: { resourceGroup: "default" },
@@ -1599,25 +1618,6 @@ describe("SAPAILanguageModel", () => {
       await resetMockStateForApi(api);
     });
 
-    /**
-     * Reads all parts from a language model stream.
-     * @param stream - The stream to read from.
-     * @returns An array of all stream parts.
-     */
-    async function readAllParts(stream: ReadableStream<LanguageModelV3StreamPart>) {
-      const parts: LanguageModelV3StreamPart[] = [];
-      const reader = stream.getReader();
-
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        parts.push(value);
-      }
-
-      return parts;
-    }
-
     it("should stream basic text (edge-runtime compatible)", async () => {
       const model = createModelForApi(api);
       const prompt = createPrompt("Hello");
@@ -1663,7 +1663,7 @@ describe("SAPAILanguageModel", () => {
 
       const result = await model.doStream({ prompt });
 
-      const parts = await readAllParts(result.stream);
+      const parts = await readAllStreamParts(result.stream);
       const streamStart = parts.find((part) => part.type === "stream-start");
       expect(streamStart?.warnings).toHaveLength(0);
     });
@@ -1705,7 +1705,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const textDeltas = parts.filter((p) => p.type === "text-delta");
       expect(textDeltas).toHaveLength(1);
@@ -1732,7 +1732,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
       expect(parts[0]?.type).toBe("stream-start");
@@ -1789,7 +1789,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ includeRawChunks: true, prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
       const rawParts = parts.filter((p) => p.type === "raw");
 
       expect(rawParts).toHaveLength(2);
@@ -1819,7 +1819,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream: stream1 } = await model.doStream({ prompt });
-      const parts1 = await readAllParts(stream1);
+      const parts1 = await readAllStreamParts(stream1);
       expect(parts1.filter((p) => p.type === "raw")).toHaveLength(0);
 
       await setStreamChunksForApi(api, [
@@ -1836,7 +1836,7 @@ describe("SAPAILanguageModel", () => {
       ]);
 
       const { stream: stream2 } = await model.doStream({ includeRawChunks: false, prompt });
-      const parts2 = await readAllParts(stream2);
+      const parts2 = await readAllStreamParts(stream2);
       expect(parts2.filter((p) => p.type === "raw")).toHaveLength(0);
     });
 
@@ -1857,7 +1857,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ includeRawChunks: true, prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const rawParts = parts.filter((p) => p.type === "raw");
       expect(rawParts).toHaveLength(1);
@@ -1900,7 +1900,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Use tool");
 
       const result = await model.doStream({ prompt });
-      const parts = await readAllParts(result.stream);
+      const parts = await readAllStreamParts(result.stream);
 
       const toolCallIndex = parts.findIndex((p) => p.type === "tool-call");
       const finishIndex = parts.findIndex((p) => p.type === "finish");
@@ -1977,7 +1977,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const finishPart = parts.find((p) => p.type === "finish");
       expect(finishPart).toBeDefined();
@@ -2018,7 +2018,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const textDeltas = parts.filter((p) => p.type === "text-delta");
       expect(textDeltas).toHaveLength(1);
@@ -2048,7 +2048,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Hello");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const textDeltas = parts.filter((p) => p.type === "text-delta");
       expect(textDeltas.length).toBeGreaterThanOrEqual(1);
@@ -2076,7 +2076,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Generate a very long streaming response");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const textDeltas = parts.filter((p) => p.type === "text-delta");
 
@@ -2138,7 +2138,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Call a tool with large arguments");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const toolCallPart = parts.find(
         (p): p is { input: string; toolCallId: string; toolName: string; type: "tool-call" } =>
@@ -2202,7 +2202,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Call multiple tools");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const toolCalls = parts.filter(
         (p): p is { input: string; toolCallId: string; toolName: string; type: "tool-call" } =>
@@ -2252,7 +2252,7 @@ describe("SAPAILanguageModel", () => {
       const prompt = createPrompt("Generate Unicode content");
 
       const { stream } = await model.doStream({ prompt });
-      const parts = await readAllParts(stream);
+      const parts = await readAllStreamParts(stream);
 
       const textDeltas = parts.filter((p) => p.type === "text-delta");
 
@@ -2289,7 +2289,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Use tool");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
@@ -2344,7 +2344,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         const textDelta = parts.find((p) => p.type === "text-delta");
         expect(textDelta).toBeDefined();
@@ -2409,7 +2409,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         expect(parts.some((p) => p.type === "finish")).toBe(true);
         expect(parts.some((p) => p.type === "tool-call")).toBe(false);
@@ -2435,7 +2435,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Test");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         const textStarts = parts.filter(
           (p): p is Extract<LanguageModelV3StreamPart, { type: "text-start" }> =>
@@ -2465,7 +2465,7 @@ describe("SAPAILanguageModel", () => {
         expect(textEnds[0]?.id).toBe(blockId);
 
         const { stream: stream2 } = await model.doStream({ prompt });
-        const parts2 = await readAllParts(stream2);
+        const parts2 = await readAllStreamParts(stream2);
 
         const textStarts2 = parts2.filter(
           (p): p is Extract<LanguageModelV3StreamPart, { type: "text-start" }> =>
@@ -2503,7 +2503,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Test");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
@@ -2541,7 +2541,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         const finish = parts.find(
           (p): p is Extract<LanguageModelV3StreamPart, { type: "finish" }> => p.type === "finish",
@@ -2583,7 +2583,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Test");
 
         const { stream } = await model.doStream({ prompt });
-        const parts = await readAllParts(stream);
+        const parts = await readAllStreamParts(stream);
 
         const toolCall = parts.find((p) => p.type === "tool-call");
         expect(toolCall).toBeDefined();
@@ -3132,25 +3132,6 @@ describe("SAPAILanguageModel", () => {
         await resetMockStateForApi("orchestration");
       });
 
-      /**
-       * Reads all parts from a language model stream.
-       * @param stream - The stream to read from.
-       * @returns An array of all stream parts.
-       */
-      async function readStreamParts(stream: ReadableStream<LanguageModelV3StreamPart>) {
-        const parts: LanguageModelV3StreamPart[] = [];
-        const reader = stream.getReader();
-
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parts.push(value);
-        }
-
-        return parts;
-      }
-
       it("should pass chunkSize to stream config", async () => {
         const model = createOrchModel("gpt-4o", {
           streamOptions: { chunkSize: 50 },
@@ -3226,7 +3207,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
         const result = await model.doStream({ prompt });
 
-        const parts = await readStreamParts(result.stream);
+        const parts = await readAllStreamParts(result.stream);
         const streamStart = parts.find((part) => part.type === "stream-start");
         expect(streamStart).toBeDefined();
         expect(streamStart?.warnings).toBeDefined();
@@ -3247,7 +3228,7 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
         const result = await model.doStream({ prompt });
 
-        const parts = await readStreamParts(result.stream);
+        const parts = await readAllStreamParts(result.stream);
         const streamStart = parts.find((part) => part.type === "stream-start");
         const warnings = streamStart?.warnings ?? [];
         const hasDelimiterWarning = warnings.some(
