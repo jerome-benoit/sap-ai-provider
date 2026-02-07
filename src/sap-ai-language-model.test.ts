@@ -536,6 +536,7 @@ describe("SAPAILanguageModel", () => {
     lastRequest: unknown;
     lastRequestConfig: unknown;
     lastStreamAbortSignal: unknown;
+    lastStreamConfig?: unknown;
     lastStreamRequest: unknown;
     setChatCompletionError?: (error: Error) => void;
     setChatCompletionResponse?: (response: unknown) => void;
@@ -564,6 +565,7 @@ describe("SAPAILanguageModel", () => {
       lastRequest: client.lastChatCompletionRequest,
       lastRequestConfig: client.lastChatCompletionRequestConfig,
       lastStreamAbortSignal: client.lastStreamAbortSignal,
+      lastStreamConfig: client.lastStreamConfig,
       lastStreamRequest: client.lastStreamRequest,
       setChatCompletionError: client.setChatCompletionError,
       setChatCompletionResponse: client.setChatCompletionResponse,
@@ -742,6 +744,17 @@ describe("SAPAILanguageModel", () => {
   const getLastOrchClientConfig = async () => {
     const MockClient = await getMockOrchClient();
     return MockClient.lastConstructorConfig as { promptTemplating?: { prompt?: unknown } };
+  };
+
+  const getLastOrchStreamConfig = async () => {
+    const MockClient = await getMockOrchClient();
+    return MockClient.lastStreamConfig as
+      | undefined
+      | {
+          global?: { chunk_size?: number; delimiters?: string[] };
+          outputFiltering?: { overlap?: number };
+          promptTemplating?: { include_usage?: boolean };
+        };
   };
 
   const expectRequestBodyHasMessagesAndNoWarnings = (result: {
@@ -3111,6 +3124,136 @@ describe("SAPAILanguageModel", () => {
         expect(request.masking).toEqual(masking);
         expect(request).toHaveProperty("filtering");
         expect(request.filtering).toEqual(filtering);
+      });
+    });
+
+    describe("streamOptions (orchestration only)", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      /**
+       * Reads all parts from a language model stream.
+       * @param stream - The stream to read from.
+       * @returns An array of all stream parts.
+       */
+      async function readStreamParts(stream: ReadableStream<LanguageModelV3StreamPart>) {
+        const parts: LanguageModelV3StreamPart[] = [];
+        const reader = stream.getReader();
+
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(value);
+        }
+
+        return parts;
+      }
+
+      it("should pass chunkSize to stream config", async () => {
+        const model = createOrchModel("gpt-4o", {
+          streamOptions: { chunkSize: 50 },
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const streamConfig = await getLastOrchStreamConfig();
+        expect(streamConfig?.global?.chunk_size).toBe(50);
+      });
+
+      it("should pass delimiters to stream config", async () => {
+        const delimiters = [".", "!", "?"];
+        const model = createOrchModel("gpt-4o", {
+          streamOptions: { delimiters },
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const streamConfig = await getLastOrchStreamConfig();
+        expect(streamConfig?.global?.delimiters).toEqual(delimiters);
+      });
+
+      it("should pass outputFilteringOverlap to stream config", async () => {
+        const model = createOrchModel("gpt-4o", {
+          streamOptions: { outputFilteringOverlap: 100 },
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const streamConfig = await getLastOrchStreamConfig();
+        expect(streamConfig?.outputFiltering?.overlap).toBe(100);
+      });
+
+      it("should pass all streamOptions together", async () => {
+        const model = createOrchModel("gpt-4o", {
+          streamOptions: {
+            chunkSize: 200,
+            delimiters: ["\n", "."],
+            outputFilteringOverlap: 50,
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const streamConfig = await getLastOrchStreamConfig();
+        expect(streamConfig?.global?.chunk_size).toBe(200);
+        expect(streamConfig?.global?.delimiters).toEqual(["\n", "."]);
+        expect(streamConfig?.outputFiltering?.overlap).toBe(50);
+      });
+
+      it("should always include promptTemplating.include_usage in stream config", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const streamConfig = await getLastOrchStreamConfig();
+        expect(streamConfig?.promptTemplating?.include_usage).toBe(true);
+      });
+
+      it("should warn when translation is configured without delimiters", async () => {
+        const model = createOrchModel("gpt-4o", {
+          translation: {
+            output: { target_language: "de" },
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+        const result = await model.doStream({ prompt });
+
+        const parts = await readStreamParts(result.stream);
+        const streamStart = parts.find((part) => part.type === "stream-start");
+        expect(streamStart).toBeDefined();
+        expect(streamStart?.warnings).toBeDefined();
+        const warnings = streamStart?.warnings ?? [];
+        expect(warnings.some((w) => w.type === "other" && w.message.includes("delimiters"))).toBe(
+          true,
+        );
+      });
+
+      it("should not warn when translation is configured with delimiters", async () => {
+        const model = createOrchModel("gpt-4o", {
+          streamOptions: { delimiters: [".", "!", "?"] },
+          translation: {
+            output: { target_language: "de" },
+          },
+        });
+
+        const prompt = createPrompt("Hello");
+        const result = await model.doStream({ prompt });
+
+        const parts = await readStreamParts(result.stream);
+        const streamStart = parts.find((part) => part.type === "stream-start");
+        const warnings = streamStart?.warnings ?? [];
+        const hasDelimiterWarning = warnings.some(
+          (w) => w.type === "other" && w.message.includes("delimiters"),
+        );
+        expect(hasDelimiterWarning).toBe(false);
       });
     });
 

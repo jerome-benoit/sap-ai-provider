@@ -128,8 +128,36 @@ export interface OrchestrationModelSettings {
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
+  /**
+   * Options for streaming behavior with post-LLM modules.
+   * Only applies when using `streamText()` with orchestration modules.
+   */
+  readonly streamOptions?: OrchestrationStreamOptions;
   readonly tools?: ChatCompletionTool[];
   readonly translation?: TranslationModule;
+}
+
+/**
+ * Stream options for orchestration post-LLM module processing.
+ * Controls chunking behavior for translation, filtering, and other modules during streaming.
+ */
+export interface OrchestrationStreamOptions {
+  /**
+   * Minimum number of characters per chunk for post-LLM modules.
+   * Valid range: 1-10000. Defaults to 100.
+   */
+  readonly chunkSize?: number;
+  /**
+   * Delimiters for splitting stream into chunks (e.g., sentence boundaries).
+   * Required when translation module is configured.
+   * @example ["\n", ".", "?", "!"]
+   */
+  readonly delimiters?: readonly string[];
+  /**
+   * Additional characters from previous chunks sent to output filtering for context.
+   * Valid range: 0-10000.
+   */
+  readonly outputFilteringOverlap?: number;
 }
 
 /** Reference to a template in SAP AI Core's Prompt Registry. */

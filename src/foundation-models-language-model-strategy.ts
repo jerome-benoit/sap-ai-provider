@@ -137,6 +137,8 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
     abortSignal: AbortSignal | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Required by base class signature
+    _settings: FoundationModelsModelSettings,
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
