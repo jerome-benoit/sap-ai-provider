@@ -590,16 +590,17 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     outputFiltering?: { overlap: number };
     promptTemplating: { include_usage: boolean };
   } {
-    const hasGlobalOptions =
-      streamOptions?.chunkSize !== undefined || streamOptions?.delimiters !== undefined;
+    const hasNonEmptyDelimiters =
+      Array.isArray(streamOptions?.delimiters) && streamOptions.delimiters.length > 0;
+    const hasGlobalOptions = streamOptions?.chunkSize !== undefined || hasNonEmptyDelimiters;
 
     return {
       promptTemplating: { include_usage: true },
       ...(hasGlobalOptions && {
         global: {
           ...(streamOptions.chunkSize !== undefined && { chunk_size: streamOptions.chunkSize }),
-          ...(streamOptions.delimiters !== undefined && {
-            delimiters: [...streamOptions.delimiters],
+          ...(hasNonEmptyDelimiters && {
+            delimiters: [...(streamOptions.delimiters as string[])],
           }),
         },
       }),

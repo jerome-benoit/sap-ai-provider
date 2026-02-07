@@ -70,6 +70,7 @@ export type {
   OrchestrationDefaultSettings,
   OrchestrationModelParams,
   OrchestrationModelSettings,
+  OrchestrationStreamOptions,
   PromptTemplateRef,
   PromptTemplateRefByID,
   PromptTemplateRefByScenarioNameVersion,

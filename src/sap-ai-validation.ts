@@ -152,6 +152,7 @@ const ORCHESTRATION_ONLY_FEATURE_KEYS = [
   "orchestrationConfigRef",
   "placeholderValues",
   "promptTemplateRef",
+  "streamOptions",
   "tools",
   "translation",
 ] as const;
@@ -170,6 +171,7 @@ const ORCHESTRATION_ONLY_FEATURES: Readonly<
   orchestrationConfigRef: "Orchestration config reference (orchestrationConfigRef)",
   placeholderValues: "Placeholder values (placeholderValues)",
   promptTemplateRef: "Prompt template reference (promptTemplateRef)",
+  streamOptions: "Stream options for post-LLM modules",
   tools: "SAP-format tool definitions (use AI SDK tools instead)",
   translation: "Translation",
 } as const;
