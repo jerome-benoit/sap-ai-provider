@@ -143,7 +143,7 @@ export abstract class BaseLanguageModelStrategy<
       const idGenerator = new StreamIdGenerator();
       const responseId = idGenerator.generateResponseId();
 
-      const streamWarnings = this.collectStreamWarnings(settings);
+      const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 
       const transformedStream = createStreamTransformer({
         convertToAISDKError,
@@ -242,14 +242,17 @@ export abstract class BaseLanguageModelStrategy<
 
   /**
    * Collects stream-specific warnings.
-   * Override in subclasses to add API-specific stream warnings.
+   * Override in subclasses to add API-specific streaming warnings.
    * @param _settings - Model settings (unused in base implementation).
+   * @param _sapOptions - Provider options (unused in base implementation).
    * @returns Array of warnings for streaming operations.
    * @internal
    */
   protected collectStreamWarnings(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: TSettings,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _sapOptions?: Record<string, unknown>,
   ): SharedV3Warning[] {
     return [];
   }

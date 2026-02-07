@@ -315,16 +315,21 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   /**
    * Collects stream-specific warnings for orchestration.
    * @param settings - Model settings.
+   * @param sapOptions - Provider options.
    * @returns Array of warnings for streaming operations.
    * @internal
    */
   protected override collectStreamWarnings(
     settings: OrchestrationModelSettings,
+    sapOptions?: Record<string, unknown>,
   ): SharedV3Warning[] {
     const warnings: SharedV3Warning[] = [];
 
-    // Skip warning if orchestrationConfigRef is set (local module settings are ignored)
-    if (settings.orchestrationConfigRef) {
+    // Skip warning if a valid orchestrationConfigRef is set in settings or providerOptions
+    // (local module settings are ignored when using server-side config)
+    const configRefCandidate =
+      sapOptions?.orchestrationConfigRef ?? settings.orchestrationConfigRef;
+    if (configRefCandidate && isOrchestrationConfigRef(configRefCandidate)) {
       return warnings;
     }
 

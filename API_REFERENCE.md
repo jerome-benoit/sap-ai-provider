@@ -1041,6 +1041,7 @@ Model-specific configuration options.
 | `masking`                    | `MaskingModule`              | -       | Data masking configuration (DPI)                         |
 | `filtering`                  | `FilteringModule`            | -       | Content filtering configuration                          |
 | `grounding`                  | `GroundingModule`            | -       | Document grounding configuration                         |
+| `translation`                | `TranslationModule`          | -       | Translation configuration (Orchestration only)           |
 | `placeholderValues`          | `Record<string, string>`     | -       | Default values for template placeholders                 |
 | `promptTemplateRef`          | `PromptTemplateRef`          | -       | Reference to a Prompt Registry template                  |
 | `responseFormat`             | `ResponseFormatConfig`       | -       | Response format specification                            |
