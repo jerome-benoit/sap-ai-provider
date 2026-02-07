@@ -71,8 +71,8 @@
     "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.7",
-    "@ai-sdk/provider-utils": "^4.0.13",
+    "@ai-sdk/provider": "^3.0.8",
+    "@ai-sdk/provider-utils": "^4.0.14",
     "@sap-ai-sdk/foundation-models": "^2.6.0",
     "@sap-ai-sdk/orchestration": "^2.6.0",
     "zod": "^4.3.6"
@@ -84,7 +84,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.2.4",
     "eslint": "^9.39.2",
-    "eslint-plugin-jsdoc": "^62.5.2",
+    "eslint-plugin-jsdoc": "^62.5.3",
     "eslint-plugin-perfectionist": "^5.5.0",
     "globals": "^17.3.0",
     "markdown-link-check": "^3.14.2",
