@@ -1212,7 +1212,7 @@ import { streamText } from "ai";
 const provider = createSAPAIProvider();
 
 // Configure stream options at model level
-const model = provider("gpt-4o", {
+const model = provider("gpt-4.1", {
   translation: {
     output: buildTranslationConfig("output", { targetLanguage: "de" }),
   },
