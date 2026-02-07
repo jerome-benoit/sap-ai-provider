@@ -26,6 +26,7 @@ import {
 } from "./sap-ai-provider-options.js";
 import {
   getOrCreateLanguageModelStrategy,
+  type LanguageModelAPIStrategy,
   type LanguageModelStrategyConfig,
 } from "./sap-ai-strategy.js";
 import { resolveApi, validateSettings } from "./sap-ai-validation.js";
@@ -116,76 +117,12 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   }
 
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
-    const providerName = getProviderName(this.config.provider);
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
-    const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
-
-    validateSettings({
-      api: effectiveApi,
-      invocationSettings: sapOptions
-        ? {
-            api: sapOptions.api,
-            escapeTemplatePlaceholders: sapOptions.escapeTemplatePlaceholders,
-            orchestrationConfigRef: sapOptions.orchestrationConfigRef,
-            placeholderValues: sapOptions.placeholderValues,
-            promptTemplateRef: sapOptions.promptTemplateRef,
-          }
-        : undefined,
-      modelApi: this.settings.api,
-      modelSettings: this.settings,
-    });
-
-    const strategy = await getOrCreateLanguageModelStrategy(effectiveApi);
-
-    const strategyConfig: LanguageModelStrategyConfig = {
-      deploymentConfig: this.config.deploymentConfig,
-      destination: this.config.destination,
-      modelId: this.modelId,
-      provider: this.config.provider,
-    };
-
+    const { strategy, strategyConfig } = await this.prepareInvocation(options);
     return strategy.doGenerate(strategyConfig, this.settings, options);
   }
 
   async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
-    const providerName = getProviderName(this.config.provider);
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
-    const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
-
-    validateSettings({
-      api: effectiveApi,
-      invocationSettings: sapOptions
-        ? {
-            api: sapOptions.api,
-            escapeTemplatePlaceholders: sapOptions.escapeTemplatePlaceholders,
-            orchestrationConfigRef: sapOptions.orchestrationConfigRef,
-            placeholderValues: sapOptions.placeholderValues,
-            promptTemplateRef: sapOptions.promptTemplateRef,
-          }
-        : undefined,
-      modelApi: this.settings.api,
-      modelSettings: this.settings,
-    });
-
-    const strategy = await getOrCreateLanguageModelStrategy(effectiveApi);
-
-    const strategyConfig: LanguageModelStrategyConfig = {
-      deploymentConfig: this.config.deploymentConfig,
-      destination: this.config.destination,
-      modelId: this.modelId,
-      provider: this.config.provider,
-    };
-
+    const { strategy, strategyConfig } = await this.prepareInvocation(options);
     return strategy.doStream(strategyConfig, this.settings, options);
   }
 
@@ -195,5 +132,51 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       return /^data:image\//i.test(url.href);
     }
     return false;
+  }
+
+  /**
+   * Prepares common invocation context for doGenerate and doStream.
+   * @param options - AI SDK call options.
+   * @returns Strategy and configuration for the invocation.
+   * @internal
+   */
+  private async prepareInvocation(options: LanguageModelV3CallOptions): Promise<{
+    strategy: LanguageModelAPIStrategy;
+    strategyConfig: LanguageModelStrategyConfig;
+  }> {
+    const providerName = getProviderName(this.config.provider);
+    const sapOptions = await parseProviderOptions({
+      provider: providerName,
+      providerOptions: options.providerOptions,
+      schema: sapAILanguageModelProviderOptions,
+    });
+
+    const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
+
+    validateSettings({
+      api: effectiveApi,
+      invocationSettings: sapOptions
+        ? {
+            api: sapOptions.api,
+            escapeTemplatePlaceholders: sapOptions.escapeTemplatePlaceholders,
+            orchestrationConfigRef: sapOptions.orchestrationConfigRef,
+            placeholderValues: sapOptions.placeholderValues,
+            promptTemplateRef: sapOptions.promptTemplateRef,
+          }
+        : undefined,
+      modelApi: this.settings.api,
+      modelSettings: this.settings,
+    });
+
+    const strategy = await getOrCreateLanguageModelStrategy(effectiveApi);
+
+    const strategyConfig: LanguageModelStrategyConfig = {
+      deploymentConfig: this.config.deploymentConfig,
+      destination: this.config.destination,
+      modelId: this.modelId,
+      provider: this.config.provider,
+    };
+
+    return { strategy, strategyConfig };
   }
 }
