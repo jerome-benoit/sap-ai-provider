@@ -1,4 +1,4 @@
-/** Validation functions for SAP AI API-specific features. */
+/** Validation and resolution functions for SAP AI API-specific features. */
 import type {
   FoundationModelsModelSettings,
   OrchestrationModelSettings,
@@ -8,6 +8,7 @@ import type {
   SAPAISettings,
 } from "./sap-ai-settings.js";
 
+import { deepMerge } from "./deep-merge.js";
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
@@ -312,6 +313,25 @@ export function getEffectiveEscapeTemplatePlaceholders(
   }
 
   return true;
+}
+
+/**
+ * Merges settings with proper API precedence (callSettings > defaultSettings > fallbackApi).
+ * @param defaultSettings - Provider-level default settings.
+ * @param callSettings - Per-call settings that override defaults.
+ * @param fallbackApi - Fallback API type when neither settings specify one.
+ * @returns Merged settings with correct API precedence.
+ * @internal
+ */
+export function mergeSettingsWithApi<T extends { api?: string }>(
+  defaultSettings: Record<string, unknown> | undefined,
+  callSettings: Partial<T>,
+  fallbackApi: string,
+): T {
+  return {
+    ...deepMerge(defaultSettings, callSettings as Record<string, unknown>),
+    api: callSettings.api ?? (defaultSettings?.api as string | undefined) ?? fallbackApi,
+  } as T;
 }
 
 /**
