@@ -47,7 +47,7 @@ function validateEscapeTemplatePlaceholders(
 ): void {
   if (api === "foundation-models" && escapeTemplatePlaceholders === true) {
     throw new UnsupportedFeatureError(
-      "escapeTemplatePlaceholders (Jinja2 template escaping)",
+      ESCAPE_TEMPLATE_PLACEHOLDERS_DESCRIPTION,
       "foundation-models",
       "orchestration",
     );
@@ -70,12 +70,14 @@ function validateFoundationModelsOnlyOptions(
 
   const fmSettings = settings as FoundationModelsModelSettings;
 
-  if (fmSettings.dataSources !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Azure On Your Data (dataSources)",
-      "orchestration",
-      "foundation-models",
-    );
+  for (const feature of FOUNDATION_MODELS_ONLY_FEATURE_KEYS) {
+    if (fmSettings[feature] !== undefined) {
+      throw new UnsupportedFeatureError(
+        FOUNDATION_MODELS_ONLY_FEATURES[feature],
+        "orchestration",
+        "foundation-models",
+      );
+    }
   }
 }
 
@@ -93,8 +95,14 @@ function validateOrchestrationOnlyEmbeddingOptions(
 ): void {
   if (!settings) return;
 
-  if (settings.masking !== undefined) {
-    throw new UnsupportedFeatureError("Data masking", "foundation-models", "orchestration");
+  for (const feature of ORCHESTRATION_ONLY_EMBEDDING_FEATURE_KEYS) {
+    if (settings[feature] !== undefined) {
+      throw new UnsupportedFeatureError(
+        ORCHESTRATION_ONLY_EMBEDDING_FEATURES[feature],
+        "foundation-models",
+        "orchestration",
+      );
+    }
   }
 }
 
@@ -121,59 +129,22 @@ function validateOrchestrationOnlyOptions(
 
   const orchSettings = settings as OrchestrationModelSettings;
 
-  if (orchSettings.filtering !== undefined) {
-    throw new UnsupportedFeatureError("Content filtering", "foundation-models", "orchestration");
-  }
-
-  if (orchSettings.grounding !== undefined) {
-    throw new UnsupportedFeatureError("Document grounding", "foundation-models", "orchestration");
-  }
-
-  if (orchSettings.masking !== undefined) {
-    throw new UnsupportedFeatureError("Data masking", "foundation-models", "orchestration");
-  }
-
-  if (orchSettings.orchestrationConfigRef !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Orchestration config reference (orchestrationConfigRef)",
-      "foundation-models",
-      "orchestration",
-    );
-  }
-
-  if (orchSettings.placeholderValues !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Placeholder values (placeholderValues)",
-      "foundation-models",
-      "orchestration",
-    );
-  }
-
-  if (orchSettings.promptTemplateRef !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Prompt template reference (promptTemplateRef)",
-      "foundation-models",
-      "orchestration",
-    );
-  }
-
-  if (orchSettings.tools !== undefined) {
-    throw new UnsupportedFeatureError(
-      "SAP-format tool definitions (use AI SDK tools instead)",
-      "foundation-models",
-      "orchestration",
-    );
-  }
-
-  if (orchSettings.translation !== undefined) {
-    throw new UnsupportedFeatureError("Translation", "foundation-models", "orchestration");
+  for (const feature of ORCHESTRATION_ONLY_FEATURE_KEYS) {
+    if (orchSettings[feature] !== undefined) {
+      throw new UnsupportedFeatureError(
+        ORCHESTRATION_ONLY_FEATURES[feature],
+        "foundation-models",
+        "orchestration",
+      );
+    }
   }
 }
 
 /**
+ * Keys for Orchestration-only features.
  * @internal
  */
-const ORCHESTRATION_ONLY_FEATURES = [
+const ORCHESTRATION_ONLY_FEATURE_KEYS = [
   "filtering",
   "grounding",
   "masking",
@@ -185,9 +156,74 @@ const ORCHESTRATION_ONLY_FEATURES = [
 ] as const;
 
 /**
+ * Mapping of Orchestration-only feature keys to human-readable descriptions.
+ * Used for generating consistent error messages.
  * @internal
  */
-const FOUNDATION_MODELS_ONLY_FEATURES = ["dataSources"] as const;
+const ORCHESTRATION_ONLY_FEATURES: Readonly<
+  Record<(typeof ORCHESTRATION_ONLY_FEATURE_KEYS)[number], string>
+> = {
+  filtering: "Content filtering",
+  grounding: "Document grounding",
+  masking: "Data masking",
+  orchestrationConfigRef: "Orchestration config reference (orchestrationConfigRef)",
+  placeholderValues: "Placeholder values (placeholderValues)",
+  promptTemplateRef: "Prompt template reference (promptTemplateRef)",
+  tools: "SAP-format tool definitions (use AI SDK tools instead)",
+  translation: "Translation",
+} as const;
+
+/**
+ * Keys for Foundation Models-only features.
+ * @internal
+ */
+const FOUNDATION_MODELS_ONLY_FEATURE_KEYS = ["dataSources"] as const;
+
+/**
+ * Mapping of Foundation Models-only feature keys to human-readable descriptions.
+ * Used for generating consistent error messages.
+ * @internal
+ */
+const FOUNDATION_MODELS_ONLY_FEATURES: Readonly<
+  Record<(typeof FOUNDATION_MODELS_ONLY_FEATURE_KEYS)[number], string>
+> = {
+  dataSources: "Azure On Your Data (dataSources)",
+} as const;
+
+/**
+ * Subset of Orchestration-only features that can be set at invocation level.
+ * @internal
+ */
+const ORCHESTRATION_ONLY_INVOCATION_FEATURE_KEYS = [
+  "orchestrationConfigRef",
+  "placeholderValues",
+  "promptTemplateRef",
+] as const;
+
+/**
+ * Keys for Orchestration-only embedding features.
+ * @internal
+ */
+const ORCHESTRATION_ONLY_EMBEDDING_FEATURE_KEYS = ["masking"] as const;
+
+/**
+ * Mapping of Orchestration-only embedding feature keys to human-readable descriptions.
+ * Uses the same descriptions as the main ORCHESTRATION_ONLY_FEATURES for consistency.
+ * @internal
+ */
+const ORCHESTRATION_ONLY_EMBEDDING_FEATURES: Readonly<
+  Record<(typeof ORCHESTRATION_ONLY_EMBEDDING_FEATURE_KEYS)[number], string>
+> = {
+  masking: ORCHESTRATION_ONLY_FEATURES.masking,
+} as const;
+
+/**
+ * Human-readable description for escapeTemplatePlaceholders feature.
+ * Used for generating consistent error messages.
+ * @internal
+ */
+const ESCAPE_TEMPLATE_PLACEHOLDERS_DESCRIPTION =
+  "escapeTemplatePlaceholders (Jinja2 template escaping)";
 
 /**
  * Validates that switching APIs at invocation time is allowed.
@@ -211,7 +247,7 @@ function validateApiSwitch(
   if (fromApi === "orchestration" && toApi === "foundation-models") {
     const orchSettings = modelSettings as OrchestrationModelSettings;
 
-    for (const feature of ORCHESTRATION_ONLY_FEATURES) {
+    for (const feature of ORCHESTRATION_ONLY_FEATURE_KEYS) {
       if (orchSettings[feature] !== undefined) {
         throw new ApiSwitchError(fromApi, toApi, feature);
       }
@@ -221,7 +257,7 @@ function validateApiSwitch(
   if (fromApi === "foundation-models" && toApi === "orchestration") {
     const fmSettings = modelSettings as FoundationModelsModelSettings;
 
-    for (const feature of FOUNDATION_MODELS_ONLY_FEATURES) {
+    for (const feature of FOUNDATION_MODELS_ONLY_FEATURE_KEYS) {
       if (fmSettings[feature] !== undefined) {
         throw new ApiSwitchError(fromApi, toApi, feature);
       }
@@ -364,27 +400,13 @@ function validateOrchestrationOnlyInvocationOptions(
 ): void {
   if (!invocationSettings) return;
 
-  if (invocationSettings.orchestrationConfigRef !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Orchestration config reference (orchestrationConfigRef)",
-      "foundation-models",
-      "orchestration",
-    );
-  }
-
-  if (invocationSettings.placeholderValues !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Placeholder values (placeholderValues)",
-      "foundation-models",
-      "orchestration",
-    );
-  }
-
-  if (invocationSettings.promptTemplateRef !== undefined) {
-    throw new UnsupportedFeatureError(
-      "Prompt template reference (promptTemplateRef)",
-      "foundation-models",
-      "orchestration",
-    );
+  for (const feature of ORCHESTRATION_ONLY_INVOCATION_FEATURE_KEYS) {
+    if (invocationSettings[feature] !== undefined) {
+      throw new UnsupportedFeatureError(
+        ORCHESTRATION_ONLY_FEATURES[feature],
+        "foundation-models",
+        "orchestration",
+      );
+    }
   }
 }
