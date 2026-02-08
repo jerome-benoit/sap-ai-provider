@@ -36,7 +36,7 @@ Start with the README’s Quick Start and Advanced sections:
   environment)
 - With options:
   `createSAPAIProvider({ resourceGroup: 'production', deploymentId: 'abc123' })`
-- Default instance: `sapai("gpt-4o")` (uses default configuration)
+- Default instance: `sapai("gpt-4.1")` (uses default configuration)
 - Use with Vercel AI SDK: `generateText`, `streamText`, `generateObject`
 
 See exported APIs: [src/index.ts](mdc:src/index.ts)

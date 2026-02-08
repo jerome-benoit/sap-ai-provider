@@ -35,8 +35,7 @@ const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
  * Model identifier for SAP AI embedding models.
  *
  * Common embedding model IDs include:
- * - `"text-embedding-ada-002"` - OpenAI Ada embedding model
- * - `"text-embedding-3-small"` - OpenAI small embedding model
+ * - `"text-embedding-3-small"` - OpenAI small embedding model (recommended)
  * - `"text-embedding-3-large"` - OpenAI large embedding model
  *
  * The actual available models depend on your SAP AI Core deployment configuration.
@@ -66,7 +65,7 @@ interface SAPAIEmbeddingModelConfig {
  * import { embed, embedMany } from "ai";
  *
  * const provider = createSAPAIProvider();
- * const embeddingModel = provider.embedding("text-embedding-ada-002");
+ * const embeddingModel = provider.embedding("text-embedding-3-small");
  *
  * // Single embedding
  * const { embedding } = await embed({

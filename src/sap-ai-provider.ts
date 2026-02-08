@@ -4,7 +4,6 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 import { NoSuchModelError, ProviderV3 } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
-import { deepMerge } from "./deep-merge.js";
 import { SAPAIEmbeddingModel, SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 import { SAPAILanguageModel } from "./sap-ai-language-model.js";
 import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
@@ -14,6 +13,7 @@ import {
   SAPAIModelId,
   SAPAISettings,
 } from "./sap-ai-settings.js";
+import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
 /** @internal */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
@@ -103,7 +103,7 @@ export interface SAPAIProviderSettings {
  * @example
  * // Basic usage with defaults
  * const provider = createSAPAIProvider();
- * const model = provider('gpt-4o');
+ * const model = provider('gpt-4.1');
  * @example
  * // With custom configuration
  * const provider = createSAPAIProvider({
@@ -113,8 +113,8 @@ export interface SAPAIProviderSettings {
  * });
  * @example
  * // Using provider methods
- * const chatModel = provider.chat('gpt-4o');
- * const embeddingModel = provider.embedding('text-embedding-ada-002');
+ * const chatModel = provider.chat('gpt-4.1');
+ * const embeddingModel = provider.embedding('text-embedding-3-small');
  * @see {@link SAPAIProviderSettings} for all configuration options.
  * @see {@link SAPAIProvider} for the provider interface.
  */
@@ -147,13 +147,11 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     : { resourceGroup };
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
-    const mergedSettings: SAPAISettings = {
-      ...(deepMerge(
-        options.defaultSettings as Record<string, unknown> | undefined,
-        settings as Record<string, unknown>,
-      ) as SAPAISettings),
-      api: settings.api ?? options.defaultSettings?.api ?? providerApi,
-    };
+    const mergedSettings = mergeSettingsWithApi<SAPAISettings>(
+      options.defaultSettings as Record<string, unknown> | undefined,
+      settings,
+      providerApi,
+    );
 
     return new SAPAILanguageModel(modelId, mergedSettings, {
       deploymentConfig,
@@ -167,10 +165,11 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
   ): SAPAIEmbeddingModel => {
-    const mergedSettings: SAPAIEmbeddingSettings = {
-      ...settings,
-      api: settings.api ?? providerApi,
-    };
+    const mergedSettings = mergeSettingsWithApi<SAPAIEmbeddingSettings>(
+      options.defaultSettings as Record<string, unknown> | undefined,
+      settings,
+      providerApi,
+    );
 
     return new SAPAIEmbeddingModel(modelId, mergedSettings, {
       deploymentConfig,

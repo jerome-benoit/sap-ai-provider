@@ -35,6 +35,7 @@ import {
   buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
+  hasKeys,
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
@@ -124,14 +125,36 @@ function isTemplateRefById(ref: PromptTemplateRef): ref is PromptTemplateRefByID
 }
 
 /**
+ * Merges and resolves placeholder values from settings and provider options.
+ * @param settings - Model settings containing placeholderValues.
+ * @param sapOptions - Provider options containing placeholderValues.
+ * @returns Merged placeholder values or undefined if empty.
+ * @internal
+ */
+function resolvePlaceholderValues(
+  settings: OrchestrationModelSettings,
+  sapOptions: Record<string, unknown> | undefined,
+): Record<string, string> | undefined {
+  const merged = deepMerge(
+    settings.placeholderValues as Record<string, unknown> | undefined,
+    sapOptions?.placeholderValues as Record<string, unknown> | undefined,
+  ) as Record<string, string>;
+
+  return hasKeys(merged) ? merged : undefined;
+}
+
+/**
+ * Module keys for orchestration configuration.
+ * @internal
+ */
+const ORCHESTRATION_MODULE_KEYS = ["masking", "filtering", "grounding", "translation"] as const;
+
+/**
  * Module settings that are ignored when using orchestrationConfigRef.
  * @internal
  */
 const CONFIG_REF_IGNORED_MODULES = [
-  "filtering",
-  "grounding",
-  "masking",
-  "translation",
+  ...ORCHESTRATION_MODULE_KEYS,
   "promptTemplateRef",
   "responseFormat",
   "tools",
@@ -145,6 +168,24 @@ const CONFIG_REF_IGNORED_MODULES = [
  * @internal
  */
 const CONFIG_REF_IGNORED_PROVIDER_OPTIONS = ["promptTemplateRef", "modelParams"] as const;
+
+/**
+ * Copies non-empty orchestration modules from source to target.
+ * @param target - Target object to copy modules into.
+ * @param source - Source object containing module configurations.
+ * @internal
+ */
+function copyOrchestrationModules(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): void {
+  for (const key of ORCHESTRATION_MODULE_KEYS) {
+    const value = source[key];
+    if (value && hasKeys(value as object)) {
+      target[key] = value;
+    }
+  }
+}
 
 /**
  * Checks if a value is a valid OrchestrationConfigRef.
@@ -271,6 +312,42 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     return this.buildStandardRequest(config, settings, options, commonParts, warnings);
   }
 
+  /**
+   * Collects stream-specific warnings for orchestration.
+   * @param settings - Model settings.
+   * @param sapOptions - Provider options.
+   * @returns Array of warnings for streaming operations.
+   * @internal
+   */
+  protected override collectStreamWarnings(
+    settings: OrchestrationModelSettings,
+    sapOptions?: Record<string, unknown>,
+  ): SharedV3Warning[] {
+    const warnings: SharedV3Warning[] = [];
+
+    // Skip warning if a valid orchestrationConfigRef is set in settings or providerOptions
+    // (local module settings are ignored when using server-side config)
+    const configRefCandidate =
+      sapOptions?.orchestrationConfigRef ?? settings.orchestrationConfigRef;
+    if (configRefCandidate && isOrchestrationConfigRef(configRefCandidate)) {
+      return warnings;
+    }
+
+    if (settings.translation && hasKeys(settings.translation)) {
+      if (!settings.streamOptions?.delimiters || settings.streamOptions.delimiters.length === 0) {
+        warnings.push({
+          message:
+            "Translation module is configured but streamOptions.delimiters is not set. " +
+            "For proper sentence boundary detection during streaming with translation, " +
+            "consider setting delimiters (e.g., ['.', '!', '?', '\\n']).",
+          type: "other",
+        });
+      }
+    }
+
+    return warnings;
+  }
+
   protected createClient(
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
@@ -330,10 +407,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     client: OrchestrationClientInstance,
     request: OrchestrationRequest,
     abortSignal: AbortSignal | undefined,
+    settings: OrchestrationModelSettings,
   ): Promise<StreamCallResponse> {
-    const streamResponse = await client.stream(request, abortSignal, {
-      promptTemplating: { include_usage: true },
-    });
+    const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
+    const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
@@ -385,14 +462,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       ...this.collectConfigRefIgnoredWarnings(settings, options, commonParts.sapOptions),
     );
 
-    // Merge placeholder values (settings < providerOptions)
-    const mergedPlaceholderValues = deepMerge(
-      settings.placeholderValues as Record<string, unknown> | undefined,
-      commonParts.sapOptions?.placeholderValues as Record<string, unknown> | undefined,
-    ) as Record<string, string>;
-
-    const placeholderValues =
-      Object.keys(mergedPlaceholderValues).length > 0 ? mergedPlaceholderValues : undefined;
+    const placeholderValues = resolvePlaceholderValues(settings, commonParts.sapOptions);
 
     // In configRef mode, SDK uses messagesHistory (not messages)
     const request: OrchestrationRequest = {
@@ -457,7 +527,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       ? { ...modelParams, tool_choice: toolChoice }
       : modelParams;
 
-    return {
+    const moduleConfig: OrchestrationModuleConfig = {
       promptTemplating: {
         model: {
           name: config.modelId,
@@ -466,19 +536,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         },
         prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
       },
-      ...(settings.masking && Object.keys(settings.masking as object).length > 0
-        ? { masking: settings.masking }
-        : {}),
-      ...(settings.filtering && Object.keys(settings.filtering as object).length > 0
-        ? { filtering: settings.filtering }
-        : {}),
-      ...(settings.grounding && Object.keys(settings.grounding as object).length > 0
-        ? { grounding: settings.grounding }
-        : {}),
-      ...(settings.translation && Object.keys(settings.translation as object).length > 0
-        ? { translation: settings.translation }
-        : {}),
     };
+
+    copyOrchestrationModules(
+      moduleConfig as unknown as Record<string, unknown>,
+      settings as unknown as Record<string, unknown>,
+    );
+
+    return moduleConfig;
   }
 
   /**
@@ -504,7 +569,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     // Note: tool_choice is passed via model.params (not request level) because the SDK
     // filters out request-level options. See: https://github.com/SAP/ai-sdk-js/issues/1500
-    return {
+    const requestBody: Record<string, unknown> = {
       ...messagesField,
       model: {
         ...orchestrationConfig.promptTemplating.model,
@@ -514,18 +579,44 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       ...(promptTemplating.prompt.response_format
         ? { response_format: promptTemplating.prompt.response_format }
         : {}),
-      ...(orchestrationConfig.masking && Object.keys(orchestrationConfig.masking).length > 0
-        ? { masking: orchestrationConfig.masking }
-        : {}),
-      ...(orchestrationConfig.filtering && Object.keys(orchestrationConfig.filtering).length > 0
-        ? { filtering: orchestrationConfig.filtering }
-        : {}),
-      ...(orchestrationConfig.grounding && Object.keys(orchestrationConfig.grounding).length > 0
-        ? { grounding: orchestrationConfig.grounding }
-        : {}),
-      ...(orchestrationConfig.translation && Object.keys(orchestrationConfig.translation).length > 0
-        ? { translation: orchestrationConfig.translation }
-        : {}),
+    };
+
+    copyOrchestrationModules(
+      requestBody,
+      orchestrationConfig as unknown as Record<string, unknown>,
+    );
+
+    return requestBody;
+  }
+
+  /**
+   * Builds SAP SDK stream options from user-facing stream options.
+   * @param streamOptions - User-provided stream options.
+   * @returns SDK-compatible stream options object.
+   * @internal
+   */
+  private buildSdkStreamOptions(streamOptions: OrchestrationModelSettings["streamOptions"]): {
+    global?: { chunk_size?: number; delimiters?: string[] };
+    outputFiltering?: { overlap: number };
+    promptTemplating: { include_usage: boolean };
+  } {
+    const delimiters = streamOptions?.delimiters;
+    const hasNonEmptyDelimiters = Array.isArray(delimiters) && delimiters.length > 0;
+    const hasGlobalOptions = streamOptions?.chunkSize !== undefined || hasNonEmptyDelimiters;
+
+    return {
+      promptTemplating: { include_usage: true },
+      ...(hasGlobalOptions && {
+        global: {
+          ...(streamOptions?.chunkSize !== undefined && { chunk_size: streamOptions.chunkSize }),
+          ...(hasNonEmptyDelimiters && {
+            delimiters: Array.from(delimiters),
+          }),
+        },
+      }),
+      ...(streamOptions?.outputFilteringOverlap !== undefined && {
+        outputFiltering: { overlap: streamOptions.outputFilteringOverlap },
+      }),
     };
   }
 
@@ -548,7 +639,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
     const tools = commonParts.sapOptions?.[RESOLVED_TOOLS_KEY] as ChatCompletionTool[] | undefined;
 
-    // Response format conversion
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
       options.responseFormat,
       settings.responseFormat,
@@ -571,14 +661,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       tools,
     });
 
-    // Placeholder values merging (settings < providerOptions)
-    const mergedPlaceholderValues = deepMerge(
-      settings.placeholderValues as Record<string, unknown> | undefined,
-      commonParts.sapOptions?.placeholderValues as Record<string, unknown> | undefined,
-    ) as Record<string, string>;
-
-    const placeholderValues =
-      Object.keys(mergedPlaceholderValues).length > 0 ? mergedPlaceholderValues : undefined;
+    const placeholderValues = resolvePlaceholderValues(settings, commonParts.sapOptions);
 
     const request = this.buildRequestBody(
       commonParts.messages,
@@ -674,7 +757,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     sapOptions: Record<string, unknown> | undefined,
     settings: OrchestrationModelSettings,
   ): OrchestrationConfigRef | undefined {
-    // Provider options take priority over settings
     const configRefCandidate =
       sapOptions?.orchestrationConfigRef ?? settings.orchestrationConfigRef;
 
@@ -744,7 +826,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       return settingsTools;
     }
 
-    // Convert optionsTools from AI SDK format to SAP format
     if (optionsTools && optionsTools.length > 0) {
       const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools as AISDKTool[]);
       warnings.push(...result.warnings);

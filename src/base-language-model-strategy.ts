@@ -137,10 +137,13 @@ export abstract class BaseLanguageModelStrategy<
         client,
         request,
         options.abortSignal ?? undefined,
+        settings,
       );
 
       const idGenerator = new StreamIdGenerator();
       const responseId = idGenerator.generateResponseId();
+
+      const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 
       const transformedStream = createStreamTransformer({
         convertToAISDKError,
@@ -155,7 +158,7 @@ export abstract class BaseLanguageModelStrategy<
         streamResponseGetTokenUsage: streamResponse.getTokenUsage,
         url: this.getUrl(),
         version: VERSION,
-        warnings: [...commonParts.warnings, ...warnings],
+        warnings: [...commonParts.warnings, ...warnings, ...streamWarnings],
       });
 
       return {
@@ -238,6 +241,23 @@ export abstract class BaseLanguageModelStrategy<
   ): { readonly request: TRequest; readonly warnings: SharedV3Warning[] };
 
   /**
+   * Collects stream-specific warnings.
+   * Override in subclasses to add API-specific streaming warnings.
+   * @param _settings - Model settings (unused in base implementation).
+   * @param _sapOptions - Provider options (unused in base implementation).
+   * @returns Array of warnings for streaming operations.
+   * @internal
+   */
+  protected collectStreamWarnings(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _settings: TSettings,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _sapOptions?: Record<string, unknown>,
+  ): SharedV3Warning[] {
+    return [];
+  }
+
+  /**
    * Creates the appropriate SDK client for this API.
    * @param config - Strategy configuration.
    * @param settings - Model settings.
@@ -270,6 +290,7 @@ export abstract class BaseLanguageModelStrategy<
    * @param client - SDK client instance.
    * @param request - Request body.
    * @param abortSignal - Optional abort signal.
+   * @param settings - Model settings for API-specific stream options.
    * @returns Stream response with accessors.
    * @internal
    */
@@ -277,6 +298,7 @@ export abstract class BaseLanguageModelStrategy<
     client: TClient,
     request: TRequest,
     abortSignal: AbortSignal | undefined,
+    settings: TSettings,
   ): Promise<StreamCallResponse>;
 
   /**

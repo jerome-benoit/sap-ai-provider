@@ -45,7 +45,7 @@ async function embeddingsExample() {
     console.log("🔢 Generating single embedding...\n");
 
     const { embedding } = await embed({
-      model: provider.embedding("text-embedding-ada-002"),
+      model: provider.embedding("text-embedding-3-small"),
       value: "What is machine learning and how does it work?",
     });
 
@@ -68,7 +68,7 @@ async function embeddingsExample() {
     ];
 
     const { embeddings } = await embedMany({
-      model: provider.embedding("text-embedding-ada-002"),
+      model: provider.embedding("text-embedding-3-small"),
       values: documents,
     });
 
@@ -105,7 +105,7 @@ async function embeddingsExample() {
 
     // Document embedding (for storage/indexing)
     const { embedding: docEmbedding } = await embed({
-      model: provider.embedding("text-embedding-ada-002", {
+      model: provider.embedding("text-embedding-3-small", {
         type: "document",
       }),
       value: "This is a document to be indexed for later retrieval.",
@@ -114,7 +114,7 @@ async function embeddingsExample() {
 
     // Query embedding (for search queries)
     const { embedding: queryEmbedding } = await embed({
-      model: provider.embedding("text-embedding-ada-002", {
+      model: provider.embedding("text-embedding-3-small", {
         type: "query",
       }),
       value: "How do I retrieve documents?",

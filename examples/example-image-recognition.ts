@@ -58,7 +58,7 @@ async function imageRecognitionExample() {
           role: "user",
         },
       ],
-      model: provider("gpt-4o"),
+      model: provider("gpt-4.1"),
     });
 
     console.log("🤖 Response:", urlResponse);
@@ -88,7 +88,7 @@ async function imageRecognitionExample() {
           role: "user",
         },
       ],
-      model: provider("gpt-4o"),
+      model: provider("gpt-4.1"),
     });
 
     console.log("🤖 Response:", base64Response);
@@ -120,7 +120,7 @@ async function imageRecognitionExample() {
           role: "user",
         },
       ],
-      model: provider("gpt-4o"),
+      model: provider("gpt-4.1"),
     });
 
     console.log("🤖 Response:", multiResponse);

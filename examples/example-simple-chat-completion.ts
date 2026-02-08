@@ -40,9 +40,9 @@ async function simpleTest() {
       resourceGroup: "default", // Optional: specify resource group
     });
 
-    console.log("📝 Testing text generation with gpt-4o...");
+    console.log("📝 Testing text generation with gpt-4.1...");
 
-    const model = provider("gpt-4o", {
+    const model = provider("gpt-4.1", {
       modelParams: {
         maxTokens: 1000,
         temperature: 0.7,

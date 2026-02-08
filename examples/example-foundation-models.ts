@@ -54,7 +54,7 @@ async function foundationModelsExample() {
 
     // All models from this provider use Foundation Models API by default
     const result1 = await generateText({
-      model: fmProvider("gpt-4o"),
+      model: fmProvider("gpt-4.1"),
       prompt: "What is 2 + 2? Reply with just the number.",
     });
 
@@ -70,7 +70,7 @@ async function foundationModelsExample() {
     const provider = createSAPAIProvider();
 
     // Override to Foundation Models for specific model
-    const fmModel = provider("gpt-4o", { api: "foundation-models" });
+    const fmModel = provider("gpt-4.1", { api: "foundation-models" });
 
     const result2 = await generateText({
       model: fmModel,
@@ -82,7 +82,7 @@ async function foundationModelsExample() {
     console.log("\n3. Logprobs - Token Probability Analysis\n");
 
     const result3 = await generateText({
-      model: provider("gpt-4o", {
+      model: provider("gpt-4.1", {
         api: "foundation-models",
         modelParams: {
           logprobs: true,
@@ -104,7 +104,7 @@ async function foundationModelsExample() {
     const seedValue = 12345;
 
     // Generate twice with same seed
-    const deterministicModel = provider("gpt-4o", {
+    const deterministicModel = provider("gpt-4.1", {
       api: "foundation-models",
       modelParams: {
         max_tokens: 10,
@@ -130,7 +130,7 @@ async function foundationModelsExample() {
     console.log("\n5. Stop Sequences\n");
 
     const result5 = await generateText({
-      model: provider("gpt-4o", {
+      model: provider("gpt-4.1", {
         api: "foundation-models",
         modelParams: {
           max_tokens: 50,
@@ -145,7 +145,7 @@ async function foundationModelsExample() {
     console.log("\n6. Streaming with Foundation Models\n");
 
     const stream = streamText({
-      model: provider("gpt-4o", {
+      model: provider("gpt-4.1", {
         api: "foundation-models",
         modelParams: { max_tokens: 50 },
       }),
@@ -161,7 +161,7 @@ async function foundationModelsExample() {
     console.log("7. Embeddings with Foundation Models\n");
 
     const { embedding } = await embed({
-      model: fmProvider.embedding("text-embedding-ada-002"),
+      model: fmProvider.embedding("text-embedding-3-small"),
       value: "Hello, world!",
     });
 
@@ -180,7 +180,7 @@ async function foundationModelsExample() {
     const orchProvider = createSAPAIProvider({ api: "orchestration" });
 
     const result8 = await generateText({
-      model: orchProvider("gpt-4o"),
+      model: orchProvider("gpt-4.1"),
       prompt: "Say hello",
       providerOptions: {
         [SAP_AI_PROVIDER_NAME]: {

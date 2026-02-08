@@ -22,10 +22,130 @@ const HTTP_STATUS = {
 } as const;
 
 /**
+ * Error message matchers for categorization and retryability.
+ * @internal
+ */
+const ERROR_MATCHERS = [
+  {
+    category: "network",
+    isRetryable: true,
+    keywords: ["econnrefused", "enotfound", "network", "timeout"],
+    statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+  },
+  {
+    category: "destination",
+    isRetryable: false,
+    keywords: ["could not resolve destination"],
+    message: (original: string) =>
+      `SAP AI Core destination error: ${original}\n\n` +
+      `Check your destination configuration or provide a valid destinationName.`,
+    statusCode: HTTP_STATUS.BAD_REQUEST,
+  },
+  {
+    category: "content filtered",
+    isRetryable: false,
+    keywords: ["filtered by the output filter"],
+    message: (original: string) =>
+      `Content was filtered: ${original}\n\n` +
+      `The model's response was blocked by content safety filters. Try a different prompt.`,
+    statusCode: HTTP_STATUS.BAD_REQUEST,
+  },
+  {
+    category: "stream consumption",
+    isRetryable: false,
+    keywords: ["consumed stream"],
+    statusCode: HTTP_STATUS.INTERNAL_ERROR,
+  },
+  {
+    category: "streaming",
+    isRetryable: true,
+    keywords: [
+      "iterating over",
+      "parse message into json",
+      "received from",
+      "no body",
+      "invalid sse payload",
+    ],
+    statusCode: HTTP_STATUS.INTERNAL_ERROR,
+  },
+  {
+    category: "configuration",
+    isRetryable: false,
+    keywords: [
+      "prompt template or messages must be defined",
+      "filtering parameters cannot be empty",
+      "templating yaml string must be non-empty",
+      "could not access response data",
+      "could not parse json",
+      "error parsing yaml",
+      "yaml does not conform",
+      "validation errors",
+    ],
+    statusCode: HTTP_STATUS.BAD_REQUEST,
+  },
+  {
+    category: "environment",
+    isRetryable: false,
+    keywords: ["buffer is not available as globals"],
+    statusCode: HTTP_STATUS.INTERNAL_ERROR,
+  },
+  {
+    category: "response stream",
+    isRetryable: false,
+    keywords: ["response stream is undefined"],
+    statusCode: HTTP_STATUS.INTERNAL_ERROR,
+  },
+  {
+    category: "response processing",
+    isRetryable: true,
+    keywords: [
+      "response is required to process",
+      "stream is still open",
+      "data is not available yet",
+    ],
+    statusCode: HTTP_STATUS.INTERNAL_ERROR,
+  },
+  {
+    category: "deployment retrieval",
+    isRetryable: true,
+    keywords: ["failed to fetch the list of deployments"],
+    statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
+  },
+  {
+    category: "stream buffer",
+    isRetryable: false,
+    keywords: ["received non-uint8array"],
+    statusCode: HTTP_STATUS.INTERNAL_ERROR,
+  },
+] as const;
+
+/**
+ * Keywords that indicate an authentication error.
+ * @internal
+ */
+const AUTHENTICATION_ERROR_KEYWORDS = [
+  "authentication",
+  "unauthorized",
+  "aicore_service_key",
+  "invalid credentials",
+  "service credentials",
+  "service binding",
+] as const;
+
+/**
+ * Keywords that indicate a deployment/model resolution error.
+ * @internal
+ */
+const DEPLOYMENT_ERROR_KEYWORDS = [
+  "failed to resolve deployment",
+  "no deployment matched",
+] as const;
+
+/**
  * Error thrown when attempting to switch APIs at invocation time with conflicting model settings.
  * @example
  * ```typescript
- * const model = provider("gpt-4o", { filtering: { ... } });
+ * const model = provider("gpt-4.1", { filtering: { ... } });
  *
  * await generateText({
  *   model,
@@ -248,14 +368,7 @@ export function convertToAISDKError(
     const errorMsg = rootError.message.toLowerCase();
     const originalErrorMsg = rootError.message;
 
-    if (
-      errorMsg.includes("authentication") ||
-      errorMsg.includes("unauthorized") ||
-      errorMsg.includes("aicore_service_key") ||
-      errorMsg.includes("invalid credentials") ||
-      errorMsg.includes("service credentials") ||
-      errorMsg.includes("service binding")
-    ) {
+    if (AUTHENTICATION_ERROR_KEYWORDS.some((keyword) => errorMsg.includes(keyword))) {
       return new LoadAPIKeyError({
         message:
           `SAP AI Core authentication failed: ${originalErrorMsg}\n\n` +
@@ -264,41 +377,7 @@ export function convertToAISDKError(
       });
     }
 
-    if (
-      errorMsg.includes("econnrefused") ||
-      errorMsg.includes("enotfound") ||
-      errorMsg.includes("network") ||
-      errorMsg.includes("timeout")
-    ) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: true,
-          message: `Network error connecting to SAP AI Core: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
-        },
-        context,
-      );
-    }
-
-    if (errorMsg.includes("could not resolve destination")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message:
-            `SAP AI Core destination error: ${originalErrorMsg}\n\n` +
-            `Check your destination configuration or provide a valid destinationName.`,
-          statusCode: HTTP_STATUS.BAD_REQUEST,
-        },
-        context,
-      );
-    }
-
-    if (
-      errorMsg.includes("failed to resolve deployment") ||
-      errorMsg.includes("no deployment matched")
-    ) {
+    if (DEPLOYMENT_ERROR_KEYWORDS.some((keyword) => errorMsg.includes(keyword))) {
       const modelId = extractModelIdentifier(originalErrorMsg);
       return new NoSuchModelError({
         message:
@@ -308,20 +387,6 @@ export function convertToAISDKError(
         modelId: modelId ?? "unknown",
         modelType: "languageModel",
       });
-    }
-
-    if (errorMsg.includes("filtered by the output filter")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message:
-            `Content was filtered: ${originalErrorMsg}\n\n` +
-            `The model's response was blocked by content safety filters. Try a different prompt.`,
-          statusCode: HTTP_STATUS.BAD_REQUEST,
-        },
-        context,
-      );
     }
 
     const statusMatch = /status code (\d+)/i.exec(originalErrorMsg);
@@ -338,119 +403,22 @@ export function convertToAISDKError(
       );
     }
 
-    if (errorMsg.includes("consumed stream")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message: `SAP AI Core stream consumption error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        },
-        context,
-      );
-    }
-
-    if (
-      errorMsg.includes("iterating over") ||
-      errorMsg.includes("parse message into json") ||
-      errorMsg.includes("received from") ||
-      errorMsg.includes("no body") ||
-      errorMsg.includes("invalid sse payload")
-    ) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: true,
-          message: `SAP AI Core streaming error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        },
-        context,
-      );
-    }
-
-    if (
-      errorMsg.includes("prompt template or messages must be defined") ||
-      errorMsg.includes("filtering parameters cannot be empty") ||
-      errorMsg.includes("templating yaml string must be non-empty") ||
-      errorMsg.includes("could not access response data") ||
-      errorMsg.includes("could not parse json") ||
-      errorMsg.includes("error parsing yaml") ||
-      errorMsg.includes("yaml does not conform") ||
-      errorMsg.includes("validation errors")
-    ) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message: `SAP AI Core configuration error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.BAD_REQUEST,
-        },
-        context,
-      );
-    }
-
-    if (errorMsg.includes("buffer is not available as globals")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message: `SAP AI Core environment error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        },
-        context,
-      );
-    }
-
-    if (errorMsg.includes("response stream is undefined")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message: `SAP AI Core response stream error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        },
-        context,
-      );
-    }
-
-    if (
-      errorMsg.includes("response is required to process") ||
-      errorMsg.includes("stream is still open") ||
-      errorMsg.includes("data is not available yet")
-    ) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: true,
-          message: `SAP AI Core response processing error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        },
-        context,
-      );
-    }
-
-    if (errorMsg.includes("failed to fetch the list of deployments")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: true,
-          message: `SAP AI Core deployment retrieval error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
-        },
-        context,
-      );
-    }
-
-    if (errorMsg.includes("received non-uint8array")) {
-      return createAPICallError(
-        error,
-        {
-          isRetryable: false,
-          message: `SAP AI Core stream buffer error: ${originalErrorMsg}`,
-          statusCode: HTTP_STATUS.INTERNAL_ERROR,
-        },
-        context,
-      );
+    for (const matcher of ERROR_MATCHERS) {
+      if (matcher.keywords.some((keyword) => errorMsg.includes(keyword))) {
+        const message =
+          "message" in matcher
+            ? matcher.message(originalErrorMsg)
+            : `SAP AI Core ${matcher.category} error: ${originalErrorMsg}`;
+        return createAPICallError(
+          error,
+          {
+            isRetryable: matcher.isRetryable,
+            message,
+            statusCode: matcher.statusCode,
+          },
+          context,
+        );
+      }
     }
   }
 

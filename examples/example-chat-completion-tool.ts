@@ -133,15 +133,15 @@ async function simpleToolExample() {
   try {
     // Create models with tools defined in settings (proper JSON Schema)
     // This bypasses AI SDK's Zod conversion issues
-    const modelWithCalculator = provider("gpt-4o", {
+    const modelWithCalculator = provider("gpt-4.1", {
       tools: [calculatorToolDef],
     });
 
-    const modelWithWeather = provider("gpt-4o", {
+    const modelWithWeather = provider("gpt-4.1", {
       tools: [weatherToolDef],
     });
 
-    const modelWithAllTools = provider("gpt-4o", {
+    const modelWithAllTools = provider("gpt-4.1", {
       tools: [calculatorToolDef, weatherToolDef],
     });
 

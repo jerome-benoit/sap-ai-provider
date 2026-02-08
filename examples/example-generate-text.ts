@@ -36,8 +36,8 @@ async function generateTextExample() {
   try {
     const provider = createSAPAIProvider();
 
-    // Generate text with GPT-4o
-    console.log("🤖 Testing gpt-4o...");
+    // Generate text with gpt-4.1
+    console.log("🤖 Testing gpt-4.1...");
     const { finishReason, text, usage } = await generateText({
       messages: [
         {
@@ -45,7 +45,7 @@ async function generateTextExample() {
           role: "user",
         },
       ],
-      model: provider("gpt-4o"),
+      model: provider("gpt-4.1"),
     });
 
     console.log("📄 Response:", text);
@@ -60,7 +60,7 @@ async function generateTextExample() {
     console.log("Testing Multiple Models (Harmonized API)");
     console.log("================================\n");
 
-    const models = ["gemini-2.0-flash", "anthropic--claude-3.5-sonnet"];
+    const models = ["gemini-2.0-flash", "anthropic--claude-4.5-sonnet"];
 
     for (const modelId of models) {
       console.log(`\n🤖 Testing ${modelId}...`);

@@ -68,7 +68,7 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 // Authentication is automatic via AICORE_SERVICE_KEY
 const provider = createSAPAIProvider();
-const model = provider("gpt-4o");
+const model = provider("gpt-4.1");
 ```
 
 > 💡 **Key v2.0 changes:** Provider creation is synchronous (no `await`), no
@@ -95,7 +95,7 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 // No environment variables needed - uses VCAP_SERVICES binding
 const provider = createSAPAIProvider();
-const model = provider("gpt-4o");
+const model = provider("gpt-4.1");
 ```
 
 **Authentication priority:** The SAP AI SDK checks credentials in this order:

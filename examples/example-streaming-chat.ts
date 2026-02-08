@@ -37,7 +37,7 @@ async function streamingChatExample() {
     console.log("🔄 Creating SAP AI provider...");
 
     const provider = createSAPAIProvider();
-    const model = provider("gpt-4o");
+    const model = provider("gpt-4.1");
 
     console.log("📡 Starting streaming response...\n");
 

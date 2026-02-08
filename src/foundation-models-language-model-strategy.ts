@@ -74,13 +74,11 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   } {
     const warnings: SharedV3Warning[] = [];
 
-    // Tools conversion (FM doesn't support settings.tools)
     const toolsResult = convertToolsToSAPFormat<AzureOpenAiChatCompletionTool>(
       options.tools as AISDKTool[] | undefined,
     );
     warnings.push(...toolsResult.warnings);
 
-    // Response format conversion
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
       options.responseFormat,
       settings.responseFormat,
@@ -111,7 +109,6 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   protected createClient(
     config: LanguageModelStrategyConfig,
     settings: FoundationModelsModelSettings,
-    // Foundation Models doesn't use commonParts for client creation - required by base class
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): FoundationModelsClient {
@@ -131,7 +128,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       getFinishReason: () => response.getFinishReason(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       rawResponse: { headers: response.rawResponse.headers },
     };
   }
@@ -140,6 +137,8 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
     abortSignal: AbortSignal | undefined,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _settings: FoundationModelsModelSettings,
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 

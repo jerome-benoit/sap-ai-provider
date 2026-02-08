@@ -64,7 +64,7 @@ async function translationExample() {
       },
     });
 
-    const modelInputTranslation = providerInputTranslation("gpt-4o");
+    const modelInputTranslation = providerInputTranslation("gpt-4.1");
 
     const germanQuery = "Was sind die Hauptvorteile von SAP AI Core?";
     console.log(`🇩🇪 German Query: ${germanQuery}\n`);
@@ -101,7 +101,7 @@ async function translationExample() {
       },
     });
 
-    const modelOutputTranslation = providerOutputTranslation("gpt-4o");
+    const modelOutputTranslation = providerOutputTranslation("gpt-4.1");
 
     const englishQuery = "What are the main benefits of SAP AI Core?";
     console.log(`🇬🇧 English Query: ${englishQuery}\n`);
@@ -142,7 +142,7 @@ async function translationExample() {
       },
     });
 
-    const modelBidirectional = providerBidirectional("gpt-4o");
+    const modelBidirectional = providerBidirectional("gpt-4.1");
 
     const frenchQuery = "Quels sont les principaux avantages de SAP AI Core?";
     console.log(`🇫🇷 French Query: ${frenchQuery}\n`);
@@ -194,7 +194,7 @@ async function translationExample() {
         },
       });
 
-      const langModel = langProvider("gpt-4o");
+      const langModel = langProvider("gpt-4.1");
 
       const { text: langText } = await generateText({
         messages: [

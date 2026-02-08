@@ -122,7 +122,7 @@ npm install @jerome-benoit/sap-ai-provider@^4.0.0
 ```typescript
 import type { LanguageModelV2 } from "@ai-sdk/provider";
 
-const model: LanguageModelV2 = provider("gpt-4o");
+const model: LanguageModelV2 = provider("gpt-4.1");
 ```
 
 **After (v4.x):**
@@ -130,7 +130,7 @@ const model: LanguageModelV2 = provider("gpt-4o");
 ```typescript
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 
-const model: LanguageModelV3 = provider("gpt-4o");
+const model: LanguageModelV3 = provider("gpt-4.1");
 ```
 
 #### 3. Update Stream Parsing (If Manually Parsing Streams)
@@ -277,7 +277,7 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 const provider = createSAPAIProvider({ api: "foundation-models" });
 
 // Option 2: Model-level (overrides provider)
-const model = provider("gpt-4o", { api: "foundation-models" });
+const model = provider("gpt-4.1", { api: "foundation-models" });
 
 // Option 3: Call-level (highest precedence)
 const result = await generateText({
@@ -329,7 +329,7 @@ const provider = createSAPAIProvider({
    import { streamText } from "ai";
 
    const { textStream } = await streamText({
-     model: provider("gpt-4o"),
+     model: provider("gpt-4.1"),
      prompt: "Count to 5",
    });
 
@@ -582,7 +582,7 @@ const provider = await createSAPAIProvider({
 const provider = createSAPAIProvider();
 
 // Rest of your code remains the same
-const model = provider("gpt-4o");
+const model = provider("gpt-4.1");
 const result = await generateText({ model, prompt: "Hello!" });
 ```
 
@@ -722,12 +722,12 @@ responses:
 
 ```typescript
 // JSON object response
-const model1 = provider("gpt-4o", {
+const model1 = provider("gpt-4.1", {
   responseFormat: { type: "json_object" },
 });
 
 // JSON schema response
-const model2 = provider("gpt-4o", {
+const model2 = provider("gpt-4.1", {
   responseFormat: {
     type: "json_schema",
     json_schema: {
@@ -764,8 +764,8 @@ const provider = createSAPAIProvider({
 });
 
 // All models inherit default settings
-const model1 = provider("gpt-4o"); // temperature=0.7
-const model2 = provider("gpt-4o", {
+const model1 = provider("gpt-4.1"); // temperature=0.7
+const model2 = provider("gpt-4.1", {
   modelParams: { temperature: 0.3 }, // Override per model
 });
 ```

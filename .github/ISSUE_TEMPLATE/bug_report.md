@@ -35,13 +35,13 @@ A clear and concise description of the bug.
 ### Environment
 
 - **Package Version:** <!-- e.g., 2.0.0 -->
-- **Node.js Version:** <!-- e.g., 18.17.0 -->
+- **Node.js Version:** <!-- e.g., 20.18.0 -->
 - **OS:** <!-- e.g., macOS 14.0, Ubuntu 22.04, Windows 11 -->
 - **Vercel AI SDK Version:** <!-- e.g., 6.0.0 -->
 
 ### SAP AI Core Configuration
 
-- **Model Used:** <!-- e.g., gpt-4o, claude-3-5-sonnet -->
+- **Model Used:** <!-- e.g., gpt-4.1, anthropic--claude-4.5-sonnet -->
 - **Deployment ID:** <!-- If applicable -->
 - **Authentication Method:** <!-- AICORE_SERVICE_KEY env var / manual config -->
 

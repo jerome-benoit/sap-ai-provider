@@ -76,7 +76,7 @@ async function documentGroundingExample() {
       },
     });
 
-    const model = provider("gpt-4o");
+    const model = provider("gpt-4.1");
 
     console.log("📝 Query: What are the key features of SAP AI Core?\n");
 
@@ -119,7 +119,7 @@ async function documentGroundingExample() {
       },
     });
 
-    const modelAdvanced = providerAdvanced("gpt-4o");
+    const modelAdvanced = providerAdvanced("gpt-4.1");
 
     console.log("📝 Query: How do I deploy a model in SAP AI Core? Include sources.\n");
 
@@ -142,7 +142,7 @@ async function documentGroundingExample() {
     console.log("================================\n");
 
     const providerNoGrounding = createSAPAIProvider();
-    const modelNoGrounding = providerNoGrounding("gpt-4o");
+    const modelNoGrounding = providerNoGrounding("gpt-4.1");
 
     const query = "What is the latest pricing for our enterprise plan?";
     console.log(`📝 Query: ${query}\n`);

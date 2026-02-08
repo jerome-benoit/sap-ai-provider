@@ -3,23 +3,24 @@ import type {
   EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
-  SharedV3ProviderMetadata,
 } from "@ai-sdk/provider";
 import type {
   AzureOpenAiEmbeddingClient,
   AzureOpenAiEmbeddingParameters,
 } from "@sap-ai-sdk/foundation-models";
 
-import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
-
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
-import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
-import { buildModelDeployment, normalizeEmbedding } from "./strategy-utils.js";
+import {
+  buildEmbeddingResult,
+  buildModelDeployment,
+  hasKeys,
+  normalizeEmbedding,
+  prepareEmbeddingCall,
+} from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -43,27 +44,16 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
     options: EmbeddingModelV3CallOptions,
     maxEmbeddingsPerCall: number,
   ): Promise<EmbeddingModelV3Result> {
-    const { abortSignal, providerOptions, values } = options;
+    const { abortSignal, values } = options;
 
-    const providerName = getProviderName(config.provider);
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions,
-      schema: sapAIEmbeddingProviderOptions,
-    });
-
-    if (values.length > maxEmbeddingsPerCall) {
-      throw new TooManyEmbeddingValuesForCallError({
-        maxEmbeddingsPerCall,
-        modelId: config.modelId,
-        provider: config.provider,
-        values,
-      });
-    }
+    const { embeddingOptions, providerName } = await prepareEmbeddingCall(
+      { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
+      options,
+    );
 
     try {
       const client = this.createClient(config, settings.modelVersion);
-      const request = this.buildRequest(values, settings, sapOptions);
+      const request = this.buildRequest(values, settings, embeddingOptions);
       const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
       const embeddingData = response.getEmbeddings();
@@ -72,19 +62,13 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
         normalizeEmbedding(embedding),
       );
 
-      const providerMetadata: SharedV3ProviderMetadata = {
-        [providerName]: {
-          model: config.modelId,
-          version: VERSION,
-        },
-      };
-
-      return {
+      return buildEmbeddingResult({
         embeddings,
-        providerMetadata,
-        usage: { tokens: tokenUsage.total_tokens },
-        warnings: [],
-      };
+        modelId: config.modelId,
+        providerName,
+        totalTokens: tokenUsage.total_tokens,
+        version: VERSION,
+      });
     } catch (error) {
       throw convertToAISDKError(error, {
         operation: "doEmbed",
@@ -97,16 +81,16 @@ export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPI
   private buildRequest(
     values: string[],
     settings: SAPAIEmbeddingSettings,
-    sapOptions: undefined | { modelParams?: Record<string, unknown> },
+    embeddingOptions: undefined | { modelParams?: Record<string, unknown> },
   ): AzureOpenAiEmbeddingParameters {
     const mergedParams = deepMerge(
       settings.modelParams as Record<string, unknown> | undefined,
-      sapOptions?.modelParams,
+      embeddingOptions?.modelParams,
     );
 
     return {
       input: values,
-      ...(Object.keys(mergedParams).length > 0 ? mergedParams : {}),
+      ...(hasKeys(mergedParams) ? mergedParams : {}),
     } as AzureOpenAiEmbeddingParameters;
   }
 

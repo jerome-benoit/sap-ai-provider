@@ -61,7 +61,7 @@ async function dataMaskingExample() {
       },
     });
 
-    const model = provider("gpt-4o");
+    const model = provider("gpt-4.1");
 
     console.log("📝 Testing with data masking enabled...\n");
 
@@ -86,7 +86,7 @@ async function dataMaskingExample() {
     console.log("================================\n");
 
     const providerNoMask = createSAPAIProvider();
-    const modelNoMask = providerNoMask("gpt-4o");
+    const modelNoMask = providerNoMask("gpt-4.1");
 
     const { text: textNoMask } = await generateText({
       messages: [

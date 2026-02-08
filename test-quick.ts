@@ -33,9 +33,9 @@ async function quickTest() {
     const provider = createSAPAIProvider();
     console.log("✅ Provider created (synchronously!)");
 
-    console.log("\n📝 Testing gpt-4o...");
+    console.log("\n📝 Testing gpt-4.1...");
     const { finishReason, text, usage } = await generateText({
-      model: provider("gpt-4o"),
+      model: provider("gpt-4.1"),
       prompt: "Say 'Hello from SAP AI Core!' in exactly those words.",
     });
 

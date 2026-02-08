@@ -128,8 +128,36 @@ export interface OrchestrationModelSettings {
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
+  /**
+   * Options for streaming behavior with post-LLM modules.
+   * Only applies when using `streamText()` with orchestration modules.
+   */
+  readonly streamOptions?: OrchestrationStreamOptions;
   readonly tools?: ChatCompletionTool[];
   readonly translation?: TranslationModule;
+}
+
+/**
+ * Stream options for orchestration post-LLM module processing.
+ * Controls chunking behavior for translation, filtering, and other modules during streaming.
+ */
+export interface OrchestrationStreamOptions {
+  /**
+   * Minimum number of characters per chunk for post-LLM modules.
+   * Valid range: 1-10000. Defaults to 100.
+   */
+  readonly chunkSize?: number;
+  /**
+   * Delimiters for splitting stream into chunks (e.g., sentence boundaries).
+   * Required when translation module is configured.
+   * @example ["\n", ".", "?", "!"]
+   */
+  readonly delimiters?: readonly string[];
+  /**
+   * Additional characters from previous chunks sent to output filtering for context.
+   * Valid range: 0-10000.
+   */
+  readonly outputFilteringOverlap?: number;
 }
 
 /** Reference to a template in SAP AI Core's Prompt Registry. */
@@ -186,7 +214,7 @@ export interface SAPAIEmbeddingSettings {
  * Supported model IDs in SAP AI Core.
  *
  * Model availability depends on tenant configuration and region.
- * Common values include: `'gpt-4o'`, `'gpt-4o-mini'`, `'anthropic--claude-3.5-sonnet'`, `'gemini-1.5-pro'`.
+ * Common values include: `'gpt-4.1'`, `'gpt-4.1-mini'`, `'anthropic--claude-4.5-sonnet'`, `'gemini-2.5-pro'`.
  * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/models-and-scenarios-in-generative-ai-hub|SAP AI Core Models}
  */
 export type SAPAIModelId = ChatModel;
@@ -237,10 +265,13 @@ export interface SAPAISettings {
   readonly api?: SAPAIApiType;
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
+  /** Orchestration API only. */
   readonly filtering?: FilteringModule;
+  /** Orchestration API only. */
   readonly grounding?: GroundingModule;
   /** @default false */
   readonly includeReasoning?: boolean;
+  /** Orchestration API only. */
   readonly masking?: MaskingModule;
   readonly modelParams?: CommonModelParams;
   readonly modelVersion?: string;
@@ -251,7 +282,11 @@ export interface SAPAISettings {
   /** Orchestration API only. */
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
+  /** Orchestration API only. */
+  readonly streamOptions?: OrchestrationStreamOptions;
+  /** Orchestration API only. */
   readonly tools?: ChatCompletionTool[];
+  /** Orchestration API only. */
   readonly translation?: TranslationModule;
 }
 

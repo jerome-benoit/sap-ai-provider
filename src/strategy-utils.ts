@@ -2,21 +2,27 @@
  * Shared utilities for SAP AI Core strategy implementations.
  */
 import type {
+  EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
+  EmbeddingModelV3Result,
   LanguageModelV3CallOptions,
   LanguageModelV3Content,
   LanguageModelV3FinishReason,
   LanguageModelV3FunctionTool,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamPart,
+  SharedV3ProviderMetadata,
   SharedV3Warning,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { ZodType } from "zod";
 
+import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
+import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
 import { deepMerge } from "./deep-merge.js";
+import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
 import { validateModelParamsWithWarnings } from "./sap-ai-provider-options.js";
 
 /**
@@ -37,6 +43,15 @@ export type AISDKToolChoice =
   | { type: "auto" }
   | { type: "none" }
   | { type: "required" };
+
+/**
+ * @internal
+ */
+export interface BaseEmbeddingConfig {
+  readonly maxEmbeddingsPerCall: number;
+  readonly modelId: string;
+  readonly provider: string;
+}
 
 /**
  * @internal
@@ -79,6 +94,32 @@ export interface ConvertedToolsResult<T> {
   readonly tools: T[] | undefined;
   readonly warnings: SharedV3Warning[];
 }
+
+/**
+ * Parsed embedding provider options from AI SDK call.
+ * @internal
+ */
+export interface EmbeddingProviderOptions {
+  readonly modelParams?: Record<string, unknown>;
+  readonly type?: EmbeddingType;
+}
+
+/**
+ * @internal
+ */
+export interface EmbeddingResultConfig {
+  readonly embeddings: EmbeddingModelV3Embedding[];
+  readonly modelId: string;
+  readonly providerName: string;
+  readonly totalTokens: number;
+  readonly version: string;
+}
+
+/**
+ * Valid embedding types for orchestration API.
+ * @internal
+ */
+export type EmbeddingType = "document" | "query" | "text";
 
 /**
  * @internal
@@ -304,6 +345,30 @@ export function applyParameterOverrides(
       delete modelParams[mapping.camelCaseKey];
     }
   }
+}
+
+/**
+ * Builds an EmbeddingModelV3Result from embedding data.
+ * @param config - Configuration with embeddings and metadata.
+ * @returns Complete embedding result for AI SDK.
+ * @internal
+ */
+export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingModelV3Result {
+  const { embeddings, modelId, providerName, totalTokens, version } = config;
+
+  const providerMetadata: SharedV3ProviderMetadata = {
+    [providerName]: {
+      model: modelId,
+      version,
+    },
+  };
+
+  return {
+    embeddings,
+    providerMetadata,
+    usage: { tokens: totalTokens },
+    warnings: [],
+  };
 }
 
 /**
@@ -953,11 +1018,11 @@ export function extractToolParameters(tool: LanguageModelV3FunctionTool): Extrac
     }
   }
 
-  if (inputSchema && Object.keys(inputSchema).length > 0) {
+  if (inputSchema && hasKeys(inputSchema)) {
     const hasProperties =
       inputSchema.properties &&
       typeof inputSchema.properties === "object" &&
-      Object.keys(inputSchema.properties).length > 0;
+      hasKeys(inputSchema.properties);
 
     if (hasProperties) {
       return { parameters: buildSAPToolParameters(inputSchema) };
@@ -977,6 +1042,16 @@ export function hasCallableParse(
   obj: Record<string, unknown>,
 ): obj is Record<string, unknown> & { parse: (...args: unknown[]) => unknown } {
   return typeof obj.parse === "function";
+}
+
+/**
+ * Checks if an object has at least one own enumerable property.
+ * @param obj - The object to check.
+ * @returns True if the object has one or more keys.
+ * @internal
+ */
+export function hasKeys(obj: object): boolean {
+  return Object.keys(obj).length > 0;
 }
 
 /**
@@ -1074,4 +1149,38 @@ export function normalizeEmbedding(embedding: number[] | string): EmbeddingModel
     buffer.length / Float32Array.BYTES_PER_ELEMENT,
   );
   return Array.from(float32Array);
+}
+
+/**
+ * Prepares embedding call by parsing provider options and validating input count.
+ * @param config - Base embedding configuration.
+ * @param options - Embedding model call options.
+ * @returns Parsed SAP options and provider name.
+ * @throws {TooManyEmbeddingValuesForCallError} When input count exceeds maximum.
+ * @internal
+ */
+export async function prepareEmbeddingCall(
+  config: BaseEmbeddingConfig,
+  options: EmbeddingModelV3CallOptions,
+): Promise<{ embeddingOptions: EmbeddingProviderOptions | undefined; providerName: string }> {
+  const { maxEmbeddingsPerCall, modelId, provider } = config;
+  const { providerOptions, values } = options;
+
+  const providerName = getProviderName(provider);
+  const sapOptions = await parseProviderOptions({
+    provider: providerName,
+    providerOptions,
+    schema: sapAIEmbeddingProviderOptions,
+  });
+
+  if (values.length > maxEmbeddingsPerCall) {
+    throw new TooManyEmbeddingValuesForCallError({
+      maxEmbeddingsPerCall,
+      modelId,
+      provider,
+      values,
+    });
+  }
+
+  return { embeddingOptions: sapOptions, providerName };
 }

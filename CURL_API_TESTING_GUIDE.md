@@ -177,7 +177,7 @@ curl --request POST \
           ]
         },
         "model": {
-          "name": "gpt-4o",
+          "name": "gpt-4.1",
           "version": "latest"
         }
       }
@@ -326,7 +326,7 @@ curl --request POST \
           ]
         },
         "model": {
-          "name": "gpt-4o",
+          "name": "gpt-4.1",
           "version": "latest"
         }
       }
@@ -351,7 +351,7 @@ echo "✅ Request completed"
     "id": "chatcmpl-xxx",
     "object": "chat.completion",
     "created": 1234567890,
-    "model": "gpt-4o-2024-08-06",
+    "model": "gpt-4.1-2024-08-06",
     "choices": [
       {
         "index": 0,
@@ -433,7 +433,7 @@ Check: `exp` (expiration), `subaccountid`, `scope`
         "prompt": {
           "template": [{ "role": "user", "content": "Hello" }]
         },
-        "model": { "name": "gpt-4o", "version": "latest" }
+        "model": { "name": "gpt-4.1", "version": "latest" }
       }
     }
   }
@@ -464,7 +464,7 @@ curl --request POST \
   --header "AI-Resource-Group: ${RESOURCE_GROUP}" \
   --header "Content-Type: application/json" \
   --data '{
-  "model": "gpt-4o",
+  "model": "gpt-4.1",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
@@ -478,7 +478,7 @@ curl --request POST \
 
 ```json
 {
-  "model": "gpt-4o",
+  "model": "gpt-4.1",
   "messages": [...],
   "logprobs": true,
   "top_logprobs": 5,
@@ -494,7 +494,7 @@ curl --request POST \
 {
   "id": "chatcmpl-xxx",
   "object": "chat.completion",
-  "model": "gpt-4o",
+  "model": "gpt-4.1",
   "choices": [
     {
       "index": 0,

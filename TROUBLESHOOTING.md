@@ -226,7 +226,7 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 3. **Verify deployment status:** Ensure deployment is running, check deployment
    ID
-4. **Test with known model:** Try `gpt-4o` - if it works, issue is
+4. **Test with known model:** Try `gpt-4.1` - if it works, issue is
    model-specific
 
 ### Problem: Model doesn't support features
@@ -236,7 +236,7 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 **Solutions:**
 
 1. Check model-specific documentation for limitations
-2. Use `gpt-4o` or `gpt-4.1-mini` for full tool calling (Gemini limited to 1
+2. Use `gpt-4.1` or `gpt-4.1-mini` for full tool calling (Gemini limited to 1
    tool)
 3. Remove unsupported features or use alternatives (JSON mode instead of
    structured outputs)
@@ -265,7 +265,7 @@ other API:
    const provider = createSAPAIProvider({ api: "orchestration" }); // default
 
    // Model-level (overrides provider)
-   const model = provider("gpt-4o", { api: "foundation-models" });
+   const model = provider("gpt-4.1", { api: "foundation-models" });
 
    // Call-level (overrides model and provider)
    await generateText({
@@ -336,7 +336,7 @@ for complete feature comparison.
    const provider = createSAPAIProvider();
 
    const result = await streamText({
-     model: provider("gpt-4o"),
+     model: provider("gpt-4.1"),
      prompt: "Write a story",
    });
 
@@ -412,7 +412,7 @@ for complete feature comparison.
 
 1. Use `streamText` for long outputs (faster perceived performance)
 2. Optimize params: Set `maxTokens` to expected size, lower `temperature`, use
-   smaller models (`gpt-4o-mini`)
+   smaller models (`gpt-4.1-mini`)
 3. Reduce prompt size: Concise history, remove unnecessary context, summarize
    periodically
 
@@ -491,7 +491,7 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
 const provider = createSAPAIProvider();
 const result = await generateText({
-  model: provider("gpt-4o"),
+  model: provider("gpt-4.1"),
   prompt: "Hello",
 });
 console.log(result.text);
