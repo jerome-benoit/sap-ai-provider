@@ -110,12 +110,7 @@ export function convertToSAPMessages(
               // Normalize tool call input to JSON string (Vercel AI SDK provides strings or objects)
               let argumentsJson: string;
               if (typeof part.input === "string") {
-                try {
-                  JSON.parse(part.input);
-                  argumentsJson = part.input;
-                } catch {
-                  argumentsJson = JSON.stringify(part.input);
-                }
+                argumentsJson = part.input;
               } else {
                 argumentsJson = JSON.stringify(part.input);
               }
