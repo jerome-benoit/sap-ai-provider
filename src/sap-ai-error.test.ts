@@ -338,6 +338,54 @@ describe("convertToAISDKError", () => {
     });
   });
 
+  describe("abort error handling", () => {
+    it.each([
+      {
+        createError: () => new DOMException("The operation was aborted", "AbortError"),
+        desc: "DOMException AbortError",
+      },
+      {
+        createError: () => {
+          const err = new Error("The operation was aborted");
+          err.name = "AbortError";
+          return err;
+        },
+        desc: "Error with name AbortError",
+      },
+    ])("should convert $desc to APICallError with status 499", ({ createError }) => {
+      const result = convertToAISDKError(createError()) as APICallError;
+
+      expect(result).toBeInstanceOf(APICallError);
+      expect(result.statusCode).toBe(499);
+      expect(result.message).toBe("Request was aborted by the client");
+      expect(result.isRetryable).toBe(false);
+    });
+
+    it("should include context in abort error", () => {
+      const abortError = new DOMException("Aborted", "AbortError");
+
+      const result = convertToAISDKError(abortError, {
+        operation: "doStream",
+        url: "https://api.example.com/chat",
+      }) as APICallError;
+
+      expect(result.statusCode).toBe(499);
+      expect(result.url).toBe("https://api.example.com/chat");
+    });
+
+    it.each([
+      {
+        createError: () => new DOMException("Something else", "InvalidStateError"),
+        desc: "regular DOMException",
+      },
+      { createError: () => new Error("Request failed"), desc: "regular Error" },
+    ])("should not treat $desc as abort error", ({ createError }) => {
+      const result = convertToAISDKError(createError()) as APICallError;
+
+      expect(result.statusCode).not.toBe(499);
+    });
+  });
+
   describe("authentication error detection", () => {
     it.each([
       "Authentication failed for AICORE_SERVICE_KEY",

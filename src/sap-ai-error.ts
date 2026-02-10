@@ -11,6 +11,7 @@ import type { SAPAIApiType } from "./sap-ai-settings.js";
  */
 const HTTP_STATUS = {
   BAD_REQUEST: 400,
+  CLIENT_CLOSED_REQUEST: 499,
   CONFLICT: 409,
   FORBIDDEN: 403,
   INTERNAL_ERROR: 500,
@@ -364,6 +365,18 @@ export function convertToAISDKError(
     }
   }
 
+  if (isAbortError(rootError)) {
+    return createAPICallError(
+      error,
+      {
+        isRetryable: false,
+        message: "Request was aborted by the client",
+        statusCode: HTTP_STATUS.CLIENT_CLOSED_REQUEST,
+      },
+      context,
+    );
+  }
+
   if (rootError instanceof Error) {
     const errorMsg = rootError.message.toLowerCase();
     const originalErrorMsg = rootError.message;
@@ -608,6 +621,21 @@ function getStatusCodeFromSAPError(code?: number): number {
   }
 
   return HTTP_STATUS.INTERNAL_ERROR;
+}
+
+/**
+ * @param error - Error to check.
+ * @returns True if error is an AbortError from AbortController.
+ * @internal
+ */
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+  return false;
 }
 
 /**

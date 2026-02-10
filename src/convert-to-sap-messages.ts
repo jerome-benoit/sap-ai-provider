@@ -37,6 +37,27 @@ export interface ConvertToSAPMessagesOptions {
 const ZERO_WIDTH_SPACE = "\u200B";
 
 /**
+ * Safely serializes a value to JSON string, handling edge cases that would cause JSON.stringify to throw.
+ *
+ * Handles:
+ * - Circular references (objects that reference themselves)
+ * - BigInt values (converted to string representation)
+ * - Undefined values and symbols (handled by JSON.stringify's default behavior)
+ * @param value - The value to serialize.
+ * @returns JSON string representation, or a fallback string representation if serialization fails.
+ * @internal
+ */
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_key, val) =>
+      typeof val === "bigint" ? val.toString() : (val as unknown),
+    );
+  } catch {
+    return String(value);
+  }
+}
+
+/**
  * @internal
  */
 const JINJA2_DELIMITERS_PATTERN = /\{(?=[{%#])/g;
@@ -110,12 +131,7 @@ export function convertToSAPMessages(
               // Normalize tool call input to JSON string (Vercel AI SDK provides strings or objects)
               let argumentsJson: string;
               if (typeof part.input === "string") {
-                try {
-                  JSON.parse(part.input);
-                  argumentsJson = part.input;
-                } catch {
-                  argumentsJson = JSON.stringify(part.input);
-                }
+                argumentsJson = part.input;
               } else {
                 argumentsJson = JSON.stringify(part.input);
               }
@@ -155,7 +171,7 @@ export function convertToSAPMessages(
       case "tool": {
         for (const part of message.content) {
           if (part.type === "tool-result") {
-            const serializedOutput = JSON.stringify(part.output);
+            const serializedOutput = safeJsonStringify(part.output);
             const toolMessage: ToolChatMessage = {
               content: maybeEscape(serializedOutput),
               role: "tool",
