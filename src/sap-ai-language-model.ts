@@ -20,6 +20,10 @@ import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 import {
+  getSAPAIModelCapabilities,
+  type SAPAIModelCapabilities,
+} from "./sap-ai-model-capabilities.js";
+import {
   getProviderName,
   sapAILanguageModelProviderOptions,
   validateModelParamsSettings,
@@ -78,22 +82,56 @@ interface SAPAILanguageModelConfig {
 export class SAPAILanguageModel implements LanguageModelV3 {
   readonly modelId: SAPAIModelId;
   readonly specificationVersion = "v3";
-  readonly supportsImageUrls: boolean = true;
-  readonly supportsMultipleCompletions: boolean = true;
-  readonly supportsParallelToolCalls: boolean = true;
-  readonly supportsStreaming: boolean = true;
-  readonly supportsStructuredOutputs: boolean = true;
-  readonly supportsToolCalls: boolean = true;
+
+  /**
+   * Gets the model capabilities for the current model.
+   * Cached after first access for performance.
+   * @returns The model capabilities.
+   */
+  get capabilities(): SAPAIModelCapabilities {
+    this._capabilities ??= getSAPAIModelCapabilities(this.modelId);
+    return this._capabilities;
+  }
 
   get provider(): string {
     return this.config.provider;
   }
 
   get supportedUrls(): Record<string, RegExp[]> {
+    if (!this.capabilities.supportsImageInputs) {
+      return {};
+    }
     return {
       "image/*": [/^https:\/\/.+$/i, /^data:image\/.*$/],
     };
   }
+
+  get supportsImageUrls(): boolean {
+    return this.capabilities.supportsImageInputs;
+  }
+
+  get supportsMultipleCompletions(): boolean {
+    return this.capabilities.supportsN;
+  }
+
+  get supportsParallelToolCalls(): boolean {
+    return this.capabilities.supportsParallelToolCalls;
+  }
+
+  get supportsStreaming(): boolean {
+    return this.capabilities.supportsStreaming;
+  }
+
+  get supportsStructuredOutputs(): boolean {
+    return this.capabilities.supportsStructuredOutputs;
+  }
+
+  get supportsToolCalls(): boolean {
+    return this.capabilities.supportsToolCalls;
+  }
+
+  /** @internal */
+  private _capabilities?: SAPAIModelCapabilities;
 
   /** @internal */
   private readonly config: SAPAILanguageModelConfig;
@@ -127,6 +165,9 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   }
 
   supportsUrl(url: URL): boolean {
+    if (!this.capabilities.supportsImageInputs) {
+      return false;
+    }
     if (url.protocol === "https:") return true;
     if (url.protocol === "data:") {
       return /^data:image\//i.test(url.href);
