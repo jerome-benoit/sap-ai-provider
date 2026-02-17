@@ -119,7 +119,9 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
       const warnings = convertWarningsToV2(result.warnings);
       // Log warnings - convertWarningsToV2 normalizes all warnings to type "other" with message
       for (const warning of warnings) {
-        console.warn(`[SAP AI Embedding] ${warning.message}`);
+        if (warning.type === "other") {
+          console.warn(`[SAP AI Embedding] ${warning.message}`);
+        }
       }
     }
 
