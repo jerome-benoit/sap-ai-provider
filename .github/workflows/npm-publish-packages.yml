@@ -16,9 +16,11 @@ jobs:
         run: npm ci --dry-run --ignore-scripts
       - run: npm ci
       - run: npm run build
+      - run: npm run build:v2
+      - run: npm run prepare-v2
       - run: npm test
 
-  publish-npm:
+  publish-v3:
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -29,6 +31,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
       - name: Set package version from release
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
@@ -59,7 +62,55 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
             echo "Publishing as 'latest' tag for stable version $VERSION"
           fi
-      - name: Simulate npm publish
+      - name: Simulate npm publish (V3)
         run: npm publish --dry-run --tag ${{ steps.tag.outputs.tag }}
-      - name: Publish to npm
+      - name: Publish V3 to npm
         run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-v2:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Set package version from release
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Setting version to $VERSION"
+          npm version $VERSION --no-git-tag-version --allow-same-version
+      - run: npm ci
+      - run: npm run build:v2
+      - run: npm run prepare-v2
+      - name: Determine npm tag
+        id: tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$VERSION" =~ -alpha ]]; then
+            echo "tag=alpha" >> $GITHUB_OUTPUT
+          elif [[ "$VERSION" =~ -beta ]]; then
+            echo "tag=beta" >> $GITHUB_OUTPUT
+          elif [[ "$VERSION" =~ -rc ]]; then
+            echo "tag=next" >> $GITHUB_OUTPUT
+          elif [[ "$VERSION" =~ -canary ]]; then
+            echo "tag=canary" >> $GITHUB_OUTPUT
+          elif [[ "$VERSION" =~ - ]]; then
+            echo "tag=next" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+      - name: Simulate npm publish (V2)
+        working-directory: dist
+        run: npm publish --dry-run --tag ${{ steps.tag.outputs.tag }}
+      - name: Publish V2 to npm
+        working-directory: dist
+        run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

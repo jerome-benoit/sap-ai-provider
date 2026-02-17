@@ -49,6 +49,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:v2": "tsup --config tsup.config.v2.ts",
     "build:watch": "tsup --watch",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint .",
@@ -68,7 +69,9 @@
     "test:node:watch": "vitest --config vitest.node.config.ts",
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run type-check && npm run lint && npm run test && npm run build && npm run check-build",
-    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts"
+    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts",
+    "check-build:v2": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts && test -f dist/package.json",
+    "prepare-v2": "tsx scripts/prepare-v2-package.ts"
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.8",
