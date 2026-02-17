@@ -23,9 +23,11 @@ streaming or runtime-specific behaviors.
 
 - Prefer injecting a custom `fetch` via provider settings for deterministic
   tests (see [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)).
-- For streaming flows, assert `LanguageModelV3StreamPart` events via the
+- For V3 streaming flows, assert `LanguageModelV3StreamPart` events via the
   `doStream` pipeline (see
   [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)).
+- For V2 facade tests, assert `LanguageModelV2StreamPart` events via the
+  V2 adapters (see [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)).
 
 ## Test Patterns
 
@@ -35,3 +37,18 @@ streaming or runtime-specific behaviors.
   [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts).
 - Assert structured output behavior varies by model family (Anthropic/Amazon do
   not support JSON schema formatting).
+
+## V2 Facade Test Files
+
+The V2 facade layer has dedicated test files:
+
+- [src/sap-ai-provider-v2.test.ts](mdc:src/sap-ai-provider-v2.test.ts) — Tests
+  for `SAPAIProviderV2` factory and `ProviderV2` interface compliance.
+- [src/sap-ai-language-model-v2.test.ts](mdc:src/sap-ai-language-model-v2.test.ts) —
+  Tests for `SAPAILanguageModelV2` facade including `doGenerate`/`doStream` V2 contracts.
+- [src/sap-ai-embedding-model-v2.test.ts](mdc:src/sap-ai-embedding-model-v2.test.ts) —
+  Tests for `SAPAIEmbeddingModelV2` facade including `doEmbed` V2 contract.
+- [src/sap-ai-adapters-v3-to-v2.test.ts](mdc:src/sap-ai-adapters-v3-to-v2.test.ts) —
+  Tests for V3→V2 type adapter functions.
+
+When modifying V2 facade files, ensure corresponding test files are updated.
