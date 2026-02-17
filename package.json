@@ -70,7 +70,6 @@
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run type-check && npm run lint && npm run test && npm run build && npm run check-build",
     "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts",
-    "check-build:v2": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts && test -f dist/package.json",
     "prepare-v2": "tsx scripts/prepare-v2-package.ts"
   },
   "dependencies": {
