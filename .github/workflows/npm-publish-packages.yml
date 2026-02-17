@@ -20,7 +20,7 @@ jobs:
       - run: npm run prepare-v2
       - run: npm test
 
-  publish-v3:
+  publish-npm:
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -61,14 +61,14 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
             echo "Publishing as 'latest' tag for stable version $VERSION"
           fi
-      - name: Simulate npm publish (V3)
-        run: npm publish --dry-run --tag ${{ steps.tag.outputs.tag }}
-      - name: Publish V3 to npm
+      - name: Simulate npm publish
+        run: npm publish --dry-run --tag ${​{ steps.tag.outputs.tag }}
+      - name: Publish to npm
         run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  publish-v2:
+  publish-npm-v2:
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -104,10 +104,10 @@ jobs:
           else
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
-      - name: Simulate npm publish (V2)
+      - name: Simulate npm publish
         working-directory: dist
-        run: npm publish --dry-run --tag ${{ steps.tag.outputs.tag }}
-      - name: Publish V2 to npm
+        run: npm publish --dry-run --tag ${​{ steps.tag.outputs.tag }}
+      - name: Publish to npm
         working-directory: dist
         run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
         env:
