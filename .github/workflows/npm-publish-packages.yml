@@ -64,9 +64,7 @@ jobs:
       - name: Simulate npm publish
         run: npm publish --dry-run --tag ${​{ steps.tag.outputs.tag }}
       - name: Publish to npm
-        run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public --tag ${​{ steps.tag.outputs.tag }}
 
   publish-npm-v2:
     needs: build
@@ -110,5 +108,3 @@ jobs:
       - name: Publish to npm
         working-directory: dist
         run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
