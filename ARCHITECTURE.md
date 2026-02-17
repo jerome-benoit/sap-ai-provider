@@ -1393,8 +1393,8 @@ npm publish                # @jerome-benoit/sap-ai-provider
 
 # V2 build (secondary package)
 npm run build:v2           # tsup.config.v2.ts → dist/
-npm run prepare:v2         # Renames files, creates V2 package.json
-cd dist && npm publish     # @jerome-benoit/sap-ai-provider-v2
+npm run prepare:v2         # Renames files, updates package.json
+npm publish                # @jerome-benoit/sap-ai-provider-v2
 ```
 
 **Why sequential?** This avoids managing different output directories and simplifies the CI/CD pipeline. Each build completely replaces the `dist/` contents.
