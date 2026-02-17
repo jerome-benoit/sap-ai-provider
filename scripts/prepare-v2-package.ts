@@ -40,8 +40,7 @@ function prepareV2Package(): void {
 
   const v2Pkg: PackageJson = {
     ...pkg,
-    description:
-      "SAP AI Provider V2 for Vercel AI SDK 4.x (LanguageModelV2/EmbeddingModelV2 interfaces)",
+    description: "SAP AI Provider for Vercel AI SDK (LanguageModelV2/EmbeddingModelV2 interfaces)",
     exports: {
       ".": {
         import: "./index.js",

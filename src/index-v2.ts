@@ -4,7 +4,7 @@
  * Vercel AI SDK V2 provider for SAP AI Core.
  *
  * This package provides LanguageModelV2 and EmbeddingModelV2 interfaces
- * for compatibility with Vercel AI SDK 4.x. Internally uses the provider's
+ * for compatibility with Vercel AI SDK. Internally uses the provider's
  * implementation with automatic format transformation to V2.
  * @see {@link https://sdk.vercel.ai/} Vercel AI SDK documentation
  */
