@@ -77,7 +77,7 @@ This repository publishes two npm packages from the same codebase:
 **ALWAYS run this command before committing (CI will fail otherwise):**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
+npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 **Detailed checklist and standards**: See [Contributing Guide - Pre-Commit Checklist](../CONTRIBUTING.md#pre-commit-checklist)
@@ -107,10 +107,10 @@ Since full example testing requires SAP credentials, validate changes using this
 **Complete CI-like validation command:**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
+npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
-This should complete in under 15 seconds total and all commands should pass.
+This should complete in under 20 seconds total and all commands should pass.
 
 ## Common Tasks
 
@@ -236,12 +236,13 @@ npm run build            # ~3s - Build V3 library
 npm run build:v2         # ~3s - Build V2 library
 npm run build:v2:watch   # Continuous V2 rebuild
 npm run prepare:v2       # Rename V2 files for publish
-npm run check-build      # <1s - Verify build outputs
+npm run check-build      # <1s - Verify V3 build outputs
+npm run check-build:v2   # <1s - Verify V2 build outputs
 npm run prettier-check   # ~1s - Check formatting
 
 # Complete validation
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
-# Total time: ~16s
+npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+# Total time: ~20s
 
 # Examples (requires SAP service key)
 npx tsx examples/example-generate-text.ts
@@ -355,7 +356,9 @@ npm run test:edge &&
 npm run prettier-check &&
 npm run lint &&
 npm run build &&
-npm run check-build
+npm run check-build &&
+npm run build:v2 &&
+npm run check-build:v2
 ```
 
 **Documentation Checks:**

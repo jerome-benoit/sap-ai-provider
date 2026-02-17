@@ -53,6 +53,7 @@
     "build:v2": "tsup --config tsup.config.v2.ts",
     "build:v2:watch": "tsup --config tsup.config.v2.ts --watch",
     "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts",
+    "check-build:v2": "ls -la dist/ && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint .",
     "lint-fix": "npm run lint:md:fix && eslint . --fix",

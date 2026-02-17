@@ -14,7 +14,7 @@
 ## Checklist
 
 - [ ] I have run `npm run type-check && npm run test && npm run lint`
-- [ ] I have run `npm run build && npm run build:v2`
+- [ ] I have run `npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2`
 - [ ] I have updated documentation (if applicable)
 - [ ] I have added tests for new functionality (if applicable)
 - [ ] My changes follow the existing code style
