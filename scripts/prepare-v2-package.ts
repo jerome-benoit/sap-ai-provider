@@ -4,9 +4,7 @@ import { resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "..");
 const DIST = resolve(ROOT, "dist");
 
-interface PackageJson {
-  [key: string]: unknown;
-}
+type PackageJson = Record<string, unknown>;
 
 /**
  * Prepares the V2 package for publishing by:
