@@ -1308,10 +1308,10 @@ AI SDK.
 
 This repository publishes **two separate npm packages** from a single codebase:
 
-| Package                             | Interface                              | Target Users                                   |
-| ----------------------------------- | -------------------------------------- | ---------------------------------------------- |
-| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | Users on AI SDK 5.0+                           |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Users on AI SDK 4.x or requiring V2 interfaces |
+| Package                             | Interface                              | Target Users                                       |
+| ----------------------------------- | -------------------------------------- | -------------------------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | Users on AI SDK 5.0+ preferring V3 interfaces      |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Users on AI SDK 5.0+ requiring V2 model interfaces |
 
 ### V2 Facade Layer
 

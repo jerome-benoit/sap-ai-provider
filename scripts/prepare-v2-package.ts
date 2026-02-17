@@ -53,7 +53,7 @@ function prepareV2Package(): void {
     module: "./index.js",
     name: "@jerome-benoit/sap-ai-provider-v2",
     peerDependencies: {
-      ai: "^4.0.0 || ^5.0.0",
+      ai: "^5.0.0 || ^6.0.0",
     },
     types: "./index.d.ts",
   };
