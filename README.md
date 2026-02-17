@@ -145,6 +145,12 @@ yarn add @jerome-benoit/sap-ai-provider ai
 pnpm add @jerome-benoit/sap-ai-provider ai
 ```
 
+> **V2 Package Available:** If you need `LanguageModelV2`/`EmbeddingModelV2`
+> interfaces, install `@jerome-benoit/sap-ai-provider-v2` instead. It provides
+> V2-compatible wrappers around the V3 implementation. See
+> [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
+> for details.
+
 ## Provider Creation
 
 You can create an SAP AI provider in two ways:
