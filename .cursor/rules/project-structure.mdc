@@ -11,11 +11,22 @@ SDK. Use these anchors to navigate the codebase quickly.
 
 ```text
 src/
-├── index.ts                                        # Public API exports
-├── sap-ai-provider.ts                              # Main provider factory
+├── index.ts                                        # V3 public API exports
+├── index-v2.ts                                     # V2 public API exports (facade)
+│
+│   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
+├── sap-ai-provider.ts                              # V3 provider factory
+├── sap-ai-language-model.ts                        # V3 language model
+├── sap-ai-embedding-model.ts                       # V3 embedding model
+│
+│   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
+├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
+├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
+├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
+├── sap-ai-adapters-v3-to-v2.ts                     # V3→V2 format conversion
+│
+│   # Shared Infrastructure
 ├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
-├── sap-ai-language-model.ts                        # Language model (API-agnostic)
-├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
 ├── sap-ai-settings.ts                              # Settings and type definitions
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
@@ -32,26 +43,38 @@ src/
 
 ## Entry Points and Core Modules
 
-- Main package entry: [src/index.ts](mdc:src/index.ts)
-  - Re-exports provider factory and types.
-- Provider factory: [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
-  - `createSAPAIProvider(options)` returns a provider function.
-  - `sapai` default instance auto-detects service binding or AICORE_SERVICE_KEY.
-- Provider options: [src/sap-ai-provider-options.ts](mdc:src/sap-ai-provider-options.ts)
-  - Zod schemas for provider configuration validation.
+### V3 Package (`@jerome-benoit/sap-ai-provider`)
+
+- Entry: [src/index.ts](mdc:src/index.ts)
+- Provider: [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
+  - `createSAPAIProvider(options)` returns `ProviderV3`.
+  - Methods: `embedding()`, `embeddingModel()`, `textEmbeddingModel()`.
 - Language model: [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
-  - Implements `LanguageModelV3` contract (API-agnostic, delegates to strategies).
+  - Implements `LanguageModelV3` contract.
 - Embedding model: [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
   - Implements `EmbeddingModelV3` contract.
+
+### V2 Package (`@jerome-benoit/sap-ai-provider-v2`)
+
+- Entry: [src/index-v2.ts](mdc:src/index-v2.ts)
+- Provider: [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
+  - `createSAPAIProvider(options)` returns `ProviderV2`.
+  - Method: `textEmbeddingModel()` only (V2 spec).
+- Language model: [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)
+  - Implements `LanguageModelV2`, wraps V3 internally.
+- Embedding model: [src/sap-ai-embedding-model-v2.ts](mdc:src/sap-ai-embedding-model-v2.ts)
+  - Implements `EmbeddingModelV2`, wraps V3 internally.
+- Adapters: [src/sap-ai-adapters-v3-to-v2.ts](mdc:src/sap-ai-adapters-v3-to-v2.ts)
+  - Converts V3 responses to V2 format.
+
+### Shared Infrastructure
+
+- Provider options: [src/sap-ai-provider-options.ts](mdc:src/sap-ai-provider-options.ts)
 - Settings and types: [src/sap-ai-settings.ts](mdc:src/sap-ai-settings.ts)
-  - Re-exports SAP AI SDK types.
 - Error handling: [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts)
 - API validation: [src/sap-ai-validation.ts](mdc:src/sap-ai-validation.ts)
-  - API resolution hierarchy and feature validation.
 - Strategy factory: [src/sap-ai-strategy.ts](mdc:src/sap-ai-strategy.ts)
-  - Lazy loading and caching of API strategies.
 - Strategy utilities: [src/strategy-utils.ts](mdc:src/strategy-utils.ts)
-  - Shared streaming and response building.
 - Message conversion: [src/convert-to-sap-messages.ts](mdc:src/convert-to-sap-messages.ts)
 - Deep merge utility: [src/deep-merge.ts](mdc:src/deep-merge.ts)
 - Version constant: [src/version.ts](mdc:src/version.ts)
@@ -70,12 +93,20 @@ src/
 ## Build, Types, and Distribution
 
 - TypeScript config: [tsconfig.json](mdc:tsconfig.json)
-- Build config (CJS+ESM+DTS): [tsup.config.ts](mdc:tsup.config.ts)
+- V3 build config: [tsup.config.ts](mdc:tsup.config.ts)
+- V2 build config: [tsup.config.v2.ts](mdc:tsup.config.v2.ts)
+- V2 publish script: [scripts/prepare-v2-package.ts](mdc:scripts/prepare-v2-package.ts)
 - ESLint config: [eslint.config.mjs](mdc:eslint.config.mjs)
 - Output: [dist/](mdc:dist/) produces `index.js`, `index.cjs`, `index.d.ts` with
   sourcemaps.
 - `package.json` exports are aligned for Node and ESM:
   [package.json](mdc:package.json)
+
+### Build Commands
+
+- `npm run build` — Build V3 package
+- `npm run build:v2` — Build V2 package
+- `npm run prepare:v2` — Prepare V2 for publishing (renames files)
 
 ## Testing
 
