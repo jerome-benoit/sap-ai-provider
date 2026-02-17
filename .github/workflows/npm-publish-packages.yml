@@ -103,8 +103,6 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
       - name: Simulate npm publish
-        working-directory: dist
         run: npm publish --dry-run --tag ${​{ steps.tag.outputs.tag }}
       - name: Publish to npm
-        working-directory: dist
         run: npm publish --provenance --access public --tag ${{ steps.tag.outputs.tag }}
