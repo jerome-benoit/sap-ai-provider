@@ -65,6 +65,12 @@ Handler → SAP AI Core API
   - [Memory Management](#memory-management)
   - [Monitoring and Observability](#monitoring-and-observability)
   - [Scalability Patterns](#scalability-patterns)
+- [Dual-Package Architecture (V3 + V2)](#dual-package-architecture-v3--v2)
+  - [V2 Facade Layer](#v2-facade-layer)
+  - [V2 Source Files](#v2-source-files)
+  - [Type Adapters](#type-adapters)
+  - [Build Process](#build-process)
+  - [Key Design Decisions](#key-design-decisions)
 - [See Also](#see-also)
 
 ## Overview
@@ -1295,6 +1301,110 @@ Consider tracking:
 This architecture ensures the SAP AI Provider is robust, scalable, and
 maintainable while providing a seamless integration experience with the Vercel
 AI SDK.
+
+---
+
+## Dual-Package Architecture (V3 + V2)
+
+This repository publishes **two separate npm packages** from a single codebase:
+
+| Package                             | Interface                              | Target Users                                   |
+| ----------------------------------- | -------------------------------------- | ---------------------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | Users on AI SDK 5.0+                           |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Users on AI SDK 4.x or requiring V2 interfaces |
+
+### V2 Facade Layer
+
+The V2 package uses a **facade pattern** that wraps the internal V3 implementation:
+
+```mermaid
+graph TB
+    subgraph "V2 Package (Facade)"
+        V2Provider[SAPAIProviderV2]
+        V2LM[SAPAILanguageModelV2]
+        V2EM[SAPAIEmbeddingModelV2]
+        Adapters[V3-to-V2 Adapters]
+    end
+
+    subgraph "Internal V3 Implementation"
+        V3Provider[SAPAIProvider]
+        V3LM[SAPAILanguageModel]
+        V3EM[SAPAIEmbeddingModel]
+        Strategies[API Strategies]
+    end
+
+    subgraph "SAP AI Core"
+        OrchAPI[Orchestration API]
+        FMAPI[Foundation Models API]
+    end
+
+    V2Provider -->|wraps| V3Provider
+    V2LM -->|delegates to| V3LM
+    V2EM -->|delegates to| V3EM
+    V2LM -->|uses| Adapters
+    V2EM -->|uses| Adapters
+    Adapters -->|converts V3 results| V2LM
+    Adapters -->|converts V3 results| V2EM
+
+    V3Provider -->|creates| V3LM
+    V3Provider -->|creates| V3EM
+    V3LM -->|uses| Strategies
+    V3EM -->|uses| Strategies
+    Strategies -->|calls| OrchAPI
+    Strategies -->|calls| FMAPI
+
+    style V2Provider fill:#ffe1f5
+    style V2LM fill:#ffe1f5
+    style V2EM fill:#ffe1f5
+    style Adapters fill:#fff4e1
+    style V3Provider fill:#e1f5ff
+    style V3LM fill:#e1f5ff
+    style V3EM fill:#e1f5ff
+```
+
+### V2 Source Files
+
+```text
+src/
+├── index-v2.ts                    # V2 public API exports
+├── sap-ai-provider-v2.ts          # V2 provider factory (facade)
+├── sap-ai-language-model-v2.ts    # V2 language model (delegates to V3)
+├── sap-ai-embedding-model-v2.ts   # V2 embedding model (delegates to V3)
+└── sap-ai-adapters-v3-to-v2.ts    # Type adapters (V3 results → V2 format)
+```
+
+### Type Adapters
+
+The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 and V2 interfaces:
+
+- **Finish Reason**: `{ type, unified }` object → string (`"stop"`, `"tool-calls"`, etc.)
+- **Usage**: Nested structure with `inputTokens.total` → flat `{ promptTokens, completionTokens }`
+- **Stream Parts**: V3 structured blocks → V2 simple deltas
+- **Warnings**: V3 `{ feature, ... }` format → V2 `{ type, ... }` format
+
+### Build Process
+
+The builds are **sequential** to the same `dist/` directory:
+
+```bash
+# V3 build (primary package)
+npm run build              # tsup.config.ts → dist/
+npm publish                # @jerome-benoit/sap-ai-provider
+
+# V2 build (secondary package)
+npm run build:v2           # tsup.config.v2.ts → dist/
+npm run prepare-v2         # Renames files, creates V2 package.json
+cd dist && npm publish     # @jerome-benoit/sap-ai-provider-v2
+```
+
+**Why sequential?** This avoids managing different output directories and simplifies the CI/CD pipeline. Each build completely replaces the `dist/` contents.
+
+### Key Design Decisions
+
+1. **Single source of truth**: All SAP AI Core logic lives in V3 implementation
+2. **Thin facade**: V2 layer only handles interface translation, no business logic
+3. **No code duplication**: V2 delegates to V3 for actual API calls
+4. **Adapter isolation**: Type conversions centralized in one file for maintainability
 
 ---
 
