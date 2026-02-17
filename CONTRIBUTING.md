@@ -157,7 +157,9 @@ npm run test:node && \
 npm run test:edge && \
 npm run prettier-check && \
 npm run lint && \
-npm run build && \
+npm run build && \\\
+npm run build:v2 && \\\
+# Optionally: npm run prepare:v2 (if preparing for publish) && \\\
 npm run check-build
 ```
 

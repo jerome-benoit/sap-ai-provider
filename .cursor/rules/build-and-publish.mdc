@@ -13,13 +13,29 @@ description: Build, type-check, test, and publish workflow for the package
 
 ## Commands
 
-- Build: `npm run build`
+### Build Commands
+
+- Build V3: `npm run build`
+- Build V2: `npm run build:v2`
+- Watch V2 build: `npm run build:v2:watch`
+- Prepare V2 for npm publish: `npm run prepare:v2` (renames files for package)
+- Check build outputs: `npm run check-build`
+
+### Quality Checks
+
 - Type-check: `npm run type-check`
 - Lint: `npm run lint`
 - Lint-fix: `npm run lint-fix`
 - Prettier-check: `npm run prettier-check`
 - Prettier-fix: `npm run prettier-fix`
 - Test: `npm test`
+
+### Dual-Package Architecture
+
+This repository publishes two npm packages from the same codebase:
+
+- `@jerome-benoit/sap-ai-provider` (V3) — Built from `src/index.ts`, uses `LanguageModelV3`/`EmbeddingModelV3`
+- `@jerome-benoit/sap-ai-provider-v2` (V2) — Built from `src/index-v2.ts`, wraps V3 internally to expose `LanguageModelV2`/`EmbeddingModelV2`
 
 `prepublishOnly` enforces type-check, lint, test, build and check-build before
 publish (see [package.json](mdc:package.json)).

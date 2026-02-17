@@ -1,5 +1,6 @@
 ---
 alwaysApply: true
+description: Guide to repository structure and file locations for SAP AI Provider
 ---
 
 # Project Structure Guide
@@ -32,6 +33,7 @@ src/
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
+├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
@@ -75,6 +77,7 @@ src/
 - API validation: [src/sap-ai-validation.ts](mdc:src/sap-ai-validation.ts)
 - Strategy factory: [src/sap-ai-strategy.ts](mdc:src/sap-ai-strategy.ts)
 - Strategy utilities: [src/strategy-utils.ts](mdc:src/strategy-utils.ts)
+- Base language model strategy: [src/base-language-model-strategy.ts](mdc:src/base-language-model-strategy.ts)
 - Message conversion: [src/convert-to-sap-messages.ts](mdc:src/convert-to-sap-messages.ts)
 - Deep merge utility: [src/deep-merge.ts](mdc:src/deep-merge.ts)
 - Version constant: [src/version.ts](mdc:src/version.ts)

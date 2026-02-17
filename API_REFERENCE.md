@@ -97,7 +97,156 @@ consistently:
 - [Environment Variables](#environment-variables)
 - [Version Information](#version-information)
   - [Dependencies](#dependencies)
+- [V2 Package API](#v2-package-api)
 - [Related Documentation](#related-documentation-1)
+
+## V2 Package API
+
+This section documents the API for the `@jerome-benoit/sap-ai-provider-v2` package. This package provides a V2-compatible facade over the internal V3 implementation, offering `LanguageModelV2` and `EmbeddingModelV2` interfaces for backward compatibility with older versions of the Vercel AI SDK.
+
+### `createSAPAIProvider(options?)`
+
+Creates an SAP AI Provider instance that returns V2-compatible models.
+
+**Signature:**
+
+```typescript
+function createSAPAIProvider(options?: SAPAIProviderSettings): SAPAIProviderV2;
+```
+
+**Parameters:**
+
+- `options` (optional): `SAPAIProviderSettings` - Configuration options (same as V3 package).
+
+**Returns:** `SAPAIProviderV2` - Configured provider instance.
+
+**Example:**
+
+```typescript
+import "dotenv/config"; // Load environment variables
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+import { generateText, embed } from "ai";
+import { APICallError } from "@ai-sdk/provider";
+
+const provider = createSAPAIProvider({
+  resourceGroup: "default",
+  deploymentId: "d65d81e7c077e583",
+});
+
+const languageModel = provider("gpt-4.1"); // Implements LanguageModelV2
+
+const embeddingModel = provider.textEmbeddingModel("text-embedding-3-small"); // Implements EmbeddingModelV2
+
+try {
+  const result = await generateText({
+    model: languageModel,
+    prompt: "Explain quantum computing in simple terms.",
+  });
+
+  console.log(result.text);
+
+  const { embedding } = await embed({
+    model: embeddingModel,
+    value: "What is machine learning?",
+  });
+
+  console.log("Embedding dimensions:", embedding.length);
+} catch (error) {
+  if (error instanceof APICallError) {
+    console.error("SAP AI Core API error:", error.message);
+    console.error("Status:", error.statusCode);
+  } else {
+    console.error("Unexpected error:", error);
+  }
+}
+```
+
+---
+
+### `SAPAIProviderV2`
+
+This interface extends Vercel AI SDK's `ProviderV2`. It wraps the V3 internal implementation to provide V2-compatible models.
+
+**Properties:**
+
+- **Note**: `SAPAIProviderV2` does NOT expose `specificationVersion` as it is a V3-specific property.
+
+**Methods:**
+
+#### `provider(modelId, settings?)`
+
+Creates a V2-compatible language model instance.
+
+**Signature:**
+
+```typescript
+(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV2
+```
+
+**Returns:** `SAPAILanguageModelV2` - A language model instance implementing `LanguageModelV2`.
+
+#### `provider.chat(modelId, settings?)`
+
+Explicit method for creating V2-compatible chat models (equivalent to calling the provider function).
+
+**Signature:**
+
+```typescript
+chat(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV2
+```
+
+#### `provider.languageModel(modelId, settings?)`
+
+ProviderV2-compliant method for creating V2-compatible language model instances.
+
+**Signature:**
+
+```typescript
+languageModel(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV2
+```
+
+#### `provider.textEmbeddingModel(modelId, settings?)`
+
+Creates a V2-compatible embedding model instance.
+
+**Signature:**
+
+```typescript
+textEmbeddingModel(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings): SAPAIEmbeddingModelV2
+```
+
+**Parameters:**
+
+- `modelId`: Embedding model identifier (e.g., 'text-embedding-3-small')
+- `settings`: Optional embedding model configuration
+
+**Returns:** `SAPAIEmbeddingModelV2` - An embedding model instance implementing `EmbeddingModelV2`.
+
+**Note**: The `SAPAIProviderV2` only exposes `textEmbeddingModel()` for embeddings. It does NOT have `embedding()` or `embeddingModel()` methods, as these are V3-specific.
+
+#### `provider.imageModel(modelId)`
+
+Always throws `NoSuchModelError` because SAP AI Core does not support image generation models.
+
+**Signature:**
+
+```typescript
+imageModel(modelId: string): ImageModelV2
+```
+
+---
+
+### `SAPAILanguageModelV2`
+
+This class implements the Vercel AI SDK's `LanguageModelV2` interface, wrapping the internal V3 language model implementation.
+
+---
+
+### `SAPAIEmbeddingModelV2`
+
+This class implements the Vercel AI SDK's `EmbeddingModelV2` interface, wrapping the internal V3 embedding model implementation.
+
+---
 
 ## Provider Factory Functions
 

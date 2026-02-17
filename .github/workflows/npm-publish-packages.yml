@@ -85,6 +85,7 @@ jobs:
           npm version $VERSION --no-git-tag-version --allow-same-version
       - run: npm ci
       - run: npm run build:v2
+      - run: npm run prepare:v2
       - name: Determine npm tag
         id: tag
         run: |

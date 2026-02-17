@@ -19,6 +19,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 - [Installation](#installation)
 - [Provider Creation](#provider-creation)
   - [Option 1: Factory Function (Recommended for Custom Configuration)](#option-1-factory-function-recommended-for-custom-configuration)
+  - [API Selection](#api-selection)
   - [Option 2: Default Instance (Quick Start)](#option-2-default-instance-quick-start)
 - [Authentication](#authentication)
 - [Basic Usage](#basic-usage)
@@ -145,11 +146,30 @@ yarn add @jerome-benoit/sap-ai-provider ai
 pnpm add @jerome-benoit/sap-ai-provider ai
 ```
 
-> **V2 Package Available:** If you need `LanguageModelV2`/`EmbeddingModelV2`
-> interfaces, install `@jerome-benoit/sap-ai-provider-v2` instead. It provides
-> V2-compatible wrappers around the V3 implementation. See
-> [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
-> for details.
+> **V2 Package Available:** For users requiring `LanguageModelV2`/`EmbeddingModelV2` interfaces, install the dedicated V2 package:
+>
+> ```bash
+> npm install @jerome-benoit/sap-ai-provider-v2 ai
+> ```
+>
+> This package provides a V2-compatible facade over the internal V3 implementation.
+>
+> Basic Usage Example:
+>
+> ```typescript
+> import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+> import { generateText } from "ai";
+>
+> const provider = createSAPAIProvider();
+> const result = await generateText({
+>   model: provider("gpt-4.1"),
+>   prompt: "Hello V2!",
+> });
+> console.log(result.text);
+> ```
+>
+> For a detailed understanding of the dual-package architecture, refer to
+> [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2).
 
 ## Provider Creation
 

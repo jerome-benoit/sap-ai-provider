@@ -1,78 +1,84 @@
 # Migration Guide
 
-Guide for migrating between versions of the SAP AI Provider.
+---
 
-## Table of Contents
+## Choosing Between V3 and V2 Packages
 
-- [Overview](#overview)
-- [Version 3.x to 4.x (Breaking Changes)](#version-3x-to-4x-breaking-changes)
-  - [Summary of Changes](#summary-of-changes)
-  - [Who Is Affected?](#who-is-affected)
-  - [Migration Steps](#migration-steps)
-    - [1. Update Package](#1-update-package)
-    - [2. Update Type Imports (If Using Direct Provider Access)](#2-update-type-imports-if-using-direct-provider-access)
-    - [3. Update Stream Parsing (If Manually Parsing Streams)](#3-update-stream-parsing-if-manually-parsing-streams)
-    - [4. Update Finish Reason Access (If Accessing Directly)](#4-update-finish-reason-access-if-accessing-directly)
-    - [5. Update Usage Access (If Accessing Token Details)](#5-update-usage-access-if-accessing-token-details)
-    - [6. Update Warning Handling (If Checking Warnings)](#6-update-warning-handling-if-checking-warnings)
-  - [V3 Features Not Supported](#v3-features-not-supported)
-  - [Testing Your Migration](#testing-your-migration)
-  - [Rollback Strategy](#rollback-strategy)
-  - [Common Migration Issues](#common-migration-issues)
-    - [Issue: "Property 'textDelta' does not exist"](#issue-property-textdelta-does-not-exist)
-    - [Issue: "Cannot read property 'total' of undefined"](#issue-cannot-read-property-total-of-undefined)
-    - [Issue: TypeScript errors on LanguageModelV2 types](#issue-typescript-errors-on-languagemodelv2-types)
-  - [FAQ](#faq)
-- [Version 2.x to 3.x (Breaking Changes)](#version-2x-to-3x-breaking-changes)
-  - [Summary of Changes](#summary-of-changes-1)
-  - [Migration Steps](#migration-steps-1)
-    - [1. Update Package](#1-update-package-1)
-    - [2. Update Error Handling](#2-update-error-handling)
-    - [3. SAP Error Metadata Access](#3-sap-error-metadata-access)
-    - [4. Automatic Retries](#4-automatic-retries)
-- [Version 1.x to 2.x (Breaking Changes)](#version-1x-to-2x-breaking-changes)
-  - [Summary of Changes](#summary-of-changes-2)
-  - [Migration Steps](#migration-steps-2)
-    - [1. Update Package](#1-update-package-2)
-    - [2. Update Authentication](#2-update-authentication)
-    - [3. Update Code (Remove await)](#3-update-code-remove-await)
-    - [4. Verify Functionality](#4-verify-functionality)
-    - [5. Optional: Adopt New Features](#5-optional-adopt-new-features)
-- [Breaking Changes](#breaking-changes)
-  - [Version 3.0.x](#version-30x)
-  - [Version 2.0.x](#version-20x)
-- [Deprecations](#deprecations)
-  - [Manual OAuth2 Token Management (Removed in v2.0)](#manual-oauth2-token-management-removed-in-v20)
-- [New Features](#new-features)
-  - [2.0.x Features](#20x-features)
-    - [1. SAP AI SDK Integration](#1-sap-ai-sdk-integration)
-    - [2. Data Masking (DPI)](#2-data-masking-dpi)
-    - [3. Content Filtering](#3-content-filtering)
-    - [4. Response Format Control](#4-response-format-control)
-    - [5. Default Settings](#5-default-settings)
-    - [6. Enhanced Streaming & Error Handling](#6-enhanced-streaming--error-handling)
-- [API Changes](#api-changes)
-  - [Added APIs (v2.0+)](#added-apis-v20)
-  - [Modified APIs](#modified-apis)
-  - [Removed APIs](#removed-apis)
-- [Migration Checklist](#migration-checklist)
-  - [Upgrading from 2.x to 3.x](#upgrading-from-2x-to-3x)
-  - [Upgrading from 1.x to 2.x](#upgrading-from-1x-to-2x)
-  - [Testing Checklist](#testing-checklist)
-- [Common Migration Issues](#common-migration-issues-1)
-- [Rollback Instructions](#rollback-instructions)
-  - [Rollback to 2.x](#rollback-to-2x)
-  - [Rollback to 1.x](#rollback-to-1x)
-  - [Verify Installation](#verify-installation)
-  - [Clear Cache](#clear-cache)
-- [Getting Help](#getting-help)
-- [Related Documentation](#related-documentation)
+This library offers two distinct packages to support different integration
+needs with the Vercel AI SDK:
 
-## Overview
+- **`@jerome-benoit/sap-ai-provider` (V3 Package)**:
+  - **When to Use**: This is the default and recommended package for all new
+    projects and for existing projects that can upgrade to Vercel AI SDK 5.0+
+    (which supports `LanguageModelV3`/`EmbeddingModelV3` interfaces).
+    It provides access to the latest AI SDK features, including enhanced
+    streaming capabilities, improved type safety, and new token usage
+    metadata.
+  - **Key Features**: Implements `LanguageModelV3` and `EmbeddingModelV3`.
 
-This guide helps you migrate your application when upgrading to newer versions
-of the SAP AI Provider. It covers breaking changes, deprecations, and new
-features.
+- **`@jerome-benoit/sap-ai-provider-v2` (V2 Package)**:
+  - **When to Use**: This package is for legacy compatibility. Use it if your
+    project is constrained to older versions of the Vercel AI SDK (prior to
+    5.0+) that only support the `LanguageModelV2`/`EmbeddingModelV2` interfaces.
+    It acts as a facade, wrapping the V3 implementation to provide a V2-compatible
+    API surface.
+  - **Key Features**: Implements `LanguageModelV2` and `EmbeddingModelV2`.
+
+### Migrating from V2 to V3 (`@jerome-benoit/sap-ai-provider-v2` → `@jerome-benoit/sap-ai-provider`)
+
+If you're upgrading your Vercel AI SDK version to 5.0+ and want to use the
+latest features of this provider, follow these steps:
+
+1. **Change Package Import**:
+
+   ```typescript
+   // Before (V2)
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+   // After (V3)
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+   ```
+
+2. **Update Type Imports**:
+   If you're directly importing AI SDK types for provider definitions, update
+   them from `LanguageModelV2` to `LanguageModelV3` (and
+   `EmbeddingModelV2` to `EmbeddingModelV3`):
+
+   ```typescript
+   // Before (V2)
+   import type { LanguageModelV2 } from "@ai-sdk/provider";
+   const model: LanguageModelV2 = createSAPAIProvider()("gpt-4.1");
+   // After (V3)
+   import type { LanguageModelV3 } from "@ai-sdk/provider";
+   const model: LanguageModelV3 = createSAPAIProvider()("gpt-4.1");
+   ```
+
+3. **Response Format Differences**: Note that V3 introduces changes in how
+   `finishReason` and `usage` are structured in responses. Refer to the
+   "Version 3.x to 4.x" migration section for details on these changes.
+
+### Migrating from V3 to V2 (`@jerome-benoit/sap-ai-provider` → `@jerome-benoit/sap-ai-provider-v2`)
+
+If you need to downgrade your Vercel AI SDK version or require strict
+`LanguageModelV2`/`EmbeddingModelV2` compatibility, follow these steps:
+
+1. **Change Package Import**:
+
+   ```typescript
+   // Before (V3)
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+   // After (V2)
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+   ```
+
+2. **Provider Method Differences**: The V2 package's provider
+   (`@jerome-benoit/sap-ai-provider-v2`) only exposes the `textEmbeddingModel()`
+   method, aligning with the `EmbeddingModelV2` specification.
+   The `embedding()` method is not available.
+
+   ```typescript
+   // V2 only has textEmbeddingModel()
+   const embeddingModel = createSAPAIProvider().textEmbeddingModel("embedding-model");
+   ```
 
 ---
 
@@ -960,3 +966,4 @@ If you encounter issues during migration:
 - [Architecture](./ARCHITECTURE.md) - Technical architecture (v2
   implementation)
 - [Contributing Guide](./CONTRIBUTING.md) - Development and contribution guidelines
+- [cURL API Testing Guide](./CURL_API_TESTING_GUIDE.md) - Direct API testing for debugging
