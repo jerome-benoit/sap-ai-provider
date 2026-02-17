@@ -1,5 +1,3 @@
-#!/usr/bin/env npx tsx
-
 import { copyFileSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 

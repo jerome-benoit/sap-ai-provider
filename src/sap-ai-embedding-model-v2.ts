@@ -117,20 +117,10 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (result.warnings && result.warnings.length > 0) {
       const warnings = convertWarningsToV2(result.warnings);
-      // Log warnings instead of including them in the response
-      warnings.forEach((warning) => {
-        if (warning.type === "other") {
-          console.warn(`[SAP AI Embedding] ${warning.message}`);
-        } else if (warning.type === "unsupported-setting") {
-          console.warn(
-            `[SAP AI Embedding] Unsupported setting: ${String(warning.setting)}${warning.details ? ` - ${warning.details}` : ""}`,
-          );
-        } else {
-          console.warn(
-            `[SAP AI Embedding] Unsupported tool: ${warning.tool.name}${warning.details ? ` - ${warning.details}` : ""}`,
-          );
-        }
-      });
+      // Log warnings - convertWarningsToV2 normalizes all warnings to type "other" with message
+      for (const warning of warnings) {
+        console.warn(`[SAP AI Embedding] ${warning.message}`);
+      }
     }
 
     // Return result in V2 format

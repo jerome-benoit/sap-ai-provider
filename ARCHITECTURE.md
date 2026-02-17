@@ -1378,7 +1378,7 @@ src/
 The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 and V2 interfaces:
 
 - **Finish Reason**: `{ type, unified }` object → string (`"stop"`, `"tool-calls"`, etc.)
-- **Usage**: Nested structure with `inputTokens.total` → flat `{ promptTokens, completionTokens }`
+- **Usage**: Nested structure with `inputTokens.total` → flat `{ inputTokens, outputTokens, totalTokens }`
 - **Stream Parts**: V3 structured blocks → V2 simple deltas
 - **Warnings**: V3 `{ feature, ... }` format → V2 `{ type, ... }` format
 
