@@ -104,10 +104,17 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
     };
     usage?: { tokens: number };
   }> {
+    // Normalize headers by removing entries with undefined values
+    const normalizedHeaders: Record<string, string> | undefined = options.headers
+      ? (Object.fromEntries(
+          Object.entries(options.headers).filter(([, value]) => value !== undefined),
+        ) as Record<string, string>)
+      : undefined;
+
     // Map options for the internal model call
     const callOptions: InternalCallOptions = {
       abortSignal: options.abortSignal,
-      headers: options.headers as Record<string, string> | undefined,
+      headers: normalizedHeaders,
       providerOptions: options.providerOptions,
       values: options.values,
     };
