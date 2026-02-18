@@ -37,8 +37,9 @@ This repository publishes two npm packages from the same codebase:
 - `@jerome-benoit/sap-ai-provider` (V3) — Built from `src/index.ts`, uses `LanguageModelV3`/`EmbeddingModelV3`
 - `@jerome-benoit/sap-ai-provider-v2` (V2) — Built from `src/index-v2.ts`, wraps V3 internally to expose `LanguageModelV2`/`EmbeddingModelV2`
 
-`prepublishOnly` enforces type-check, lint, test, build and check-build before
-publish (see [package.json](mdc:package.json)).
+`prepublishOnly` runs build and check-build before publish. For V2 builds
+(when `AI_SDK_VERSION=v2`), it also runs prepare:v2 to rename files for the
+V2 package. See [package.json](mdc:package.json) for the full script.
 
 ## Node Engine
 
