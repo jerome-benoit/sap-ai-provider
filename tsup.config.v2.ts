@@ -19,7 +19,6 @@ export default defineConfig([
     dts: true,
     entry: ["src/index-v2.ts"],
     format: ["cjs", "esm"],
-    outDir: "dist",
     sourcemap: true,
   },
 ]);
