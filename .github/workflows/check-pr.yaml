@@ -75,3 +75,7 @@ jobs:
         run: npm run build
       - name: Check build outputs
         run: npm run check-build
+      - name: Build V2 package
+        run: npm run build:v2
+      - name: Check V2 build outputs
+        run: npm run check-build:v2
