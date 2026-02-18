@@ -130,7 +130,7 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 20+ and Vercel AI SDK 5.0+ or 6.0+
+**Requirements:** Node.js 20+ and Vercel AI SDK 5.0+ (6.0+ recommended)
 
 ```bash
 npm install @jerome-benoit/sap-ai-provider ai
@@ -146,7 +146,7 @@ yarn add @jerome-benoit/sap-ai-provider ai
 pnpm add @jerome-benoit/sap-ai-provider ai
 ```
 
-> **V2 Package Available:** For users requiring `LanguageModelV2`/`EmbeddingModelV2` interfaces, install the dedicated V2 package:
+> **V2 Facade Package Available:** For users requiring `LanguageModelV2`/`EmbeddingModelV2` interfaces, install the dedicated V2 facade package:
 >
 > ```bash
 > npm install @jerome-benoit/sap-ai-provider-v2 ai

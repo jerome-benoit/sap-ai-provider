@@ -9,7 +9,7 @@ This repository publishes two npm packages for Vercel AI SDK integration:
 - **`@jerome-benoit/sap-ai-provider`** (V3) — `LanguageModelV3`/`EmbeddingModelV3`
 - **`@jerome-benoit/sap-ai-provider-v2`** (V2) — `LanguageModelV2`/`EmbeddingModelV2` facade
 
-Both packages are designed to work with Vercel AI SDK 5.0+.
+Both packages are designed to work with Vercel AI SDK 5.0+ (6.0+ recommended).
 
 ## V3 Package (Primary)
 

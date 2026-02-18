@@ -541,9 +541,9 @@ If issues persist:
 
 **Symptoms:** TypeScript errors related to `LanguageModelV2` or `EmbeddingModelV2` types when using `@jerome-benoit/sap-ai-provider-v2`.
 
-**Cause:** The V2 package is designed for AI SDK 5.0+ or 6.0+.
+**Cause:** The V2 package is designed for AI SDK 5.0+ (6.0+ recommended).
 
-**Solution:** Ensure your project is using AI SDK version 5.0+ or 6.0+.
+**Solution:** Ensure your project is using AI SDK version 5.0+ (6.0+ recommended).
 
 **Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#upgrading-from-v3x-to-v4x) for V2/V3 compatibility.
 

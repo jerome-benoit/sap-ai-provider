@@ -16,10 +16,11 @@ needs with the Vercel AI SDK:
     metadata.
   - **Key Features**: Implements `LanguageModelV3` and `EmbeddingModelV3`.
 
-- **`@jerome-benoit/sap-ai-provider-v2` (V2 Package)**:
-  - **When to Use**: This package is for legacy compatibility. Use it if your
-    project is constrained to older versions of the Vercel AI SDK (prior to
-    5.0+) that only support the `LanguageModelV2`/`EmbeddingModelV2` interfaces.
+- **`@jerome-benoit/sap-ai-provider-v2` (V2 Facade Package)**:
+  - **When to Use**: Use this package if your project requires
+    `LanguageModelV2`/`EmbeddingModelV2` interfaces (e.g., for libraries,
+    frameworks, or tools that haven't migrated to V3 interfaces yet).
+    It works with Vercel AI SDK 5.0+ (6.0+ recommended) but exposes V2-compatible interfaces.
     It acts as a facade, wrapping the V3 implementation to provide a V2-compatible
     API surface.
   - **Key Features**: Implements `LanguageModelV2` and `EmbeddingModelV2`.

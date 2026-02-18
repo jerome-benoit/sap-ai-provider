@@ -97,12 +97,32 @@ consistently:
 - [Environment Variables](#environment-variables)
 - [Version Information](#version-information)
   - [Dependencies](#dependencies)
-- [V2 Package API](#v2-package-api)
+- [V2 Facade Package API](#v2-facade-package-api)
 - [Related Documentation](#related-documentation-1)
 
-## V2 Package API
+## V2 Facade Package API
 
-This section documents the API for the `@jerome-benoit/sap-ai-provider-v2` package. This package provides a V2-compatible facade over the internal V3 implementation, offering `LanguageModelV2` and `EmbeddingModelV2` interfaces for backward compatibility with older versions of the Vercel AI SDK.
+This section documents the API for the `@jerome-benoit/sap-ai-provider-v2` facade package. This package wraps the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for projects requiring V2-compatible models.
+
+### Export Aliases
+
+The V2 package exports classes with simplified names for convenience:
+
+| Internal Class          | Public Export         |
+| ----------------------- | --------------------- |
+| `SAPAILanguageModelV2`  | `SAPAILanguageModel`  |
+| `SAPAIEmbeddingModelV2` | `SAPAIEmbeddingModel` |
+| `SAPAIProviderV2`       | `SAPAIProvider`       |
+
+**Example:**
+
+```typescript
+// Both imports work:
+import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider-v2"; // Recommended
+import type { SAPAILanguageModelV2 } from "@jerome-benoit/sap-ai-provider-v2"; // Type-only (internal name)
+```
+
+---
 
 ### `createSAPAIProvider(options?)`
 
