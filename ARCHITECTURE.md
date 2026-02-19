@@ -1063,14 +1063,14 @@ graph TB
     end
 
     subgraph "Language Model Strategies"
-        LMStrategy[LanguageModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doGenerate()<br/>• doStream()]
-        BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts()<br/>• abstract buildRequest()]
+        LMStrategy[LanguageModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doGenerate#40;#41;<br/>• doStream#40;#41;]
+        BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts#40;#41;<br/>• abstract buildRequest#40;#41;]
         OrchLM[OrchestrationLanguageModelStrategy]
         FMLM[FoundationModelsLanguageModelStrategy]
     end
 
     subgraph "Embedding Model Strategies"
-        EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed()]
+        EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed#40;#41;]
         OrchEM[OrchestrationEmbeddingModelStrategy]
         FMEM[FoundationModelsEmbeddingModelStrategy]
     end

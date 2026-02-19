@@ -56,7 +56,7 @@ This repository publishes two npm packages from the same codebase:
 - **Type checking**: `npm run type-check` -- takes ~2 seconds. Set timeout to 15+ seconds.
 - **Prettier formatting check**: `npm run prettier-check` -- takes ~1 second. Set timeout to 10+ seconds.
 - **Auto-fix formatting**: `npm run prettier-fix`
-- **Linting**: `npm run lint` -- takes ~1 second. Set timeout to 15+ seconds.
+- **Linting**: `npm run lint` -- takes ~2 seconds. Set timeout to 15+ seconds.
 - **Auto-fix linting issues**: `npm run lint-fix`
 
 ### Development Workflow
