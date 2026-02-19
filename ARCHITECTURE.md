@@ -795,29 +795,28 @@ sequenceDiagram
 
     rect rgb(255, 240, 240)
         Note over App,Provider: 1. Request with Sensitive Data
-        App->>Provider: generateText({<br/>  model: provider('gpt-4.1', {<br/>    masking: {<br/>      masking_providers: [{<br/>        type: "sap_data_privacy_integration",<br/>        method: "anonymization",<br/>        entities: [<br/>          {type: "profile-email"},<br/>          {type: "profile-person"}<br/>        ]<br/>      }]<br/>    }<br/>  }),<br/>  prompt: "Email john.doe@example.com<br/>          about order 1234-5678"<br/>})
+        App->>Provider: generateText with masking config<br/>prompt contains email + order ID
     end
 
     rect rgb(240, 255, 240)
         Note over Provider,DPI: 2. Masking Module Processing
         Provider->>SAP: POST /v2/completion<br/>{<br/>  config: {<br/>    modules: {<br/>      prompt_templating: {...},<br/>      masking: {<br/>        masking_providers: [{...}]<br/>      }<br/>    }<br/>  }<br/>}
         SAP->>DPI: Apply masking
-        DPI->>DPI: Detect entities:<br/>• john.doe@example.com → EMAIL<br/>• order 1234-5678 → PATTERN
-        DPI->>DPI: Replace:<br/>• EMAIL → fabricated@example.com<br/>• 1234-5678 → REDACTED_ID
-        DPI-->>SAP: Masked prompt:<br/>"Email fabricated@example.com<br/>about order REDACTED_ID"
+        DPI->>DPI: Detect entities and replace<br/>with anonymized values
+        DPI-->>SAP: Masked prompt sent to LLM
     end
 
     rect rgb(240, 240, 255)
         Note over SAP,Model: 3. LLM Processing
         SAP->>Model: Send masked prompt
         Model->>Model: Generate response<br/>(only sees masked data)
-        Model-->>SAP: "I'll send email to<br/>fabricated@example.com<br/>about order REDACTED_ID"
+        Model-->>SAP: Response with masked values
     end
 
     rect rgb(255, 240, 255)
         Note over SAP,DPI: 4. Output Unmasking (optional)
         SAP->>DPI: Unmask output
-        DPI->>DPI: Restore original values:<br/>• fabricated@example.com → john.doe@example.com<br/>• REDACTED_ID → 1234-5678
+        DPI->>DPI: Restore original values
         DPI-->>SAP: Unmasked response
     end
 
@@ -1076,8 +1075,8 @@ graph TB
     end
 
     subgraph "SAP AI SDKs"
-        OrchSDK[@sap-ai-sdk/orchestration<br/>━━━━━━━━━━━━━━━━━━<br/>• OrchestrationClient<br/>• OrchestrationEmbeddingClient]
-        FMSDK[@sap-ai-sdk/foundation-models<br/>━━━━━━━━━━━━━━━━━━<br/>• AzureOpenAiChatClient<br/>• AzureOpenAiEmbeddingClient]
+        OrchSDK["sap-ai-sdk/orchestration<br/>━━━━━━━━━━━━━━━━━━<br/>• OrchestrationClient<br/>• OrchestrationEmbeddingClient"]
+        FMSDK["sap-ai-sdk/foundation-models<br/>━━━━━━━━━━━━━━━━━━<br/>• AzureOpenAiChatClient<br/>• AzureOpenAiEmbeddingClient"]
     end
 
     App -->|generateText/streamText| SDK
