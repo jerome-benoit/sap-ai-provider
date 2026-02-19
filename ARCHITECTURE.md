@@ -1075,8 +1075,8 @@ graph TB
     end
 
     subgraph "SAP AI SDKs"
-        OrchSDK["sap-ai-sdk/orchestration<br/>━━━━━━━━━━━━━━━━━━<br/>• OrchestrationClient<br/>• OrchestrationEmbeddingClient"]
-        FMSDK["sap-ai-sdk/foundation-models<br/>━━━━━━━━━━━━━━━━━━<br/>• AzureOpenAiChatClient<br/>• AzureOpenAiEmbeddingClient"]
+        OrchSDK[Orchestration SDK<br/>OrchestrationClient]
+        FMSDK[Foundation Models SDK<br/>AzureOpenAiChatClient]
     end
 
     App -->|generateText/streamText| SDK
