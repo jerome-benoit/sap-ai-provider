@@ -7,6 +7,11 @@ the SAP AI Provider.
 > [README Quick Start](./README.md#quick-start). **API Details:** For
 > configuration options, see
 > [API Reference - SAPAIProviderSettings](./API_REFERENCE.md#sapaiprovidersettings).
+>
+> **Note:** This environment setup applies to both the V3 package
+> (`@jerome-benoit/sap-ai-provider`) and the V2 package
+> (`@jerome-benoit/sap-ai-provider-v2`). Authentication configuration is
+> identical.
 
 ## Table of Contents
 

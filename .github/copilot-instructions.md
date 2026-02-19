@@ -26,11 +26,23 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Building
 
-- **Build the library**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
+- **Build V3 library**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
   - Uses tsup to create CommonJS, ESM, and TypeScript declaration files
   - Outputs to `dist/` directory: `index.js`, `index.mjs`, `index.d.ts`, `index.d.mts`
+- **Build V2 library**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
+  - Builds V2 facade from `src/index-v2.ts`
+  - Outputs to `dist/` directory: `index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`
+- **Watch V2 build**: `npm run build:v2:watch` -- continuous rebuild on file changes
+- **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 files for npm package
 - **Check build outputs**: `npm run check-build` -- takes <1 second. Set timeout to 10+ seconds.
   - Verifies all expected files exist and lists directory contents
+
+**Dual-Package Architecture:**
+
+This repository publishes two npm packages from the same codebase:
+
+- `@jerome-benoit/sap-ai-provider` (V3) - Built from `src/index.ts`, uses `LanguageModelV3`/`EmbeddingModelV3`
+- `@jerome-benoit/sap-ai-provider-v2` (V2) - Built from `src/index-v2.ts`, wraps V3 internally to expose `LanguageModelV2`/`EmbeddingModelV2`
 
 ### Testing
 
@@ -44,7 +56,7 @@ Always reference these instructions first and fallback to search or bash command
 - **Type checking**: `npm run type-check` -- takes ~2 seconds. Set timeout to 15+ seconds.
 - **Prettier formatting check**: `npm run prettier-check` -- takes ~1 second. Set timeout to 10+ seconds.
 - **Auto-fix formatting**: `npm run prettier-fix`
-- **Linting**: `npm run lint` -- takes ~1 second. Set timeout to 15+ seconds.
+- **Linting**: `npm run lint` -- takes ~2 seconds. Set timeout to 15+ seconds.
 - **Auto-fix linting issues**: `npm run lint-fix`
 
 ### Development Workflow
@@ -65,7 +77,7 @@ Always reference these instructions first and fallback to search or bash command
 **ALWAYS run this command before committing (CI will fail otherwise):**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
+npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 **Detailed checklist and standards**: See [Contributing Guide - Pre-Commit Checklist](../CONTRIBUTING.md#pre-commit-checklist)
@@ -95,10 +107,10 @@ Since full example testing requires SAP credentials, validate changes using this
 **Complete CI-like validation command:**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
+npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
-This should complete in under 15 seconds total and all commands should pass.
+This should complete in under 20 seconds total and all commands should pass.
 
 ## Common Tasks
 
@@ -108,12 +120,24 @@ This should complete in under 15 seconds total and all commands should pass.
 .
 ├── .github/               # GitHub Actions workflows and configs
 ├── examples/              # Example usage files (10 examples)
+├── scripts/               # Build and publish scripts
+│   └── prepare-v2-package.ts                         # V2 publish preparation script
 ├── src/                   # TypeScript source code
-│   ├── index.ts                                      # Public API exports
-│   ├── sap-ai-provider.ts                            # Main provider factory
+│   │   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
+│   ├── index.ts                                      # V3 public API exports
+│   ├── sap-ai-provider.ts                            # V3 provider factory
+│   ├── sap-ai-language-model.ts                      # V3 language model
+│   ├── sap-ai-embedding-model.ts                     # V3 embedding model
+│   │
+│   │   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
+│   ├── index-v2.ts                                   # V2 public API exports (facade)
+│   ├── sap-ai-provider-v2.ts                         # V2 provider factory (wraps V3)
+│   ├── sap-ai-language-model-v2.ts                   # V2 language model (wraps V3)
+│   ├── sap-ai-embedding-model-v2.ts                  # V2 embedding model (wraps V3)
+│   ├── sap-ai-adapters-v3-to-v2.ts                   # V3→V2 format conversion
+│   │
+│   │   # Shared Infrastructure
 │   ├── sap-ai-provider-options.ts                    # Provider options & Zod schemas
-│   ├── sap-ai-language-model.ts                      # Language model (API-agnostic)
-│   ├── sap-ai-embedding-model.ts                     # Embedding model (API-agnostic)
 │   ├── sap-ai-settings.ts                            # Settings and type definitions
 │   ├── sap-ai-error.ts                               # Error handling system
 │   ├── sap-ai-validation.ts                          # API resolution & validation
@@ -130,7 +154,8 @@ This should complete in under 15 seconds total and all commands should pass.
 ├── dist/                  # Build outputs (gitignored)
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
-├── tsup.config.ts        # Build configuration
+├── tsup.config.ts        # V3 build configuration
+├── tsup.config.v2.ts     # V2 build configuration
 ├── vitest.node.config.js # Node.js test configuration
 ├── vitest.edge.config.js # Edge runtime test configuration
 ├── README.md             # Getting started and usage guide
@@ -146,13 +171,27 @@ This should complete in under 15 seconds total and all commands should pass.
 
 ### Key Files to Understand
 
-**Core Source Code:**
+**Core Source Code (V3 - Primary):**
 
-- **`src/index.ts`**: Main export file - start here to understand the public API
-- **`src/sap-ai-provider.ts`**: Core provider implementation
-- **`src/sap-ai-language-model.ts`**: Main language model logic
-- **`src/sap-ai-embedding-model.ts`**: Embedding model for vector generation
+- **`src/index.ts`**: V3 public API exports - start here for the main package
+- **`src/sap-ai-provider.ts`**: V3 provider factory (`ProviderV3`)
+- **`src/sap-ai-language-model.ts`**: V3 language model (`LanguageModelV3`)
+- **`src/sap-ai-embedding-model.ts`**: V3 embedding model (`EmbeddingModelV3`)
+
+**V2 Facade Layer (LanguageModelV2/EmbeddingModelV2 interfaces, wraps V3 internally):**
+
+- **`src/index-v2.ts`**: V2 public API exports
+- **`src/sap-ai-provider-v2.ts`**: V2 provider factory (`ProviderV2`, only `textEmbeddingModel()`)
+- **`src/sap-ai-language-model-v2.ts`**: V2 language model (wraps V3)
+- **`src/sap-ai-embedding-model-v2.ts`**: V2 embedding model (wraps V3)
+- **`src/sap-ai-adapters-v3-to-v2.ts`**: V3→V2 format conversion
+
+**Build and Scripts:**
+
 - **`package.json`**: All available npm scripts and dependencies
+- **`tsup.config.ts`**: V3 build configuration
+- **`tsup.config.v2.ts`**: V2 build configuration
+- **`scripts/prepare-v2-package.ts`**: Renames V2 build files for npm publish
 - **`examples/`**: Working examples of how to use the library
 
 **Documentation:**
@@ -169,8 +208,8 @@ This should complete in under 15 seconds total and all commands should pass.
 ### CI/CD Pipeline
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs and pushes
-- **CI checks**: format-check, type-check, test, build, publish-check
-- **Publishing**: `.github/workflows/npm-publish-npm-packages.yml` publishes on releases
+- **CI checks**: format-check, type-check, test, build
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes on releases
 - **Build matrix**: Tests run in both Node.js and Edge runtime environments
 
 ### Package Dependencies
@@ -193,13 +232,17 @@ npm run type-check        # ~2s - TypeScript validation
 npm run test             # ~1s - Run all tests
 npm run test:node        # ~1s - Node.js environment tests
 npm run test:edge        # ~1s - Edge runtime tests
-npm run build            # ~3s - Build library
-npm run check-build      # <1s - Verify build outputs
+npm run build            # ~3s - Build V3 library
+npm run build:v2         # ~3s - Build V2 library
+npm run build:v2:watch   # Continuous V2 rebuild
+npm run prepare:v2       # Rename V2 files for publish
+npm run check-build      # <1s - Verify V3 build outputs
+npm run check-build:v2   # <1s - Verify V2 build outputs
 npm run prettier-check   # ~1s - Check formatting
 
 # Complete validation
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build
-# Total time: ~16s
+npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+# Total time: ~20s
 
 # Examples (requires SAP service key)
 npx tsx examples/example-generate-text.ts
@@ -313,7 +356,9 @@ npm run test:edge &&
 npm run prettier-check &&
 npm run lint &&
 npm run build &&
-npm run check-build
+npm run check-build &&
+npm run build:v2 &&
+npm run check-build:v2
 ```
 
 **Documentation Checks:**

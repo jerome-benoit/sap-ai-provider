@@ -42,3 +42,6 @@ configuration and code style.
 - When adding model capabilities, ensure `SAPAILanguageModel` maintains the
   `LanguageModelV3` contract (see
   [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)).
+- The V2 facade wraps V3 internally — when modifying V2 files, ensure V3→V2
+  adapters transform types correctly (see
+  [src/sap-ai-adapters-v3-to-v2.ts](mdc:src/sap-ai-adapters-v3-to-v2.ts)).

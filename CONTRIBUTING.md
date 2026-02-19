@@ -158,7 +158,9 @@ npm run test:edge && \
 npm run prettier-check && \
 npm run lint && \
 npm run build && \
-npm run check-build
+npm run check-build && \
+npm run build:v2 && \
+npm run check-build:v2
 ```
 
 This validation takes approximately 15 seconds and ensures CI will pass.

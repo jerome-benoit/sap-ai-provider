@@ -18,6 +18,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
       - name: Install dependencies
         run: npm ci
       - name: Run lint
@@ -75,3 +79,7 @@ jobs:
         run: npm run build
       - name: Check build outputs
         run: npm run check-build
+      - name: Build V2 package
+        run: npm run build:v2
+      - name: Check V2 build outputs
+        run: npm run check-build:v2

@@ -150,12 +150,14 @@ export function convertToSAPMessages(
           }
         }
 
-        const assistantMessage: AssistantChatMessage = {
-          content: text || "",
-          role: "assistant",
-          tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-        };
-        messages.push(assistantMessage);
+        if (text || toolCalls.length > 0) {
+          const assistantMessage: AssistantChatMessage = {
+            content: text,
+            role: "assistant",
+            tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+          };
+          messages.push(assistantMessage);
+        }
         break;
       }
 

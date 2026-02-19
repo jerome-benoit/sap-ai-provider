@@ -4,17 +4,54 @@ description: Guidance for integrating with the Vercel AI SDK
 
 # AI SDK Integration
 
-The provider implements the `LanguageModelV3` and `EmbeddingModelV3` contracts
-and is designed to work with the Vercel AI SDK 5.0+.
+This repository publishes two npm packages for Vercel AI SDK integration:
 
-## Key Points
+- **`@jerome-benoit/sap-ai-provider`** (V3) — `LanguageModelV3`/`EmbeddingModelV3`
+- **`@jerome-benoit/sap-ai-provider-v2`** (V2) — `LanguageModelV2`/`EmbeddingModelV2` facade
 
-- Create language models via the provider function: `const model = provider("gpt-4.1")`.
-- Create embedding models via: `const model = provider.embedding("text-embedding-3-small")`.
-- Supported operations include `doGenerate` and `doStream` for language models,
-  `doEmbed` for embedding models (see
-  [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts) and
-  [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)).
+Both packages are designed to work with Vercel AI SDK 5.0+ (6.0+ recommended).
+
+## V3 Package (Primary)
+
+The V3 package implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingModelV3` contracts.
+
+| Method | Description |
+|--------|-------------|
+| `provider(modelId)` | Create a language model |
+| `provider.languageModel(modelId)` | Create a language model (explicit) |
+| `provider.embedding(modelId)` | Create an embedding model |
+| `provider.embeddingModel(modelId)` | Create an embedding model (alias) |
+| `provider.textEmbeddingModel(modelId)` | Create an embedding model (alias) |
+
+**Source files:**
+- [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
+- [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
+- [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
+
+## V2 Facade Package
+
+The V2 package wraps V3 internally and exposes `ProviderV2`, `LanguageModelV2`,
+and `EmbeddingModelV2` interfaces.
+
+| Method | Description |
+|--------|-------------|
+| `provider(modelId)` | Create a language model |
+| `provider.languageModel(modelId)` | Create a language model (explicit) |
+| `provider.textEmbeddingModel(modelId)` | Create an embedding model (**V2 standard**) |
+
+**Important V2 vs V3 difference:**
+- **V2**: Only `textEmbeddingModel()` for embeddings (per ProviderV2 spec)
+- **V3**: Has `embedding()`, `embeddingModel()`, `textEmbeddingModel()`
+
+**Source files:**
+- [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
+- [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)
+- [src/sap-ai-embedding-model-v2.ts](mdc:src/sap-ai-embedding-model-v2.ts)
+- [src/sap-ai-adapters-v3-to-v2.ts](mdc:src/sap-ai-adapters-v3-to-v2.ts) — V3→V2 format conversion
+
+## Common Features
+
+- Supported operations: `doGenerate` and `doStream` for language models, `doEmbed` for embeddings.
 - Tool calling is supported by passing `tools` in call options.
 - Structured outputs (JSON schema response_format) are enabled for most models
   except Anthropic and Amazon families.
@@ -22,9 +59,20 @@ and is designed to work with the Vercel AI SDK 5.0+.
 
 ## Recommended API Usage
 
-- Text generation: `generateText` with `model: provider("<modelId>")`.
-- Streaming: `streamText` for SSE token streams.
-- Structured outputs: `generateObject` when the model supports JSON schema.
-- Embeddings: `embed` or `embedMany` with `model: provider.embedding("<modelId>")`.
+**V3 Package:**
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+const provider = createSAPAIProvider();
+const model = provider("gpt-4.1");
+const embeddingModel = provider.embedding("text-embedding-3-small");
+```
+
+**V2 Package:**
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+const provider = createSAPAIProvider();
+const model = provider("gpt-4.1");
+const embeddingModel = provider.textEmbeddingModel("text-embedding-3-small");
+```
 
 Refer to examples in [README.md](mdc:README.md) and [examples/](mdc:examples/).

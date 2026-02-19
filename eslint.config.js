@@ -24,6 +24,6 @@ export default defineConfig(
   },
   {
     extends: [tseslint.configs.disableTypeChecked],
-    files: ["*.config.{js,mjs}"],
+    files: ["*.config.{js,mjs}", "tsup.config.v2.ts"],
   },
 );

@@ -87,6 +87,7 @@ below.
 - [Getting Help](#getting-help)
 - [Known Limitations](#known-limitations)
   - [Streaming Response ID Is Client-Generated](#streaming-response-id-is-client-generated)
+- [V2 Package Issues](#v2-package-issues)
 - [Related Documentation](#related-documentation)
 
 ## Authentication Issues
@@ -523,6 +524,38 @@ If issues persist:
    error messages, code snippets (redact credentials)
 4. **SAP Support:** For SAP AI Core service issues -
    [SAP AI Core Docs](https://help.sap.com/docs/ai-core)
+
+## V2 Package Issues
+
+### Problem: Method not found on provider
+
+**Symptoms:** Calls to `provider.embedding()` or `provider.embeddingModel()` fail.
+
+**Cause:** The V2 facade (`@jerome-benoit/sap-ai-provider-v2`) only exposes `textEmbeddingModel()` to align with the `LanguageModelV2` specification.
+
+**Solution:** Use `provider.textEmbeddingModel()` instead.
+
+**Reference:** See [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2) for details on the V2 facade.
+
+### Problem: Type mismatch with AI SDK
+
+**Symptoms:** TypeScript errors related to `LanguageModelV2` or `EmbeddingModelV2` types when using `@jerome-benoit/sap-ai-provider-v2`.
+
+**Cause:** The V2 package is designed for AI SDK 5.0+ (6.0+ recommended).
+
+**Solution:** Ensure your project is using AI SDK version 5.0+ (6.0+ recommended).
+
+**Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#upgrading-from-v3x-to-v4x) for V2/V3 compatibility.
+
+### Problem: V2 build fails
+
+**Symptoms:** Build errors when trying to build the V2 package.
+
+**Cause:** The `prepare:v2` script requires the `build:v2` script to be run first.
+
+**Solution:** Ensure you run `npm run build:v2` before `npm run prepare:v2`.
+
+**Reference:** See [Building](./.github/copilot-instructions.md#building) in `copilot-instructions.md` for the correct V2 build order.
 
 ## Known Limitations
 

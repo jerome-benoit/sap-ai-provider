@@ -65,6 +65,12 @@ Handler → SAP AI Core API
   - [Memory Management](#memory-management)
   - [Monitoring and Observability](#monitoring-and-observability)
   - [Scalability Patterns](#scalability-patterns)
+- [Dual-Package Architecture (V3 + V2)](#dual-package-architecture-v3--v2)
+  - [V2 Facade Layer](#v2-facade-layer)
+  - [V2 Source Files](#v2-source-files)
+  - [Type Adapters](#type-adapters)
+  - [Build Process](#build-process)
+  - [Key Design Decisions](#key-design-decisions)
 - [See Also](#see-also)
 
 ## Overview
@@ -789,29 +795,28 @@ sequenceDiagram
 
     rect rgb(255, 240, 240)
         Note over App,Provider: 1. Request with Sensitive Data
-        App->>Provider: generateText({<br/>  model: provider('gpt-4.1', {<br/>    masking: {<br/>      masking_providers: [{<br/>        type: "sap_data_privacy_integration",<br/>        method: "anonymization",<br/>        entities: [<br/>          {type: "profile-email"},<br/>          {type: "profile-person"}<br/>        ]<br/>      }]<br/>    }<br/>  }),<br/>  prompt: "Email john.doe@example.com<br/>          about order 1234-5678"<br/>})
+        App->>Provider: generateText with masking config<br/>prompt contains email + order ID
     end
 
     rect rgb(240, 255, 240)
         Note over Provider,DPI: 2. Masking Module Processing
         Provider->>SAP: POST /v2/completion<br/>{<br/>  config: {<br/>    modules: {<br/>      prompt_templating: {...},<br/>      masking: {<br/>        masking_providers: [{...}]<br/>      }<br/>    }<br/>  }<br/>}
         SAP->>DPI: Apply masking
-        DPI->>DPI: Detect entities:<br/>• john.doe@example.com → EMAIL<br/>• order 1234-5678 → PATTERN
-        DPI->>DPI: Replace:<br/>• EMAIL → fabricated@example.com<br/>• 1234-5678 → REDACTED_ID
-        DPI-->>SAP: Masked prompt:<br/>"Email fabricated@example.com<br/>about order REDACTED_ID"
+        DPI->>DPI: Detect entities and replace<br/>with anonymized values
+        DPI-->>SAP: Masked prompt sent to LLM
     end
 
     rect rgb(240, 240, 255)
         Note over SAP,Model: 3. LLM Processing
         SAP->>Model: Send masked prompt
         Model->>Model: Generate response<br/>(only sees masked data)
-        Model-->>SAP: "I'll send email to<br/>fabricated@example.com<br/>about order REDACTED_ID"
+        Model-->>SAP: Response with masked values
     end
 
     rect rgb(255, 240, 255)
         Note over SAP,DPI: 4. Output Unmasking (optional)
         SAP->>DPI: Unmask output
-        DPI->>DPI: Restore original values:<br/>• fabricated@example.com → john.doe@example.com<br/>• REDACTED_ID → 1234-5678
+        DPI->>DPI: Restore original values
         DPI-->>SAP: Unmasked response
     end
 
@@ -1057,21 +1062,21 @@ graph TB
     end
 
     subgraph "Language Model Strategies"
-        LMStrategy[LanguageModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doGenerate()<br/>• doStream()]
-        BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts()<br/>• abstract buildRequest()]
+        LMStrategy[LanguageModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doGenerate#40;#41;<br/>• doStream#40;#41;]
+        BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts#40;#41;<br/>• abstract buildRequest#40;#41;]
         OrchLM[OrchestrationLanguageModelStrategy]
         FMLM[FoundationModelsLanguageModelStrategy]
     end
 
     subgraph "Embedding Model Strategies"
-        EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed()]
+        EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed#40;#41;]
         OrchEM[OrchestrationEmbeddingModelStrategy]
         FMEM[FoundationModelsEmbeddingModelStrategy]
     end
 
     subgraph "SAP AI SDKs"
-        OrchSDK[@sap-ai-sdk/orchestration<br/>━━━━━━━━━━━━━━━━━━<br/>• OrchestrationClient<br/>• OrchestrationEmbeddingClient]
-        FMSDK[@sap-ai-sdk/foundation-models<br/>━━━━━━━━━━━━━━━━━━<br/>• AzureOpenAiChatClient<br/>• AzureOpenAiEmbeddingClient]
+        OrchSDK[Orchestration SDK<br/>OrchestrationClient]
+        FMSDK[Foundation Models SDK<br/>AzureOpenAiChatClient]
     end
 
     App -->|generateText/streamText| SDK
@@ -1295,6 +1300,110 @@ Consider tracking:
 This architecture ensures the SAP AI Provider is robust, scalable, and
 maintainable while providing a seamless integration experience with the Vercel
 AI SDK.
+
+---
+
+## Dual-Package Architecture (V3 + V2)
+
+This repository publishes **two separate npm packages** from a single codebase:
+
+| Package                             | Interface                              | Target Users                                       |
+| ----------------------------------- | -------------------------------------- | -------------------------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | Users on AI SDK 5.0+ preferring V3 interfaces      |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Users on AI SDK 5.0+ requiring V2 model interfaces |
+
+### V2 Facade Layer
+
+The V2 package uses a **facade pattern** that wraps the internal V3 implementation:
+
+```mermaid
+graph TB
+    subgraph "V2 Package (Facade)"
+        V2Provider[SAPAIProviderV2]
+        V2LM[SAPAILanguageModelV2]
+        V2EM[SAPAIEmbeddingModelV2]
+        Adapters[V3-to-V2 Adapters]
+    end
+
+    subgraph "Internal V3 Implementation"
+        V3Provider[SAPAIProvider]
+        V3LM[SAPAILanguageModel]
+        V3EM[SAPAIEmbeddingModel]
+        Strategies[API Strategies]
+    end
+
+    subgraph "SAP AI Core"
+        OrchAPI[Orchestration API]
+        FMAPI[Foundation Models API]
+    end
+
+    V2Provider -->|wraps| V3Provider
+    V2LM -->|delegates to| V3LM
+    V2EM -->|delegates to| V3EM
+    V2LM -->|uses| Adapters
+    V2EM -->|uses| Adapters
+    Adapters -->|converts V3 results| V2LM
+    Adapters -->|converts V3 results| V2EM
+
+    V3Provider -->|creates| V3LM
+    V3Provider -->|creates| V3EM
+    V3LM -->|uses| Strategies
+    V3EM -->|uses| Strategies
+    Strategies -->|calls| OrchAPI
+    Strategies -->|calls| FMAPI
+
+    style V2Provider fill:#ffe1f5
+    style V2LM fill:#ffe1f5
+    style V2EM fill:#ffe1f5
+    style Adapters fill:#fff4e1
+    style V3Provider fill:#e1f5ff
+    style V3LM fill:#e1f5ff
+    style V3EM fill:#e1f5ff
+```
+
+### V2 Source Files
+
+```text
+src/
+├── index-v2.ts                    # V2 public API exports
+├── sap-ai-provider-v2.ts          # V2 provider factory (facade)
+├── sap-ai-language-model-v2.ts    # V2 language model (delegates to V3)
+├── sap-ai-embedding-model-v2.ts   # V2 embedding model (delegates to V3)
+└── sap-ai-adapters-v3-to-v2.ts    # Type adapters (V3 results → V2 format)
+```
+
+### Type Adapters
+
+The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 and V2 interfaces:
+
+- **Finish Reason**: `{ type, unified }` object → string (`"stop"`, `"tool-calls"`, etc.)
+- **Usage**: Nested structure with `inputTokens.total` → flat `{ inputTokens, outputTokens, totalTokens }`
+- **Stream Parts**: V3 structured blocks → V2 simple deltas
+- **Warnings**: V3 `{ feature, ... }` format → V2 `{ type, ... }` format
+
+### Build Process
+
+The builds are **sequential** to the same `dist/` directory:
+
+```bash
+# V3 build (primary package)
+npm run build              # tsup.config.ts → dist/
+npm publish                # @jerome-benoit/sap-ai-provider
+
+# V2 build (secondary package)
+npm run build:v2           # tsup.config.v2.ts → dist/
+npm run prepare:v2         # Renames files, updates package.json
+npm publish                # @jerome-benoit/sap-ai-provider-v2
+```
+
+**Why sequential?** This avoids managing different output directories and simplifies the CI/CD pipeline. Each build completely replaces the `dist/` contents.
+
+### Key Design Decisions
+
+1. **Single source of truth**: All SAP AI Core logic lives in V3 implementation
+2. **Thin facade**: V2 layer only handles interface translation, no business logic
+3. **No code duplication**: V2 delegates to V3 for actual API calls
+4. **Adapter isolation**: Type conversions centralized in one file for maintainability
 
 ---
 
