@@ -131,9 +131,9 @@ describe("convertToSAPMessages", () => {
       ]);
     });
 
-    it("should handle empty content array", () => {
+    it("should filter out assistant message with empty content array", () => {
       const result = convertToSAPMessages([{ content: [], role: "assistant" }]);
-      expect(result).toEqual([{ content: "", role: "assistant", tool_calls: undefined }]);
+      expect(result).toEqual([]);
     });
 
     it("should handle large assistant text messages without truncation (100KB+)", () => {
@@ -199,12 +199,12 @@ describe("convertToSAPMessages", () => {
       });
     });
 
-    it("should handle reasoning-only message by dropping content", () => {
+    it("should filter out reasoning-only assistant messages", () => {
       const prompt: LanguageModelV3Prompt = [
         { content: [{ text: "Thinking...", type: "reasoning" }], role: "assistant" },
       ];
       const result = convertToSAPMessages(prompt);
-      expect(result).toEqual([{ content: "", role: "assistant", tool_calls: undefined }]);
+      expect(result).toEqual([]);
     });
 
     it.each([
