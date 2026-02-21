@@ -39,6 +39,8 @@ export function deepMergeTwo<T extends Record<string, unknown>>(
  * @param seen - Set of seen objects for circular reference detection.
  * @param depth - Current recursion depth.
  * @returns Cloned object.
+ * @throws {Error} When maximum merge depth (100) is exceeded.
+ * @throws {Error} When circular reference is detected.
  * @internal
  */
 function cloneDeep(
@@ -103,6 +105,8 @@ function mergeInternal(sources: (Record<string, unknown> | undefined)[]): Record
  * @param seen - Set of seen objects for circular reference detection.
  * @param depth - Current recursion depth.
  * @returns Merged object.
+ * @throws {Error} When maximum merge depth (100) is exceeded.
+ * @throws {Error} When circular reference is detected.
  * @internal
  */
 function mergeTwo(

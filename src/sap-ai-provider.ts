@@ -115,6 +115,8 @@ export interface SAPAIProviderSettings {
  * // Using provider methods
  * const chatModel = provider.chat('gpt-4.1');
  * const embeddingModel = provider.embedding('text-embedding-3-small');
+ * @throws {Error} When provider function is called with the `new` keyword.
+ * @throws {NoSuchModelError} When `imageModel()` is called (image generation not supported).
  * @see {@link SAPAIProviderSettings} for all configuration options.
  * @see {@link SAPAIProvider} for the provider interface.
  */

@@ -16,6 +16,7 @@ import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-ut
 
 /**
  * Request context passed from createClient to executeCall.
+ * FM = Foundation Models API.
  * @internal
  */
 interface FMEmbeddingRequestContext {
