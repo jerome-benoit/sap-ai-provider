@@ -1,6 +1,6 @@
 {
   "name": "@jerome-benoit/sap-ai-provider",
-  "version": "4.4.17",
+  "version": "4.4.18",
   "type": "module",
   "description": "SAP AI Provider for Vercel AI SDK (powered by @sap-ai-sdk/orchestration and @sap-ai-sdk/foundation-models)",
   "keywords": [
