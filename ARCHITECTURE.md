@@ -1182,7 +1182,7 @@ sequenceDiagram
 Strategies implement stateless interfaces - all tenant-specific configuration
 flows through method parameters, never cached in strategy instances:
 
-````typescript
+```typescript
 // Language model strategy interface
 interface LanguageModelAPIStrategy {
   doGenerate(
@@ -1198,6 +1198,7 @@ interface LanguageModelAPIStrategy {
 interface EmbeddingModelAPIStrategy {
   doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV3CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV3Result>;
 }
+```
 
 #### Template Method Pattern (Base Embedding Model Strategy)
 
@@ -1207,20 +1208,14 @@ customization:
 
 ```typescript
 // Base class with Template Method pattern for embeddings
-abstract class BaseEmbeddingModelStrategy<TClient, TResponse>
-  implements EmbeddingModelAPIStrategy
-{
+abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements EmbeddingModelAPIStrategy {
   // Template method - defines the embedding algorithm skeleton
   async doEmbed(config, settings, options, maxEmbeddingsPerCall): Promise<EmbeddingModelV3Result> {
     const { abortSignal, values } = options;
 
-    const { embeddingOptions, providerName } = await prepareEmbeddingCall(
-      { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
-      options,
-    );
+    const { embeddingOptions, providerName } = await prepareEmbeddingCall({ maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider }, options);
 
-    const embeddingType =
-      embeddingOptions?.type ?? (settings.type as EmbeddingType | undefined) ?? "text";
+    const embeddingType = embeddingOptions?.type ?? (settings.type as EmbeddingType | undefined) ?? "text";
 
     try {
       const client = this.createClient(config, settings, embeddingOptions);
@@ -1246,17 +1241,8 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse>
   }
 
   // Primitive operations (hooks) - implemented by subclasses
-  protected abstract createClient(
-    config: EmbeddingModelStrategyConfig,
-    settings: SAPAIEmbeddingSettings,
-    embeddingOptions: EmbeddingProviderOptions | undefined,
-  ): TClient;
-  protected abstract executeCall(
-    client: TClient,
-    values: string[],
-    embeddingType: EmbeddingType,
-    abortSignal: AbortSignal | undefined,
-  ): Promise<TResponse>;
+  protected abstract createClient(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, embeddingOptions: EmbeddingProviderOptions | undefined): TClient;
+  protected abstract executeCall(client: TClient, values: string[], embeddingType: EmbeddingType, abortSignal: AbortSignal | undefined): Promise<TResponse>;
   protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
   protected abstract extractTokenCount(response: TResponse): number;
   protected abstract getUrl(): string;
@@ -1267,7 +1253,7 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse>
     return embeddings;
   }
 }
-````
+```
 
 The `doEmbed()` method orchestrates the embedding workflow, defining the sequence
 of operations. Concrete embedding strategies like `OrchestrationEmbeddingModelStrategy`

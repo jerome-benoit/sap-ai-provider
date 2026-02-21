@@ -1,31 +1,18 @@
 /** Orchestration embedding model strategy using `@sap-ai-sdk/orchestration`. */
-import type {
-  EmbeddingModelV3CallOptions,
-  EmbeddingModelV3Embedding,
-  EmbeddingModelV3Result,
-} from "@ai-sdk/provider";
+import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
 import type {
   EmbeddingModelConfig,
   EmbeddingModuleConfig,
-  MaskingModule,
   OrchestrationEmbeddingClient,
   OrchestrationEmbeddingResponse,
 } from "@sap-ai-sdk/orchestration";
 
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
-import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
 import { deepMerge } from "./deep-merge.js";
-import { convertToAISDKError } from "./sap-ai-error.js";
-import {
-  buildEmbeddingResult,
-  type EmbeddingProviderOptions,
-  hasKeys,
-  normalizeEmbedding,
-  prepareEmbeddingCall,
-} from "./strategy-utils.js";
-import { VERSION } from "./version.js";
+import { type EmbeddingProviderOptions, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
 /**
  * @internal
@@ -40,7 +27,7 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
   OrchestrationEmbeddingResponse
 > {
   private readonly ClientClass: OrchestrationEmbeddingClientClass;
-  private modelId: string = "";
+  private modelId = "";
 
   constructor(ClientClass: OrchestrationEmbeddingClientClass) {
     super();
@@ -79,7 +66,7 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
   protected async executeCall(
     client: OrchestrationEmbeddingClient,
     values: string[],
-    embeddingType: "text" | "query" | "document" | undefined,
+    embeddingType: "document" | "query" | "text" | undefined,
     abortSignal?: AbortSignal,
   ): Promise<OrchestrationEmbeddingResponse> {
     return client.embed(
@@ -101,11 +88,11 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
     return tokenUsage.total_tokens;
   }
 
-  protected getUrl(): string {
-    return "sap-ai:orchestration/embeddings";
-  }
-
   protected getModelId(): string {
     return this.modelId;
+  }
+
+  protected getUrl(): string {
+    return "sap-ai:orchestration/embeddings";
   }
 }

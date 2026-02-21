@@ -6,7 +6,12 @@
  */
 
 /**
- * Utility functions for escaping template delimiters (`{​{`, `{​%`, `{​#`) in orchestration content.
+ * @internal
+ */
+export { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
+
+/**
+ * Utility functions for escaping template delimiters (`{{`, `{%`, `{#`) in orchestration content.
  */
 export {
   escapeOrchestrationPlaceholders,
@@ -143,11 +148,6 @@ export {
  * - `validateSettings`: Validates settings are compatible with the selected API.
  */
 export { resolveApi, validateSettings } from "./sap-ai-validation.js";
-
-/**
- * @internal
- */
-export { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
 
 /**
  * Package version, injected at build time.

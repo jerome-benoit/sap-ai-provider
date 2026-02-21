@@ -31,9 +31,9 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
   AzureOpenAiEmbeddingResponse
 > {
   private readonly ClientClass: AzureOpenAiEmbeddingClientClass;
-  private modelId: string = "";
-  private settings: SAPAIEmbeddingSettings | undefined;
   private embeddingOptions: EmbeddingProviderOptions | undefined;
+  private modelId = "";
+  private settings: SAPAIEmbeddingSettings | undefined;
 
   constructor(ClientClass: AzureOpenAiEmbeddingClientClass) {
     super();
@@ -73,12 +73,12 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     return response._data.usage.total_tokens;
   }
 
-  protected getUrl(): string {
-    return "sap-ai:foundation-models/embeddings";
-  }
-
   protected getModelId(): string {
     return this.modelId;
+  }
+
+  protected getUrl(): string {
+    return "sap-ai:foundation-models/embeddings";
   }
 
   private buildRequest(
