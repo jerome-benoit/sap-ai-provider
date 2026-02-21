@@ -234,6 +234,7 @@ npm run test             # ~1s - Run all tests
 npm run test:node        # ~1s - Node.js environment tests
 npm run test:edge        # ~1s - Edge runtime tests
 npm run build            # ~3s - Build V3 library
+npm run build:watch      # Continuous V3 rebuild
 npm run build:v2         # ~3s - Build V2 library
 npm run build:v2:watch   # Continuous V2 rebuild
 npm run prepare:v2       # Rename V2 files for publish
