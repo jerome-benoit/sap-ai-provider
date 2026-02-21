@@ -6,7 +6,11 @@ import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import { SAPAIEmbeddingModel, SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 import { SAPAILanguageModel } from "./sap-ai-language-model.js";
-import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
+import {
+  SAP_AI_PROVIDER_NAME,
+  validateEmbeddingModelParamsSettings,
+  validateModelParamsSettings,
+} from "./sap-ai-provider-options.js";
 import {
   SAPAIApiType,
   SAPAIEmbeddingSettings,
@@ -149,6 +153,10 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     : { resourceGroup };
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
+    if (settings.modelParams) {
+      validateModelParamsSettings(settings.modelParams);
+    }
+
     const mergedSettings = mergeSettingsWithApi<SAPAISettings>(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
@@ -167,6 +175,10 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
   ): SAPAIEmbeddingModel => {
+    if (settings.modelParams) {
+      validateEmbeddingModelParamsSettings(settings.modelParams);
+    }
+
     const mergedSettings = mergeSettingsWithApi<SAPAIEmbeddingSettings>(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
