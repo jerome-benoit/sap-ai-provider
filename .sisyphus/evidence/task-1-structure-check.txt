@@ -1,6 +1,0 @@
-=== Abstract class declaration ===
-1
-=== Abstract methods count ===
-6
-=== Interface implementation ===
-1

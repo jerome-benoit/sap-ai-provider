@@ -1,6 +1,0 @@
-=== Check for 'any' types ===
-0
-0
-=== Check for @ts-ignore ===
-0
-0
