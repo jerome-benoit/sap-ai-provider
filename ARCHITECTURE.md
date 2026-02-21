@@ -280,17 +280,28 @@ graph TB
 
 ```text
 src/
-├── index.ts                                        # Public API exports
-├── sap-ai-provider.ts                              # Main provider factory
+│   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
+├── index.ts                                        # V3 public API exports
+├── sap-ai-provider.ts                              # V3 provider factory
+├── sap-ai-language-model.ts                        # V3 language model (API-agnostic)
+├── sap-ai-embedding-model.ts                       # V3 embedding model (API-agnostic)
+│
+│   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
+├── index-v2.ts                                     # V2 public API exports (facade)
+├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
+├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
+├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
+├── sap-ai-adapters-v3-to-v2.ts                     # V3→V2 format conversion
+│
+│   # Shared Infrastructure
 ├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
-├── sap-ai-language-model.ts                        # Language model (API-agnostic)
-├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
 ├── sap-ai-settings.ts                              # Settings and type definitions
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
+├── base-embedding-model-strategy.ts                # Base class for embedding model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
@@ -1070,6 +1081,7 @@ graph TB
 
     subgraph "Embedding Model Strategies"
         EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed#40;#41;]
+        BaseEM[BaseEmbeddingModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• doEmbed#40;#41;<br/>• abstract createClient#40;#41;<br/>• abstract executeCall#40;#41;<br/>• abstract extractEmbeddings#40;#41;<br/>• abstract extractTokenCount#40;#41;<br/>• abstract getUrl#40;#41;]
         OrchEM[OrchestrationEmbeddingModelStrategy]
         FMEM[FoundationModelsEmbeddingModelStrategy]
     end
@@ -1099,8 +1111,9 @@ graph TB
     BaseLM -.->|implements| LMStrategy
     OrchLM -.->|extends| BaseLM
     FMLM -.->|extends| BaseLM
-    EMStrategy -.->|implements| OrchEM
-    EMStrategy -.->|implements| FMEM
+    BaseEM -.->|implements| EMStrategy
+    OrchEM -.->|extends| BaseEM
+    FMEM -.->|extends| BaseEM
 
     OrchLM -->|uses| OrchSDK
     OrchEM -->|uses| OrchSDK
@@ -1198,7 +1211,81 @@ interface EmbeddingModelAPIStrategy {
 }
 ```
 
-#### Template Method Pattern (Base Strategy)
+#### Template Method Pattern (Base Embedding Model Strategy)
+
+The `BaseEmbeddingModelStrategy` abstract class uses the Template Method pattern
+to consolidate shared logic for embedding generation while allowing API-specific
+customization:
+
+```typescript
+// Base class with Template Method pattern for embeddings
+abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements EmbeddingModelAPIStrategy {
+  // Template method - defines the embedding algorithm skeleton
+  async doEmbed(config, settings, options, maxEmbeddingsPerCall): Promise<EmbeddingModelV3Result> {
+    const { abortSignal, values } = options;
+
+    const { embeddingOptions, providerName } = await prepareEmbeddingCall({ maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider }, options);
+
+    const embeddingType = embeddingOptions?.type ?? (settings.type as EmbeddingType | undefined) ?? "text";
+
+    try {
+      const client = this.createClient(config, settings, embeddingOptions);
+      const response = await this.executeCall(client, values, embeddingType, abortSignal);
+      const rawEmbeddings = this.extractEmbeddings(response);
+      const embeddings = this.sortEmbeddings(rawEmbeddings);
+      const totalTokens = this.extractTokenCount(response);
+
+      return buildEmbeddingResult({
+        embeddings,
+        modelId: config.modelId,
+        providerName,
+        totalTokens,
+        version: VERSION,
+      });
+    } catch (error) {
+      throw convertToAISDKError(error, {
+        operation: "doEmbed",
+        requestBody: { values: values.length },
+        url: this.getUrl(),
+      });
+    }
+  }
+
+  // Primitive operations (hooks) - implemented by subclasses
+  protected abstract createClient(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, embeddingOptions: EmbeddingProviderOptions | undefined): TClient;
+  protected abstract executeCall(client: TClient, values: string[], embeddingType: EmbeddingType, abortSignal: AbortSignal | undefined): Promise<TResponse>;
+  protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
+  protected abstract extractTokenCount(response: TResponse): number;
+  protected abstract getUrl(): string;
+}
+```
+
+The `doEmbed()` method orchestrates the embedding workflow, defining the sequence
+of operations. Concrete embedding strategies like `OrchestrationEmbeddingModelStrategy`
+and `FoundationModelsEmbeddingModelStrategy` extend this base class and implement
+the abstract primitive operations (hooks) to provide API-specific
+implementations for creating clients, executing calls, and extracting data.
+
+**Key Hooks:**
+
+1. `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
+2. `executeCall(client, values, embeddingType, abortSignal)`: Executes the API call.
+3. `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
+4. `extractTokenCount(response)`: Retrieves token usage from the response.
+5. `getUrl()`: Returns the API URL for error context.
+
+**Benefits:**
+
+- **Code Reusability**: Eliminates approximately 50 lines of duplicate code
+  per strategy by centralizing the core embedding algorithm.
+- **Single Source of Truth**: Ensures consistent embedding logic across different
+  API implementations.
+- **Type Safety**: Utilizes generic type parameters (`<TClient, TResponse>`)
+  for enhanced type checking and developer experience.
+- **Extensibility**: Simplifies adding new embedding providers by requiring
+  only the implementation of a few abstract methods.
+
+#### Template Method Pattern (Base Language Model Strategy)
 
 The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
 to consolidate shared logic while allowing API-specific customization:
@@ -1249,7 +1336,7 @@ const result = await generateText({
   model,
   prompt: "Hello",
   providerOptions: {
-    sapai: { api: "orchestration" }, // Wins!
+    "sap-ai": { api: "orchestration" }, // Wins!
   },
 });
 ```

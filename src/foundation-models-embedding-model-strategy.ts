@@ -1,104 +1,98 @@
 /** Foundation Models embedding model strategy using `@sap-ai-sdk/foundation-models`. */
-import type {
-  EmbeddingModelV3CallOptions,
-  EmbeddingModelV3Embedding,
-  EmbeddingModelV3Result,
-} from "@ai-sdk/provider";
+import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
 import type {
   AzureOpenAiEmbeddingClient,
   AzureOpenAiEmbeddingParameters,
+  AzureOpenAiEmbeddingResponse,
 } from "@sap-ai-sdk/foundation-models";
 
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
-import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { EmbeddingProviderOptions } from "./strategy-utils.js";
 
+import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
 import { deepMerge } from "./deep-merge.js";
-import { convertToAISDKError } from "./sap-ai-error.js";
-import {
-  buildEmbeddingResult,
-  buildModelDeployment,
-  hasKeys,
-  normalizeEmbedding,
-  prepareEmbeddingCall,
-} from "./strategy-utils.js";
-import { VERSION } from "./version.js";
+import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
 /**
+ * Request context passed from createClient to executeCall.
  * @internal
  */
-type AzureOpenAiEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
+interface FMEmbeddingRequestContext {
+  embeddingOptions: EmbeddingProviderOptions | undefined;
+  settings: SAPAIEmbeddingSettings;
+}
+
+/** @internal */
+type FoundationModelsEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
 
 /**
+ * Embedding model strategy for the Foundation Models API.
+ *
+ * Provides direct access to Azure OpenAI embedding models.
  * @internal
  */
-export class FoundationModelsEmbeddingModelStrategy implements EmbeddingModelAPIStrategy {
-  private readonly ClientClass: AzureOpenAiEmbeddingClientClass;
+export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelStrategy<
+  AzureOpenAiEmbeddingClient,
+  AzureOpenAiEmbeddingResponse
+> {
+  private readonly ClientClass: FoundationModelsEmbeddingClientClass;
+  private requestContext: FMEmbeddingRequestContext | undefined;
 
-  constructor(ClientClass: AzureOpenAiEmbeddingClientClass) {
+  constructor(ClientClass: FoundationModelsEmbeddingClientClass) {
+    super();
     this.ClientClass = ClientClass;
   }
 
-  async doEmbed(
+  protected createClient(
     config: EmbeddingModelStrategyConfig,
     settings: SAPAIEmbeddingSettings,
-    options: EmbeddingModelV3CallOptions,
-    maxEmbeddingsPerCall: number,
-  ): Promise<EmbeddingModelV3Result> {
-    const { abortSignal, values } = options;
-
-    const { embeddingOptions, providerName } = await prepareEmbeddingCall(
-      { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
-      options,
+    embeddingOptions: EmbeddingProviderOptions | undefined,
+  ): AzureOpenAiEmbeddingClient {
+    this.requestContext = { embeddingOptions, settings };
+    return new this.ClientClass(
+      buildModelDeployment(config, settings.modelVersion),
+      config.destination,
     );
+  }
 
-    try {
-      const client = this.createClient(config, settings.modelVersion);
-      const request = this.buildRequest(values, settings, embeddingOptions);
-      const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
+  protected async executeCall(
+    client: AzureOpenAiEmbeddingClient,
+    values: string[],
+    _embeddingType: unknown,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<AzureOpenAiEmbeddingResponse> {
+    const request = this.buildRequest(values, this.requestContext);
+    return client.run(request, abortSignal ? { signal: abortSignal } : undefined);
+  }
 
-      const embeddingData = response.getEmbeddings();
-      const tokenUsage = response._data.usage;
-      const embeddings: EmbeddingModelV3Embedding[] = embeddingData.map((embedding) =>
-        normalizeEmbedding(embedding),
-      );
+  protected extractEmbeddings(response: AzureOpenAiEmbeddingResponse): EmbeddingModelV3Embedding[] {
+    // SDK types include `& Record<string, any>` which requires explicit extraction
+    const embeddingData = response._data.data;
+    const sortedEmbeddings = embeddingData.slice().sort((a, b) => a.index - b.index);
+    return sortedEmbeddings.map((item) => normalizeEmbedding(item.embedding as number[]));
+  }
 
-      return buildEmbeddingResult({
-        embeddings,
-        modelId: config.modelId,
-        providerName,
-        totalTokens: tokenUsage.total_tokens,
-        version: VERSION,
-      });
-    } catch (error) {
-      throw convertToAISDKError(error, {
-        operation: "doEmbed",
-        requestBody: { values: values.length },
-        url: "sap-ai:foundation-models/embeddings",
-      });
-    }
+  protected extractTokenCount(response: AzureOpenAiEmbeddingResponse): number {
+    return response._data.usage.total_tokens;
+  }
+
+  protected getUrl(): string {
+    return "sap-ai:foundation-models/embeddings";
   }
 
   private buildRequest(
     values: string[],
-    settings: SAPAIEmbeddingSettings,
-    embeddingOptions: undefined | { modelParams?: Record<string, unknown> },
+    context: FMEmbeddingRequestContext | undefined,
   ): AzureOpenAiEmbeddingParameters {
     const mergedParams = deepMerge(
-      settings.modelParams as Record<string, unknown> | undefined,
-      embeddingOptions?.modelParams,
+      context?.settings.modelParams as Record<string, unknown> | undefined,
+      context?.embeddingOptions?.modelParams,
     );
 
     return {
       input: values,
       ...(hasKeys(mergedParams) ? mergedParams : {}),
     } as AzureOpenAiEmbeddingParameters;
-  }
-
-  private createClient(
-    config: EmbeddingModelStrategyConfig,
-    modelVersion?: string,
-  ): InstanceType<AzureOpenAiEmbeddingClientClass> {
-    const modelDeployment = buildModelDeployment(config, modelVersion);
-    return new this.ClientClass(modelDeployment, config.destination);
   }
 }

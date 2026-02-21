@@ -12,6 +12,8 @@ import type {
 
 import { describe, expect, it } from "vitest";
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 import {
   convertFinishReasonToV2,
   convertProviderMetadataToV2,
@@ -722,7 +724,7 @@ describe("createV2StreamFromInternal", () => {
     await reader.read();
     await reader.cancel("User cancelled");
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sleep(0);
     expect(cancelCalled).toBe(true);
   });
 

@@ -1,119 +1,95 @@
 /** Orchestration embedding model strategy using `@sap-ai-sdk/orchestration`. */
-import type {
-  EmbeddingModelV3CallOptions,
-  EmbeddingModelV3Embedding,
-  EmbeddingModelV3Result,
-} from "@ai-sdk/provider";
+import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
 import type {
   EmbeddingModelConfig,
   EmbeddingModuleConfig,
-  MaskingModule,
   OrchestrationEmbeddingClient,
+  OrchestrationEmbeddingResponse,
 } from "@sap-ai-sdk/orchestration";
 
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
-import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
 import { deepMerge } from "./deep-merge.js";
-import { convertToAISDKError } from "./sap-ai-error.js";
-import {
-  buildEmbeddingResult,
-  hasKeys,
-  normalizeEmbedding,
-  prepareEmbeddingCall,
-} from "./strategy-utils.js";
-import { VERSION } from "./version.js";
+import { type EmbeddingProviderOptions, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
-/**
- * @internal
- */
+/** @internal */
 type OrchestrationEmbeddingClientClass = typeof OrchestrationEmbeddingClient;
 
 /**
+ * Embedding model strategy for the Orchestration API.
+ *
+ * Provides support for:
+ * - Data masking
+ * - Model parameters configuration
  * @internal
  */
-export class OrchestrationEmbeddingModelStrategy implements EmbeddingModelAPIStrategy {
+export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrategy<
+  OrchestrationEmbeddingClient,
+  OrchestrationEmbeddingResponse
+> {
   private readonly ClientClass: OrchestrationEmbeddingClientClass;
 
   constructor(ClientClass: OrchestrationEmbeddingClientClass) {
+    super();
     this.ClientClass = ClientClass;
   }
 
-  async doEmbed(
+  protected createClient(
     config: EmbeddingModelStrategyConfig,
     settings: SAPAIEmbeddingSettings,
-    options: EmbeddingModelV3CallOptions,
-    maxEmbeddingsPerCall: number,
-  ): Promise<EmbeddingModelV3Result> {
-    const { abortSignal, values } = options;
-
-    const { embeddingOptions, providerName } = await prepareEmbeddingCall(
-      { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
-      options,
-    );
-
-    const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
-
-    try {
-      const client = this.createClient(
-        config,
-        settings.modelParams as Record<string, unknown> | undefined,
-        embeddingOptions?.modelParams,
-        settings.modelVersion,
-        settings.masking,
-      );
-
-      const response = await client.embed(
-        { input: values, type: embeddingType },
-        abortSignal ? { signal: abortSignal } : undefined,
-      );
-
-      const embeddingData = response.getEmbeddings();
-      const tokenUsage = response.getTokenUsage();
-      const sortedEmbeddings = [...embeddingData].sort((a, b) => a.index - b.index);
-
-      const embeddings: EmbeddingModelV3Embedding[] = sortedEmbeddings.map((data) =>
-        normalizeEmbedding(data.embedding),
-      );
-
-      return buildEmbeddingResult({
-        embeddings,
-        modelId: config.modelId,
-        providerName,
-        totalTokens: tokenUsage.total_tokens,
-        version: VERSION,
-      });
-    } catch (error) {
-      throw convertToAISDKError(error, {
-        operation: "doEmbed",
-        requestBody: { values: values.length },
-        url: "sap-ai:orchestration/embeddings",
-      });
-    }
-  }
-
-  private createClient(
-    config: EmbeddingModelStrategyConfig,
-    settingsModelParams?: Record<string, unknown>,
-    perCallModelParams?: Record<string, unknown>,
-    modelVersion?: string,
-    masking?: MaskingModule,
+    embeddingOptions: EmbeddingProviderOptions | undefined,
   ): OrchestrationEmbeddingClient {
-    const mergedParams = deepMerge(settingsModelParams ?? {}, perCallModelParams ?? {});
+    const mergedParams = deepMerge(
+      (settings.modelParams as Record<string, unknown> | undefined) ?? {},
+      embeddingOptions?.modelParams ?? {},
+    );
 
     const embeddingConfig: EmbeddingModelConfig = {
       model: {
         name: config.modelId,
         ...(hasKeys(mergedParams) ? { params: mergedParams } : {}),
-        ...(modelVersion ? { version: modelVersion } : {}),
+        ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
       },
     };
 
     const moduleConfig: EmbeddingModuleConfig = {
       embeddings: embeddingConfig,
-      ...(masking && hasKeys(masking as object) ? { masking } : {}),
+      ...(settings.masking && hasKeys(settings.masking as object)
+        ? { masking: settings.masking }
+        : {}),
     };
 
     return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
+  }
+
+  protected async executeCall(
+    client: OrchestrationEmbeddingClient,
+    values: string[],
+    embeddingType: "document" | "query" | "text" | undefined,
+    abortSignal?: AbortSignal,
+  ): Promise<OrchestrationEmbeddingResponse> {
+    return client.embed(
+      { input: values, type: embeddingType },
+      abortSignal ? { signal: abortSignal } : undefined,
+    );
+  }
+
+  protected extractEmbeddings(
+    response: OrchestrationEmbeddingResponse,
+  ): EmbeddingModelV3Embedding[] {
+    const embeddingData = response.getEmbeddings();
+    const sortedEmbeddings = [...embeddingData].sort((a, b) => a.index - b.index);
+    return sortedEmbeddings.map((data) => normalizeEmbedding(data.embedding));
+  }
+
+  protected extractTokenCount(response: OrchestrationEmbeddingResponse): number {
+    const tokenUsage = response.getTokenUsage();
+    return tokenUsage.total_tokens;
+  }
+
+  protected getUrl(): string {
+    return "sap-ai:orchestration/embeddings";
   }
 }

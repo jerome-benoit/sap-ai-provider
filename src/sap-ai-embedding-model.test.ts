@@ -26,8 +26,10 @@ interface FMEmbedCall {
   requestConfig?: { signal?: AbortSignal };
 }
 interface FMEmbeddingResponse {
-  _data: { usage: { prompt_tokens: number; total_tokens: number } };
-  getEmbeddings: () => (number[] | string)[];
+  _data: {
+    data: { embedding: number[] | string; index: number }[];
+    usage: { prompt_tokens: number; total_tokens: number };
+  };
 }
 
 interface OrchestrationConstructorCall {
@@ -123,11 +125,13 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
             return Promise.resolve(response);
           }
           return Promise.resolve({
-            _data: { usage: { prompt_tokens: 8, total_tokens: 8 } },
-            getEmbeddings: () => [
-              [0.1, 0.2, 0.3],
-              [0.4, 0.5, 0.6],
-            ],
+            _data: {
+              data: [
+                { embedding: [0.1, 0.2, 0.3], index: 0 },
+                { embedding: [0.4, 0.5, 0.6], index: 1 },
+              ],
+              usage: { prompt_tokens: 8, total_tokens: 8 },
+            },
           });
         },
       );
@@ -411,8 +415,10 @@ describe("SAPAIEmbeddingModel", () => {
 
         if (api === "foundation-models") {
           await setEmbedResponseForApi(api, {
-            _data: { usage: { prompt_tokens: 4, total_tokens: 4 } },
-            getEmbeddings: () => [base64],
+            _data: {
+              data: [{ embedding: base64, index: 0 }],
+              usage: { prompt_tokens: 4, total_tokens: 4 },
+            },
           });
         } else {
           await setEmbedResponseForApi(api, {
@@ -641,7 +647,31 @@ describe("SAPAIEmbeddingModel", () => {
       await resetMockStateForApi("foundation-models");
     });
 
-    describe("FM-specific request parameters", () => {
+    describe("embedding index sorting", () => {
+      it("should sort embeddings by index when returned out of order", async () => {
+        const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+        MockAzureOpenAiEmbeddingClient.embedResponse = {
+          _data: {
+            data: [
+              { embedding: [0.7, 0.8, 0.9], index: 2 },
+              { embedding: [0.1, 0.2, 0.3], index: 0 },
+              { embedding: [0.4, 0.5, 0.6], index: 1 },
+            ],
+            usage: { prompt_tokens: 12, total_tokens: 12 },
+          },
+        };
+        const model = createModelForApi("foundation-models");
+        const result = await model.doEmbed({ values: ["A", "B", "C"] });
+
+        expect(result.embeddings).toEqual([
+          [0.1, 0.2, 0.3],
+          [0.4, 0.5, 0.6],
+          [0.7, 0.8, 0.9],
+        ]);
+      });
+    });
+
+    describe("model params in request", () => {
       it("should pass user parameter to FM API request", async () => {
         const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
         const model = createModelForApi("foundation-models", "text-embedding-ada-002", {
@@ -677,23 +707,18 @@ describe("SAPAIEmbeddingModel", () => {
         expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.dimensions).toBe(256);
       });
 
-      it("should pass input_type parameter via providerOptions", async () => {
+      it("should pass input_type parameter to FM API request", async () => {
         const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
-        const model = createModelForApi("foundation-models");
-
-        await model.doEmbed({
-          providerOptions: {
-            "sap-ai": {
-              modelParams: { input_type: "query" },
-            },
-          },
-          values: ["Test"],
+        const model = createModelForApi("foundation-models", "text-embedding-ada-002", {
+          modelParams: { input_type: "query" },
         });
+
+        await model.doEmbed({ values: ["Test"] });
 
         expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.input_type).toBe("query");
       });
 
-      it("should pass multiple FM-specific parameters together", async () => {
+      it("should pass multiple parameters together", async () => {
         const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
         const model = createModelForApi("foundation-models", "text-embedding-3-large", {
           modelParams: {
@@ -710,7 +735,9 @@ describe("SAPAIEmbeddingModel", () => {
         expect(request?.encoding_format).toBe("float");
         expect(request?.user).toBe("test-user");
       });
+    });
 
+    describe("providerOptions override", () => {
       it("should override settings modelParams with providerOptions modelParams", async () => {
         const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
         const model = createModelForApi("foundation-models", "text-embedding-3-large", {

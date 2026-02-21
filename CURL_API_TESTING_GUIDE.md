@@ -112,8 +112,7 @@ CLIENT_SECRET="your-client-secret-here"
 AUTH_URL="https://your-subdomain.authentication.region.hana.ondemand.com"
 
 # Encode credentials to Base64
-# IMPORTANT: Use printf (not echo) for proper handling of special characters
-CREDENTIALS=$(printf '%s:%s' "$CLIENT_ID" "$CLIENT_SECRET" | base64)
+CREDENTIALS=$(printf '%s:%s' "$CLIENT_ID" "$CLIENT_SECRET" | base64 | tr -d '\n')
 
 # Request OAuth token
 TOKEN_RESPONSE=$(curl -s --request POST \
@@ -123,7 +122,7 @@ TOKEN_RESPONSE=$(curl -s --request POST \
   --data "grant_type=client_credentials")
 
 # Extract access token from JSON response
-ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
 
 # Verify token was obtained
 if [ -z "$ACCESS_TOKEN" ]; then
@@ -135,8 +134,7 @@ fi
 echo "✅ OAuth token obtained"
 ```
 
-**Key Points:** Use `printf` (not `echo`) for special characters. Tokens expire
-after 12h.
+**Key Points:** Tokens expire after 12h.
 
 ### Step 3: Call SAP AI Core API
 
@@ -398,12 +396,12 @@ echo "✅ Request completed"
 
 ## Common Issues
 
-| Error                | Cause                                                   | Solution                                       |
-| -------------------- | ------------------------------------------------------- | ---------------------------------------------- |
-| Missing Tenant Id    | Expired token, wrong endpoint, invalid token            | Regenerate token, verify `/v2` paths           |
-| Bad Credentials      | Wrong client ID/secret, bad Base64 encoding             | Check credentials, use `printf` not `echo`     |
-| Deployment Not Found | Wrong deployment ID, wrong region, wrong resource group | Verify deployment exists, check resource group |
-| Multiple Tools Error | Gemini model with >1 tool                               | Use 1 tool OR switch to OpenAI/Claude models   |
+| Error                | Cause                                                                                        | Solution                                                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Missing Tenant Id    | Expired token, wrong endpoint, missing `AI-Resource-Group` header, misconfigured service key | Regenerate token, verify `/v2` paths, ensure `AI-Resource-Group` header is set, check service key contains tenant information |
+| Bad Credentials      | Wrong client ID/secret, bad Base64 encoding                                                  | Check credentials, verify Base64 output has no newlines                                                                       |
+| Deployment Not Found | Wrong deployment ID, wrong region, wrong resource group                                      | Verify deployment exists, check resource group                                                                                |
+| Multiple Tools Error | Gemini model with >1 tool                                                                    | Use 1 tool OR switch to OpenAI/Claude models                                                                                  |
 
 ---
 

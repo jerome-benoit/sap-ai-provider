@@ -144,6 +144,7 @@ This should complete in under 20 seconds total and all commands should pass.
 │   ├── sap-ai-strategy.ts                            # Strategy factory (lazy loading)
 │   ├── strategy-utils.ts                             # Shared strategy utilities
 │   ├── base-language-model-strategy.ts              # Base class for language model strategies (Template Method)
+│   ├── base-embedding-model-strategy.ts             # Base class for embedding model strategies (Template Method)
 │   ├── orchestration-language-model-strategy.ts     # Orchestration API strategy
 │   ├── orchestration-embedding-model-strategy.ts    # Orchestration embedding strategy
 │   ├── foundation-models-language-model-strategy.ts # Foundation Models API strategy
@@ -156,8 +157,8 @@ This should complete in under 20 seconds total and all commands should pass.
 ├── tsconfig.json         # TypeScript configuration
 ├── tsup.config.ts        # V3 build configuration
 ├── tsup.config.v2.ts     # V2 build configuration
-├── vitest.node.config.js # Node.js test configuration
-├── vitest.edge.config.js # Edge runtime test configuration
+├── vitest.node.config.ts # Node.js test configuration
+├── vitest.edge.config.ts # Edge runtime test configuration
 ├── README.md             # Getting started and usage guide
 ├── API_REFERENCE.md      # Complete API documentation
 ├── ARCHITECTURE.md       # Technical architecture and design

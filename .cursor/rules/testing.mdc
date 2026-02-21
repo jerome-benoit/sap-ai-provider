@@ -6,8 +6,8 @@ globs: **/*.test.ts,**/*.test.tsx
 
 ## Test Environments
 
-- Node tests: [vitest.node.config.js](mdc:vitest.node.config.js)
-- Edge runtime tests: [vitest.edge.config.js](mdc:vitest.edge.config.js)
+- Node tests: [vitest.node.config.ts](mdc:vitest.node.config.ts)
+- Edge runtime tests: [vitest.edge.config.ts](mdc:vitest.edge.config.ts)
 
 Use Node environment for most unit tests. Use Edge runtime when covering
 streaming or runtime-specific behaviors.

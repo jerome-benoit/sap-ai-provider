@@ -262,6 +262,16 @@ const chatModel = provider.chat("gpt-4.1");
 const embeddingModel = provider.embedding("text-embedding-3-small");
 ```
 
+**Available methods:**
+
+| Method                             | Description                                   |
+| ---------------------------------- | --------------------------------------------- |
+| `provider(modelId)`                | Callable syntax, creates language model       |
+| `provider.chat(modelId)`           | Creates language model (alias)                |
+| `provider.languageModel(modelId)`  | Creates language model (ProviderV3 standard)  |
+| `provider.embedding(modelId)`      | Creates embedding model                       |
+| `provider.embeddingModel(modelId)` | Creates embedding model (ProviderV3 standard) |
+
 All methods accept an optional second parameter for model-specific settings.
 
 ## Authentication
