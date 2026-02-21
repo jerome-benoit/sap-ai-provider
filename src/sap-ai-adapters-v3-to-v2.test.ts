@@ -220,76 +220,67 @@ describe("convertUsageToV2", () => {
 });
 
 describe("convertWarningToV2", () => {
-  it("should convert unsupported warning", () => {
-    const internalWarning = {
-      details: "Model does not support streaming",
-      feature: "streaming",
-      type: "unsupported" as const,
-    };
-
+  it.each([
+    {
+      description: "unsupported warning with details",
+      expected: {
+        message: "Unsupported feature: streaming. Model does not support streaming",
+        type: "other",
+      },
+      internalWarning: {
+        details: "Model does not support streaming",
+        feature: "streaming",
+        type: "unsupported" as const,
+      },
+    },
+    {
+      description: "unsupported warning without details",
+      expected: {
+        message: "Unsupported feature: some-feature",
+        type: "other",
+      },
+      internalWarning: {
+        feature: "some-feature",
+        type: "unsupported" as const,
+      },
+    },
+    {
+      description: "compatibility warning with details",
+      expected: {
+        message: "Compatibility mode: tool-calls. Using compatibility mode for tool calls",
+        type: "other",
+      },
+      internalWarning: {
+        details: "Using compatibility mode for tool calls",
+        feature: "tool-calls",
+        type: "compatibility" as const,
+      },
+    },
+    {
+      description: "compatibility warning without details",
+      expected: {
+        message: "Compatibility mode: some-feature",
+        type: "other",
+      },
+      internalWarning: {
+        feature: "some-feature",
+        type: "compatibility" as const,
+      },
+    },
+    {
+      description: "other warning",
+      expected: {
+        message: "Some other warning",
+        type: "other",
+      },
+      internalWarning: {
+        message: "Some other warning",
+        type: "other" as const,
+      },
+    },
+  ])("should convert $description", ({ expected, internalWarning }) => {
     const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
-
-    expect(v2Warning).toEqual({
-      message: "Unsupported feature: streaming. Model does not support streaming",
-      type: "other",
-    });
-  });
-
-  it("should convert compatibility warning", () => {
-    const internalWarning = {
-      details: "Using compatibility mode for tool calls",
-      feature: "tool-calls",
-      type: "compatibility" as const,
-    };
-
-    const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
-
-    expect(v2Warning).toEqual({
-      message: "Compatibility mode: tool-calls. Using compatibility mode for tool calls",
-      type: "other",
-    });
-  });
-
-  it("should convert compatibility warning without details", () => {
-    const internalWarning = {
-      feature: "some-feature",
-      type: "compatibility" as const,
-    };
-
-    const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
-
-    expect(v2Warning).toEqual({
-      message: "Compatibility mode: some-feature",
-      type: "other",
-    });
-  });
-
-  it("should convert other warning", () => {
-    const internalWarning = {
-      message: "Some other warning",
-      type: "other" as const,
-    };
-
-    const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
-
-    expect(v2Warning).toEqual({
-      message: "Some other warning",
-      type: "other",
-    });
-  });
-
-  it("should convert unsupported warning without details", () => {
-    const internalWarning = {
-      feature: "some-feature",
-      type: "unsupported" as const,
-    };
-
-    const v2Warning: LanguageModelV2CallWarning = convertWarningToV2(internalWarning);
-
-    expect(v2Warning).toEqual({
-      message: "Unsupported feature: some-feature",
-      type: "other",
-    });
+    expect(v2Warning).toEqual(expected);
   });
 });
 

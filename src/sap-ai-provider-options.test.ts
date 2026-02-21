@@ -678,33 +678,22 @@ describe("validateModelParamsWithWarnings", () => {
 
 describe("orchestrationConfigRefSchema", () => {
   describe("valid config references", () => {
-    it("should accept config ref with id", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it("should accept config ref with scenario/name/version", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        name: "prod-config",
-        scenario: "customer-support",
-        version: "1.0.0",
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it("should accept config ref with UUID id", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        id: "12345678-1234-1234-1234-123456789abc",
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it("should accept config ref with simple string id", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        id: "my-config",
-      });
+    it.each([
+      {
+        config: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
+        description: "config ref with UUID id",
+      },
+      {
+        config: { name: "prod-config", scenario: "customer-support", version: "1.0.0" },
+        description: "config ref with scenario/name/version",
+      },
+      {
+        config: { id: "12345678-1234-1234-1234-123456789abc" },
+        description: "config ref with alternate UUID",
+      },
+      { config: { id: "my-config" }, description: "config ref with simple string id" },
+    ])("should accept $description", ({ config }) => {
+      const result = orchestrationConfigRefSchema.safeParse(config);
       expect(result.success).toBe(true);
     });
   });

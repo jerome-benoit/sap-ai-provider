@@ -236,15 +236,15 @@ describe("createSAPAIProvider", () => {
       expect(model.provider).toBe("sap-ai.embedding");
     });
 
-    it("should throw NoSuchModelError with detailed information", () => {
-      const provider = createSAPAIProvider();
+    it.each(["dall-e-3", "stable-diffusion", "midjourney"])(
+      "should throw NoSuchModelError with detailed information for %s",
+      (modelId) => {
+        const provider = createSAPAIProvider();
 
-      const testCases = ["dall-e-3", "stable-diffusion", "midjourney"];
+        expect(() => provider.imageModel(modelId)).toThrow(NoSuchModelError);
 
-      for (const modelId of testCases) {
         try {
           provider.imageModel(modelId);
-          expect.fail("Should have thrown NoSuchModelError");
         } catch (error) {
           expect(error).toBeInstanceOf(NoSuchModelError);
           const noSuchModelError = error as NoSuchModelError;
@@ -254,8 +254,8 @@ describe("createSAPAIProvider", () => {
             "SAP AI Core does not support image generation",
           );
         }
-      }
-    });
+      },
+    );
   });
 
   describe("provider name", () => {
