@@ -395,7 +395,7 @@ export function convertToAISDKError(
       return new NoSuchModelError({
         message:
           `SAP AI Core deployment error: ${originalErrorMsg}\n\n` +
-          `Make sure you have a running orchestration deployment in your AI Core instance.\n` +
+          `Make sure you have a running orchestration deployment in your SAP AI Core instance.\n` +
           `See: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-deployment-for-orchestration`,
         modelId: modelId ?? "unknown",
         modelType: "languageModel",

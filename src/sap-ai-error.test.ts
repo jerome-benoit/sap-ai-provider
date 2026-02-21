@@ -6,7 +6,13 @@ import type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { convertSAPErrorToAPICallError, convertToAISDKError } from "./sap-ai-error";
+import {
+  ApiSwitchError,
+  convertSAPErrorToAPICallError,
+  convertToAISDKError,
+  normalizeHeaders,
+  UnsupportedFeatureError,
+} from "./sap-ai-error";
 
 interface ParsedResponseBody {
   error: {
@@ -16,6 +22,138 @@ interface ParsedResponseBody {
     request_id?: string;
   };
 }
+
+describe("ApiSwitchError", () => {
+  it.each([
+    { feature: "filtering", fromApi: "orchestration", toApi: "foundation-models" },
+    { feature: "masking", fromApi: "orchestration", toApi: "foundation-models" },
+    { feature: "logprobs", fromApi: "foundation-models", toApi: "orchestration" },
+  ] as const)(
+    "should create error for $fromApi → $toApi with $feature",
+    ({ feature, fromApi, toApi }) => {
+      const error = new ApiSwitchError(fromApi, toApi, feature);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe("ApiSwitchError");
+      expect(error.fromApi).toBe(fromApi);
+      expect(error.toApi).toBe(toApi);
+      expect(error.conflictingFeature).toBe(feature);
+      expect(error.message).toContain(`Cannot switch from ${fromApi} to ${toApi}`);
+      expect(error.message).toContain(`${feature} would be ignored`);
+      expect(error.message).toContain("Create a new model instance");
+    },
+  );
+});
+
+describe("UnsupportedFeatureError", () => {
+  it.each([
+    {
+      api: "foundation-models" as const,
+      expectedAvailable: "Orchestration API",
+      expectedIgnored: "Foundation Models API",
+      feature: "Content filtering",
+      suggestedApi: "orchestration" as const,
+    },
+    {
+      api: "foundation-models" as const,
+      expectedAvailable: "Orchestration API",
+      expectedIgnored: "Foundation Models API",
+      feature: "Data masking",
+      suggestedApi: "orchestration" as const,
+    },
+    {
+      api: "orchestration" as const,
+      expectedAvailable: "Foundation Models API",
+      expectedIgnored: "Orchestration API",
+      feature: "logprobs",
+      suggestedApi: "foundation-models" as const,
+    },
+  ])(
+    "should create error for $feature on $api",
+    ({ api, expectedAvailable, expectedIgnored, feature, suggestedApi }) => {
+      const error = new UnsupportedFeatureError(feature, api, suggestedApi);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe("UnsupportedFeatureError");
+      expect(error.feature).toBe(feature);
+      expect(error.api).toBe(api);
+      expect(error.suggestedApi).toBe(suggestedApi);
+      expect(error.message).toContain(`${feature} is only available with ${expectedAvailable}`);
+      expect(error.message).toContain(`will be ignored by ${expectedIgnored}`);
+    },
+  );
+});
+
+describe("normalizeHeaders", () => {
+  describe("invalid inputs", () => {
+    it.each([
+      { description: "null", input: null },
+      { description: "undefined", input: undefined },
+      { description: "string", input: "string" },
+      { description: "number", input: 123 },
+    ])("should return undefined for $description input", ({ input }) => {
+      expect(normalizeHeaders(input)).toBeUndefined();
+    });
+  });
+
+  describe("value conversions", () => {
+    it.each([
+      {
+        description: "string values unchanged",
+        expected: { "content-type": "application/json", "x-custom": "value" },
+        input: { "content-type": "application/json", "x-custom": "value" },
+      },
+      {
+        description: "number values to strings",
+        expected: { "content-length": "1024" },
+        input: { "content-length": 1024 },
+      },
+      {
+        description: "boolean values to strings",
+        expected: { "x-disabled": "false", "x-enabled": "true" },
+        input: { "x-disabled": false, "x-enabled": true },
+      },
+      {
+        description: "array values joined with semicolon",
+        expected: { "x-multi": "a; b; c" },
+        input: { "x-multi": ["a", "b", "c"] },
+      },
+      {
+        description: "arrays with non-string values filtered",
+        expected: { "x-mixed": "valid; also" },
+        input: { "x-mixed": ["valid", 123, null, "also"] },
+      },
+    ])("should convert $description", ({ expected, input }) => {
+      expect(normalizeHeaders(input)).toEqual(expected);
+    });
+  });
+
+  describe("exclusions", () => {
+    it.each([
+      {
+        description: "arrays with only non-string values",
+        expected: { "x-valid": "keep" },
+        input: { "x-invalid": [123, null], "x-valid": "keep" },
+      },
+      {
+        description: "object values",
+        expected: { "x-valid": "keep" },
+        input: { "x-object": { nested: "obj" }, "x-valid": "keep" },
+      },
+    ])("should exclude $description", ({ expected, input }) => {
+      expect(normalizeHeaders(input)).toEqual(expected);
+    });
+  });
+
+  describe("empty results", () => {
+    it.each([
+      { description: "only invalid values", input: { "x-object": { nested: "obj" } } },
+      { description: "empty object", input: {} },
+    ])("should return undefined for $description", ({ input }) => {
+      expect(normalizeHeaders(input)).toBeUndefined();
+    });
+  });
+});
 
 describe("convertSAPErrorToAPICallError", () => {
   describe("basic conversion", () => {

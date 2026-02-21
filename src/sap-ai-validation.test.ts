@@ -86,21 +86,13 @@ describe("resolveApi", () => {
 });
 
 describe("validateApiInput", () => {
-  it("should pass for 'orchestration'", () => {
+  it.each([
+    { description: "'orchestration'", input: "orchestration" },
+    { description: "'foundation-models'", input: "foundation-models" },
+    { description: "undefined (treated as unset)", input: undefined },
+  ])("should pass for $description", ({ input }) => {
     expect(() => {
-      validateApiInput("orchestration");
-    }).not.toThrow();
-  });
-
-  it("should pass for 'foundation-models'", () => {
-    expect(() => {
-      validateApiInput("foundation-models");
-    }).not.toThrow();
-  });
-
-  it("should pass for undefined (treated as unset)", () => {
-    expect(() => {
-      validateApiInput(undefined);
+      validateApiInput(input);
     }).not.toThrow();
   });
 
@@ -662,13 +654,37 @@ describe("validateSettings", () => {
     });
 
     describe("switching from Orchestration to Foundation Models", () => {
-      it("should throw ApiSwitchError for filtering", () => {
+      it.each([
+        { feature: "filtering", settings: { filtering: { input: {} } } },
+        {
+          feature: "grounding",
+          settings: { grounding: { config: {}, type: "document_grounding_service" } },
+        },
+        { feature: "masking", settings: { masking: { masking_providers: [] } } },
+        {
+          feature: "translation",
+          settings: { translation: { input: { type: "sap_document_translation" } } },
+        },
+        {
+          feature: "tools",
+          settings: { tools: [{ function: { name: "test", parameters: {} }, type: "function" }] },
+        },
+        {
+          feature: "orchestrationConfigRef",
+          settings: { orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" } },
+        },
+        { feature: "placeholderValues", settings: { placeholderValues: { key: "value" } } },
+        {
+          feature: "promptTemplateRef",
+          settings: { promptTemplateRef: { id: "template-id", scope: "global" } },
+        },
+      ])("should throw ApiSwitchError for $feature", ({ feature, settings }) => {
         expect(() => {
           validateSettings({
             api: "foundation-models",
             invocationSettings: { api: "foundation-models" },
             modelApi: "orchestration",
-            modelSettings: mockSettings({ filtering: { input: {} } }),
+            modelSettings: mockSettings(settings),
           });
         }).toThrow(ApiSwitchError);
 
@@ -677,102 +693,15 @@ describe("validateSettings", () => {
             api: "foundation-models",
             invocationSettings: { api: "foundation-models" },
             modelApi: "orchestration",
-            modelSettings: mockSettings({ filtering: { input: {} } }),
+            modelSettings: mockSettings(settings),
           });
         } catch (e) {
           expect(e).toBeInstanceOf(ApiSwitchError);
           const error = e as ApiSwitchError;
           expect(error.fromApi).toBe("orchestration");
           expect(error.toApi).toBe("foundation-models");
-          expect(error.conflictingFeature).toBe("filtering");
+          expect(error.conflictingFeature).toBe(feature);
         }
-      });
-
-      it("should throw ApiSwitchError for grounding", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({
-              grounding: { config: {}, type: "document_grounding_service" },
-            }),
-          });
-        }).toThrow(ApiSwitchError);
-      });
-
-      it("should throw ApiSwitchError for masking", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({ masking: { masking_providers: [] } }),
-          });
-        }).toThrow(ApiSwitchError);
-      });
-
-      it("should throw ApiSwitchError for translation", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({
-              translation: { input: { type: "sap_document_translation" } },
-            }),
-          });
-        }).toThrow(ApiSwitchError);
-      });
-
-      it("should throw ApiSwitchError for tools", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({
-              tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
-            }),
-          });
-        }).toThrow(ApiSwitchError);
-      });
-
-      it("should throw ApiSwitchError for orchestrationConfigRef", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({
-              orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
-            }),
-          });
-        }).toThrow(ApiSwitchError);
-      });
-
-      it("should throw ApiSwitchError for placeholderValues", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({ placeholderValues: { key: "value" } }),
-          });
-        }).toThrow(ApiSwitchError);
-      });
-
-      it("should throw ApiSwitchError for promptTemplateRef", () => {
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: { api: "foundation-models" },
-            modelApi: "orchestration",
-            modelSettings: mockSettings({
-              promptTemplateRef: { id: "template-id", scope: "global" },
-            }),
-          });
-        }).toThrow(ApiSwitchError);
       });
     });
 

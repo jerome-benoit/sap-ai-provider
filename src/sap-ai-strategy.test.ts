@@ -33,27 +33,28 @@ describe("sapAiStrategy", () => {
   });
 
   describe("clearStrategyCaches", () => {
-    it("clears language model strategy cache", async () => {
+    it.each([
+      {
+        description: "language model strategy cache",
+        getCacheSize: getLanguageModelStrategyCacheSize,
+        populateCache: () => getOrCreateLanguageModelStrategy("orchestration"),
+      },
+      {
+        description: "embedding model strategy cache",
+        getCacheSize: getEmbeddingModelStrategyCacheSize,
+        populateCache: () => getOrCreateEmbeddingModelStrategy("orchestration"),
+      },
+    ])("should clear $description", async ({ getCacheSize, populateCache }) => {
       // Create a strategy to populate cache
-      await getOrCreateLanguageModelStrategy("orchestration");
-      expect(getLanguageModelStrategyCacheSize()).toBe(1);
+      await populateCache();
+      expect(getCacheSize()).toBe(1);
 
       // Clear cache
       clearStrategyCaches();
-      expect(getLanguageModelStrategyCacheSize()).toBe(0);
+      expect(getCacheSize()).toBe(0);
     });
 
-    it("clears embedding model strategy cache", async () => {
-      // Create a strategy to populate cache
-      await getOrCreateEmbeddingModelStrategy("orchestration");
-      expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
-
-      // Clear cache
-      clearStrategyCaches();
-      expect(getEmbeddingModelStrategyCacheSize()).toBe(0);
-    });
-
-    it("clears both caches simultaneously", async () => {
+    it("should clear both caches simultaneously", async () => {
       // Populate both caches
       await Promise.all([
         getOrCreateLanguageModelStrategy("orchestration"),
@@ -73,68 +74,54 @@ describe("sapAiStrategy", () => {
 
   describe("getOrCreateLanguageModelStrategy", () => {
     describe("lazy loading", () => {
-      it("loads Orchestration API SDK on first request", async () => {
-        const strategy = await getOrCreateLanguageModelStrategy("orchestration");
+      it.each([
+        { api: "orchestration" as const, expectedClass: "OrchestrationLanguageModelStrategy" },
+        {
+          api: "foundation-models" as const,
+          expectedClass: "FoundationModelsLanguageModelStrategy",
+        },
+      ])("should load $api SDK on first request", async ({ api }) => {
+        const strategy = await getOrCreateLanguageModelStrategy(api);
         expect(strategy).toBeDefined();
         expect(strategy.doGenerate).toBeInstanceOf(Function);
         expect(strategy.doStream).toBeInstanceOf(Function);
       });
 
-      it("loads foundation-models SDK on first request", async () => {
-        const strategy = await getOrCreateLanguageModelStrategy("foundation-models");
-        expect(strategy).toBeDefined();
-        expect(strategy.doGenerate).toBeInstanceOf(Function);
-        expect(strategy.doStream).toBeInstanceOf(Function);
-      });
-
-      it("returns real OrchestrationLanguageModelStrategy for orchestration", async () => {
-        const strategy = await getOrCreateLanguageModelStrategy("orchestration");
+      it.each([
+        { api: "orchestration" as const, expectedClass: "OrchestrationLanguageModelStrategy" },
+        {
+          api: "foundation-models" as const,
+          expectedClass: "FoundationModelsLanguageModelStrategy",
+        },
+      ])("should return real $expectedClass for $api", async ({ api, expectedClass }) => {
+        const strategy = await getOrCreateLanguageModelStrategy(api);
 
         // Strategy should be a real implementation, not a placeholder
         expect(strategy).toBeDefined();
         expect(strategy.doGenerate).toBeInstanceOf(Function);
         expect(strategy.doStream).toBeInstanceOf(Function);
 
-        // Verify it's not the placeholder by checking the class name
-        expect(strategy.constructor.name).toBe("OrchestrationLanguageModelStrategy");
-      });
-
-      it("returns real strategy for foundation-models", async () => {
-        const strategy = await getOrCreateLanguageModelStrategy("foundation-models");
-
-        expect(strategy).toBeDefined();
-        expect(strategy.doGenerate).toBeInstanceOf(Function);
-        expect(strategy.doStream).toBeInstanceOf(Function);
-
         // Verify it's the real strategy by checking the class name
-        expect(strategy.constructor.name).toBe("FoundationModelsLanguageModelStrategy");
+        expect(strategy.constructor.name).toBe(expectedClass);
       });
     });
 
     describe("caching behavior", () => {
-      it("caches strategy for orchestration API", async () => {
-        expect(getLanguageModelStrategyCacheSize()).toBe(0);
+      it.each([{ api: "orchestration" as const }, { api: "foundation-models" as const }])(
+        "should cache strategy for $api API",
+        async ({ api }) => {
+          expect(getLanguageModelStrategyCacheSize()).toBe(0);
 
-        await getOrCreateLanguageModelStrategy("orchestration");
-        expect(getLanguageModelStrategyCacheSize()).toBe(1);
+          await getOrCreateLanguageModelStrategy(api);
+          expect(getLanguageModelStrategyCacheSize()).toBe(1);
 
-        // Second call should not increase cache size
-        await getOrCreateLanguageModelStrategy("orchestration");
-        expect(getLanguageModelStrategyCacheSize()).toBe(1);
-      });
+          // Second call should not increase cache size
+          await getOrCreateLanguageModelStrategy(api);
+          expect(getLanguageModelStrategyCacheSize()).toBe(1);
+        },
+      );
 
-      it("caches strategy for foundation-models API", async () => {
-        expect(getLanguageModelStrategyCacheSize()).toBe(0);
-
-        await getOrCreateLanguageModelStrategy("foundation-models");
-        expect(getLanguageModelStrategyCacheSize()).toBe(1);
-
-        // Second call should not increase cache size
-        await getOrCreateLanguageModelStrategy("foundation-models");
-        expect(getLanguageModelStrategyCacheSize()).toBe(1);
-      });
-
-      it("maintains separate cache entries for different APIs", async () => {
+      it("should maintain separate cache entries for different APIs", async () => {
         await getOrCreateLanguageModelStrategy("orchestration");
         expect(getLanguageModelStrategyCacheSize()).toBe(1);
 
@@ -142,14 +129,14 @@ describe("sapAiStrategy", () => {
         expect(getLanguageModelStrategyCacheSize()).toBe(2);
       });
 
-      it("returns same strategy instance for same API", async () => {
+      it("should return same strategy instance for same API", async () => {
         const strategy1 = await getOrCreateLanguageModelStrategy("orchestration");
         const strategy2 = await getOrCreateLanguageModelStrategy("orchestration");
 
         expect(strategy1).toBe(strategy2);
       });
 
-      it("returns different strategy instances for different APIs", async () => {
+      it("should return different strategy instances for different APIs", async () => {
         const orchestrationStrategy = await getOrCreateLanguageModelStrategy("orchestration");
         const foundationModelsStrategy =
           await getOrCreateLanguageModelStrategy("foundation-models");
@@ -159,7 +146,7 @@ describe("sapAiStrategy", () => {
     });
 
     describe("concurrent requests", () => {
-      it("handles concurrent requests for same API without race conditions", async () => {
+      it("should handle concurrent requests for same API without race conditions", async () => {
         // Make 10 concurrent requests for the same API
         const promises = Array.from({ length: 10 }, () =>
           getOrCreateLanguageModelStrategy("orchestration"),
@@ -177,7 +164,7 @@ describe("sapAiStrategy", () => {
         expect(getLanguageModelStrategyCacheSize()).toBe(1);
       });
 
-      it("handles concurrent requests for different APIs", async () => {
+      it("should handle concurrent requests for different APIs", async () => {
         // Make concurrent requests for both APIs
         const [orchestration1, foundationModels1, orchestration2, foundationModels2] =
           await Promise.all([
@@ -202,64 +189,52 @@ describe("sapAiStrategy", () => {
 
   describe("getOrCreateEmbeddingModelStrategy", () => {
     describe("lazy loading", () => {
-      it("loads Orchestration API SDK on first request", async () => {
-        const strategy = await getOrCreateEmbeddingModelStrategy("orchestration");
+      it.each([
+        { api: "orchestration" as const, expectedClass: "OrchestrationEmbeddingModelStrategy" },
+        {
+          api: "foundation-models" as const,
+          expectedClass: "FoundationModelsEmbeddingModelStrategy",
+        },
+      ])("should load $api SDK on first request", async ({ api }) => {
+        const strategy = await getOrCreateEmbeddingModelStrategy(api);
         expect(strategy).toBeDefined();
         expect(strategy.doEmbed).toBeInstanceOf(Function);
       });
 
-      it("loads foundation-models SDK on first request", async () => {
-        const strategy = await getOrCreateEmbeddingModelStrategy("foundation-models");
-        expect(strategy).toBeDefined();
-        expect(strategy.doEmbed).toBeInstanceOf(Function);
-      });
-
-      it("returns real OrchestrationEmbeddingModelStrategy for orchestration", async () => {
-        const strategy = await getOrCreateEmbeddingModelStrategy("orchestration");
+      it.each([
+        { api: "orchestration" as const, expectedClass: "OrchestrationEmbeddingModelStrategy" },
+        {
+          api: "foundation-models" as const,
+          expectedClass: "FoundationModelsEmbeddingModelStrategy",
+        },
+      ])("should return real $expectedClass for $api", async ({ api, expectedClass }) => {
+        const strategy = await getOrCreateEmbeddingModelStrategy(api);
 
         // Strategy should be a real implementation, not a placeholder
         expect(strategy).toBeDefined();
         expect(strategy.doEmbed).toBeInstanceOf(Function);
 
-        // Verify it's not the placeholder by checking the class name
-        expect(strategy.constructor.name).toBe("OrchestrationEmbeddingModelStrategy");
-      });
-
-      it("returns real strategy for foundation-models", async () => {
-        const strategy = await getOrCreateEmbeddingModelStrategy("foundation-models");
-
-        expect(strategy).toBeDefined();
-        expect(strategy.doEmbed).toBeInstanceOf(Function);
-
         // Verify it's the real strategy by checking the class name
-        expect(strategy.constructor.name).toBe("FoundationModelsEmbeddingModelStrategy");
+        expect(strategy.constructor.name).toBe(expectedClass);
       });
     });
 
     describe("caching behavior", () => {
-      it("caches strategy for orchestration API", async () => {
-        expect(getEmbeddingModelStrategyCacheSize()).toBe(0);
+      it.each([{ api: "orchestration" as const }, { api: "foundation-models" as const }])(
+        "should cache strategy for $api API",
+        async ({ api }) => {
+          expect(getEmbeddingModelStrategyCacheSize()).toBe(0);
 
-        await getOrCreateEmbeddingModelStrategy("orchestration");
-        expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
+          await getOrCreateEmbeddingModelStrategy(api);
+          expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
 
-        // Second call should not increase cache size
-        await getOrCreateEmbeddingModelStrategy("orchestration");
-        expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
-      });
+          // Second call should not increase cache size
+          await getOrCreateEmbeddingModelStrategy(api);
+          expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
+        },
+      );
 
-      it("caches strategy for foundation-models API", async () => {
-        expect(getEmbeddingModelStrategyCacheSize()).toBe(0);
-
-        await getOrCreateEmbeddingModelStrategy("foundation-models");
-        expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
-
-        // Second call should not increase cache size
-        await getOrCreateEmbeddingModelStrategy("foundation-models");
-        expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
-      });
-
-      it("returns same strategy instance for same API", async () => {
+      it("should return same strategy instance for same API", async () => {
         const strategy1 = await getOrCreateEmbeddingModelStrategy("orchestration");
         const strategy2 = await getOrCreateEmbeddingModelStrategy("orchestration");
 
@@ -268,7 +243,7 @@ describe("sapAiStrategy", () => {
     });
 
     describe("concurrent requests", () => {
-      it("handles concurrent requests for same API without race conditions", async () => {
+      it("should handle concurrent requests for same API without race conditions", async () => {
         // Make 10 concurrent requests for the same API
         const promises = Array.from({ length: 10 }, () =>
           getOrCreateEmbeddingModelStrategy("orchestration"),
@@ -289,7 +264,7 @@ describe("sapAiStrategy", () => {
   });
 
   describe("cache independence", () => {
-    it("language model and embedding model caches are independent", async () => {
+    it("should maintain independent language model and embedding model caches", async () => {
       // Populate language model cache
       await getOrCreateLanguageModelStrategy("orchestration");
       expect(getLanguageModelStrategyCacheSize()).toBe(1);
@@ -306,7 +281,7 @@ describe("sapAiStrategy", () => {
       expect(getEmbeddingModelStrategyCacheSize()).toBe(0);
     });
 
-    it("different model types for same API are cached separately", async () => {
+    it("should cache different model types for same API separately", async () => {
       const languageStrategy = await getOrCreateLanguageModelStrategy("orchestration");
       const embeddingStrategy = await getOrCreateEmbeddingModelStrategy("orchestration");
 
@@ -320,14 +295,14 @@ describe("sapAiStrategy", () => {
   });
 
   describe("strategy interface compliance", () => {
-    it("language model strategy has required methods", async () => {
+    it("should have required methods on language model strategy", async () => {
       const strategy = await getOrCreateLanguageModelStrategy("orchestration");
 
       expect(typeof strategy.doGenerate).toBe("function");
       expect(typeof strategy.doStream).toBe("function");
     });
 
-    it("embedding model strategy has required methods", async () => {
+    it("should have required methods on embedding model strategy", async () => {
       const strategy = await getOrCreateEmbeddingModelStrategy("orchestration");
 
       expect(typeof strategy.doEmbed).toBe("function");

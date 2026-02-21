@@ -19,7 +19,7 @@
 
 // Load environment variables
 import "dotenv/config";
-import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
+import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { embed, embedMany } from "ai";
 
 // This example uses relative imports for local development within this repo.
@@ -125,6 +125,8 @@ async function embeddingsExample() {
   } catch (error: unknown) {
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);
+    } else if (error instanceof NoSuchModelError) {
+      console.error("❌ Model Not Found:", error.modelId);
     } else if (error instanceof APICallError) {
       console.error("❌ API Call Error:", error.statusCode, error.message);
 

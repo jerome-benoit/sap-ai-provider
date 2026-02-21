@@ -107,37 +107,16 @@ describe("SAPAIEmbeddingModelV2", () => {
   });
 
   describe("V2 Warning Handling", () => {
-    it("should log unsupported warnings to console", async () => {
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(vi.fn());
-
-      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
-
-      const mockDoEmbed = vi.fn().mockResolvedValue({
-        embeddings: [[0.1, 0.2, 0.3]],
-        usage: { tokens: 5 },
+    it.each([
+      {
+        description: "unsupported warning without details",
+        expectedMessage: "[SAP AI Embedding] Unsupported feature: dimension",
         warnings: [{ feature: "dimension", type: "unsupported" }],
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).internalModel.doEmbed = mockDoEmbed;
-
-      await model.doEmbed({ values: ["Test"] });
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "[SAP AI Embedding] Unsupported feature: dimension",
-      );
-
-      consoleWarnSpy.mockRestore();
-    });
-
-    it("should log unsupported warnings with details", async () => {
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(vi.fn());
-
-      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
-
-      const mockDoEmbed = vi.fn().mockResolvedValue({
-        embeddings: [[0.1, 0.2]],
-        usage: { tokens: 3 },
+      },
+      {
+        description: "unsupported warning with details",
+        expectedMessage:
+          "[SAP AI Embedding] Unsupported feature: dimensions parameter. Custom dimensions not supported",
         warnings: [
           {
             details: "Custom dimensions not supported",
@@ -145,54 +124,29 @@ describe("SAPAIEmbeddingModelV2", () => {
             type: "unsupported",
           },
         ],
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).internalModel.doEmbed = mockDoEmbed;
-
-      await model.doEmbed({ values: ["Test"] });
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "[SAP AI Embedding] Unsupported feature: dimensions parameter. Custom dimensions not supported",
-      );
-
-      consoleWarnSpy.mockRestore();
-    });
-
-    it("should log compatibility warnings", async () => {
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(vi.fn());
-
-      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
-
-      const mockDoEmbed = vi.fn().mockResolvedValue({
-        embeddings: [[0.1, 0.2]],
-        usage: { tokens: 3 },
+      },
+      {
+        description: "compatibility warning",
+        expectedMessage:
+          "[SAP AI Embedding] Compatibility mode: legacy-api. Using compatibility mode",
         warnings: [
           { details: "Using compatibility mode", feature: "legacy-api", type: "compatibility" },
         ],
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).internalModel.doEmbed = mockDoEmbed;
-
-      await model.doEmbed({ values: ["Test"] });
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "[SAP AI Embedding] Compatibility mode: legacy-api. Using compatibility mode",
-      );
-
-      consoleWarnSpy.mockRestore();
-    });
-
-    it("should log other warnings", async () => {
+      },
+      {
+        description: "other warning",
+        expectedMessage: "[SAP AI Embedding] General warning message",
+        warnings: [{ message: "General warning message", type: "other" }],
+      },
+    ])("should log $description to console", async ({ expectedMessage, warnings }) => {
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(vi.fn());
 
       const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
       const mockDoEmbed = vi.fn().mockResolvedValue({
-        embeddings: [[0.1, 0.2]],
-        usage: { tokens: 3 },
-        warnings: [{ message: "General warning message", type: "other" }],
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: { tokens: 5 },
+        warnings,
       });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
@@ -200,7 +154,7 @@ describe("SAPAIEmbeddingModelV2", () => {
 
       await model.doEmbed({ values: ["Test"] });
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith("[SAP AI Embedding] General warning message");
+      expect(consoleWarnSpy).toHaveBeenCalledWith(expectedMessage);
 
       consoleWarnSpy.mockRestore();
     });

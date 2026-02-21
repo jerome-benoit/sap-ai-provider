@@ -521,7 +521,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools, responseFormat)
       : this.buildInlineTemplateConfig(tools, responseFormat);
 
-    // Include tool_choice in model.params because the SDK filters request-level options
+    // Include tool_choice in model.params because the SDK filters request-level options.
+    // Workaround for SAP AI SDK issue (may be fixed in future SDK versions).
     // See: https://github.com/SAP/ai-sdk-js/issues/1500
     const effectiveModelParams = toolChoice
       ? { ...modelParams, tool_choice: toolChoice }
@@ -568,7 +569,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const messagesField = hasTemplateRef ? { messagesHistory: messages } : { messages };
 
     // Note: tool_choice is passed via model.params (not request level) because the SDK
-    // filters out request-level options. See: https://github.com/SAP/ai-sdk-js/issues/1500
+    // filters out request-level options. Workaround may be removed when SDK is fixed.
+    // See: https://github.com/SAP/ai-sdk-js/issues/1500
     const requestBody: Record<string, unknown> = {
       ...messagesField,
       model: {

@@ -10,7 +10,11 @@ import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
 import { SAPAIEmbeddingModelV2 } from "./sap-ai-embedding-model-v2.js";
 import { SAPAILanguageModelV2 } from "./sap-ai-language-model-v2.js";
-import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
+import {
+  SAP_AI_PROVIDER_NAME,
+  validateEmbeddingModelParamsSettings,
+  validateModelParamsSettings,
+} from "./sap-ai-provider-options.js";
 import { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
@@ -108,6 +112,8 @@ export interface SAPAIProviderV2 extends ProviderV2 {
  * // Using provider methods
  * const chatModel = provider.chat('gpt-4.1');
  * const embeddingModel = provider.textEmbeddingModel('text-embedding-3-small');
+ * @throws {Error} When provider function is called with the `new` keyword.
+ * @throws {NoSuchModelError} When `imageModel()` is called (image generation not supported).
  * @see {@link SAPAIProviderSettings} for all configuration options.
  * @see {@link SAPAIProviderV2} for the provider interface.
  */
@@ -141,6 +147,10 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
   const providerApi = options.api ?? "orchestration";
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
+    if (settings.modelParams) {
+      validateModelParamsSettings(settings.modelParams);
+    }
+
     const mergedSettings = mergeSettingsWithApi<SAPAISettings>(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
@@ -159,6 +169,10 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
   ): SAPAIEmbeddingModelV2 => {
+    if (settings.modelParams) {
+      validateEmbeddingModelParamsSettings(settings.modelParams);
+    }
+
     const mergedSettings = mergeSettingsWithApi<SAPAIEmbeddingSettings>(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
