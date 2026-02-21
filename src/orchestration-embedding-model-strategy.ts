@@ -27,7 +27,6 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
   OrchestrationEmbeddingResponse
 > {
   private readonly ClientClass: OrchestrationEmbeddingClientClass;
-  private modelId = "";
 
   constructor(ClientClass: OrchestrationEmbeddingClientClass) {
     super();
@@ -59,7 +58,6 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
         : {}),
     };
 
-    this.modelId = config.modelId;
     return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
   }
 
@@ -86,10 +84,6 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
   protected extractTokenCount(response: OrchestrationEmbeddingResponse): number {
     const tokenUsage = response.getTokenUsage();
     return tokenUsage.total_tokens;
-  }
-
-  protected getModelId(): string {
-    return this.modelId;
   }
 
   protected getUrl(): string {

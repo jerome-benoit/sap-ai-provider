@@ -123,13 +123,6 @@ export abstract class BaseEmbeddingModelStrategy<
   protected abstract extractTokenCount(response: TResponse): number;
 
   /**
-   * Returns the model identifier for this strategy.
-   * @returns Model ID string.
-   * @internal
-   */
-  protected abstract getModelId(): string;
-
-  /**
    * Returns the URL identifier for this API (used in error messages).
    * @returns URL string identifier.
    * @internal
