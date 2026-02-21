@@ -14,12 +14,15 @@ import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
 import { deepMerge } from "./deep-merge.js";
 import { type EmbeddingProviderOptions, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
-/**
- * @internal
- */
+/** @internal */
 type OrchestrationEmbeddingClientClass = typeof OrchestrationEmbeddingClient;
 
 /**
+ * Embedding model strategy for the Orchestration API.
+ *
+ * Provides support for:
+ * - Data masking
+ * - Model parameters configuration
  * @internal
  */
 export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrategy<

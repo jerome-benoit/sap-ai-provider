@@ -15,11 +15,6 @@ import { deepMerge } from "./deep-merge.js";
 import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
 /**
- * @internal
- */
-type AzureOpenAiEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
-
-/**
  * Request context passed from createClient to executeCall.
  * @internal
  */
@@ -28,17 +23,23 @@ interface FMEmbeddingRequestContext {
   settings: SAPAIEmbeddingSettings;
 }
 
+/** @internal */
+type FoundationModelsEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
+
 /**
+ * Embedding model strategy for the Foundation Models API.
+ *
+ * Provides direct access to Azure OpenAI embedding models.
  * @internal
  */
 export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelStrategy<
   AzureOpenAiEmbeddingClient,
   AzureOpenAiEmbeddingResponse
 > {
-  private readonly ClientClass: AzureOpenAiEmbeddingClientClass;
+  private readonly ClientClass: FoundationModelsEmbeddingClientClass;
   private requestContext: FMEmbeddingRequestContext | undefined;
 
-  constructor(ClientClass: AzureOpenAiEmbeddingClientClass) {
+  constructor(ClientClass: FoundationModelsEmbeddingClientClass) {
     super();
     this.ClientClass = ClientClass;
   }
