@@ -33,7 +33,7 @@ describe("sapAiStrategy", () => {
   });
 
   describe("clearStrategyCaches", () => {
-    it("clears language model strategy cache", async () => {
+    it("should clear language model strategy cache", async () => {
       // Create a strategy to populate cache
       await getOrCreateLanguageModelStrategy("orchestration");
       expect(getLanguageModelStrategyCacheSize()).toBe(1);
@@ -43,7 +43,7 @@ describe("sapAiStrategy", () => {
       expect(getLanguageModelStrategyCacheSize()).toBe(0);
     });
 
-    it("clears embedding model strategy cache", async () => {
+    it("should clear embedding model strategy cache", async () => {
       // Create a strategy to populate cache
       await getOrCreateEmbeddingModelStrategy("orchestration");
       expect(getEmbeddingModelStrategyCacheSize()).toBe(1);
@@ -53,7 +53,7 @@ describe("sapAiStrategy", () => {
       expect(getEmbeddingModelStrategyCacheSize()).toBe(0);
     });
 
-    it("clears both caches simultaneously", async () => {
+    it("should clear both caches simultaneously", async () => {
       // Populate both caches
       await Promise.all([
         getOrCreateLanguageModelStrategy("orchestration"),

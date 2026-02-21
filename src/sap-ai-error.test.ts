@@ -6,7 +6,13 @@ import type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { convertSAPErrorToAPICallError, convertToAISDKError } from "./sap-ai-error";
+import {
+  ApiSwitchError,
+  convertSAPErrorToAPICallError,
+  convertToAISDKError,
+  normalizeHeaders,
+  UnsupportedFeatureError,
+} from "./sap-ai-error";
 
 interface ParsedResponseBody {
   error: {
@@ -16,6 +22,116 @@ interface ParsedResponseBody {
     request_id?: string;
   };
 }
+
+describe("ApiSwitchError", () => {
+  it("should create error with correct properties", () => {
+    const error = new ApiSwitchError("orchestration", "foundation-models", "filtering");
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("ApiSwitchError");
+    expect(error.fromApi).toBe("orchestration");
+    expect(error.toApi).toBe("foundation-models");
+    expect(error.conflictingFeature).toBe("filtering");
+  });
+
+  it("should generate descriptive error message", () => {
+    const error = new ApiSwitchError("orchestration", "foundation-models", "masking");
+
+    expect(error.message).toContain("Cannot switch from orchestration to foundation-models");
+    expect(error.message).toContain("masking would be ignored");
+    expect(error.message).toContain("Create a new model instance");
+  });
+
+  it("should handle reverse API switch direction", () => {
+    const error = new ApiSwitchError("foundation-models", "orchestration", "logprobs");
+
+    expect(error.fromApi).toBe("foundation-models");
+    expect(error.toApi).toBe("orchestration");
+    expect(error.message).toContain("Cannot switch from foundation-models to orchestration");
+  });
+});
+
+describe("UnsupportedFeatureError", () => {
+  it("should create error with correct properties", () => {
+    const error = new UnsupportedFeatureError(
+      "Content filtering",
+      "foundation-models",
+      "orchestration",
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("UnsupportedFeatureError");
+    expect(error.feature).toBe("Content filtering");
+    expect(error.api).toBe("foundation-models");
+    expect(error.suggestedApi).toBe("orchestration");
+  });
+
+  it("should generate descriptive error message for foundation-models", () => {
+    const error = new UnsupportedFeatureError("Data masking", "foundation-models", "orchestration");
+
+    expect(error.message).toContain("Data masking is only available with Orchestration API");
+    expect(error.message).toContain("will be ignored by Foundation Models API");
+  });
+
+  it("should generate descriptive error message for orchestration", () => {
+    const error = new UnsupportedFeatureError("logprobs", "orchestration", "foundation-models");
+
+    expect(error.message).toContain("logprobs is only available with Foundation Models API");
+    expect(error.message).toContain("will be ignored by Orchestration API");
+  });
+});
+
+describe("normalizeHeaders", () => {
+  it("should return undefined for null or non-object input", () => {
+    expect(normalizeHeaders(null)).toBeUndefined();
+    expect(normalizeHeaders(undefined)).toBeUndefined();
+    expect(normalizeHeaders("string")).toBeUndefined();
+    expect(normalizeHeaders(123)).toBeUndefined();
+  });
+
+  it("should pass through string values unchanged", () => {
+    const headers = { "content-type": "application/json", "x-custom": "value" };
+    expect(normalizeHeaders(headers)).toEqual(headers);
+  });
+
+  it("should convert number values to strings", () => {
+    expect(normalizeHeaders({ "content-length": 1024 })).toEqual({ "content-length": "1024" });
+  });
+
+  it("should convert boolean values to strings", () => {
+    expect(normalizeHeaders({ "x-disabled": false, "x-enabled": true })).toEqual({
+      "x-disabled": "false",
+      "x-enabled": "true",
+    });
+  });
+
+  it("should join array values with semicolon", () => {
+    expect(normalizeHeaders({ "x-multi": ["a", "b", "c"] })).toEqual({ "x-multi": "a; b; c" });
+  });
+
+  it("should filter non-string values from arrays", () => {
+    expect(normalizeHeaders({ "x-mixed": ["valid", 123, null, "also"] })).toEqual({
+      "x-mixed": "valid; also",
+    });
+  });
+
+  it("should exclude arrays with only non-string values", () => {
+    expect(normalizeHeaders({ "x-invalid": [123, null], "x-valid": "keep" })).toEqual({
+      "x-valid": "keep",
+    });
+  });
+
+  it("should skip object values", () => {
+    expect(normalizeHeaders({ "x-object": { nested: "obj" }, "x-valid": "keep" })).toEqual({
+      "x-valid": "keep",
+    });
+  });
+
+  it("should return undefined for empty result", () => {
+    expect(normalizeHeaders({ "x-object": { nested: "obj" } })).toBeUndefined();
+    expect(normalizeHeaders({})).toBeUndefined();
+  });
+});
 
 describe("convertSAPErrorToAPICallError", () => {
   describe("basic conversion", () => {
