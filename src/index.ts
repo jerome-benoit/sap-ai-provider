@@ -6,11 +6,6 @@
  */
 
 /**
- * @internal
- */
-export { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
-
-/**
  * Utility functions for escaping template delimiters (`{{`, `{%`, `{#`) in orchestration content.
  */
 export {

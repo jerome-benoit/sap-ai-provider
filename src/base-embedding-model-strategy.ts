@@ -13,7 +13,6 @@ import {
   buildEmbeddingResult,
   type EmbeddingProviderOptions,
   type EmbeddingType,
-  normalizeEmbedding,
   prepareEmbeddingCall,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
@@ -58,8 +57,7 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const response = await this.executeCall(client, values, embeddingType, abortSignal);
 
-      const rawEmbeddings = this.extractEmbeddings(response);
-      const embeddings = this.sortEmbeddings(rawEmbeddings);
+      const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
 
       return buildEmbeddingResult({
@@ -137,23 +135,4 @@ export abstract class BaseEmbeddingModelStrategy<
    * @internal
    */
   protected abstract getUrl(): string;
-
-  /**
-   * Sorts embeddings if required by the API.
-   * Override in subclasses that need to sort embeddings (e.g., by index).
-   * Default implementation returns embeddings unchanged.
-   * @param embeddings - Array of embedding vectors to sort.
-   * @returns Sorted array of embedding vectors.
-   * @internal
-   */
-  protected sortEmbeddings(embeddings: EmbeddingModelV3Embedding[]): EmbeddingModelV3Embedding[] {
-    return embeddings;
-  }
 }
-
-/**
- * Utility function to normalize embeddings from SDK response data.
- * Re-exported for use by concrete strategy implementations.
- * @internal
- */
-export { normalizeEmbedding };
