@@ -1070,6 +1070,7 @@ graph TB
 
     subgraph "Embedding Model Strategies"
         EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed#40;#41;]
+        BaseEM[BaseEmbeddingModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• doEmbed#40;#41;<br/>• abstract createClient#40;#41;<br/>• abstract executeCall#40;#41;<br/>• abstract extractEmbeddings#40;#41;<br/>• abstract extractTokenCount#40;#41;<br/>• abstract getUrl#40;#41;<br/>• abstract getModelId#40;#41;]
         OrchEM[OrchestrationEmbeddingModelStrategy]
         FMEM[FoundationModelsEmbeddingModelStrategy]
     end
@@ -1099,8 +1100,9 @@ graph TB
     BaseLM -.->|implements| LMStrategy
     OrchLM -.->|extends| BaseLM
     FMLM -.->|extends| BaseLM
-    EMStrategy -.->|implements| OrchEM
-    EMStrategy -.->|implements| FMEM
+    BaseEM -.->|implements| EMStrategy
+    OrchEM -.->|extends| BaseEM
+    FMEM -.->|extends| BaseEM
 
     OrchLM -->|uses| OrchSDK
     OrchEM -->|uses| OrchSDK
@@ -1180,7 +1182,7 @@ sequenceDiagram
 Strategies implement stateless interfaces - all tenant-specific configuration
 flows through method parameters, never cached in strategy instances:
 
-```typescript
+````typescript
 // Language model strategy interface
 interface LanguageModelAPIStrategy {
   doGenerate(
@@ -1196,9 +1198,111 @@ interface LanguageModelAPIStrategy {
 interface EmbeddingModelAPIStrategy {
   doEmbed(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, options: EmbeddingModelV3CallOptions, maxEmbeddingsPerCall: number): Promise<EmbeddingModelV3Result>;
 }
-```
 
-#### Template Method Pattern (Base Strategy)
+#### Template Method Pattern (Base Embedding Model Strategy)
+
+The `BaseEmbeddingModelStrategy` abstract class uses the Template Method pattern
+to consolidate shared logic for embedding generation while allowing API-specific
+customization:
+
+```typescript
+// Base class with Template Method pattern for embeddings
+abstract class BaseEmbeddingModelStrategy<TClient, TResponse>
+  implements EmbeddingModelAPIStrategy
+{
+  // Template method - defines the embedding algorithm skeleton
+  async doEmbed(config, settings, options, maxEmbeddingsPerCall): Promise<EmbeddingModelV3Result> {
+    const { abortSignal, values } = options;
+
+    const { embeddingOptions, providerName } = await prepareEmbeddingCall(
+      { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
+      options,
+    );
+
+    const embeddingType =
+      embeddingOptions?.type ?? (settings.type as EmbeddingType | undefined) ?? "text";
+
+    try {
+      const client = this.createClient(config, settings, embeddingOptions);
+      const response = await this.executeCall(client, values, embeddingType, abortSignal);
+      const rawEmbeddings = this.extractEmbeddings(response);
+      const embeddings = this.sortEmbeddings(rawEmbeddings);
+      const totalTokens = this.extractTokenCount(response);
+
+      return buildEmbeddingResult({
+        embeddings,
+        modelId: config.modelId,
+        providerName,
+        totalTokens,
+        version: VERSION,
+      });
+    } catch (error) {
+      throw convertToAISDKError(error, {
+        operation: "doEmbed",
+        requestBody: { values: values.length },
+        url: this.getUrl(),
+      });
+    }
+  }
+
+  // Primitive operations (hooks) - implemented by subclasses
+  protected abstract createClient(
+    config: EmbeddingModelStrategyConfig,
+    settings: SAPAIEmbeddingSettings,
+    embeddingOptions: EmbeddingProviderOptions | undefined,
+  ): TClient;
+  protected abstract executeCall(
+    client: TClient,
+    values: string[],
+    embeddingType: EmbeddingType,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<TResponse>;
+  protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
+  protected abstract extractTokenCount(response: TResponse): number;
+  protected abstract getUrl(): string;
+  protected abstract getModelId(): string;
+
+  // Optional hook - can be overridden by subclasses
+  protected sortEmbeddings(embeddings: EmbeddingModelV3Embedding[]): EmbeddingModelV3Embedding[] {
+    return embeddings;
+  }
+}
+````
+
+The `doEmbed()` method orchestrates the embedding workflow, defining the sequence
+of operations. Concrete embedding strategies like `OrchestrationEmbeddingModelStrategy`
+and `FoundationModelsEmbeddingModelStrategy` extend this base class and implement
+the abstract primitive operations (hooks) to provide API-specific
+implementations for creating clients, executing calls, and extracting data.
+
+**Key Hooks:**
+
+1.  `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
+2.  `executeCall(client, values, embeddingType, abortSignal)`: Executes the API call.
+3.  `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
+4.  `extractTokenCount(response)`: Retrieves token usage from the response.
+5.  `getUrl()`: Returns the API URL for error context.
+6.  `getModelId()`: Returns the model identifier.
+
+**Optional Hook:**
+
+- `sortEmbeddings(embeddings)`: Sorts embeddings if a specific API requires it. The
+  default implementation returns embeddings unchanged.
+
+**Benefits:**
+
+- **Code Reusability**: Eliminates approximately 50 lines of duplicate code
+  per strategy by centralizing the core embedding algorithm.
+- **Single Source of Truth**: Ensures consistent embedding logic across different
+  API implementations.
+- **Type Safety**: Utilizes generic type parameters (`<TClient, TResponse>`)
+  for enhanced type checking and developer experience.
+- **Extensibility**: Simplifies adding new embedding providers by requiring
+  only the implementation of a few abstract methods.
+
+````
+
+#### Template Method Pattern (Base Language Model Strategy)
 
 The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
 to consolidate shared logic while allowing API-specific customization:
@@ -1223,7 +1327,7 @@ abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   protected abstract createClient(config): ApiClient;
   protected abstract executeApiCall(client, request, options): Promise<ApiResponse>;
 }
-```
+````
 
 The concrete strategies (`OrchestrationLanguageModelStrategy` and
 `FoundationModelsLanguageModelStrategy`) extend this base class and implement
