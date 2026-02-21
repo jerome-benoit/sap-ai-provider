@@ -36,16 +36,16 @@ import { createSAPAIProvider, SAP_AI_PROVIDER_NAME, UnsupportedFeatureError } fr
  * Demonstrates Foundation Models API features
  */
 async function foundationModelsExample() {
-  console.log("Foundation Models API Example\n");
+  console.log("🔧 SAP AI Foundation Models API Example\n");
 
   // Verify AICORE_SERVICE_KEY is set for local development
   if (!process.env.AICORE_SERVICE_KEY && !process.env.VCAP_SERVICES) {
-    console.warn("Warning: AICORE_SERVICE_KEY environment variable not set.");
+    console.warn("⚠️  Warning: AICORE_SERVICE_KEY environment variable not set.");
     console.warn("   Set it in your .env file or environment for local development.\n");
   }
 
   try {
-    console.log("1. Provider-level API Selection\n");
+    console.log("📌 1. Provider-level API Selection\n");
 
     // Create a provider that defaults to Foundation Models API
     const fmProvider = createSAPAIProvider({
@@ -58,13 +58,13 @@ async function foundationModelsExample() {
       prompt: "What is 2 + 2? Reply with just the number.",
     });
 
-    console.log("   Response:", result1.text);
+    console.log("   📄 Response:", result1.text);
     console.log(
-      "   Usage:",
+      "   📊 Usage:",
       `${String(result1.usage.inputTokens)} input + ${String(result1.usage.outputTokens)} output`,
     );
 
-    console.log("\n2. Model-level API Selection\n");
+    console.log("\n📌 2. Model-level API Selection\n");
 
     // Create a default provider (uses Orchestration by default)
     const provider = createSAPAIProvider();
@@ -77,9 +77,9 @@ async function foundationModelsExample() {
       prompt: "What is the capital of France? Reply in one word.",
     });
 
-    console.log("   Response:", result2.text);
+    console.log("   📄 Response:", result2.text);
 
-    console.log("\n3. Logprobs - Token Probability Analysis\n");
+    console.log("\n📌 3. Logprobs - Token Probability Analysis\n");
 
     const result3 = await generateText({
       model: provider("gpt-4.1", {
@@ -93,13 +93,13 @@ async function foundationModelsExample() {
       prompt: "The quick brown",
     });
 
-    console.log("   Generated:", result3.text);
+    console.log("   📄 Generated:", result3.text);
 
     // Access logprobs from provider metadata if available
     // Note: logprobs are returned in the raw response body
-    console.log("   (Logprobs data available in raw API response)");
+    console.log("   📌 (Logprobs data available in raw API response)");
 
-    console.log("\n4. Seed - Deterministic Output\n");
+    console.log("\n📌 4. Seed - Deterministic Output\n");
 
     const seedValue = 12345;
 
@@ -123,11 +123,11 @@ async function foundationModelsExample() {
       prompt: "Generate a random 4-digit number.",
     });
 
-    console.log(`   First call (seed=${String(seedValue)}):`, result4a.text);
-    console.log(`   Second call (seed=${String(seedValue)}):`, result4b.text);
-    console.log("   Same output?", result4a.text === result4b.text ? "Yes" : "No");
+    console.log(`   📄 First call (seed=${String(seedValue)}):`, result4a.text);
+    console.log(`   📄 Second call (seed=${String(seedValue)}):`, result4b.text);
+    console.log("   🔍 Same output?", result4a.text === result4b.text ? "Yes ✅" : "No ❌");
 
-    console.log("\n5. Stop Sequences\n");
+    console.log("\n📌 5. Stop Sequences\n");
 
     const result5 = await generateText({
       model: provider("gpt-4.1", {
@@ -140,9 +140,9 @@ async function foundationModelsExample() {
       prompt: "Write a sentence about the ocean",
     });
 
-    console.log("   Response (stopped at '.' or '!'):", result5.text);
+    console.log("   📄 Response (stopped at '.' or '!'):", result5.text);
 
-    console.log("\n6. Streaming with Foundation Models\n");
+    console.log("\n📌 6. Streaming with Foundation Models\n");
 
     const stream = streamText({
       model: provider("gpt-4.1", {
@@ -152,28 +152,28 @@ async function foundationModelsExample() {
       prompt: "Count from 1 to 5, one number per line.",
     });
 
-    process.stdout.write("   Streaming: ");
+    process.stdout.write("   📡 Streaming: ");
     for await (const chunk of stream.textStream) {
       process.stdout.write(chunk);
     }
     console.log("\n");
 
-    console.log("7. Embeddings with Foundation Models\n");
+    console.log("📌 7. Embeddings with Foundation Models\n");
 
     const { embedding } = await embed({
       model: fmProvider.embedding("text-embedding-3-small"),
       value: "Hello, world!",
     });
 
-    console.log(`   Embedding dimensions: ${String(embedding.length)}`);
+    console.log(`   📊 Embedding dimensions: ${String(embedding.length)}`);
     console.log(
-      `   First 5 values: [${embedding
+      `   📄 First 5 values: [${embedding
         .slice(0, 5)
         .map((v) => v.toFixed(6))
         .join(", ")}...]`,
     );
 
-    console.log("\n8. Call-level API Override\n");
+    console.log("\n📌 8. Call-level API Override\n");
 
     // Even with a provider defaulting to Orchestration,
     // you can override at the call level
@@ -193,29 +193,29 @@ async function foundationModelsExample() {
       },
     });
 
-    console.log("   Response:", result8.text);
-    console.log("   (Used Foundation Models API despite provider default)");
+    console.log("   📄 Response:", result8.text);
+    console.log("   📌 (Used Foundation Models API despite provider default)");
 
-    console.log("\n9. Feature Validation\n");
+    console.log("\n📌 9. Feature Validation\n");
 
     // Note: UnsupportedFeatureError is thrown at runtime when you try
     // to use Orchestration-only features with Foundation Models API
     // (e.g., masking, filtering, grounding)
-    console.log("   Foundation Models API supports: logprobs, seed, stop, logit_bias, user");
-    console.log("   Orchestration API supports: masking, filtering, grounding, templating");
-    console.log("   Using incompatible features throws UnsupportedFeatureError");
+    console.log("   🔧 Foundation Models API supports: logprobs, seed, stop, logit_bias, user");
+    console.log("   🔧 Orchestration API supports: masking, filtering, grounding, templating");
+    console.log("   ⚠️  Using incompatible features throws UnsupportedFeatureError");
 
-    console.log("\nAll Foundation Models examples completed!");
+    console.log("\n✅ All Foundation Models examples completed!");
   } catch (error: unknown) {
     if (error instanceof LoadAPIKeyError) {
-      console.error("Authentication Error:", error.message);
+      console.error("❌ Authentication Error:", error.message);
     } else if (error instanceof NoSuchModelError) {
-      console.error("Model Not Found:", error.modelId);
+      console.error("❌ Model Not Found:", error.modelId);
     } else if (error instanceof UnsupportedFeatureError) {
-      console.error("Unsupported Feature:", error.message);
-      console.error("   Use API:", error.suggestedApi);
+      console.error("❌ Unsupported Feature:", error.message);
+      console.error("   💡 Use API:", error.suggestedApi);
     } else if (error instanceof APICallError) {
-      console.error("API Call Error:", error.statusCode, error.message);
+      console.error("❌ API Call Error:", error.statusCode, error.message);
 
       // Parse SAP-specific metadata
       const sapError = JSON.parse(error.responseBody ?? "{}") as {
@@ -227,10 +227,10 @@ async function foundationModelsExample() {
       }
     } else {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Example failed:", errorMessage);
+      console.error("❌ Example failed:", errorMessage);
     }
 
-    console.error("\nTroubleshooting tips:");
+    console.error("\n💡 Troubleshooting tips:");
     console.error("   - Ensure AICORE_SERVICE_KEY is set with valid credentials");
     console.error("   - Check that your SAP AI Core instance is accessible");
     console.error("   - Verify the model is available in your deployment");
