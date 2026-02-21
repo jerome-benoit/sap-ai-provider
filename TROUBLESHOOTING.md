@@ -87,14 +87,14 @@ below.
 - [Getting Help](#getting-help)
 - [Known Limitations](#known-limitations)
   - [Streaming Response ID Is Client-Generated](#streaming-response-id-is-client-generated)
-- [V2 Package Issues](#v2-package-issues)
+- [V2 Facade Package Issues](#v2-facade-package-issues)
 - [Related Documentation](#related-documentation)
 
 ## Authentication Issues
 
 ### Problem: "Authentication failed" or 401 errors
 
-**Symptoms:** HTTP 401, "Invalid token", provider fails to initialize
+**Symptoms:** HTTP 401, "Invalid token", provider fails to initialize, `LoadAPIKeyError` thrown
 
 **Solutions:**
 
@@ -211,7 +211,7 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 ### Problem: 404 Model/Deployment Not Found
 
-**Symptoms:** "Model not found", "Deployment not found", HTTP 404
+**Symptoms:** "Model not found", "Deployment not found", HTTP 404, `NoSuchModelError` thrown
 
 **Solutions:**
 
@@ -525,7 +525,7 @@ If issues persist:
 4. **SAP Support:** For SAP AI Core service issues -
    [SAP AI Core Docs](https://help.sap.com/docs/ai-core)
 
-## V2 Package Issues
+## V2 Facade Package Issues
 
 ### Problem: Method not found on provider
 

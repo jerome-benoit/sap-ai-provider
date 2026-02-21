@@ -261,7 +261,7 @@ To set up authentication, create a service key in SAP BTP...
 
 <!-- ✅ GOOD: Linking to source of truth -->
 
-See [Environment Setup Guide](./ENVIRONMENT_SETUP.md#authentication) for
+See [Environment Setup Guide](./ENVIRONMENT_SETUP.md#quick-setup-local-development) for
 authentication setup.
 ```
 

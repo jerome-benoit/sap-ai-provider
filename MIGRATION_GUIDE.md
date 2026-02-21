@@ -14,7 +14,7 @@ needs with the Vercel AI SDK:
     It provides access to the latest AI SDK features, including enhanced
     streaming capabilities, improved type safety, and new token usage
     metadata.
-  - **Key Features**: Implements `LanguageModelV3` and `EmbeddingModelV3`.
+  - **Key Features**: Implements Vercel AI SDK `LanguageModelV3` and `EmbeddingModelV3` interfaces.
 
 - **`@jerome-benoit/sap-ai-provider-v2` (V2 Facade Package)**:
   - **When to Use**: Use this package if your project requires
@@ -23,7 +23,7 @@ needs with the Vercel AI SDK:
     It works with Vercel AI SDK 5.0+ (6.0+ recommended) but exposes V2-compatible interfaces.
     It acts as a facade, wrapping the V3 implementation to provide a V2-compatible
     API surface.
-  - **Key Features**: Implements `LanguageModelV2` and `EmbeddingModelV2`.
+  - **Key Features**: Implements Vercel AI SDK `LanguageModelV2` and `EmbeddingModelV2` interfaces.
 
 ### Migrating from V2 to V3 (`@jerome-benoit/sap-ai-provider-v2` → `@jerome-benoit/sap-ai-provider`)
 
@@ -46,10 +46,10 @@ latest features of this provider, follow these steps:
 
    ```typescript
    // Before (V2)
-   import type { LanguageModelV2 } from "@ai-sdk/provider";
+   import type { LanguageModelV2 } from "@ai-sdk/provider"; // Vercel AI SDK V2 type
    const model: LanguageModelV2 = createSAPAIProvider()("gpt-4.1");
    // After (V3)
-   import type { LanguageModelV3 } from "@ai-sdk/provider";
+   import type { LanguageModelV3 } from "@ai-sdk/provider"; // Vercel AI SDK V3 type
    const model: LanguageModelV3 = createSAPAIProvider()("gpt-4.1");
    ```
 
@@ -206,19 +206,10 @@ console.log("Output tokens:", result.usage.outputTokens);
 
 ```typescript
 const result = await generateText({ model, prompt });
-// V3 has nested structure with detailed breakdown
-console.log("Input tokens:", result.usage.inputTokens.total);
-console.log("  - No cache:", result.usage.inputTokens.noCache);
-console.log("  - Cache read:", result.usage.inputTokens.cacheRead);
-console.log("  - Cache write:", result.usage.inputTokens.cacheWrite);
-
-console.log("Output tokens:", result.usage.outputTokens.total);
-console.log("  - Text:", result.usage.outputTokens.text);
-console.log("  - Reasoning:", result.usage.outputTokens.reasoning);
+// V3 has nested structure
+console.log("Input tokens:", result.usage.inputTokens?.total);
+console.log("Output tokens:", result.usage.outputTokens?.total);
 ```
-
-> **Note**: SAP AI Core currently doesn't provide the detailed breakdown fields,
-> so nested values may be `undefined`.
 
 #### 6. Update Warning Handling (If Checking Warnings)
 
@@ -350,7 +341,7 @@ const provider = createSAPAIProvider({
 If you encounter issues, you can stay on v3.x:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@^3.0.0
+npm install @jerome-benoit/sap-ai-provider@3.x.x
 ```
 
 Version 3.x will receive security updates for 6 months after v4.0.0 release.
@@ -452,7 +443,7 @@ types.**
 #### 1. Update Package
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@3.0.0
+npm install @jerome-benoit/sap-ai-provider@3.x.x
 ```
 
 #### 2. Update Error Handling
@@ -562,7 +553,7 @@ exponential backoff.
 #### 1. Update Package
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@latest ai@latest
+npm install @jerome-benoit/sap-ai-provider@2.x.x ai@latest
 ```
 
 #### 2. Update Authentication
@@ -844,7 +835,7 @@ createSAPAIProvider({
 
 ### Upgrading from 2.x to 3.x
 
-- [ ] Update package: `npm install @jerome-benoit/sap-ai-provider@3.0.0`
+- [ ] Update package: `npm install @jerome-benoit/sap-ai-provider@3.x.x`
 - [ ] Replace `SAPAIError` imports with `APICallError` from `@ai-sdk/provider`
 - [ ] Update error handling code to use `error.statusCode` instead of
       `error.code`
@@ -857,7 +848,7 @@ createSAPAIProvider({
 
 ### Upgrading from 1.x to 2.x
 
-- [ ] Update packages: `npm install @jerome-benoit/sap-ai-provider@latest ai@latest`
+- [ ] Update packages: `npm install @jerome-benoit/sap-ai-provider@2.x.x ai@latest`
 - [ ] Set `AICORE_SERVICE_KEY` environment variable (remove `serviceKey` from
       code)
 - [ ] Remove `await` from `createSAPAIProvider()` calls (now synchronous)
@@ -889,11 +880,11 @@ After migration:
 
 ## Common Migration Issues
 
-| Issue                       | Cause                     | Solution                                                                                                  |
-| --------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- |
-|                             |                           |                                                                                                           |
-| **Authentication failures** | Missing/incorrect env var | Verify `AICORE_SERVICE_KEY` is set. See [Environment Setup](./ENVIRONMENT_SETUP.md)                       |
-| **Masking errors**          | Incorrect configuration   | Use `buildDpiMaskingProvider()` helper. See [example-data-masking.ts](./examples/example-data-masking.ts) |
+| Issue | Cause | Solution |
+| ----- | ----- | -------- |
+
+| **Authentication failures** | Missing/incorrect env var | Verify `AICORE_SERVICE_KEY` is set. See [Environment Setup](./ENVIRONMENT_SETUP.md) |
+| **Masking errors** | Incorrect configuration | Use `buildDpiMaskingProvider()` helper. See [example-data-masking.ts](./examples/example-data-masking.ts) |
 
 For detailed troubleshooting, see [Troubleshooting Guide](./TROUBLESHOOTING.md).
 
@@ -906,7 +897,7 @@ If you need to rollback to a previous version:
 ### Rollback to 2.x
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@2.1.0
+npm install @jerome-benoit/sap-ai-provider@2.x.x
 ```
 
 > **Note:** Version 2.x exports `SAPAIError` class for error handling.
@@ -914,7 +905,7 @@ npm install @jerome-benoit/sap-ai-provider@2.1.0
 ### Rollback to 1.x
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@1.0.3 ai@5
+npm install @jerome-benoit/sap-ai-provider@1.0.3 ai@^5.0.0
 ```
 
 > **Note:** Version 1.x uses a different authentication approach and async
