@@ -20,6 +20,7 @@ import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import {
   buildEmbeddingResult,
+  type EmbeddingProviderOptions,
   hasKeys,
   normalizeEmbedding,
   prepareEmbeddingCall,
@@ -49,7 +50,7 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
   protected createClient(
     config: EmbeddingModelStrategyConfig,
     settings: SAPAIEmbeddingSettings,
-    embeddingOptions: any,
+    embeddingOptions: EmbeddingProviderOptions | undefined,
   ): OrchestrationEmbeddingClient {
     const mergedParams = deepMerge(
       (settings.modelParams as Record<string, unknown> | undefined) ?? {},
