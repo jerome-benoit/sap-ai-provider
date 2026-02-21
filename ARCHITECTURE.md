@@ -1277,12 +1277,12 @@ implementations for creating clients, executing calls, and extracting data.
 
 **Key Hooks:**
 
-1.  `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
-2.  `executeCall(client, values, embeddingType, abortSignal)`: Executes the API call.
-3.  `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
-4.  `extractTokenCount(response)`: Retrieves token usage from the response.
-5.  `getUrl()`: Returns the API URL for error context.
-6.  `getModelId()`: Returns the model identifier.
+1. `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
+2. `executeCall(client, values, embeddingType, abortSignal)`: Executes the API call.
+3. `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
+4. `extractTokenCount(response)`: Retrieves token usage from the response.
+5. `getUrl()`: Returns the API URL for error context.
+6. `getModelId()`: Returns the model identifier.
 
 **Optional Hook:**
 
@@ -1299,8 +1299,6 @@ implementations for creating clients, executing calls, and extracting data.
   for enhanced type checking and developer experience.
 - **Extensibility**: Simplifies adding new embedding providers by requiring
   only the implementation of a few abstract methods.
-
-````
 
 #### Template Method Pattern (Base Language Model Strategy)
 
@@ -1327,7 +1325,7 @@ abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   protected abstract createClient(config): ApiClient;
   protected abstract executeApiCall(client, request, options): Promise<ApiResponse>;
 }
-````
+```
 
 The concrete strategies (`OrchestrationLanguageModelStrategy` and
 `FoundationModelsLanguageModelStrategy`) extend this base class and implement
