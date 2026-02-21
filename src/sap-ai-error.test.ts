@@ -24,112 +24,134 @@ interface ParsedResponseBody {
 }
 
 describe("ApiSwitchError", () => {
-  it("should create error with correct properties", () => {
-    const error = new ApiSwitchError("orchestration", "foundation-models", "filtering");
+  it.each([
+    { feature: "filtering", fromApi: "orchestration", toApi: "foundation-models" },
+    { feature: "masking", fromApi: "orchestration", toApi: "foundation-models" },
+    { feature: "logprobs", fromApi: "foundation-models", toApi: "orchestration" },
+  ] as const)(
+    "should create error for $fromApi → $toApi with $feature",
+    ({ feature, fromApi, toApi }) => {
+      const error = new ApiSwitchError(fromApi, toApi, feature);
 
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe("ApiSwitchError");
-    expect(error.fromApi).toBe("orchestration");
-    expect(error.toApi).toBe("foundation-models");
-    expect(error.conflictingFeature).toBe("filtering");
-  });
-
-  it("should generate descriptive error message", () => {
-    const error = new ApiSwitchError("orchestration", "foundation-models", "masking");
-
-    expect(error.message).toContain("Cannot switch from orchestration to foundation-models");
-    expect(error.message).toContain("masking would be ignored");
-    expect(error.message).toContain("Create a new model instance");
-  });
-
-  it("should handle reverse API switch direction", () => {
-    const error = new ApiSwitchError("foundation-models", "orchestration", "logprobs");
-
-    expect(error.fromApi).toBe("foundation-models");
-    expect(error.toApi).toBe("orchestration");
-    expect(error.message).toContain("Cannot switch from foundation-models to orchestration");
-  });
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe("ApiSwitchError");
+      expect(error.fromApi).toBe(fromApi);
+      expect(error.toApi).toBe(toApi);
+      expect(error.conflictingFeature).toBe(feature);
+      expect(error.message).toContain(`Cannot switch from ${fromApi} to ${toApi}`);
+      expect(error.message).toContain(`${feature} would be ignored`);
+      expect(error.message).toContain("Create a new model instance");
+    },
+  );
 });
 
 describe("UnsupportedFeatureError", () => {
-  it("should create error with correct properties", () => {
-    const error = new UnsupportedFeatureError(
-      "Content filtering",
-      "foundation-models",
-      "orchestration",
-    );
+  it.each([
+    {
+      api: "foundation-models" as const,
+      expectedAvailable: "Orchestration API",
+      expectedIgnored: "Foundation Models API",
+      feature: "Content filtering",
+      suggestedApi: "orchestration" as const,
+    },
+    {
+      api: "foundation-models" as const,
+      expectedAvailable: "Orchestration API",
+      expectedIgnored: "Foundation Models API",
+      feature: "Data masking",
+      suggestedApi: "orchestration" as const,
+    },
+    {
+      api: "orchestration" as const,
+      expectedAvailable: "Foundation Models API",
+      expectedIgnored: "Orchestration API",
+      feature: "logprobs",
+      suggestedApi: "foundation-models" as const,
+    },
+  ])(
+    "should create error for $feature on $api",
+    ({ api, expectedAvailable, expectedIgnored, feature, suggestedApi }) => {
+      const error = new UnsupportedFeatureError(feature, api, suggestedApi);
 
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe("UnsupportedFeatureError");
-    expect(error.feature).toBe("Content filtering");
-    expect(error.api).toBe("foundation-models");
-    expect(error.suggestedApi).toBe("orchestration");
-  });
-
-  it("should generate descriptive error message for foundation-models", () => {
-    const error = new UnsupportedFeatureError("Data masking", "foundation-models", "orchestration");
-
-    expect(error.message).toContain("Data masking is only available with Orchestration API");
-    expect(error.message).toContain("will be ignored by Foundation Models API");
-  });
-
-  it("should generate descriptive error message for orchestration", () => {
-    const error = new UnsupportedFeatureError("logprobs", "orchestration", "foundation-models");
-
-    expect(error.message).toContain("logprobs is only available with Foundation Models API");
-    expect(error.message).toContain("will be ignored by Orchestration API");
-  });
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe("UnsupportedFeatureError");
+      expect(error.feature).toBe(feature);
+      expect(error.api).toBe(api);
+      expect(error.suggestedApi).toBe(suggestedApi);
+      expect(error.message).toContain(`${feature} is only available with ${expectedAvailable}`);
+      expect(error.message).toContain(`will be ignored by ${expectedIgnored}`);
+    },
+  );
 });
 
 describe("normalizeHeaders", () => {
-  it("should return undefined for null or non-object input", () => {
-    expect(normalizeHeaders(null)).toBeUndefined();
-    expect(normalizeHeaders(undefined)).toBeUndefined();
-    expect(normalizeHeaders("string")).toBeUndefined();
-    expect(normalizeHeaders(123)).toBeUndefined();
-  });
-
-  it("should pass through string values unchanged", () => {
-    const headers = { "content-type": "application/json", "x-custom": "value" };
-    expect(normalizeHeaders(headers)).toEqual(headers);
-  });
-
-  it("should convert number values to strings", () => {
-    expect(normalizeHeaders({ "content-length": 1024 })).toEqual({ "content-length": "1024" });
-  });
-
-  it("should convert boolean values to strings", () => {
-    expect(normalizeHeaders({ "x-disabled": false, "x-enabled": true })).toEqual({
-      "x-disabled": "false",
-      "x-enabled": "true",
+  describe("invalid inputs", () => {
+    it.each([
+      { description: "null", input: null },
+      { description: "undefined", input: undefined },
+      { description: "string", input: "string" },
+      { description: "number", input: 123 },
+    ])("should return undefined for $description input", ({ input }) => {
+      expect(normalizeHeaders(input)).toBeUndefined();
     });
   });
 
-  it("should join array values with semicolon", () => {
-    expect(normalizeHeaders({ "x-multi": ["a", "b", "c"] })).toEqual({ "x-multi": "a; b; c" });
-  });
-
-  it("should filter non-string values from arrays", () => {
-    expect(normalizeHeaders({ "x-mixed": ["valid", 123, null, "also"] })).toEqual({
-      "x-mixed": "valid; also",
+  describe("value conversions", () => {
+    it.each([
+      {
+        description: "string values unchanged",
+        expected: { "content-type": "application/json", "x-custom": "value" },
+        input: { "content-type": "application/json", "x-custom": "value" },
+      },
+      {
+        description: "number values to strings",
+        expected: { "content-length": "1024" },
+        input: { "content-length": 1024 },
+      },
+      {
+        description: "boolean values to strings",
+        expected: { "x-disabled": "false", "x-enabled": "true" },
+        input: { "x-disabled": false, "x-enabled": true },
+      },
+      {
+        description: "array values joined with semicolon",
+        expected: { "x-multi": "a; b; c" },
+        input: { "x-multi": ["a", "b", "c"] },
+      },
+      {
+        description: "arrays with non-string values filtered",
+        expected: { "x-mixed": "valid; also" },
+        input: { "x-mixed": ["valid", 123, null, "also"] },
+      },
+    ])("should convert $description", ({ expected, input }) => {
+      expect(normalizeHeaders(input)).toEqual(expected);
     });
   });
 
-  it("should exclude arrays with only non-string values", () => {
-    expect(normalizeHeaders({ "x-invalid": [123, null], "x-valid": "keep" })).toEqual({
-      "x-valid": "keep",
+  describe("exclusions", () => {
+    it.each([
+      {
+        description: "arrays with only non-string values",
+        expected: { "x-valid": "keep" },
+        input: { "x-invalid": [123, null], "x-valid": "keep" },
+      },
+      {
+        description: "object values",
+        expected: { "x-valid": "keep" },
+        input: { "x-object": { nested: "obj" }, "x-valid": "keep" },
+      },
+    ])("should exclude $description", ({ expected, input }) => {
+      expect(normalizeHeaders(input)).toEqual(expected);
     });
   });
 
-  it("should skip object values", () => {
-    expect(normalizeHeaders({ "x-object": { nested: "obj" }, "x-valid": "keep" })).toEqual({
-      "x-valid": "keep",
+  describe("empty results", () => {
+    it.each([
+      { description: "only invalid values", input: { "x-object": { nested: "obj" } } },
+      { description: "empty object", input: {} },
+    ])("should return undefined for $description", ({ input }) => {
+      expect(normalizeHeaders(input)).toBeUndefined();
     });
-  });
-
-  it("should return undefined for empty result", () => {
-    expect(normalizeHeaders({ "x-object": { nested: "obj" } })).toBeUndefined();
-    expect(normalizeHeaders({})).toBeUndefined();
   });
 });
 
