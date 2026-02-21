@@ -280,17 +280,28 @@ graph TB
 
 ```text
 src/
-├── index.ts                                        # Public API exports
-├── sap-ai-provider.ts                              # Main provider factory
+│   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
+├── index.ts                                        # V3 public API exports
+├── sap-ai-provider.ts                              # V3 provider factory
+├── sap-ai-language-model.ts                        # V3 language model (API-agnostic)
+├── sap-ai-embedding-model.ts                       # V3 embedding model (API-agnostic)
+│
+│   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
+├── index-v2.ts                                     # V2 public API exports (facade)
+├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
+├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
+├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
+├── sap-ai-adapters-v3-to-v2.ts                     # V3→V2 format conversion
+│
+│   # Shared Infrastructure
 ├── sap-ai-provider-options.ts                      # Provider options & Zod schemas
-├── sap-ai-language-model.ts                        # Language model (API-agnostic)
-├── sap-ai-embedding-model.ts                       # Embedding model (API-agnostic)
 ├── sap-ai-settings.ts                              # Settings and type definitions
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
+├── base-embedding-model-strategy.ts                # Base class for embedding model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
@@ -1070,7 +1081,7 @@ graph TB
 
     subgraph "Embedding Model Strategies"
         EMStrategy[EmbeddingModelAPIStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>interface:<br/>• doEmbed#40;#41;]
-        BaseEM[BaseEmbeddingModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• doEmbed#40;#41;<br/>• abstract createClient#40;#41;<br/>• abstract executeCall#40;#41;<br/>• abstract extractEmbeddings#40;#41;<br/>• abstract extractTokenCount#40;#41;<br/>• abstract getUrl#40;#41;<br/>• abstract getModelId#40;#41;]
+        BaseEM[BaseEmbeddingModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• doEmbed#40;#41;<br/>• abstract createClient#40;#41;<br/>• abstract executeCall#40;#41;<br/>• abstract extractEmbeddings#40;#41;<br/>• abstract extractTokenCount#40;#41;<br/>• abstract getUrl#40;#41;]
         OrchEM[OrchestrationEmbeddingModelStrategy]
         FMEM[FoundationModelsEmbeddingModelStrategy]
     end
@@ -1246,12 +1257,6 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements Embeddi
   protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
   protected abstract extractTokenCount(response: TResponse): number;
   protected abstract getUrl(): string;
-  protected abstract getModelId(): string;
-
-  // Optional hook - can be overridden by subclasses
-  protected sortEmbeddings(embeddings: EmbeddingModelV3Embedding[]): EmbeddingModelV3Embedding[] {
-    return embeddings;
-  }
 }
 ```
 
@@ -1268,12 +1273,6 @@ implementations for creating clients, executing calls, and extracting data.
 3. `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
 4. `extractTokenCount(response)`: Retrieves token usage from the response.
 5. `getUrl()`: Returns the API URL for error context.
-6. `getModelId()`: Returns the model identifier.
-
-**Optional Hook:**
-
-- `sortEmbeddings(embeddings)`: Sorts embeddings if a specific API requires it. The
-  default implementation returns embeddings unchanged.
 
 **Benefits:**
 
@@ -1337,7 +1336,7 @@ const result = await generateText({
   model,
   prompt: "Hello",
   providerOptions: {
-    sapai: { api: "orchestration" }, // Wins!
+    "sap-ai": { api: "orchestration" }, // Wins!
   },
 });
 ```
