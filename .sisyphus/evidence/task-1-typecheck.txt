@@ -1,0 +1,5 @@
+
+> @jerome-benoit/sap-ai-provider@4.4.15 type-check
+> tsc --noEmit
+
+Exit code: 0
