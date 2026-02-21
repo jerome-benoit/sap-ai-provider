@@ -22,18 +22,25 @@ interface PackageLockJson {
   packages: { "": { name: string } };
 }
 
-/**
- * Reads and parses a JSON file.
- * @param path - Absolute path to the JSON file.
- * @returns The parsed JSON content.
- */
-function readJson(path: string): unknown {
-  return JSON.parse(readFileSync(path, "utf-8"));
+/** Prepares V2 package for publishing. */
+function main(): void {
+  renameDistFiles();
+  updatePackageJson();
+  updatePackageLockJson();
 }
 
 /**
- *
+ * Parses JSON file.
+ * @template T - Expected type.
+ * @param path - File path.
+ * @returns Parsed content.
  */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+function readJson<T>(path: string): T {
+  return JSON.parse(readFileSync(path, "utf-8")) as T;
+}
+
+/** Renames `index-v2.*` to `index.*` in dist. */
 function renameDistFiles(): void {
   for (const file of readdirSync(DIST)) {
     if (file.startsWith("index-v2")) {
@@ -44,12 +51,10 @@ function renameDistFiles(): void {
   }
 }
 
-/**
- *
- */
+/** Patches package.json for V2. */
 function updatePackageJson(): void {
   const pkgPath = resolve(ROOT, "package.json");
-  const pkg = readJson(pkgPath) as PackageJson;
+  const pkg = readJson<PackageJson>(pkgPath);
 
   pkg.name = V2_OVERRIDES.name;
   pkg.description = V2_OVERRIDES.description;
@@ -59,16 +64,14 @@ function updatePackageJson(): void {
   console.log("Updated package.json for V2");
 }
 
-/**
- *
- */
+/** Patches package-lock.json for V2. */
 function updatePackageLockJson(): void {
   const lockPath = resolve(ROOT, "package-lock.json");
   if (!existsSync(lockPath)) {
     return;
   }
 
-  const lock = readJson(lockPath) as PackageLockJson;
+  const lock = readJson<PackageLockJson>(lockPath);
 
   lock.name = V2_OVERRIDES.name;
   lock.packages[""].name = V2_OVERRIDES.name;
@@ -78,14 +81,14 @@ function updatePackageLockJson(): void {
 }
 
 /**
- * Writes data to a JSON file with pretty formatting.
- * @param path - Absolute path to the JSON file.
- * @param data - Data to serialize and write.
+ * Writes JSON file with formatting.
+ * @template T - Data type.
+ * @param path - File path.
+ * @param data - Content to write.
  */
-function writeJson(path: string, data: unknown): void {
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+function writeJson<T>(path: string, data: T): void {
   writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
 }
 
-renameDistFiles();
-updatePackageJson();
-updatePackageLockJson();
+main();
