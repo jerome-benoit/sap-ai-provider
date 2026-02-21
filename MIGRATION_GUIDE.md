@@ -880,11 +880,10 @@ After migration:
 
 ## Common Migration Issues
 
-| Issue | Cause | Solution |
-| ----- | ----- | -------- |
-
-| **Authentication failures** | Missing/incorrect env var | Verify `AICORE_SERVICE_KEY` is set. See [Environment Setup](./ENVIRONMENT_SETUP.md) |
-| **Masking errors** | Incorrect configuration | Use `buildDpiMaskingProvider()` helper. See [example-data-masking.ts](./examples/example-data-masking.ts) |
+| Issue                       | Cause                     | Solution                                                                                                  |
+| --------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Authentication failures** | Missing/incorrect env var | Verify `AICORE_SERVICE_KEY` is set. See [Environment Setup](./ENVIRONMENT_SETUP.md)                       |
+| **Masking errors**          | Incorrect configuration   | Use `buildDpiMaskingProvider()` helper. See [example-data-masking.ts](./examples/example-data-masking.ts) |
 
 For detailed troubleshooting, see [Troubleshooting Guide](./TROUBLESHOOTING.md).
 
