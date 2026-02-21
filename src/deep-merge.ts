@@ -18,7 +18,12 @@ const MAX_DEPTH = 100;
 export function deepMerge<T extends Record<string, unknown>>(
   ...sources: (Partial<T> | undefined)[]
 ): T {
-  return mergeInternal(sources as Record<string, unknown>[]) as T;
+  let result: Record<string, unknown> = {};
+  for (const source of sources) {
+    if (source == null) continue;
+    result = mergeTwo(result, source, new Set(), 0);
+  }
+  return result as T;
 }
 
 /**
@@ -35,8 +40,10 @@ export function deepMergeTwo<T extends Record<string, unknown>>(
 }
 
 /**
+ * Deep clones an object with circular reference detection.
+ * Uses ancestor tracking: adds object before recursing, removes after.
  * @param obj - Object to clone.
- * @param seen - Set of seen objects for circular reference detection.
+ * @param ancestors - Set of ancestor objects in the current recursion path.
  * @param depth - Current recursion depth.
  * @returns Cloned object.
  * @throws {Error} When maximum merge depth (100) is exceeded.
@@ -45,23 +52,26 @@ export function deepMergeTwo<T extends Record<string, unknown>>(
  */
 function cloneDeep(
   obj: Record<string, unknown>,
-  seen: WeakSet<object>,
+  ancestors: Set<object>,
   depth: number,
 ): Record<string, unknown> {
   if (depth > MAX_DEPTH) {
     throw new Error("Maximum merge depth exceeded");
   }
-  if (seen.has(obj)) {
+  if (ancestors.has(obj)) {
     throw new Error("Circular reference detected during deep merge");
   }
-  seen.add(obj);
+
+  ancestors.add(obj);
 
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(obj)) {
     if (!isSafeKey(key)) continue;
     const value = obj[key];
-    result[key] = isPlainObject(value) ? cloneDeep(value, seen, depth + 1) : value;
+    result[key] = isPlainObject(value) ? cloneDeep(value, ancestors, depth + 1) : value;
   }
+
+  ancestors.delete(obj);
   return result;
 }
 
@@ -86,23 +96,11 @@ function isSafeKey(key: string): boolean {
 }
 
 /**
- * @param sources - Objects to merge.
- * @returns Merged object.
- * @internal
- */
-function mergeInternal(sources: (Record<string, unknown> | undefined)[]): Record<string, unknown> {
-  let result: Record<string, unknown> = {};
-  for (const source of sources) {
-    if (source == null) continue;
-    result = mergeTwo(result, source, new WeakSet(), 0);
-  }
-  return result;
-}
-
-/**
+ * Merges two objects with circular reference detection.
+ * Uses ancestor tracking: adds source before recursing, removes after.
  * @param target - Target object.
  * @param source - Source object.
- * @param seen - Set of seen objects for circular reference detection.
+ * @param ancestors - Set of ancestor objects in the current recursion path.
  * @param depth - Current recursion depth.
  * @returns Merged object.
  * @throws {Error} When maximum merge depth (100) is exceeded.
@@ -112,16 +110,17 @@ function mergeInternal(sources: (Record<string, unknown> | undefined)[]): Record
 function mergeTwo(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
-  seen: WeakSet<object>,
+  ancestors: Set<object>,
   depth: number,
 ): Record<string, unknown> {
   if (depth > MAX_DEPTH) {
     throw new Error("Maximum merge depth exceeded");
   }
-  if (seen.has(source)) {
+  if (ancestors.has(source)) {
     throw new Error("Circular reference detected during deep merge");
   }
-  seen.add(source);
+
+  ancestors.add(source);
 
   for (const key of Object.keys(source)) {
     if (!isSafeKey(key)) continue;
@@ -130,12 +129,15 @@ function mergeTwo(
     const targetValue = target[key];
 
     if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
-      target[key] = mergeTwo(cloneDeep(targetValue, seen, depth + 1), sourceValue, seen, depth + 1);
+      const cloned = cloneDeep(targetValue, new Set(), depth + 1);
+      target[key] = mergeTwo(cloned, sourceValue, ancestors, depth + 1);
     } else if (isPlainObject(sourceValue)) {
-      target[key] = cloneDeep(sourceValue, seen, depth + 1);
+      target[key] = cloneDeep(sourceValue, new Set(), depth + 1);
     } else {
       target[key] = sourceValue;
     }
   }
+
+  ancestors.delete(source);
   return target;
 }

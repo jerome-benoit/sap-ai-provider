@@ -160,6 +160,67 @@ describe("deepMerge", () => {
 
       expect(result.a).not.toBe(source1.a);
     });
+
+    describe("deep cloning during nested merge (regression tests)", () => {
+      it("should not mutate deeply nested target objects when merging", () => {
+        const target = { a: { b: { c: { original: true } } } };
+        const source = { a: { b: { c: { added: true } } } };
+        const originalC = target.a.b.c;
+
+        deepMerge<Record<string, unknown>>(target, source);
+
+        // Original nested object should be unchanged
+        expect(originalC).toEqual({ original: true });
+        expect(target.a.b.c).toEqual({ original: true });
+      });
+
+      it("should deeply clone target nested objects (not shallow copy)", () => {
+        const deepNested = { level3: { value: 1 } };
+        const target = { a: { b: deepNested } };
+        const source = { a: { b: { level3: { extra: 2 } } } };
+
+        const result = deepMerge<Record<string, unknown>>(target, source);
+
+        // Result should have merged values
+        expect(result).toEqual({ a: { b: { level3: { extra: 2, value: 1 } } } });
+        // Original deep nested object should be unchanged
+        expect(deepNested).toEqual({ level3: { value: 1 } });
+        // Result should not reference original nested object
+        expect((result.a as Record<string, unknown>).b).not.toBe(deepNested);
+      });
+
+      it("should preserve target immutability across multiple merge levels", () => {
+        const level2 = { c: { d: 1 } };
+        const level1 = { b: level2 };
+        const target = { a: level1 };
+        const source = { a: { b: { c: { e: 2 } } } };
+
+        const result = deepMerge<Record<string, unknown>>(target, source);
+
+        // All original nested objects should be unchanged
+        expect(level2).toEqual({ c: { d: 1 } });
+        expect(level1).toEqual({ b: { c: { d: 1 } } });
+        expect(target).toEqual({ a: { b: { c: { d: 1 } } } });
+        // Result should have merged values
+        expect(result).toEqual({ a: { b: { c: { d: 1, e: 2 } } } });
+      });
+
+      it("should handle mutation attempts on result without affecting sources", () => {
+        const target = { config: { nested: { value: 1 } } };
+        const source = { config: { nested: { extra: 2 } } };
+
+        const result = deepMerge<Record<string, unknown>>(target, source);
+
+        // Mutate the result
+        (result.config as Record<string, unknown>).mutated = true;
+        ((result.config as Record<string, unknown>).nested as Record<string, unknown>).changed =
+          true;
+
+        // Sources should remain unchanged
+        expect(target).toEqual({ config: { nested: { value: 1 } } });
+        expect(source).toEqual({ config: { nested: { extra: 2 } } });
+      });
+    });
   });
 
   describe("edge cases", () => {
@@ -274,6 +335,80 @@ describe("deepMerge", () => {
         const result = deepMerge<Record<string, unknown>>({ a: shared }, { b: shared });
 
         expect(result).toEqual({ a: { value: 1 }, b: { value: 1 } });
+      });
+    });
+
+    describe("shared object handling (regression tests)", () => {
+      it("should handle same object in both target and source at same key", () => {
+        const shared = { nested: { value: 1 } };
+        const target = { config: shared };
+        const source = { config: shared, extra: "new" };
+
+        const result = deepMerge<Record<string, unknown>>(target, source);
+
+        expect(result).toEqual({
+          config: { nested: { value: 1 } },
+          extra: "new",
+        });
+      });
+
+      it("should handle diamond pattern (same object referenced multiple times)", () => {
+        const shared = { id: 42 };
+        const source = {
+          left: { ref: shared },
+          right: { ref: shared },
+        };
+
+        const result = deepMerge<Record<string, unknown>>({}, source);
+
+        expect(result).toEqual({
+          left: { ref: { id: 42 } },
+          right: { ref: { id: 42 } },
+        });
+        // Verify deep cloning (not same reference)
+        expect(result.left).not.toBe(result.right);
+      });
+
+      it("should handle object appearing in target then reappearing in source", () => {
+        const shared = { data: "shared" };
+        const target = { a: shared, b: { nested: shared } };
+        const source = { c: shared };
+
+        const result = deepMerge<Record<string, unknown>>(target, source);
+
+        expect(result).toEqual({
+          a: { data: "shared" },
+          b: { nested: { data: "shared" } },
+          c: { data: "shared" },
+        });
+      });
+
+      it("should handle deeply nested shared objects", () => {
+        const shared = { deep: { value: 1 } };
+        const target = { level1: { level2: { shared } } };
+        const source = { level1: { level2: { extra: true, shared } } };
+
+        const result = deepMerge<Record<string, unknown>>(target, source);
+
+        expect(result).toEqual({
+          level1: { level2: { extra: true, shared: { deep: { value: 1 } } } },
+        });
+      });
+
+      it("should still detect actual circular references after processing shared objects", () => {
+        const shared = { value: 1 };
+        const circular: Record<string, unknown> = { shared };
+        circular.self = circular; // Actual circular reference
+
+        // First merge with shared object succeeds
+        expect(() =>
+          deepMerge<Record<string, unknown>>({ a: shared }, { b: shared }),
+        ).not.toThrow();
+
+        // Then circular reference is still detected
+        expect(() => deepMerge<Record<string, unknown>>({}, circular)).toThrow(
+          "Circular reference detected during deep merge",
+        );
       });
     });
 
