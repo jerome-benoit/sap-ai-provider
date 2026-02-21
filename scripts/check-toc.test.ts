@@ -92,36 +92,21 @@ describe("slugify", () => {
   });
 
   describe("punctuation and quotes", () => {
-    it("should remove apostrophes", () => {
-      expect(slugify("it's working")).toBe("its-working");
-    });
-
-    it("should remove possessive apostrophes", () => {
-      expect(slugify("user's guide")).toBe("users-guide");
-    });
-
-    it("should remove double quotes", () => {
-      expect(slugify('The "best" option')).toBe("the-best-option");
-    });
-
-    it("should remove single quotes", () => {
-      expect(slugify("Don't do this")).toBe("dont-do-this");
-    });
-
-    it("should remove periods (dots)", () => {
-      expect(slugify("Version 2.0.1")).toBe("version-201");
-    });
-
-    it("should remove commas", () => {
-      expect(slugify("Hello, World")).toBe("hello-world");
-    });
-
-    it("should remove semicolons", () => {
-      expect(slugify("Part A; Part B")).toBe("part-a-part-b");
-    });
-
-    it("should handle multiple punctuation marks", () => {
-      expect(slugify("What's this? It's a test!")).toBe("whats-this-its-a-test");
+    it.each([
+      { description: "apostrophes", expected: "its-working", input: "it's working" },
+      { description: "possessive apostrophes", expected: "users-guide", input: "user's guide" },
+      { description: "double quotes", expected: "the-best-option", input: 'The "best" option' },
+      { description: "single quotes", expected: "dont-do-this", input: "Don't do this" },
+      { description: "periods (dots)", expected: "version-201", input: "Version 2.0.1" },
+      { description: "commas", expected: "hello-world", input: "Hello, World" },
+      { description: "semicolons", expected: "part-a-part-b", input: "Part A; Part B" },
+      {
+        description: "multiple punctuation marks",
+        expected: "whats-this-its-a-test",
+        input: "What's this? It's a test!",
+      },
+    ])("should remove $description", ({ expected, input }) => {
+      expect(slugify(input)).toBe(expected);
     });
   });
 
@@ -149,52 +134,33 @@ describe("slugify", () => {
   });
 
   describe("symbols and special characters", () => {
-    it("should remove @ symbol", () => {
-      expect(slugify("@username mention")).toBe("username-mention");
-    });
-
-    it("should remove # symbol", () => {
-      expect(slugify("Issue #123")).toBe("issue-123");
-    });
-
-    it("should remove $ symbol", () => {
-      expect(slugify("Price: $100")).toBe("price-100");
-    });
-
-    it("should remove % symbol", () => {
-      expect(slugify("100% complete")).toBe("100-complete");
-    });
-
-    it("should remove ^ symbol", () => {
-      expect(slugify("x^2 formula")).toBe("x2-formula");
-    });
-
-    it("should remove + symbol", () => {
-      expect(slugify("C++ Programming")).toBe("c-programming");
-    });
-
-    it("should remove = symbol but keep double hyphens from spaces", () => {
-      expect(slugify("a = b")).toBe("a--b");
-    });
-
-    it("should remove < and > symbols", () => {
-      expect(slugify("Array<string>")).toBe("arraystring");
-    });
-
-    it("should remove curly braces but keep double hyphens", () => {
-      expect(slugify("Object { key }")).toBe("object--key");
-    });
-
-    it("should remove square brackets", () => {
-      expect(slugify("Array[0]")).toBe("array0");
-    });
-
-    it("should remove pipe symbol but keep double hyphens", () => {
-      expect(slugify("Option A | Option B")).toBe("option-a--option-b");
-    });
-
-    it("should remove backslash", () => {
-      expect(slugify("path\\to\\file")).toBe("pathtofile");
+    it.each([
+      { description: "@ symbol", expected: "username-mention", input: "@username mention" },
+      { description: "# symbol", expected: "issue-123", input: "Issue #123" },
+      { description: "$ symbol", expected: "price-100", input: "Price: $100" },
+      { description: "% symbol", expected: "100-complete", input: "100% complete" },
+      { description: "^ symbol", expected: "x2-formula", input: "x^2 formula" },
+      { description: "+ symbol", expected: "c-programming", input: "C++ Programming" },
+      {
+        description: "= symbol (keeps double hyphens from spaces)",
+        expected: "a--b",
+        input: "a = b",
+      },
+      { description: "< and > symbols", expected: "arraystring", input: "Array<string>" },
+      {
+        description: "curly braces (keeps double hyphens)",
+        expected: "object--key",
+        input: "Object { key }",
+      },
+      { description: "square brackets", expected: "array0", input: "Array[0]" },
+      {
+        description: "pipe symbol (keeps double hyphens)",
+        expected: "option-a--option-b",
+        input: "Option A | Option B",
+      },
+      { description: "backslash", expected: "pathtofile", input: "path\\to\\file" },
+    ])("should remove $description", ({ expected, input }) => {
+      expect(slugify(input)).toBe(expected);
     });
   });
 });

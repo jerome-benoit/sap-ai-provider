@@ -319,20 +319,21 @@ describe("createSAPAIProvider", () => {
 
   describe("API selection", () => {
     describe("provider-level selection", () => {
-      it("should default to orchestration API when no api option is specified", () => {
-        const provider = createSAPAIProvider();
-        const model = provider("gpt-4o");
-        expect(model).toBeDefined();
-      });
-
-      it("should accept orchestration api at provider level", () => {
-        const provider = createSAPAIProvider({ api: "orchestration" });
-        const model = provider("gpt-4o");
-        expect(model).toBeDefined();
-      });
-
-      it("should accept foundation-models api at provider level", () => {
-        const provider = createSAPAIProvider({ api: "foundation-models" });
+      it.each([
+        {
+          api: undefined,
+          description: "default to orchestration API when no api option is specified",
+        },
+        {
+          api: "orchestration" as const,
+          description: "accept orchestration api at provider level",
+        },
+        {
+          api: "foundation-models" as const,
+          description: "accept foundation-models api at provider level",
+        },
+      ])("should $description", ({ api }) => {
+        const provider = createSAPAIProvider(api ? { api } : {});
         const model = provider("gpt-4o");
         expect(model).toBeDefined();
       });
@@ -345,27 +346,22 @@ describe("createSAPAIProvider", () => {
         expect(model).toBeDefined();
       });
 
-      it("should accept api option in chat method", () => {
+      it.each([
+        { api: "foundation-models" as const, method: "chat" as const, modelId: "gpt-4o" },
+        { api: "orchestration" as const, method: "languageModel" as const, modelId: "gpt-4o" },
+        {
+          api: "foundation-models" as const,
+          method: "embedding" as const,
+          modelId: "text-embedding-ada-002",
+        },
+        {
+          api: "orchestration" as const,
+          method: "embeddingModel" as const,
+          modelId: "text-embedding-3-small",
+        },
+      ])("should accept api option in $method method", ({ api, method, modelId }) => {
         const provider = createSAPAIProvider();
-        const model = provider.chat("gpt-4o", { api: "foundation-models" });
-        expect(model).toBeDefined();
-      });
-
-      it("should accept api option in languageModel method", () => {
-        const provider = createSAPAIProvider();
-        const model = provider.languageModel("gpt-4o", { api: "orchestration" });
-        expect(model).toBeDefined();
-      });
-
-      it("should accept api option in embedding method", () => {
-        const provider = createSAPAIProvider();
-        const model = provider.embedding("text-embedding-ada-002", { api: "foundation-models" });
-        expect(model).toBeDefined();
-      });
-
-      it("should accept api option in embeddingModel method", () => {
-        const provider = createSAPAIProvider();
-        const model = provider.embeddingModel("text-embedding-3-small", { api: "orchestration" });
+        const model = provider[method](modelId, { api });
         expect(model).toBeDefined();
       });
     });
@@ -397,21 +393,25 @@ describe("createSAPAIProvider", () => {
     });
 
     describe("API resolution precedence", () => {
-      it("should use provider-level API as fallback when model-level is not set", () => {
-        const provider = createSAPAIProvider({ api: "foundation-models" });
-        const model = provider("gpt-4o");
-        expect(model).toBeDefined();
-      });
-
-      it("should prefer model-level API over provider-level API", () => {
-        const provider = createSAPAIProvider({ api: "orchestration" });
-        const model = provider("gpt-4o", { api: "foundation-models" });
-        expect(model).toBeDefined();
-      });
-
-      it("should use default orchestration when neither provider nor model specifies api", () => {
-        const provider = createSAPAIProvider();
-        const model = provider("gpt-4o");
+      it.each([
+        {
+          description: "use provider-level API as fallback when model-level is not set",
+          modelApi: undefined,
+          providerApi: "foundation-models" as const,
+        },
+        {
+          description: "prefer model-level API over provider-level API",
+          modelApi: "foundation-models" as const,
+          providerApi: "orchestration" as const,
+        },
+        {
+          description: "use default orchestration when neither provider nor model specifies api",
+          modelApi: undefined,
+          providerApi: undefined,
+        },
+      ])("should $description", ({ modelApi, providerApi }) => {
+        const provider = createSAPAIProvider(providerApi ? { api: providerApi } : {});
+        const model = provider("gpt-4o", modelApi ? { api: modelApi } : {});
         expect(model).toBeDefined();
       });
     });

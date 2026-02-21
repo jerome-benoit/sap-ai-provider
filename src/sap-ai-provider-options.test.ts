@@ -303,144 +303,71 @@ describe("sapAILanguageModelProviderOptions", () => {
   });
 
   describe("validation constraints", () => {
-    it("should reject invalid modelParams", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
+    it.each([
+      {
+        description: "invalid modelParams",
         value: { modelParams: { temperature: 99 } },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject includeReasoning non-boolean", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
+      },
+      {
+        description: "includeReasoning non-boolean",
         value: { includeReasoning: "true" },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject placeholderValues with non-string values", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
+      },
+      {
+        description: "placeholderValues with non-string values",
         value: { placeholderValues: { product: 123 } },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject placeholderValues as array", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
+      },
+      {
+        description: "placeholderValues as array",
         value: { placeholderValues: ["product", "version"] },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject promptTemplateRef with empty id", async () => {
+      },
+      {
+        description: "promptTemplateRef with empty id",
+        value: { promptTemplateRef: { id: "" } },
+      },
+      {
+        description: "promptTemplateRef with invalid scope",
+        value: { promptTemplateRef: { id: "my-id", scope: "invalid" } },
+      },
+      {
+        description: "promptTemplateRef with missing scenario fields",
+        value: { promptTemplateRef: { scenario: "test" } },
+      },
+      {
+        description: "promptTemplateRef with empty scenario",
+        value: { promptTemplateRef: { name: "test", scenario: "", version: "1.0" } },
+      },
+      {
+        description: "promptTemplateRef with empty name",
+        value: { promptTemplateRef: { name: "", scenario: "test", version: "1.0" } },
+      },
+      {
+        description: "promptTemplateRef with empty version",
+        value: { promptTemplateRef: { name: "test", scenario: "test", version: "" } },
+      },
+      {
+        description: "orchestrationConfigRef with empty id",
+        value: { orchestrationConfigRef: { id: "" } },
+      },
+      {
+        description: "orchestrationConfigRef with missing scenario fields",
+        value: { orchestrationConfigRef: { scenario: "test" } },
+      },
+      {
+        description: "orchestrationConfigRef with empty scenario",
+        value: { orchestrationConfigRef: { name: "test", scenario: "", version: "1.0" } },
+      },
+      {
+        description: "orchestrationConfigRef with empty name",
+        value: { orchestrationConfigRef: { name: "", scenario: "test", version: "1.0" } },
+      },
+      {
+        description: "orchestrationConfigRef with empty version",
+        value: { orchestrationConfigRef: { name: "test", scenario: "test", version: "" } },
+      },
+    ])("should reject $description", async ({ value }) => {
       const result = await safeValidateTypes({
         schema: sapAILanguageModelProviderOptions,
-        value: {
-          promptTemplateRef: { id: "" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject promptTemplateRef with invalid scope", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          promptTemplateRef: { id: "my-id", scope: "invalid" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject promptTemplateRef with missing scenario fields", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          promptTemplateRef: { scenario: "test" }, // missing name and version
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject promptTemplateRef with empty scenario", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          promptTemplateRef: { name: "test", scenario: "", version: "1.0" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject promptTemplateRef with empty name", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          promptTemplateRef: { name: "", scenario: "test", version: "1.0" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject promptTemplateRef with empty version", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          promptTemplateRef: { name: "test", scenario: "test", version: "" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject orchestrationConfigRef with empty id", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          orchestrationConfigRef: { id: "" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject orchestrationConfigRef with missing scenario fields", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          orchestrationConfigRef: { scenario: "test" }, // missing name and version
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject orchestrationConfigRef with empty scenario", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          orchestrationConfigRef: { name: "test", scenario: "", version: "1.0" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject orchestrationConfigRef with empty name", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          orchestrationConfigRef: { name: "", scenario: "test", version: "1.0" },
-        },
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject orchestrationConfigRef with empty version", async () => {
-      const result = await safeValidateTypes({
-        schema: sapAILanguageModelProviderOptions,
-        value: {
-          orchestrationConfigRef: { name: "test", scenario: "test", version: "" },
-        },
+        value,
       });
       expect(result.success).toBe(false);
     });
@@ -605,73 +532,23 @@ describe("modelParamsSchema", () => {
   });
 
   describe("invalid parameters", () => {
-    it("should reject temperature below 0", () => {
-      const result = modelParamsSchema.safeParse({ temperature: -0.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject temperature above 2", () => {
-      const result = modelParamsSchema.safeParse({ temperature: 2.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject topP below 0", () => {
-      const result = modelParamsSchema.safeParse({ topP: -0.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject topP above 1", () => {
-      const result = modelParamsSchema.safeParse({ topP: 1.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject frequencyPenalty below -2", () => {
-      const result = modelParamsSchema.safeParse({ frequencyPenalty: -2.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject frequencyPenalty above 2", () => {
-      const result = modelParamsSchema.safeParse({ frequencyPenalty: 2.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject presencePenalty below -2", () => {
-      const result = modelParamsSchema.safeParse({ presencePenalty: -2.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject presencePenalty above 2", () => {
-      const result = modelParamsSchema.safeParse({ presencePenalty: 2.1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-positive maxTokens", () => {
-      const result = modelParamsSchema.safeParse({ maxTokens: 0 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject negative maxTokens", () => {
-      const result = modelParamsSchema.safeParse({ maxTokens: -1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-integer maxTokens", () => {
-      const result = modelParamsSchema.safeParse({ maxTokens: 100.5 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-positive n", () => {
-      const result = modelParamsSchema.safeParse({ n: 0 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-integer n", () => {
-      const result = modelParamsSchema.safeParse({ n: 1.5 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-boolean parallel_tool_calls", () => {
-      const result = modelParamsSchema.safeParse({ parallel_tool_calls: "true" });
+    it.each([
+      { description: "temperature below 0", params: { temperature: -0.1 } },
+      { description: "temperature above 2", params: { temperature: 2.1 } },
+      { description: "topP below 0", params: { topP: -0.1 } },
+      { description: "topP above 1", params: { topP: 1.1 } },
+      { description: "frequencyPenalty below -2", params: { frequencyPenalty: -2.1 } },
+      { description: "frequencyPenalty above 2", params: { frequencyPenalty: 2.1 } },
+      { description: "presencePenalty below -2", params: { presencePenalty: -2.1 } },
+      { description: "presencePenalty above 2", params: { presencePenalty: 2.1 } },
+      { description: "non-positive maxTokens", params: { maxTokens: 0 } },
+      { description: "negative maxTokens", params: { maxTokens: -1 } },
+      { description: "non-integer maxTokens", params: { maxTokens: 100.5 } },
+      { description: "non-positive n", params: { n: 0 } },
+      { description: "non-integer n", params: { n: 1.5 } },
+      { description: "non-boolean parallel_tool_calls", params: { parallel_tool_calls: "true" } },
+    ])("should reject $description", ({ params }) => {
+      const result = modelParamsSchema.safeParse(params);
       expect(result.success).toBe(false);
     });
   });
@@ -833,60 +710,20 @@ describe("orchestrationConfigRefSchema", () => {
   });
 
   describe("invalid config references", () => {
-    it("should reject empty id", () => {
-      const result = orchestrationConfigRefSchema.safeParse({ id: "" });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject empty scenario", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        name: "test",
-        scenario: "",
-        version: "1.0",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject empty name", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        name: "",
-        scenario: "test",
-        version: "1.0",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject empty version", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        name: "test",
-        scenario: "test",
-        version: "",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject missing fields in scenario form", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        scenario: "test",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject partial scenario/name (missing version)", () => {
-      const result = orchestrationConfigRefSchema.safeParse({
-        name: "test",
-        scenario: "test",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject empty object", () => {
-      const result = orchestrationConfigRefSchema.safeParse({});
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-string id", () => {
-      const result = orchestrationConfigRefSchema.safeParse({ id: 123 });
+    it.each([
+      { description: "empty id", value: { id: "" } },
+      { description: "empty scenario", value: { name: "test", scenario: "", version: "1.0" } },
+      { description: "empty name", value: { name: "", scenario: "test", version: "1.0" } },
+      { description: "empty version", value: { name: "test", scenario: "test", version: "" } },
+      { description: "missing fields in scenario form", value: { scenario: "test" } },
+      {
+        description: "partial scenario/name (missing version)",
+        value: { name: "test", scenario: "test" },
+      },
+      { description: "empty object", value: {} },
+      { description: "non-string id", value: { id: 123 } },
+    ])("should reject $description", ({ value }) => {
+      const result = orchestrationConfigRefSchema.safeParse(value);
       expect(result.success).toBe(false);
     });
   });
@@ -930,28 +767,14 @@ describe("embeddingModelParamsSchema", () => {
   });
 
   describe("invalid parameters", () => {
-    it("should reject non-positive dimensions", () => {
-      const result = embeddingModelParamsSchema.safeParse({ dimensions: 0 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject negative dimensions", () => {
-      const result = embeddingModelParamsSchema.safeParse({ dimensions: -1 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-integer dimensions", () => {
-      const result = embeddingModelParamsSchema.safeParse({ dimensions: 1.5 });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject invalid encoding_format", () => {
-      const result = embeddingModelParamsSchema.safeParse({ encoding_format: "invalid" });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject non-boolean normalize", () => {
-      const result = embeddingModelParamsSchema.safeParse({ normalize: "true" });
+    it.each([
+      { description: "non-positive dimensions", params: { dimensions: 0 } },
+      { description: "negative dimensions", params: { dimensions: -1 } },
+      { description: "non-integer dimensions", params: { dimensions: 1.5 } },
+      { description: "invalid encoding_format", params: { encoding_format: "invalid" } },
+      { description: "non-boolean normalize", params: { normalize: "true" } },
+    ])("should reject $description", ({ params }) => {
+      const result = embeddingModelParamsSchema.safeParse(params);
       expect(result.success).toBe(false);
     });
   });
