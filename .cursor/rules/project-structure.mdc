@@ -34,6 +34,7 @@ src/
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
+├── base-embedding-model-strategy.ts                # Base class for embedding model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
@@ -61,7 +62,7 @@ src/
 - Entry: [src/index-v2.ts](mdc:src/index-v2.ts)
 - Provider: [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
   - `createSAPAIProvider(options)` returns `ProviderV2`.
-  - Method: `textEmbeddingModel()` only (V2 spec).
+  - Methods: `chat()`, `languageModel()`, `textEmbeddingModel()` (V2 spec).
 - Language model: [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)
   - Implements `LanguageModelV2`, wraps V3 internally.
 - Embedding model: [src/sap-ai-embedding-model-v2.ts](mdc:src/sap-ai-embedding-model-v2.ts)
@@ -99,8 +100,9 @@ src/
 - V3 build config: [tsup.config.ts](mdc:tsup.config.ts)
 - V2 build config: [tsup.config.v2.ts](mdc:tsup.config.v2.ts)
 - V2 publish script: [scripts/prepare-v2-package.ts](mdc:scripts/prepare-v2-package.ts)
-- ESLint config: [eslint.config.mjs](mdc:eslint.config.mjs)
-- Output: [dist/](mdc:dist/) produces `index.js`, `index.cjs`, `index.d.ts` with
+- ESLint config: [eslint.config.js](mdc:eslint.config.js)
+- Output: [dist/](mdc:dist/) produces V3 (`index.js`, `index.cjs`, `index.d.ts`,
+  `index.d.cts`) and V2 (`index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`) with
   sourcemaps.
 - `package.json` exports are aligned for Node and ESM:
   [package.json](mdc:package.json)
@@ -113,8 +115,8 @@ src/
 
 ## Testing
 
-- Node environment tests: [vitest.node.config.js](mdc:vitest.node.config.js)
-- Edge runtime tests: [vitest.edge.config.js](mdc:vitest.edge.config.js)
+- Node environment tests: [vitest.node.config.ts](mdc:vitest.node.config.ts)
+- Edge runtime tests: [vitest.edge.config.ts](mdc:vitest.edge.config.ts)
 
 ## Examples and Docs
 

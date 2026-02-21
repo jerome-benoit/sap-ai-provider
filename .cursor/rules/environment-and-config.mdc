@@ -15,7 +15,23 @@ handles authentication automatically:
 
 ## Provider Configuration
 
-Configure the provider using `createSAPAIProvider(options)`:
+Configure the provider using `createSAPAIProvider(options)`. See
+[src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts) for complete type definitions.
+
+### Configuration Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `resourceGroup` | `string` | SAP AI Core resource group (default: `'default'`) |
+| `deploymentId` | `string` | Specific deployment ID (auto-resolved if not set) |
+| `api` | `'orchestration' \| 'foundation-models'` | Default API type (default: `'orchestration'`) |
+| `defaultSettings` | `SAPAISettings` | Default model settings applied to all calls |
+| `destination` | `HttpDestinationOrFetchOptions` | Custom destination configuration |
+| `logLevel` | `'debug' \| 'info' \| 'warn' \| 'error'` | Logging verbosity for SAP AI SDK |
+| `name` | `string` | Provider name used as key in `providerOptions` (default: `'sap-ai'`) |
+| `warnOnAmbiguousConfig` | `boolean` | Warn when both deploymentId and resourceGroup are set (default: `true`) |
+
+### Examples
 
 ```typescript
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
@@ -33,11 +49,15 @@ const provider = createSAPAIProvider({
   deploymentId: "d65d81e7c077e583",
 });
 
-// With custom destination
+// With API selection and default settings
 const provider = createSAPAIProvider({
-  destination: {
-    url: "https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com",
-  },
+  api: "foundation-models",
+  defaultSettings: { modelParams: { temperature: 0.7 } },
+});
+
+// With custom provider name
+const provider = createSAPAIProvider({
+  name: "sap-ai-prod",
 });
 ```
 

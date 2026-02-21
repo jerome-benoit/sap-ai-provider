@@ -18,6 +18,7 @@ The V3 package implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingModelV3
 | Method | Description |
 |--------|-------------|
 | `provider(modelId)` | Create a language model |
+| `provider.chat(modelId)` | Create a language model (alias) |
 | `provider.languageModel(modelId)` | Create a language model (explicit) |
 | `provider.embedding(modelId)` | Create an embedding model |
 | `provider.embeddingModel(modelId)` | Create an embedding model (alias) |
@@ -36,6 +37,7 @@ and `EmbeddingModelV2` interfaces.
 | Method | Description |
 |--------|-------------|
 | `provider(modelId)` | Create a language model |
+| `provider.chat(modelId)` | Create a language model (alias) |
 | `provider.languageModel(modelId)` | Create a language model (explicit) |
 | `provider.textEmbeddingModel(modelId)` | Create an embedding model (**V2 standard**) |
 

@@ -30,7 +30,7 @@ configuration and code style.
 
 ## Formatting and Linting
 
-- Respect [eslint.config.mjs](mdc:eslint.config.mjs) and Prettier (see
+- Respect [eslint.config.js](mdc:eslint.config.js) and Prettier (see
   `prettier-*` scripts in [package.json](mdc:package.json)).
 - Keep lines readable; prefer multi-line over dense one-liners.
 - Avoid inline explanatory comments; add brief comments above non-obvious logic.
