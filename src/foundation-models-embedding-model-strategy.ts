@@ -86,8 +86,8 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     context: FMEmbeddingRequestContext | undefined,
   ): AzureOpenAiEmbeddingParameters {
     const mergedParams = deepMerge(
-      context?.settings.modelParams as Record<string, unknown> | undefined,
-      context?.embeddingOptions?.modelParams,
+      (context?.settings.modelParams as Record<string, unknown> | undefined) ?? {},
+      context?.embeddingOptions?.modelParams ?? {},
     );
 
     return {
