@@ -15,13 +15,12 @@ import { deepMerge } from "./deep-merge.js";
 import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
 /**
- * Request context passed from createClient to executeCall.
- * FM = Foundation Models API.
+ * Client with pre-merged params for thread-safe concurrent requests.
  * @internal
  */
-interface FMEmbeddingRequestContext {
-  embeddingOptions: EmbeddingProviderOptions | undefined;
-  settings: SAPAIEmbeddingSettings;
+interface FMEmbeddingClientWithContext {
+  client: AzureOpenAiEmbeddingClient;
+  mergedParams: Record<string, unknown> | undefined;
 }
 
 /** @internal */
@@ -34,11 +33,10 @@ type FoundationModelsEmbeddingClientClass = typeof AzureOpenAiEmbeddingClient;
  * @internal
  */
 export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelStrategy<
-  AzureOpenAiEmbeddingClient,
+  FMEmbeddingClientWithContext,
   AzureOpenAiEmbeddingResponse
 > {
   private readonly ClientClass: FoundationModelsEmbeddingClientClass;
-  private requestContext: FMEmbeddingRequestContext | undefined;
 
   constructor(ClientClass: FoundationModelsEmbeddingClientClass) {
     super();
@@ -49,22 +47,29 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     config: EmbeddingModelStrategyConfig,
     settings: SAPAIEmbeddingSettings,
     embeddingOptions: EmbeddingProviderOptions | undefined,
-  ): AzureOpenAiEmbeddingClient {
-    this.requestContext = { embeddingOptions, settings };
-    return new this.ClientClass(
-      buildModelDeployment(config, settings.modelVersion),
-      config.destination,
+  ): FMEmbeddingClientWithContext {
+    const mergedParams = deepMerge(
+      (settings.modelParams as Record<string, unknown> | undefined) ?? {},
+      embeddingOptions?.modelParams ?? {},
     );
+
+    return {
+      client: new this.ClientClass(
+        buildModelDeployment(config, settings.modelVersion),
+        config.destination,
+      ),
+      mergedParams: hasKeys(mergedParams) ? mergedParams : undefined,
+    };
   }
 
   protected async executeCall(
-    client: AzureOpenAiEmbeddingClient,
+    clientWithContext: FMEmbeddingClientWithContext,
     values: string[],
     _embeddingType: unknown,
     abortSignal: AbortSignal | undefined,
   ): Promise<AzureOpenAiEmbeddingResponse> {
-    const request = this.buildRequest(values, this.requestContext);
-    return client.run(request, abortSignal ? { signal: abortSignal } : undefined);
+    const request = this.buildRequest(values, clientWithContext.mergedParams);
+    return clientWithContext.client.run(request, abortSignal ? { signal: abortSignal } : undefined);
   }
 
   protected extractEmbeddings(response: AzureOpenAiEmbeddingResponse): EmbeddingModelV3Embedding[] {
@@ -84,16 +89,11 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
 
   private buildRequest(
     values: string[],
-    context: FMEmbeddingRequestContext | undefined,
+    mergedParams: Record<string, unknown> | undefined,
   ): AzureOpenAiEmbeddingParameters {
-    const mergedParams = deepMerge(
-      (context?.settings.modelParams as Record<string, unknown> | undefined) ?? {},
-      context?.embeddingOptions?.modelParams ?? {},
-    );
-
     return {
       input: values,
-      ...(hasKeys(mergedParams) ? mergedParams : {}),
+      ...(mergedParams ?? {}),
     } as AzureOpenAiEmbeddingParameters;
   }
 }

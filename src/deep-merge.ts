@@ -130,12 +130,7 @@ function mergeTwo(
     const targetValue = target[key];
 
     if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
-      target[key] = mergeTwo(
-        cloneDeep(targetValue, new WeakSet(), depth + 1),
-        sourceValue,
-        seen,
-        depth + 1,
-      );
+      target[key] = mergeTwo(cloneDeep(targetValue, seen, depth + 1), sourceValue, seen, depth + 1);
     } else if (isPlainObject(sourceValue)) {
       target[key] = cloneDeep(sourceValue, seen, depth + 1);
     } else {
