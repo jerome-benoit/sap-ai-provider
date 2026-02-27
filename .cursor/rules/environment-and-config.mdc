@@ -4,6 +4,11 @@ description: Environment variables, credentials, and configuration guidance
 
 # Environment and Configuration
 
+## Runtime Requirements
+
+- **Node.js**: >= 20 (see `engines` in [package.json](mdc:package.json))
+- **Vercel AI SDK**: 5.0+ (6.0+ recommended)
+
 ## Credentials
 
 The SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`)

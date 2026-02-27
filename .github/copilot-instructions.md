@@ -28,7 +28,7 @@ Always reference these instructions first and fallback to search or bash command
 
 - **Build V3 library**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
   - Uses tsup to create CommonJS, ESM, and TypeScript declaration files
-  - Outputs to `dist/` directory: `index.js`, `index.mjs`, `index.d.ts`, `index.d.mts`
+  - Outputs to `dist/` directory: `index.js`, `index.cjs`, `index.d.ts`, `index.d.cts`
 - **Build V2 library**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
   - Builds V2 facade from `src/index-v2.ts`
   - Outputs to `dist/` directory: `index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`
@@ -110,7 +110,7 @@ Since full example testing requires SAP credentials, validate changes using this
 npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
-This should complete in under 20 seconds total and all commands should pass.
+This should complete in approximately 15 seconds total and all commands should pass.
 
 ## Common Tasks
 
