@@ -919,36 +919,15 @@ chat(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModel
 
 #### `provider.embedding(modelId, settings?)`
 
-Create an embedding model instance.
-
-**Signature:**
+Alias for `embeddingModel()`.
 
 ```typescript
 embedding(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings): SAPAIEmbeddingModel
 ```
 
-**Parameters:**
-
-- `modelId`: Embedding model identifier (e.g., 'text-embedding-3-small')
-- `settings`: Optional embedding model configuration
-
-**Example:**
-
-```typescript
-const embeddingModel = provider.embedding("text-embedding-3-small", {
-  maxEmbeddingsPerCall: 100,
-  type: "document",
-});
-```
-
 #### `provider.textEmbeddingModel(modelId, settings?)`
 
-> **Deprecated:** Use `provider.embeddingModel()` instead. This method is
-> provided for backward compatibility.
-
-Alias for `embeddingModel()` method.
-
-**Signature:**
+Alias for `embeddingModel()`. The V2 package only exposes this method.
 
 ```typescript
 textEmbeddingModel(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings): SAPAIEmbeddingModel
@@ -984,8 +963,8 @@ const model2 = provider("gpt-4.1", { modelParams: { temperature: 0.7 } });
 
 #### `provider.embeddingModel(modelId, settings?)`
 
-ProviderV3-compliant method for creating embedding model instances. This is the
-standard way to create embedding models in Vercel AI SDK.
+ProviderV3-compliant method for creating embedding model instances.
+Alias: `embedding()`, `textEmbeddingModel()`.
 
 **Signature:**
 
@@ -1001,13 +980,10 @@ embeddingModel(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings
 **Example:**
 
 ```typescript
-// Using the V3 standard method
 const embeddingModel = provider.embeddingModel("text-embedding-3-small", {
   maxEmbeddingsPerCall: 100,
+  type: "document",
 });
-
-// Equivalent to provider.embedding()
-const embeddingModel2 = provider.embedding("text-embedding-3-small");
 ```
 
 #### `provider.imageModel(modelId)`

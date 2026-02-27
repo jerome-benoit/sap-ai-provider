@@ -529,13 +529,13 @@ If issues persist:
 
 ### Problem: Method not found on provider
 
-**Symptoms:** Calls to `provider.embedding()` or `provider.embeddingModel()` fail.
+**Symptoms:** Calls to `provider.embedding()` or `provider.embeddingModel()` fail with V2.
 
-**Cause:** The V2 facade (`@jerome-benoit/sap-ai-provider-v2`) only exposes `textEmbeddingModel()` to align with the `LanguageModelV2` specification.
+**Cause:** V2 only exposes `textEmbeddingModel()` per LanguageModelV2 spec.
 
-**Solution:** Use `provider.textEmbeddingModel()` instead.
+**Solution:** Use `provider.textEmbeddingModel()`, or switch to the V3 package.
 
-**Reference:** See [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2) for details on the V2 facade.
+**Reference:** [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
 
 ### Problem: Type mismatch with AI SDK
 
