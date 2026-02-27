@@ -116,7 +116,7 @@ This should complete in approximately 15 seconds total and all commands should p
 
 ### Repository Structure
 
-```
+```text
 .
 ├── .github/               # GitHub Actions workflows and configs
 ├── examples/              # Example usage files (10 examples)
@@ -273,7 +273,7 @@ npx tsx examples/example-foundation-models.ts
 - **Build fails**: Check TypeScript errors with `npm run type-check`
 - **Tests fail**: Run `npm run test:watch` for detailed test output
 - **Formatting issues**: Use `npm run prettier-fix` to auto-fix
-- **Missing dependencies**: Delete `node_modules` and `package-lock.json`, then run `npm ci`
+- **Missing dependencies**: Delete `node_modules` and `package-lock.json`, then run `npm install`
 - **Example errors**: Verify `.env` file exists with valid `AICORE_SERVICE_KEY`
 
 ## Pull Request Review Guidelines

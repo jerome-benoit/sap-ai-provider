@@ -63,6 +63,7 @@ src/
 - Provider: [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
   - `createSAPAIProvider(options)` returns `ProviderV2`.
   - Methods: `chat()`, `languageModel()`, `textEmbeddingModel()` (V2 spec).
+  - **Note:** V2 does NOT have `embedding()` or `embeddingModel()` aliases.
 - Language model: [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)
   - Implements `LanguageModelV2`, wraps V3 internally.
 - Embedding model: [src/sap-ai-embedding-model-v2.ts](mdc:src/sap-ai-embedding-model-v2.ts)

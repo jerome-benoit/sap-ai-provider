@@ -274,6 +274,10 @@ const embeddingModel = provider.embedding("text-embedding-3-small");
 | `provider.textEmbeddingModel(modelId)` | Creates embedding model (alias)               |
 
 > `embedding()`, `embeddingModel()`, and `textEmbeddingModel()` are identical.
+>
+> **Note:** The V2 facade package (`@jerome-benoit/sap-ai-provider-v2`) only exposes
+> `textEmbeddingModel()` for embeddings per the `ProviderV2` specification. Use the
+> V3 package if you need `embedding()` or `embeddingModel()` aliases.
 
 ## Authentication
 
