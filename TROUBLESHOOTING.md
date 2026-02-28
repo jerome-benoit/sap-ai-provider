@@ -15,6 +15,8 @@ Provider.
 | 429 Rate Limit          | [API Errors](#problem-429-rate-limit-exceeded)                                                  |
 | 500-504 Server Errors   | [API Errors](#problem-500502503504-server-errors)                                               |
 | UnsupportedFeatureError | [API-specific feature mismatch](#problem-api-specific-feature-mismatch-unsupportedfeatureerror) |
+| ApiSwitchError          | [API switch conflict](#problem-api-switch-conflict-apiswitcherror)                              |
+| TooManyEmbeddings       | [Embedding Issues](#problem-too-many-embedding-values-toomanyembeddingvaluesforcallerror)       |
 | Tools not called        | [Tool Calling Issues](#problem-tools-not-being-called)                                          |
 | Stream issues           | [Streaming Issues](#problem-streaming-not-working-or-incomplete)                                |
 | Slow responses          | [Performance Issues](#problem-slow-response-times)                                              |
@@ -69,6 +71,7 @@ below.
   - [Problem: 404 Model/Deployment Not Found](#problem-404-modeldeployment-not-found)
   - [Problem: Model doesn't support features](#problem-model-doesnt-support-features)
   - [Problem: API-specific feature mismatch (UnsupportedFeatureError)](#problem-api-specific-feature-mismatch-unsupportedfeatureerror)
+  - [Problem: API switch conflict (ApiSwitchError)](#problem-api-switch-conflict-apiswitcherror)
 - [Streaming Issues](#streaming-issues)
   - [Problem: Streaming not working or incomplete](#problem-streaming-not-working-or-incomplete)
 - [Tool Calling Issues](#tool-calling-issues)
@@ -85,6 +88,8 @@ below.
   - [Test with Minimal Request](#test-with-minimal-request)
   - [Verify Configuration](#verify-configuration)
 - [Getting Help](#getting-help)
+- [Embedding Issues](#embedding-issues)
+  - [Problem: Too many embedding values (TooManyEmbeddingValuesForCallError)](#problem-too-many-embedding-values-toomanyembeddingvaluesforcallerror)
 - [Known Limitations](#known-limitations)
   - [Streaming Response ID Is Client-Generated](#streaming-response-id-is-client-generated)
 - [V2 Facade Package Issues](#v2-facade-package-issues)
@@ -315,6 +320,59 @@ other API:
 [API Reference - API Comparison](./API_REFERENCE.md#api-comparison-orchestration-vs-foundation-models)
 for complete feature comparison.
 
+### Problem: API switch conflict (ApiSwitchError)
+
+**Symptoms:** `ApiSwitchError` thrown when calling `generateText` or `streamText`
+with `providerOptions` that specify a different API than configured.
+
+**Cause:** You're trying to switch APIs at call-time while using features that
+require a specific API. For example, switching to `foundation-models` when
+`masking` or `filtering` is configured (Orchestration-only features).
+
+**Solutions:**
+
+1. **Remove conflicting features from call:**
+
+   ```typescript
+   // ❌ Wrong: Switching to foundation-models with orchestration features
+   const result = await generateText({
+     model: provider("gpt-4.1"),
+     prompt: "Hello",
+     providerOptions: {
+       [SAP_AI_PROVIDER_NAME]: {
+         api: "foundation-models", // Conflicts with provider-level masking
+       },
+     },
+   });
+
+   // ✅ Correct: Create separate provider for foundation-models
+   const fmProvider = createSAPAIProvider({ api: "foundation-models" });
+   const result = await generateText({
+     model: fmProvider("gpt-4.1"),
+     prompt: "Hello",
+   });
+   ```
+
+2. **Handle the error gracefully:**
+
+   ```typescript
+   import { ApiSwitchError } from "@jerome-benoit/sap-ai-provider";
+
+   try {
+     await generateText({ model, prompt: "Hello", providerOptions: {...} });
+   } catch (error) {
+     if (error instanceof ApiSwitchError) {
+       console.error("Cannot switch to:", error.requestedApi);
+       console.error("Reason:", error.message);
+       // Consider creating a separate provider instance
+     }
+   }
+   ```
+
+**Reference:** See
+[API Reference - ApiSwitchError](./API_REFERENCE.md#apiswitcherror) for
+complete error details.
+
 ## Streaming Issues
 
 > **Architecture Details:** For streaming implementation and SSE flow diagrams,
@@ -525,17 +583,78 @@ If issues persist:
 4. **SAP Support:** For SAP AI Core service issues -
    [SAP AI Core Docs](https://help.sap.com/docs/ai-core)
 
+## Embedding Issues
+
+### Problem: Too many embedding values (TooManyEmbeddingValuesForCallError)
+
+**Symptoms:** `TooManyEmbeddingValuesForCallError` thrown when calling `embed()` or
+`embedMany()` with a large number of values.
+
+**Cause:** You're passing more values than `maxEmbeddingsPerCall` allows. This
+limit varies by model and prevents excessive API calls.
+
+**Solutions:**
+
+1. **Check the limit for your model:**
+
+   ```typescript
+   const embeddingModel = provider.embedding("text-embedding-3-small");
+   console.log("Max per call:", embeddingModel.maxEmbeddingsPerCall);
+   // Typically 2048 for OpenAI models
+   ```
+
+2. **Batch your requests:**
+
+   ```typescript
+   import { embedMany } from "ai";
+
+   const values = [
+     /* large array of texts */
+   ];
+   const batchSize = 2048;
+
+   const allEmbeddings = [];
+   for (let i = 0; i < values.length; i += batchSize) {
+     const batch = values.slice(i, i + batchSize);
+     const { embeddings } = await embedMany({
+       model: provider.embedding("text-embedding-3-small"),
+       values: batch,
+     });
+     allEmbeddings.push(...embeddings);
+   }
+   ```
+
+3. **Handle the error gracefully:**
+
+   ```typescript
+   import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
+
+   try {
+     await embedMany({ model: embeddingModel, values: largeArray });
+   } catch (error) {
+     if (error instanceof TooManyEmbeddingValuesForCallError) {
+       console.error("Too many values:", error.values.length);
+       console.error("Max allowed:", error.maxEmbeddingsPerCall);
+       // Implement batching logic
+     }
+   }
+   ```
+
+**Reference:** See
+[API Reference - Embeddings](./API_REFERENCE.md#embeddings) for embedding model
+configuration.
+
 ## V2 Facade Package Issues
 
 ### Problem: Method not found on provider
 
-**Symptoms:** Calls to `provider.embedding()` or `provider.embeddingModel()` fail.
+**Symptoms:** Calls to `provider.embedding()` or `provider.embeddingModel()` fail with V2.
 
-**Cause:** The V2 facade (`@jerome-benoit/sap-ai-provider-v2`) only exposes `textEmbeddingModel()` to align with the `LanguageModelV2` specification.
+**Cause:** V2 only exposes `textEmbeddingModel()` per LanguageModelV2 spec.
 
-**Solution:** Use `provider.textEmbeddingModel()` instead.
+**Solution:** Use `provider.textEmbeddingModel()`, or switch to the V3 package.
 
-**Reference:** See [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2) for details on the V2 facade.
+**Reference:** [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
 
 ### Problem: Type mismatch with AI SDK
 

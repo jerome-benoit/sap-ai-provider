@@ -264,15 +264,20 @@ const embeddingModel = provider.embedding("text-embedding-3-small");
 
 **Available methods:**
 
-| Method                             | Description                                   |
-| ---------------------------------- | --------------------------------------------- |
-| `provider(modelId)`                | Callable syntax, creates language model       |
-| `provider.chat(modelId)`           | Creates language model (alias)                |
-| `provider.languageModel(modelId)`  | Creates language model (ProviderV3 standard)  |
-| `provider.embedding(modelId)`      | Creates embedding model                       |
-| `provider.embeddingModel(modelId)` | Creates embedding model (ProviderV3 standard) |
+| Method                                 | Description                                   |
+| -------------------------------------- | --------------------------------------------- |
+| `provider(modelId)`                    | Callable syntax, creates language model       |
+| `provider.chat(modelId)`               | Creates language model (alias)                |
+| `provider.languageModel(modelId)`      | Creates language model (ProviderV3 standard)  |
+| `provider.embedding(modelId)`          | Creates embedding model (alias)               |
+| `provider.embeddingModel(modelId)`     | Creates embedding model (ProviderV3 standard) |
+| `provider.textEmbeddingModel(modelId)` | Creates embedding model (alias)               |
 
-All methods accept an optional second parameter for model-specific settings.
+> `embedding()`, `embeddingModel()`, and `textEmbeddingModel()` are identical.
+>
+> **Note:** The V2 facade package (`@jerome-benoit/sap-ai-provider-v2`) only exposes
+> `textEmbeddingModel()` for embeddings per the `ProviderV2` specification. Use the
+> V3 package if you need `embedding()` or `embeddingModel()` aliases.
 
 ## Authentication
 

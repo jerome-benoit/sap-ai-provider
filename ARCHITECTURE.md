@@ -1295,20 +1295,20 @@ to consolidate shared logic while allowing API-specific customization:
 abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   // Template method - defines the algorithm skeleton
   async doGenerate(config, settings, options): Promise<LanguageModelV3GenerateResult> {
-    const commonParts = this.buildCommonParts(config, settings, options);
-    const request = this.buildRequest(config, settings, options, commonParts);
-    const client = this.createClient(config);
-    const response = await this.executeApiCall(client, request, options);
-    return this.processResponse(response, commonParts);
+    const commonParts = await this.buildCommonParts(config, settings, options);
+    const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
+    const client = this.createClient(config, settings, commonParts);
+    const response = await this.executeApiCall(client, request, options.abortSignal);
+    return buildGenerateResult({ modelId, providerName, request, response, warnings });
   }
 
   // Common logic shared by all strategies
   protected buildCommonParts(config, settings, options): CommonParts { /* ... */ }
 
   // Primitive operations - implemented by subclasses
-  protected abstract buildRequest(...): ApiRequest;
-  protected abstract createClient(config): ApiClient;
-  protected abstract executeApiCall(client, request, options): Promise<ApiResponse>;
+  protected abstract buildRequest(...): { request: ApiRequest; warnings: Warning[] };
+  protected abstract createClient(config, settings, commonParts): ApiClient;
+  protected abstract executeApiCall(client, request, abortSignal): Promise<ApiResponse>;
 }
 ```
 
