@@ -81,6 +81,14 @@ consistently:
     - [HTTP Status Code Reference](#http-status-code-reference)
     - [Error Handling Strategy](#error-handling-strategy)
   - [`OrchestrationErrorResponse`](#orchestrationerrorresponse)
+- [Model Capabilities Detection](#model-capabilities-detection)
+  - [Exported Types](#exported-types)
+    - [`SAPAIModelVendor`](#sapaimodelvendor)
+    - [`SAPAIModelCapabilities`](#sapaimodelcapabilities)
+  - [`getSAPAIModelCapabilities(modelId)`](#getsapaimodelcapabilitiesmodelid)
+  - [`getModelVendor(modelId)`](#getmodelvendormodelid)
+  - [`modelSupports(modelId, capability)`](#modelsupportsmodelid-capability)
+  - [Vendor Capability Summary](#vendor-capability-summary)
 - [Utility Functions](#utility-functions)
   - [`getProviderName(providerIdentifier)`](#getprovidernameprovideridentifier)
   - [`buildDpiMaskingProvider(config)`](#builddpimaskingproviderconfig)
@@ -2163,18 +2171,23 @@ Implementation of Vercel AI SDK's `LanguageModelV3` interface.
 
 **Properties:**
 
-| Property                      | Type                       | Description                                         |
-| ----------------------------- | -------------------------- | --------------------------------------------------- |
-| `specificationVersion`        | `'v3'`                     | API specification version (readonly)                |
-| `modelId`                     | `SAPAIModelId`             | Current model identifier (readonly)                 |
-| `provider`                    | `string`                   | Provider identifier (getter, e.g., `'sap-ai.chat'`) |
-| `supportedUrls`               | `Record<string, RegExp[]>` | URL patterns for supported media (getter)           |
-| `supportsImageUrls`           | `true`                     | Image URL support flag (readonly)                   |
-| `supportsMultipleCompletions` | `true`                     | Multiple completions support (readonly)             |
-| `supportsParallelToolCalls`   | `true`                     | Parallel tool calls support (readonly)              |
-| `supportsStreaming`           | `true`                     | Streaming support (readonly)                        |
-| `supportsStructuredOutputs`   | `true`                     | Structured output support (readonly)                |
-| `supportsToolCalls`           | `true`                     | Tool calling support (readonly)                     |
+| Property                      | Type                       | Description                                            |
+| ----------------------------- | -------------------------- | ------------------------------------------------------ |
+| `specificationVersion`        | `'v3'`                     | API specification version (readonly)                   |
+| `modelId`                     | `SAPAIModelId`             | Current model identifier (readonly)                    |
+| `provider`                    | `string`                   | Provider identifier (getter, e.g., `'sap-ai.chat'`)    |
+| `capabilities`                | `SAPAIModelCapabilities`   | Dynamic model capabilities (getter, cached)            |
+| `supportedUrls`               | `Record<string, RegExp[]>` | URL patterns for supported media (getter)              |
+| `supportsImageUrls`           | `boolean`                  | Image URL support (getter, model-dependent)            |
+| `supportsMultipleCompletions` | `boolean`                  | Multiple completions support (getter, model-dependent) |
+| `supportsParallelToolCalls`   | `boolean`                  | Parallel tool calls support (getter, model-dependent)  |
+| `supportsStreaming`           | `boolean`                  | Streaming support (getter, model-dependent)            |
+| `supportsStructuredOutputs`   | `boolean`                  | Structured output support (getter, model-dependent)    |
+| `supportsToolCalls`           | `boolean`                  | Tool calling support (getter, model-dependent)         |
+
+> **Note:** Model capabilities are now dynamically determined based on the model vendor
+> and type. Use `getSAPAIModelCapabilities(modelId)` to query capabilities programmatically.
+> See [Model Capabilities Detection](#model-capabilities-detection) for details.
 
 **Methods:**
 
@@ -2505,6 +2518,146 @@ type OrchestrationErrorResponse = {
 
 This type is primarily used internally for error conversion but is exported for
 advanced use cases.
+
+---
+
+## Model Capabilities Detection
+
+The provider includes dynamic capability detection based on model vendor and type,
+following SAP AI Core's naming convention: `vendor--model-name`.
+
+### Exported Types
+
+#### `SAPAIModelVendor`
+
+Union type of supported vendor prefixes:
+
+```typescript
+type SAPAIModelVendor = "aicore" | "amazon" | "anthropic" | "azure" | "cohere" | "google" | "meta" | "mistral" | "mistralai";
+```
+
+#### `SAPAIModelCapabilities`
+
+Interface describing the capabilities of a model:
+
+```typescript
+interface SAPAIModelCapabilities {
+  readonly defaultSystemMessageMode: "system" | "developer" | "user";
+  readonly supportsImageInputs: boolean;
+  readonly supportsN: boolean;
+  readonly supportsParallelToolCalls: boolean;
+  readonly supportsStreaming: boolean;
+  readonly supportsStructuredOutputs: boolean;
+  readonly supportsToolCalls: boolean;
+  readonly vendor: SAPAIModelVendor | "unknown";
+}
+```
+
+### `getSAPAIModelCapabilities(modelId)`
+
+Returns capability information for a specific SAP AI Core model.
+
+**Signature:**
+
+```typescript
+function getSAPAIModelCapabilities(modelId: string): SAPAIModelCapabilities;
+```
+
+**Parameters:**
+
+- `modelId`: The full model identifier (e.g., `"anthropic--claude-3.5-sonnet"`)
+
+**Returns:** `SAPAIModelCapabilities` object with the following properties:
+
+| Property                    | Type                                | Description                                               |
+| --------------------------- | ----------------------------------- | --------------------------------------------------------- |
+| `supportsN`                 | `boolean`                           | Multiple completions support (`n` parameter)              |
+| `supportsImageInputs`       | `boolean`                           | Vision/image input support                                |
+| `supportsParallelToolCalls` | `boolean`                           | Parallel tool calls in single response                    |
+| `supportsStreaming`         | `boolean`                           | Streaming response support                                |
+| `supportsStructuredOutputs` | `boolean`                           | JSON schema response format support                       |
+| `supportsToolCalls`         | `boolean`                           | Tool/function calling support                             |
+| `defaultSystemMessageMode`  | `"system" \| "developer" \| "user"` | System message mode (`"system"`, `"developer"`, `"user"`) |
+| `vendor`                    | `SAPAIModelVendor \| "unknown"`     | Detected vendor or `"unknown"`                            |
+
+**Example:**
+
+```typescript
+import { getSAPAIModelCapabilities } from "@jerome-benoit/sap-ai-provider";
+
+const capabilities = getSAPAIModelCapabilities("amazon--nova-pro");
+// {
+//   supportsN: false,           // Amazon doesn't support n parameter
+//   supportsImageInputs: true,
+//   supportsParallelToolCalls: true,
+//   supportsStreaming: true,
+//   supportsStructuredOutputs: true,
+//   supportsToolCalls: true,
+//   defaultSystemMessageMode: "system",
+//   vendor: "amazon"
+// }
+```
+
+### `getModelVendor(modelId)`
+
+Extracts the vendor prefix from a SAP AI Core model ID.
+
+**Signature:**
+
+```typescript
+function getModelVendor(modelId: string): SAPAIModelVendor | "unknown";
+```
+
+**Parameters:**
+
+- `modelId`: The full model identifier (e.g., `"anthropic--claude-3.5-sonnet"`)
+
+**Returns:** The vendor prefix (`"aicore"`, `"amazon"`, `"anthropic"`, `"azure"`,
+`"cohere"`, `"google"`, `"meta"`, `"mistral"`, `"mistralai"`) or `"unknown"` if
+not recognized.
+
+**Example:**
+
+```typescript
+import { getModelVendor } from "@jerome-benoit/sap-ai-provider";
+
+getModelVendor("anthropic--claude-3.5-sonnet"); // "anthropic"
+getModelVendor("gpt-4o"); // "unknown"
+```
+
+### `modelSupports(modelId, capability)`
+
+Convenience function to check if a model supports a specific capability.
+
+**Signature:**
+
+```typescript
+function modelSupports(modelId: string, capability: keyof Omit<SAPAIModelCapabilities, "defaultSystemMessageMode" | "vendor">): boolean;
+```
+
+**Example:**
+
+```typescript
+import { modelSupports } from "@jerome-benoit/sap-ai-provider";
+
+if (modelSupports("amazon--nova-pro", "supportsN")) {
+  // Use n parameter for multiple completions
+}
+```
+
+### Vendor Capability Summary
+
+| Vendor      | `supportsN` | `supportsStructuredOutputs` | Notes                           |
+| ----------- | ----------- | --------------------------- | ------------------------------- |
+| `azure`     | ✅          | ✅                          | Full capabilities               |
+| `google`    | ✅          | ✅                          | Gemini 1.0 has limited outputs  |
+| `mistral`   | ✅          | ✅                          | Small/Tiny have limited outputs |
+| `mistralai` | ✅          | ✅                          | Small/Tiny have limited outputs |
+| `cohere`    | ✅          | ✅                          | Full capabilities               |
+| `amazon`    | ❌          | ✅                          | Titan models very limited       |
+| `anthropic` | ❌          | ✅                          | Claude 2.x has limitations      |
+| `meta`      | ✅          | ❌                          | Llama 2 lacks tools             |
+| `aicore`    | ✅          | ❌                          | Open source models              |
 
 ---
 

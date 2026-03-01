@@ -940,27 +940,99 @@ describe("SAPAILanguageModel", () => {
         expect(urls["image/*"]?.[1]?.test("data:image/png;base64,Zm9v")).toBe(true);
       });
 
-      describe("model capabilities", () => {
-        const expectedCapabilities = {
-          supportsImageUrls: true,
-          supportsMultipleCompletions: true,
-          supportsParallelToolCalls: true,
-          supportsStreaming: true,
-          supportsStructuredOutputs: true,
-          supportsToolCalls: true,
-        };
+      it("should return empty supportedUrls for models without image support", () => {
+        const model = createModelForApi(api, "meta--llama-3.1-70b");
+        expect(model.supportedUrls).toEqual({});
+      });
 
+      it("should return false from supportsUrl for models without image support", () => {
+        const model = createModelForApi(api, "meta--llama-3.1-70b");
+        expect(model.supportsUrl(new URL("https://example.com/image.png"))).toBe(false);
+        expect(model.supportsUrl(new URL("data:image/png;base64,Zm9v"))).toBe(false);
+      });
+
+      describe("model capabilities", () => {
         it.each([
-          "any-model",
-          "gpt-4o",
-          "anthropic--claude-3.5-sonnet",
-          "gemini-2.0-flash",
-          "amazon--nova-pro",
-          "mistralai--mistral-large-instruct",
-          "unknown-future-model",
-        ])("should have consistent capabilities for model %s", (modelId) => {
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "any-model",
+          },
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "gpt-4o",
+          },
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: false, // Anthropic models don't support n parameter
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "anthropic--claude-3.5-sonnet",
+          },
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "gemini-2.0-flash",
+          },
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: false, // Amazon models don't support n parameter
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "amazon--nova-pro",
+          },
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "mistralai--mistral-large-instruct",
+          },
+          {
+            expected: {
+              supportsImageUrls: true,
+              supportsMultipleCompletions: true,
+              supportsParallelToolCalls: true,
+              supportsStreaming: true,
+              supportsStructuredOutputs: true,
+              supportsToolCalls: true,
+            },
+            modelId: "unknown-future-model",
+          },
+        ])("should have correct capabilities for model $modelId", ({ expected, modelId }) => {
           const model = createModelForApi(api, modelId);
-          expect(model).toMatchObject(expectedCapabilities);
+          expect(model).toMatchObject(expected);
         });
       });
     },
