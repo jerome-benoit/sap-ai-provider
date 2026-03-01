@@ -77,7 +77,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.8",
-    "@ai-sdk/provider-utils": "^4.0.15",
+    "@ai-sdk/provider-utils": "^4.0.16",
     "@sap-ai-sdk/foundation-models": "^2.7.0",
     "@sap-ai-sdk/orchestration": "^2.7.0",
     "zod": "^4.3.6"
@@ -85,7 +85,7 @@
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.3.1",
+    "@types/node": "^25.3.2",
     "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.3.1",
     "eslint": "^10.0.2",
