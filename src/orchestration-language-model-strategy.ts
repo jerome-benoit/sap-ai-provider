@@ -430,8 +430,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
-    // SDK limitation: _data starts as {} and is populated during stream consumption.
-    // At this point, final_result.id is not yet available — falls back to UUID.
+    // _data starts as {} and is populated during stream consumption;
+    // final_result.id is undefined before the stream is consumed.
     const streamCompletionId = (streamResponse as { _data?: { final_result?: { id?: string } } })
       ._data?.final_result?.id;
 

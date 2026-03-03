@@ -111,10 +111,8 @@ export interface OrchestrationModelSettings {
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
   /**
-   * Fallback module configurations for orchestration prompt module fallback.
-   * When provided, the SDK tries each configuration in order until one succeeds.
-   * The primary configuration is built from the model settings; these are additional
-   * fallback configurations tried if the primary fails.
+   * Additional module configurations for prompt module fallback.
+   * The SDK tries the primary configuration first, then each fallback in order until one succeeds.
    * Each entry is a full `OrchestrationModuleConfig` with its own model, prompt, and modules.
    * @example
    * ```ts

@@ -177,8 +177,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
       return Promise.resolve({
         getFinishReason: () => lastFinishReason,
-        // In real SDK, getRequestId() reads from _data.request_id which is
-        // empty ({}) until stream consumption starts — undefined at access time.
+        // getRequestId() returns undefined: _data.request_id is not populated before stream consumption.
         getRequestId: () => undefined,
         getTokenUsage: () =>
           lastTokenUsage ?? {
@@ -1894,9 +1893,9 @@ describe("SAPAILanguageModel", () => {
 
       const MockClient = await getMockClientForApi(api);
       if (MockClient.setStreamResponseOverride) {
-        // Minimal stream response matching real SDK shapes:
-        // - Orchestration: _data is {}, getRequestId() returns undefined (not yet populated)
-        // - Foundation-models: no _data at all, no rawResponse
+        // Matches real SDK stream shapes:
+        // - Orchestration: _data is {}, getRequestId() returns undefined
+        // - Foundation-models: no _data, no rawResponse
         MockClient.setStreamResponseOverride({
           ...(api === "orchestration"
             ? { getRequestId: () => undefined, rawResponse: { headers: {} } }
