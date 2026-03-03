@@ -55,6 +55,8 @@ export interface StreamCallResponse {
     | undefined
     | { completion_tokens?: number; prompt_tokens?: number };
   readonly responseHeaders?: Record<string, string>;
+  /** Server-provided response ID (completion ID from _data, with request_id/header fallback). */
+  readonly responseId?: string;
   readonly stream: AsyncIterable<SDKStreamChunk>;
 }
 
@@ -142,7 +144,7 @@ export abstract class BaseLanguageModelStrategy<
       );
 
       const idGenerator = new StreamIdGenerator();
-      const responseId = idGenerator.generateResponseId();
+      const responseId = streamResponse.responseId ?? idGenerator.generateResponseId();
 
       const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 

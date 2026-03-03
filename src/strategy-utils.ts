@@ -218,6 +218,7 @@ export interface SDKResponse {
         id: string;
       }[];
   rawResponse: { headers: Headers | Record<string, string> };
+  responseId?: string;
 }
 
 /**
@@ -417,6 +418,7 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     response: {
       body: rawResponseBody,
       headers: responseHeaders,
+      id: response.responseId,
       modelId,
       timestamp: new Date(),
     },

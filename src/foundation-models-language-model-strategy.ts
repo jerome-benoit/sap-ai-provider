@@ -124,13 +124,21 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<SDKResponse> {
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
+    const headers = normalizeHeaders(response.rawResponse.headers);
+
+    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
+    // Falls back to the x-request-id header if not available.
+    const completionId =
+      (response as { _data?: { id?: string } })._data?.id ?? headers?.["x-request-id"];
+
     return {
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
+      responseId: completionId,
     };
   }
 
@@ -143,12 +151,20 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
+    const headers = normalizeHeaders(
+      (streamResponse as { rawResponse?: { headers?: unknown } }).rawResponse?.headers,
+    );
+
+    // For streaming, _data may not be populated until stream completes.
+    // Fall back to x-request-id header which is immediately available.
+    const streamCompletionId =
+      (streamResponse as { _data?: { id?: string } })._data?.id ?? headers?.["x-request-id"];
+
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
-      responseHeaders: normalizeHeaders(
-        (streamResponse as { rawResponse?: { headers?: unknown } }).rawResponse?.headers,
-      ),
+      responseHeaders: headers,
+      responseId: streamCompletionId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }

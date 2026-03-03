@@ -61,6 +61,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
               };
         }[];
     static streamError: Error | undefined;
+    static streamResponseOverride: unknown;
     static streamSetupError: Error | undefined;
 
     chatCompletion = vi.fn().mockImplementation((request, requestConfig) => {
@@ -94,8 +95,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       }
 
       return Promise.resolve({
+        _data: { final_result: { id: "chatcmpl-orch-test-123" } },
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
+        getRequestId: () => "test-request-id",
         getTokenUsage: () => ({
           completion_tokens: 5,
           prompt_tokens: 10,
@@ -119,6 +122,12 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         const error = MockOrchestrationClient.streamSetupError;
         MockOrchestrationClient.streamSetupError = undefined;
         throw error;
+      }
+
+      if (MockOrchestrationClient.streamResponseOverride) {
+        const override = MockOrchestrationClient.streamResponseOverride;
+        MockOrchestrationClient.streamResponseOverride = undefined;
+        return override;
       }
 
       const chunks =
@@ -165,7 +174,9 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       const errorToThrow = MockOrchestrationClient.streamError;
 
       return {
+        _data: { final_result: { id: "chatcmpl-orch-stream-123" } },
         getFinishReason: () => lastFinishReason,
+        getRequestId: () => "test-stream-request-id",
         getTokenUsage: () =>
           lastTokenUsage ?? {
             completion_tokens: 5,
@@ -232,6 +243,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       MockOrchestrationClient.streamError = error;
     }
 
+    static setStreamResponseOverride(override: unknown) {
+      MockOrchestrationClient.streamResponseOverride = override;
+    }
+
     static setStreamSetupError(error: Error) {
       MockOrchestrationClient.streamSetupError = error;
     }
@@ -289,6 +304,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
               };
         }[];
     static streamError: Error | undefined;
+    static streamResponseOverride: unknown;
     static streamSetupError: Error | undefined;
 
     run = vi.fn().mockImplementation((request, requestConfig) => {
@@ -322,6 +338,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       }
 
       return Promise.resolve({
+        _data: { id: "chatcmpl-fm-test-123" },
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
         getTokenUsage: () => ({
@@ -346,6 +363,12 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
         const error = MockAzureOpenAiChatClient.streamSetupError;
         MockAzureOpenAiChatClient.streamSetupError = undefined;
         throw error;
+      }
+
+      if (MockAzureOpenAiChatClient.streamResponseOverride) {
+        const override = MockAzureOpenAiChatClient.streamResponseOverride;
+        MockAzureOpenAiChatClient.streamResponseOverride = undefined;
+        return override;
       }
 
       const chunks =
@@ -392,6 +415,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       const errorToThrow = MockAzureOpenAiChatClient.streamError;
 
       return {
+        _data: { id: "chatcmpl-fm-stream-123" },
         getFinishReason: () => lastFinishReason,
         getTokenUsage: () =>
           lastTokenUsage ?? {
@@ -457,6 +481,10 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
 
     static setStreamError(error: Error) {
       MockAzureOpenAiChatClient.streamError = error;
+    }
+
+    static setStreamResponseOverride(override: unknown) {
+      MockAzureOpenAiChatClient.streamResponseOverride = override;
     }
 
     static setStreamSetupError(error: Error) {
@@ -571,6 +599,7 @@ describe("SAPAILanguageModel", () => {
     setChatCompletionResponse?: (response: unknown) => void;
     setStreamChunks?: (chunks: unknown[]) => void;
     setStreamError?: (error: Error) => void;
+    setStreamResponseOverride?: (override: unknown) => void;
     setStreamSetupError?: (error: Error) => void;
   }
 
@@ -587,6 +616,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
       setStreamError?: (error: Error) => void;
+      setStreamResponseOverride?: (override: unknown) => void;
       setStreamSetupError?: (error: Error) => void;
     };
     return {
@@ -600,6 +630,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse: client.setChatCompletionResponse,
       setStreamChunks: client.setStreamChunks,
       setStreamError: client.setStreamError,
+      setStreamResponseOverride: client.setStreamResponseOverride,
       setStreamSetupError: client.setStreamSetupError,
     } as MockClientInterface;
   };
@@ -616,6 +647,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
       setStreamError?: (error: Error) => void;
+      setStreamResponseOverride?: (override: unknown) => void;
       setStreamSetupError?: (error: Error) => void;
     };
     return {
@@ -628,6 +660,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse: client.setChatCompletionResponse,
       setStreamChunks: client.setStreamChunks,
       setStreamError: client.setStreamError,
+      setStreamResponseOverride: client.setStreamResponseOverride,
       setStreamSetupError: client.setStreamSetupError,
     };
   };
@@ -661,6 +694,7 @@ describe("SAPAILanguageModel", () => {
         lastStreamRequest: unknown;
         streamChunks: unknown;
         streamError: Error | undefined;
+        streamResponseOverride: unknown;
         streamSetupError: Error | undefined;
       };
       client.chatCompletionError = undefined;
@@ -672,6 +706,7 @@ describe("SAPAILanguageModel", () => {
       client.lastStreamRequest = undefined;
       client.streamChunks = undefined;
       client.streamError = undefined;
+      client.streamResponseOverride = undefined;
       client.streamSetupError = undefined;
     } else {
       const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
@@ -685,6 +720,7 @@ describe("SAPAILanguageModel", () => {
         lastStreamRequest: unknown;
         streamChunks: unknown;
         streamError: Error | undefined;
+        streamResponseOverride: unknown;
         streamSetupError: Error | undefined;
       };
       client.chatCompletionError = undefined;
@@ -696,6 +732,7 @@ describe("SAPAILanguageModel", () => {
       client.lastStreamRequest = undefined;
       client.streamChunks = undefined;
       client.streamError = undefined;
+      client.streamResponseOverride = undefined;
       client.streamSetupError = undefined;
     }
   };
@@ -808,6 +845,7 @@ describe("SAPAILanguageModel", () => {
   /**
    * Creates a mock chat response with sensible defaults that can be overridden.
    * @param overrides - Optional values to override defaults.
+   * @param overrides._data - Raw SDK internal data for completion ID extraction.
    * @param overrides.content - The response content.
    * @param overrides.finishReason - The finish reason.
    * @param overrides.headers - Response headers.
@@ -820,6 +858,7 @@ describe("SAPAILanguageModel", () => {
    */
   const createMockChatResponse = (
     overrides: {
+      _data?: Record<string, unknown>;
       content?: null | string;
       finishReason?: string;
       headers?: Record<string, unknown>;
@@ -835,6 +874,7 @@ describe("SAPAILanguageModel", () => {
     } = {},
   ) => {
     const defaults = {
+      _data: undefined as Record<string, unknown> | undefined,
       content: "Hello!",
       finishReason: "stop",
       headers: { "x-request-id": "test-request-id" },
@@ -849,8 +889,13 @@ describe("SAPAILanguageModel", () => {
     const merged = { ...defaults, ...overrides };
 
     return {
+      ...(merged._data ? { _data: merged._data } : {}),
       getContent: () => merged.content,
       getFinishReason: () => merged.finishReason,
+      getRequestId: () =>
+        typeof merged.headers["x-request-id"] === "string"
+          ? merged.headers["x-request-id"]
+          : "test-request-id",
       getTokenUsage: () => merged.usage,
       getToolCalls: () => merged.toolCalls,
       rawResponse: { headers: merged.headers },
@@ -1037,6 +1082,9 @@ describe("SAPAILanguageModel", () => {
         },
         outputTokens: { reasoning: undefined, text: 5, total: 5 },
       });
+      const expectedResponseId =
+        api === "orchestration" ? "chatcmpl-orch-test-123" : "chatcmpl-fm-test-123";
+      expect(result.response?.id).toBe(expectedResponseId);
       expect(result.response?.headers).toBeDefined();
       expect(result.response?.headers).toMatchObject({
         "x-request-id": "test-request-id",
@@ -1755,13 +1803,13 @@ describe("SAPAILanguageModel", () => {
 
       const { stream } = await model.doStream({ prompt });
       const parts = await readAllStreamParts(stream);
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
       expect(parts[0]?.type).toBe("stream-start");
       const responseMetadata = parts.find((p) => p.type === "response-metadata");
+      const expectedStreamResponseId =
+        api === "orchestration" ? "chatcmpl-orch-stream-123" : "chatcmpl-fm-stream-123";
       expect(responseMetadata).toEqual({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        id: expect.stringMatching(uuidRegex),
+        id: expectedStreamResponseId,
         modelId: "gpt-4o",
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         timestamp: expect.any(Date),
@@ -1778,8 +1826,7 @@ describe("SAPAILanguageModel", () => {
           "sap-ai": {
             finishReason: "stop",
             requestId: "test-stream-request-id",
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            responseId: expect.stringMatching(uuidRegex),
+            responseId: expectedStreamResponseId,
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             version: expect.any(String),
           },
@@ -1815,6 +1862,47 @@ describe("SAPAILanguageModel", () => {
         expect(metadata).toBeDefined();
         expect(metadata?.requestId).toBe("test-stream-request-id");
       }
+    });
+
+    it("should fall back to UUID when no server-provided response ID is available", async () => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+      const chunks = [
+        createMockStreamChunk({
+          deltaContent: "Fallback",
+          finishReason: "stop",
+          usage: {
+            completion_tokens: 1,
+            prompt_tokens: 2,
+            total_tokens: 3,
+          },
+        }),
+      ];
+
+      const MockClient = await getMockClientForApi(api);
+      if (MockClient.setStreamResponseOverride) {
+        MockClient.setStreamResponseOverride({
+          ...(api === "orchestration" ? { getRequestId: () => undefined } : {}),
+          getFinishReason: () => "stop",
+          getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 2, total_tokens: 3 }),
+          rawResponse: { headers: {} },
+          stream: {
+            *[Symbol.asyncIterator]() {
+              for (const c of chunks) yield c;
+            },
+          },
+        });
+      }
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const responseMetadata = parts.find((p) => p.type === "response-metadata");
+      expect(responseMetadata).toBeDefined();
+      expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
     });
 
     it("should emit raw chunks when includeRawChunks is true", async () => {

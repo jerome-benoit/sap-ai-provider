@@ -404,6 +404,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       abortSignal ? { signal: abortSignal } : undefined,
     );
 
+    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
+    // Falls back to the pipeline request ID if not available.
+    const completionId =
+      (response as { _data?: { final_result?: { id?: string } } })._data?.final_result?.id ??
+      response.getRequestId();
+
     return {
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
@@ -411,6 +417,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
+      responseId: completionId,
     };
   }
 
@@ -423,10 +430,17 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
+    // For streaming, the completion ID from _data may not be available until after consumption.
+    // Use getRequestId() which is available immediately on the stream response.
+    const streamCompletionId =
+      (streamResponse as { _data?: { final_result?: { id?: string } } })._data?.final_result?.id ??
+      streamResponse.getRequestId();
+
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
       responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
+      responseId: streamCompletionId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }
