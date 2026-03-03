@@ -32,7 +32,9 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         };
     static lastChatCompletionRequest: unknown;
     static lastChatCompletionRequestConfig: unknown;
-    static lastConstructorConfig: unknown;
+    static lastConstructorCall:
+      | undefined
+      | { config: unknown; deploymentConfig: unknown; destination: unknown };
 
     static lastStreamAbortSignal: unknown;
 
@@ -61,6 +63,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
               };
         }[];
     static streamError: Error | undefined;
+    static streamResponseOverride: unknown;
     static streamSetupError: Error | undefined;
 
     chatCompletion = vi.fn().mockImplementation((request, requestConfig) => {
@@ -94,8 +97,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       }
 
       return Promise.resolve({
+        _data: { final_result: { id: "chatcmpl-orch-test-123" } },
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
+        getRequestId: () => "test-request-id",
         getTokenUsage: () => ({
           completion_tokens: 5,
           prompt_tokens: 10,
@@ -119,6 +124,12 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         const error = MockOrchestrationClient.streamSetupError;
         MockOrchestrationClient.streamSetupError = undefined;
         throw error;
+      }
+
+      if (MockOrchestrationClient.streamResponseOverride) {
+        const override = MockOrchestrationClient.streamResponseOverride;
+        MockOrchestrationClient.streamResponseOverride = undefined;
+        return override;
       }
 
       const chunks =
@@ -164,14 +175,21 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
       const errorToThrow = MockOrchestrationClient.streamError;
 
-      return {
+      return Promise.resolve({
         getFinishReason: () => lastFinishReason,
+        // getRequestId() returns undefined: _data.request_id is not populated before stream consumption.
+        getRequestId: () => undefined,
         getTokenUsage: () =>
           lastTokenUsage ?? {
             completion_tokens: 5,
             prompt_tokens: 10,
             total_tokens: 15,
           },
+        rawResponse: {
+          headers: {
+            "x-request-id": "test-stream-request-id",
+          },
+        },
         stream: {
           *[Symbol.asyncIterator]() {
             for (const chunk of chunks) {
@@ -182,11 +200,11 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
             }
           },
         },
-      };
+      });
     });
 
-    constructor(config: unknown) {
-      MockOrchestrationClient.lastConstructorConfig = config;
+    constructor(config: unknown, deploymentConfig: unknown, destination: unknown) {
+      MockOrchestrationClient.lastConstructorCall = { config, deploymentConfig, destination };
     }
 
     static setChatCompletionError(error: Error) {
@@ -225,6 +243,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
     static setStreamError(error: Error) {
       MockOrchestrationClient.streamError = error;
+    }
+
+    static setStreamResponseOverride(override: unknown) {
+      MockOrchestrationClient.streamResponseOverride = override;
     }
 
     static setStreamSetupError(error: Error) {
@@ -284,6 +306,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
               };
         }[];
     static streamError: Error | undefined;
+    static streamResponseOverride: unknown;
     static streamSetupError: Error | undefined;
 
     run = vi.fn().mockImplementation((request, requestConfig) => {
@@ -317,6 +340,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       }
 
       return Promise.resolve({
+        _data: { id: "chatcmpl-fm-test-123" },
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
         getTokenUsage: () => ({
@@ -341,6 +365,12 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
         const error = MockAzureOpenAiChatClient.streamSetupError;
         MockAzureOpenAiChatClient.streamSetupError = undefined;
         throw error;
+      }
+
+      if (MockAzureOpenAiChatClient.streamResponseOverride) {
+        const override = MockAzureOpenAiChatClient.streamResponseOverride;
+        MockAzureOpenAiChatClient.streamResponseOverride = undefined;
+        return override;
       }
 
       const chunks =
@@ -386,7 +416,8 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
 
       const errorToThrow = MockAzureOpenAiChatClient.streamError;
 
-      return {
+      return Promise.resolve({
+        // Real AzureOpenAiChatCompletionStreamResponse has no _data or rawResponse.
         getFinishReason: () => lastFinishReason,
         getTokenUsage: () =>
           lastTokenUsage ?? {
@@ -404,7 +435,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
             }
           },
         },
-      };
+      });
     });
 
     constructor(modelDeployment: unknown, destination: unknown) {
@@ -447,6 +478,10 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
 
     static setStreamError(error: Error) {
       MockAzureOpenAiChatClient.streamError = error;
+    }
+
+    static setStreamResponseOverride(override: unknown) {
+      MockAzureOpenAiChatClient.streamResponseOverride = override;
     }
 
     static setStreamSetupError(error: Error) {
@@ -561,6 +596,7 @@ describe("SAPAILanguageModel", () => {
     setChatCompletionResponse?: (response: unknown) => void;
     setStreamChunks?: (chunks: unknown[]) => void;
     setStreamError?: (error: Error) => void;
+    setStreamResponseOverride?: (override: unknown) => void;
     setStreamSetupError?: (error: Error) => void;
   }
 
@@ -569,7 +605,9 @@ describe("SAPAILanguageModel", () => {
     const client = OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
       lastChatCompletionRequestConfig: unknown;
-      lastConstructorConfig: unknown;
+      lastConstructorCall:
+        | undefined
+        | { config: unknown; deploymentConfig: unknown; destination: unknown };
       lastStreamAbortSignal: unknown;
       lastStreamConfig: unknown;
       lastStreamRequest: unknown;
@@ -577,10 +615,11 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
       setStreamError?: (error: Error) => void;
+      setStreamResponseOverride?: (override: unknown) => void;
       setStreamSetupError?: (error: Error) => void;
     };
     return {
-      lastConstructorConfig: client.lastConstructorConfig,
+      lastConstructorConfig: client.lastConstructorCall?.config,
       lastRequest: client.lastChatCompletionRequest,
       lastRequestConfig: client.lastChatCompletionRequestConfig,
       lastStreamAbortSignal: client.lastStreamAbortSignal,
@@ -590,6 +629,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse: client.setChatCompletionResponse,
       setStreamChunks: client.setStreamChunks,
       setStreamError: client.setStreamError,
+      setStreamResponseOverride: client.setStreamResponseOverride,
       setStreamSetupError: client.setStreamSetupError,
     } as MockClientInterface;
   };
@@ -606,6 +646,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
       setStreamError?: (error: Error) => void;
+      setStreamResponseOverride?: (override: unknown) => void;
       setStreamSetupError?: (error: Error) => void;
     };
     return {
@@ -618,6 +659,7 @@ describe("SAPAILanguageModel", () => {
       setChatCompletionResponse: client.setChatCompletionResponse,
       setStreamChunks: client.setStreamChunks,
       setStreamError: client.setStreamError,
+      setStreamResponseOverride: client.setStreamResponseOverride,
       setStreamSetupError: client.setStreamSetupError,
     };
   };
@@ -651,6 +693,7 @@ describe("SAPAILanguageModel", () => {
         lastStreamRequest: unknown;
         streamChunks: unknown;
         streamError: Error | undefined;
+        streamResponseOverride: unknown;
         streamSetupError: Error | undefined;
       };
       client.chatCompletionError = undefined;
@@ -662,6 +705,7 @@ describe("SAPAILanguageModel", () => {
       client.lastStreamRequest = undefined;
       client.streamChunks = undefined;
       client.streamError = undefined;
+      client.streamResponseOverride = undefined;
       client.streamSetupError = undefined;
     } else {
       const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
@@ -675,6 +719,7 @@ describe("SAPAILanguageModel", () => {
         lastStreamRequest: unknown;
         streamChunks: unknown;
         streamError: Error | undefined;
+        streamResponseOverride: unknown;
         streamSetupError: Error | undefined;
       };
       client.chatCompletionError = undefined;
@@ -686,6 +731,7 @@ describe("SAPAILanguageModel", () => {
       client.lastStreamRequest = undefined;
       client.streamChunks = undefined;
       client.streamError = undefined;
+      client.streamResponseOverride = undefined;
       client.streamSetupError = undefined;
     }
   };
@@ -797,7 +843,9 @@ describe("SAPAILanguageModel", () => {
 
   /**
    * Creates a mock chat response with sensible defaults that can be overridden.
+   * @param api - The API type, controls which methods are available (e.g. getRequestId is orchestration-only).
    * @param overrides - Optional values to override defaults.
+   * @param overrides._data - Raw SDK internal data for completion ID extraction.
    * @param overrides.content - The response content.
    * @param overrides.finishReason - The finish reason.
    * @param overrides.headers - Response headers.
@@ -809,7 +857,9 @@ describe("SAPAILanguageModel", () => {
    * @returns A mock chat response object.
    */
   const createMockChatResponse = (
+    api: "foundation-models" | "orchestration",
     overrides: {
+      _data?: Record<string, unknown>;
       content?: null | string;
       finishReason?: string;
       headers?: Record<string, unknown>;
@@ -825,6 +875,7 @@ describe("SAPAILanguageModel", () => {
     } = {},
   ) => {
     const defaults = {
+      _data: undefined as Record<string, unknown> | undefined,
       content: "Hello!",
       finishReason: "stop",
       headers: { "x-request-id": "test-request-id" },
@@ -839,8 +890,17 @@ describe("SAPAILanguageModel", () => {
     const merged = { ...defaults, ...overrides };
 
     return {
+      ...(merged._data ? { _data: merged._data } : {}),
       getContent: () => merged.content,
       getFinishReason: () => merged.finishReason,
+      ...(api === "orchestration"
+        ? {
+            getRequestId: () =>
+              typeof merged.headers["x-request-id"] === "string"
+                ? merged.headers["x-request-id"]
+                : "test-request-id",
+          }
+        : {}),
       getTokenUsage: () => merged.usage,
       getToolCalls: () => merged.toolCalls,
       rawResponse: { headers: merged.headers },
@@ -1099,6 +1159,9 @@ describe("SAPAILanguageModel", () => {
         },
         outputTokens: { reasoning: undefined, text: 5, total: 5 },
       });
+      const expectedResponseId =
+        api === "orchestration" ? "chatcmpl-orch-test-123" : "chatcmpl-fm-test-123";
+      expect(result.response?.id).toBe(expectedResponseId);
       expect(result.response?.headers).toBeDefined();
       expect(result.response?.headers).toMatchObject({
         "x-request-id": "test-request-id",
@@ -1480,7 +1543,7 @@ describe("SAPAILanguageModel", () => {
       }
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: null,
           finishReason: "tool_calls",
           headers: { "x-request-id": "tool-call-test" },
@@ -1577,7 +1640,7 @@ describe("SAPAILanguageModel", () => {
       }
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: "Response",
           finishReason: "stop",
           headers,
@@ -1617,7 +1680,7 @@ describe("SAPAILanguageModel", () => {
       const largeContent = "B".repeat(100000) + "[END_MARKER]";
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: largeContent,
           finishReason: "stop",
           usage: { completion_tokens: 25000, prompt_tokens: 10, total_tokens: 25010 },
@@ -1654,7 +1717,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: null,
           finishReason: "tool_calls",
           toolCalls: [{ function: { arguments: largeArgs, name: "large_tool" }, id: "call_large" }],
@@ -1707,6 +1770,23 @@ describe("SAPAILanguageModel", () => {
 
       expect(parts.some((p) => (p as { type?: string }).type === "stream-start")).toBe(true);
       expect(parts.some((p) => (p as { type?: string }).type === "finish")).toBe(true);
+    });
+
+    it("should include response headers in doStream result", async () => {
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const result = await model.doStream({ prompt });
+
+      if (api === "orchestration") {
+        expect(result.response?.headers).toBeDefined();
+        expect(result.response?.headers).toMatchObject({
+          "x-request-id": "test-stream-request-id",
+        });
+      } else {
+        // Foundation Models stream response has no rawResponse
+        expect(result.response?.headers).toBeUndefined();
+      }
     });
 
     it("should not mutate stream-start warnings when warnings occur during stream", async () => {
@@ -1805,18 +1885,15 @@ describe("SAPAILanguageModel", () => {
 
       const { stream } = await model.doStream({ prompt });
       const parts = await readAllStreamParts(stream);
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
       expect(parts[0]?.type).toBe("stream-start");
       const responseMetadata = parts.find((p) => p.type === "response-metadata");
-      expect(responseMetadata).toEqual({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        id: expect.stringMatching(uuidRegex),
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      expect(responseMetadata).toMatchObject({
         modelId: "gpt-4o",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        timestamp: expect.any(Date),
         type: "response-metadata",
       });
+      expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
       expect(parts.some((p) => p.type === "text-delta")).toBe(true);
       expect(parts.some((p) => p.type === "finish")).toBe(true);
 
@@ -1824,16 +1901,96 @@ describe("SAPAILanguageModel", () => {
       expect(finishPart).toBeDefined();
       if (finishPart?.type === "finish") {
         expect(finishPart.finishReason).toEqual({ raw: "stop", unified: "stop" });
-        expect(finishPart.providerMetadata).toEqual({
-          "sap-ai": {
-            finishReason: "stop",
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            responseId: expect.stringMatching(uuidRegex),
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            version: expect.any(String),
+        const metadata = finishPart.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+        expect(metadata.finishReason).toBe("stop");
+        if (api === "orchestration") {
+          expect(metadata.requestId).toBe("test-stream-request-id");
+        } else {
+          expect(metadata.requestId).toBeUndefined();
+        }
+        expect(typeof metadata.responseId).toBe("string");
+        expect(metadata.responseId as string).toMatch(uuidRegex);
+        expect(metadata.version).toBeDefined();
+      }
+    });
+
+    it("should include requestId in streaming providerMetadata from rawResponse headers", async () => {
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaContent: "Response",
+          finishReason: "stop",
+          usage: {
+            completion_tokens: 3,
+            prompt_tokens: 5,
+            total_tokens: 8,
+          },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const finishPart = parts.find((p) => p.type === "finish");
+      expect(finishPart).toBeDefined();
+      if (finishPart?.type === "finish") {
+        const metadata = finishPart.providerMetadata?.["sap-ai"] as
+          | Record<string, unknown>
+          | undefined;
+        expect(metadata).toBeDefined();
+        if (api === "orchestration") {
+          expect(metadata?.requestId).toBe("test-stream-request-id");
+        } else {
+          expect(metadata?.requestId).toBeUndefined();
+        }
+      }
+    });
+
+    it("should fall back to UUID when no server-provided response ID is available", async () => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+      const chunks = [
+        createMockStreamChunk({
+          deltaContent: "Fallback",
+          finishReason: "stop",
+          usage: {
+            completion_tokens: 1,
+            prompt_tokens: 2,
+            total_tokens: 3,
+          },
+        }),
+      ];
+
+      const MockClient = await getMockClientForApi(api);
+      if (MockClient.setStreamResponseOverride) {
+        // Matches real SDK stream shapes:
+        // - Orchestration: _data is {}, getRequestId() returns undefined
+        // - Foundation-models: no _data, no rawResponse
+        MockClient.setStreamResponseOverride({
+          ...(api === "orchestration"
+            ? { getRequestId: () => undefined, rawResponse: { headers: {} } }
+            : {}),
+          getFinishReason: () => "stop",
+          getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 2, total_tokens: 3 }),
+          stream: {
+            *[Symbol.asyncIterator]() {
+              for (const c of chunks) yield c;
+            },
           },
         });
       }
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const responseMetadata = parts.find((p) => p.type === "response-metadata");
+      expect(responseMetadata).toBeDefined();
+      expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
     });
 
     it("should emit raw chunks when includeRawChunks is true", async () => {
@@ -3196,6 +3353,81 @@ describe("SAPAILanguageModel", () => {
         expect(request.masking).toEqual(masking);
         expect(request).toHaveProperty("filtering");
         expect(request.filtering).toEqual(filtering);
+      });
+    });
+
+    describe("fallbackModuleConfigs (orchestration only)", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      it("should pass fallback configs as config list to OrchestrationClient constructor", async () => {
+        const fallbackConfigs = [
+          {
+            promptTemplating: {
+              model: { name: "gpt-4.1-mini" as const },
+              prompt: { template: [] as const },
+            },
+          },
+        ];
+
+        const model = createOrchModel("gpt-4o", {
+          fallbackModuleConfigs: fallbackConfigs,
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doGenerate({ prompt });
+
+        const clientConfig = await getLastOrchClientConfig();
+        const configArray = clientConfig as unknown as unknown[];
+        expect(Array.isArray(configArray)).toBe(true);
+        expect(configArray).toHaveLength(2);
+
+        const primary = configArray[0] as { promptTemplating?: { model?: { name?: string } } };
+        expect(primary.promptTemplating?.model?.name).toBe("gpt-4o");
+
+        const fallback = configArray[1] as { promptTemplating?: { model?: { name?: string } } };
+        expect(fallback.promptTemplating?.model?.name).toBe("gpt-4.1-mini");
+      });
+
+      it("should use single config when no fallback configs are provided", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+        await model.doGenerate({ prompt });
+
+        const clientConfig = await getLastOrchClientConfig();
+        expect(Array.isArray(clientConfig)).toBe(false);
+        expect(clientConfig).toHaveProperty("promptTemplating");
+      });
+
+      it("should pass fallback configs for streaming as well", async () => {
+        const fallbackConfigs = [
+          {
+            promptTemplating: {
+              model: { name: "gpt-4.1-mini" as const },
+              prompt: { template: [] as const },
+            },
+          },
+          {
+            promptTemplating: {
+              model: { name: "gpt-4.1-nano" as const },
+              prompt: { template: [] as const },
+            },
+          },
+        ];
+
+        const model = createOrchModel("gpt-4o", {
+          fallbackModuleConfigs: fallbackConfigs,
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const clientConfig = await getLastOrchClientConfig();
+        const configArray = clientConfig as unknown as unknown[];
+        expect(Array.isArray(configArray)).toBe(true);
+        expect(configArray).toHaveLength(3);
       });
     });
 

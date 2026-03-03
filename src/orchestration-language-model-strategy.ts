@@ -7,6 +7,7 @@ import type {
   OrchestrationClient,
   OrchestrationConfigRef,
   OrchestrationModuleConfig,
+  OrchestrationModuleConfigList,
 } from "@sap-ai-sdk/orchestration";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -25,6 +26,7 @@ import {
 } from "./base-language-model-strategy.js";
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { deepMerge } from "./deep-merge.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   getProviderName,
   orchestrationConfigRefSchema,
@@ -380,6 +382,15 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
       },
     };
+
+    if (settings.fallbackModuleConfigs && settings.fallbackModuleConfigs.length > 0) {
+      const configList = [
+        clientConfig,
+        ...settings.fallbackModuleConfigs,
+      ] as OrchestrationModuleConfigList;
+      return new this.ClientClass(configList, config.deploymentConfig, config.destination);
+    }
+
     return new this.ClientClass(clientConfig, config.deploymentConfig, config.destination);
   }
 
@@ -393,6 +404,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       abortSignal ? { signal: abortSignal } : undefined,
     );
 
+    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
+    // Falls back to the pipeline request ID if not available.
+    const completionId =
+      (response as { _data?: { final_result?: { id?: string } } })._data?.final_result?.id ??
+      response.getRequestId();
+
     return {
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
@@ -400,6 +417,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
+      responseId: completionId,
     };
   }
 
@@ -412,9 +430,16 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
+    // _data starts as {} and is populated during stream consumption;
+    // final_result.id is undefined before the stream is consumed.
+    const streamCompletionId = (streamResponse as { _data?: { final_result?: { id?: string } } })
+      ._data?.final_result?.id;
+
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
+      responseId: streamCompletionId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }

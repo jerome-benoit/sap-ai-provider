@@ -15,6 +15,7 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   type AISDKTool,
   buildModelDeployment,
@@ -123,13 +124,21 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<SDKResponse> {
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
+    const headers = normalizeHeaders(response.rawResponse.headers);
+
+    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
+    // Falls back to the x-request-id header if not available.
+    const completionId =
+      (response as { _data?: { id?: string } })._data?.id ?? headers?.["x-request-id"];
+
     return {
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
+      responseId: completionId,
     };
   }
 
@@ -142,6 +151,8 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
+    // AzureOpenAiChatCompletionStreamResponse exposes neither rawResponse nor _data.
+    // Response headers and completion ID are unavailable — base strategy falls back to UUID.
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),

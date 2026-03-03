@@ -54,6 +54,9 @@ export interface StreamCallResponse {
     | null
     | undefined
     | { completion_tokens?: number; prompt_tokens?: number };
+  readonly responseHeaders?: Record<string, string>;
+  /** Server-provided completion ID extracted from _data, if available. */
+  readonly responseId?: string;
   readonly stream: AsyncIterable<SDKStreamChunk>;
 }
 
@@ -141,7 +144,7 @@ export abstract class BaseLanguageModelStrategy<
       );
 
       const idGenerator = new StreamIdGenerator();
-      const responseId = idGenerator.generateResponseId();
+      const responseId = streamResponse.responseId ?? idGenerator.generateResponseId();
 
       const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 
@@ -152,6 +155,7 @@ export abstract class BaseLanguageModelStrategy<
         modelId: config.modelId,
         options,
         providerName: commonParts.providerName,
+        responseHeaders: streamResponse.responseHeaders,
         responseId,
         sdkStream: streamResponse.stream,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
@@ -164,6 +168,9 @@ export abstract class BaseLanguageModelStrategy<
       return {
         request: {
           body: request,
+        },
+        response: {
+          headers: streamResponse.responseHeaders,
         },
         stream: transformedStream,
       };
