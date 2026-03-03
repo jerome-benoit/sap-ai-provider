@@ -151,20 +151,11 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
-    const headers = normalizeHeaders(
-      (streamResponse as { rawResponse?: { headers?: unknown } }).rawResponse?.headers,
-    );
-
-    // SDK limitation: AzureOpenAiChatCompletionStreamResponse does not expose _data.
-    // Completion ID is only available on individual chunks, not the response object.
-    // Falls back to UUID generation in base strategy.
-    const streamCompletionId = (streamResponse as { _data?: { id?: string } })._data?.id;
-
+    // AzureOpenAiChatCompletionStreamResponse exposes neither rawResponse nor _data.
+    // Response headers and completion ID are unavailable — base strategy falls back to UUID.
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
-      responseHeaders: headers,
-      responseId: streamCompletionId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }
