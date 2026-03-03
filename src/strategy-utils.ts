@@ -18,7 +18,7 @@ import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api
 import type { ZodType } from "zod";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
+import { convertAsyncIteratorToReadableStream, parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
 import { deepMerge } from "./deep-merge.js";
@@ -735,153 +735,11 @@ export function createStreamTransformer(
   const streamState = createInitialStreamState();
   const toolCallsInProgress = new Map<number, ToolCallInProgress>();
 
-  return new ReadableStream<LanguageModelV3StreamPart>({
-    cancel() {
-      // No cleanup needed - SDK handles stream cancellation internally
-    },
-    async start(controller) {
-      controller.enqueue({
-        type: "stream-start",
-        warnings: [...warnings],
-      });
-
-      try {
-        for await (const chunk of sdkStream) {
-          if (includeRawChunks) {
-            controller.enqueue({
-              rawValue: (chunk as { _data?: unknown })._data ?? chunk,
-              type: "raw",
-            });
-          }
-
-          if (streamState.isFirstChunk) {
-            streamState.isFirstChunk = false;
-            controller.enqueue({
-              id: responseId,
-              modelId,
-              timestamp: new Date(),
-              type: "response-metadata",
-            });
-          }
-
-          const deltaToolCalls = chunk.getDeltaToolCalls();
-          if (Array.isArray(deltaToolCalls) && deltaToolCalls.length > 0) {
-            streamState.finishReason = {
-              raw: undefined,
-              unified: "tool-calls",
-            };
-          }
-
-          const deltaContent = chunk.getDeltaContent();
-          if (
-            typeof deltaContent === "string" &&
-            deltaContent.length > 0 &&
-            streamState.finishReason.unified !== "tool-calls"
-          ) {
-            if (!streamState.activeText) {
-              textBlockId = idGenerator.generateTextBlockId();
-              controller.enqueue({ id: textBlockId, type: "text-start" });
-              streamState.activeText = true;
-            }
-            if (textBlockId) {
-              controller.enqueue({
-                delta: deltaContent,
-                id: textBlockId,
-                type: "text-delta",
-              });
-            }
-          }
-
-          if (Array.isArray(deltaToolCalls) && deltaToolCalls.length > 0) {
-            for (const toolCallChunk of deltaToolCalls) {
-              const index = toolCallChunk.index;
-              if (typeof index !== "number" || !Number.isFinite(index)) {
-                continue;
-              }
-
-              if (!toolCallsInProgress.has(index)) {
-                toolCallsInProgress.set(index, {
-                  arguments: "",
-                  didEmitCall: false,
-                  didEmitInputStart: false,
-                  id: toolCallChunk.id ?? `tool_${String(index)}`,
-                  toolName: toolCallChunk.function?.name,
-                });
-              }
-
-              const tc = toolCallsInProgress.get(index);
-              if (!tc) continue;
-
-              if (toolCallChunk.id) {
-                tc.id = toolCallChunk.id;
-              }
-
-              const nextToolName = toolCallChunk.function?.name;
-              if (typeof nextToolName === "string" && nextToolName.length > 0) {
-                tc.toolName = nextToolName;
-              }
-
-              if (!tc.didEmitInputStart && tc.toolName) {
-                tc.didEmitInputStart = true;
-                controller.enqueue({
-                  id: tc.id,
-                  toolName: tc.toolName,
-                  type: "tool-input-start",
-                });
-              }
-
-              const argumentsDelta = toolCallChunk.function?.arguments;
-              if (typeof argumentsDelta === "string" && argumentsDelta.length > 0) {
-                tc.arguments += argumentsDelta;
-
-                if (tc.didEmitInputStart) {
-                  controller.enqueue({
-                    delta: argumentsDelta,
-                    id: tc.id,
-                    type: "tool-input-delta",
-                  });
-                }
-              }
-            }
-          }
-
-          const chunkFinishReason = chunk.getFinishReason();
-          if (chunkFinishReason) {
-            streamState.finishReason = mapFinishReason(chunkFinishReason);
-
-            if (streamState.finishReason.unified === "tool-calls") {
-              const toolCalls = Array.from(toolCallsInProgress.values());
-              for (const tc of toolCalls) {
-                if (tc.didEmitCall) {
-                  continue;
-                }
-                if (!tc.didEmitInputStart) {
-                  tc.didEmitInputStart = true;
-                  controller.enqueue({
-                    id: tc.id,
-                    toolName: tc.toolName ?? "",
-                    type: "tool-input-start",
-                  });
-                }
-
-                tc.didEmitCall = true;
-                controller.enqueue({ id: tc.id, type: "tool-input-end" });
-                controller.enqueue({
-                  input: tc.arguments,
-                  toolCallId: tc.id,
-                  toolName: tc.toolName ?? "",
-                  type: "tool-call",
-                });
-              }
-
-              if (streamState.activeText && textBlockId) {
-                controller.enqueue({ id: textBlockId, type: "text-end" });
-                streamState.activeText = false;
-              }
-            }
-          }
-        }
-
+  return convertAsyncIteratorToReadableStream(
+    safeIterate(sdkStream)[Symbol.asyncIterator](),
+  ).pipeThrough(
+    new TransformStream<Error | SDKStreamChunk, LanguageModelV3StreamPart>({
+      flush(controller) {
         const toolCalls = Array.from(toolCallsInProgress.values());
         let didEmitAnyToolCalls = false;
 
@@ -947,22 +805,166 @@ export function createStreamTransformer(
           type: "finish",
           usage: streamState.usage,
         });
+      },
 
-        controller.close();
-      } catch (error) {
-        const aiError = convertToAISDKError(error, {
-          operation: "doStream",
-          requestBody: createAISDKRequestBodySummary(options),
-          url,
-        });
+      start(controller) {
         controller.enqueue({
-          error: aiError instanceof Error ? aiError : new Error(String(aiError)),
-          type: "error",
+          type: "stream-start",
+          warnings: [...warnings],
         });
-        controller.close();
-      }
-    },
-  });
+      },
+
+      transform(chunk, controller) {
+        if (chunk instanceof Error) {
+          const aiError = convertToAISDKError(chunk, {
+            operation: "doStream",
+            requestBody: createAISDKRequestBodySummary(options),
+            url,
+          });
+          controller.enqueue({
+            error: aiError instanceof Error ? aiError : new Error(String(aiError)),
+            type: "error",
+          });
+          controller.terminate();
+          return;
+        }
+
+        if (includeRawChunks) {
+          controller.enqueue({
+            rawValue: (chunk as { _data?: unknown })._data ?? chunk,
+            type: "raw",
+          });
+        }
+
+        if (streamState.isFirstChunk) {
+          streamState.isFirstChunk = false;
+          controller.enqueue({
+            id: responseId,
+            modelId,
+            timestamp: new Date(),
+            type: "response-metadata",
+          });
+        }
+
+        const deltaToolCalls = chunk.getDeltaToolCalls();
+        if (Array.isArray(deltaToolCalls) && deltaToolCalls.length > 0) {
+          streamState.finishReason = {
+            raw: undefined,
+            unified: "tool-calls",
+          };
+        }
+
+        const deltaContent = chunk.getDeltaContent();
+        if (
+          typeof deltaContent === "string" &&
+          deltaContent.length > 0 &&
+          streamState.finishReason.unified !== "tool-calls"
+        ) {
+          if (!streamState.activeText) {
+            textBlockId = idGenerator.generateTextBlockId();
+            controller.enqueue({ id: textBlockId, type: "text-start" });
+            streamState.activeText = true;
+          }
+          if (textBlockId) {
+            controller.enqueue({
+              delta: deltaContent,
+              id: textBlockId,
+              type: "text-delta",
+            });
+          }
+        }
+
+        if (Array.isArray(deltaToolCalls) && deltaToolCalls.length > 0) {
+          for (const toolCallChunk of deltaToolCalls) {
+            const index = toolCallChunk.index;
+            if (typeof index !== "number" || !Number.isFinite(index)) {
+              continue;
+            }
+
+            if (!toolCallsInProgress.has(index)) {
+              toolCallsInProgress.set(index, {
+                arguments: "",
+                didEmitCall: false,
+                didEmitInputStart: false,
+                id: toolCallChunk.id ?? `tool_${String(index)}`,
+                toolName: toolCallChunk.function?.name,
+              });
+            }
+
+            const tc = toolCallsInProgress.get(index);
+            if (!tc) continue;
+
+            if (toolCallChunk.id) {
+              tc.id = toolCallChunk.id;
+            }
+
+            const nextToolName = toolCallChunk.function?.name;
+            if (typeof nextToolName === "string" && nextToolName.length > 0) {
+              tc.toolName = nextToolName;
+            }
+
+            if (!tc.didEmitInputStart && tc.toolName) {
+              tc.didEmitInputStart = true;
+              controller.enqueue({
+                id: tc.id,
+                toolName: tc.toolName,
+                type: "tool-input-start",
+              });
+            }
+
+            const argumentsDelta = toolCallChunk.function?.arguments;
+            if (typeof argumentsDelta === "string" && argumentsDelta.length > 0) {
+              tc.arguments += argumentsDelta;
+
+              if (tc.didEmitInputStart) {
+                controller.enqueue({
+                  delta: argumentsDelta,
+                  id: tc.id,
+                  type: "tool-input-delta",
+                });
+              }
+            }
+          }
+        }
+
+        const chunkFinishReason = chunk.getFinishReason();
+        if (chunkFinishReason) {
+          streamState.finishReason = mapFinishReason(chunkFinishReason);
+
+          if (streamState.finishReason.unified === "tool-calls") {
+            const toolCalls = Array.from(toolCallsInProgress.values());
+            for (const tc of toolCalls) {
+              if (tc.didEmitCall) {
+                continue;
+              }
+              if (!tc.didEmitInputStart) {
+                tc.didEmitInputStart = true;
+                controller.enqueue({
+                  id: tc.id,
+                  toolName: tc.toolName ?? "",
+                  type: "tool-input-start",
+                });
+              }
+
+              tc.didEmitCall = true;
+              controller.enqueue({ id: tc.id, type: "tool-input-end" });
+              controller.enqueue({
+                input: tc.arguments,
+                toolCallId: tc.id,
+                toolName: tc.toolName ?? "",
+                type: "tool-call",
+              });
+            }
+
+            if (streamState.activeText && textBlockId) {
+              controller.enqueue({ id: textBlockId, type: "text-end" });
+              streamState.activeText = false;
+            }
+          }
+        }
+      },
+    }),
+  );
 }
 
 /**
@@ -1190,4 +1192,18 @@ export async function prepareEmbeddingCall(
   }
 
   return { embeddingOptions: sapOptions, providerName };
+}
+
+/**
+ * Wraps an async iterable to catch iteration errors and yield them as values.
+ * @param iterable - The async iterable to wrap.
+ * @yields {Error | T} Original values or Error instances for caught exceptions.
+ * @internal
+ */
+async function* safeIterate<T>(iterable: AsyncIterable<T>): AsyncGenerator<Error | T> {
+  try {
+    yield* iterable;
+  } catch (error) {
+    yield error instanceof Error ? error : new Error(String(error));
+  }
 }
