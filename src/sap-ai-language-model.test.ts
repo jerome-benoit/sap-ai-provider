@@ -174,9 +174,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       const errorToThrow = MockOrchestrationClient.streamError;
 
       return {
-        _data: { final_result: { id: "chatcmpl-orch-stream-123" } },
         getFinishReason: () => lastFinishReason,
-        getRequestId: () => "test-stream-request-id",
+        // In real SDK, getRequestId() reads from _data.request_id which is
+        // empty ({}) until stream consumption starts — undefined at access time.
+        getRequestId: () => undefined,
         getTokenUsage: () =>
           lastTokenUsage ?? {
             completion_tokens: 5,
@@ -415,7 +416,8 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       const errorToThrow = MockAzureOpenAiChatClient.streamError;
 
       return {
-        _data: { id: "chatcmpl-fm-stream-123" },
+        // Real AzureOpenAiChatCompletionStreamResponse has no _data or rawResponse.
+        // responseHeaders extraction here is aspirational — in production, undefined.
         getFinishReason: () => lastFinishReason,
         getTokenUsage: () =>
           lastTokenUsage ?? {
@@ -844,6 +846,7 @@ describe("SAPAILanguageModel", () => {
 
   /**
    * Creates a mock chat response with sensible defaults that can be overridden.
+   * @param api - The API type, controls which methods are available (e.g. getRequestId is orchestration-only).
    * @param overrides - Optional values to override defaults.
    * @param overrides._data - Raw SDK internal data for completion ID extraction.
    * @param overrides.content - The response content.
@@ -857,6 +860,7 @@ describe("SAPAILanguageModel", () => {
    * @returns A mock chat response object.
    */
   const createMockChatResponse = (
+    api: "foundation-models" | "orchestration",
     overrides: {
       _data?: Record<string, unknown>;
       content?: null | string;
@@ -892,10 +896,14 @@ describe("SAPAILanguageModel", () => {
       ...(merged._data ? { _data: merged._data } : {}),
       getContent: () => merged.content,
       getFinishReason: () => merged.finishReason,
-      getRequestId: () =>
-        typeof merged.headers["x-request-id"] === "string"
-          ? merged.headers["x-request-id"]
-          : "test-request-id",
+      ...(api === "orchestration"
+        ? {
+            getRequestId: () =>
+              typeof merged.headers["x-request-id"] === "string"
+                ? merged.headers["x-request-id"]
+                : "test-request-id",
+          }
+        : {}),
       getTokenUsage: () => merged.usage,
       getToolCalls: () => merged.toolCalls,
       rawResponse: { headers: merged.headers },
@@ -1466,7 +1474,7 @@ describe("SAPAILanguageModel", () => {
       }
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: null,
           finishReason: "tool_calls",
           headers: { "x-request-id": "tool-call-test" },
@@ -1563,7 +1571,7 @@ describe("SAPAILanguageModel", () => {
       }
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: "Response",
           finishReason: "stop",
           headers,
@@ -1603,7 +1611,7 @@ describe("SAPAILanguageModel", () => {
       const largeContent = "B".repeat(100000) + "[END_MARKER]";
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: largeContent,
           finishReason: "stop",
           usage: { completion_tokens: 25000, prompt_tokens: 10, total_tokens: 25010 },
@@ -1640,7 +1648,7 @@ describe("SAPAILanguageModel", () => {
       });
 
       MockClient.setChatCompletionResponse(
-        createMockChatResponse({
+        createMockChatResponse(api, {
           content: null,
           finishReason: "tool_calls",
           toolCalls: [{ function: { arguments: largeArgs, name: "large_tool" }, id: "call_large" }],
@@ -1806,15 +1814,12 @@ describe("SAPAILanguageModel", () => {
 
       expect(parts[0]?.type).toBe("stream-start");
       const responseMetadata = parts.find((p) => p.type === "response-metadata");
-      const expectedStreamResponseId =
-        api === "orchestration" ? "chatcmpl-orch-stream-123" : "chatcmpl-fm-stream-123";
-      expect(responseMetadata).toEqual({
-        id: expectedStreamResponseId,
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      expect(responseMetadata).toMatchObject({
         modelId: "gpt-4o",
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        timestamp: expect.any(Date),
         type: "response-metadata",
       });
+      expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
       expect(parts.some((p) => p.type === "text-delta")).toBe(true);
       expect(parts.some((p) => p.type === "finish")).toBe(true);
 
@@ -1822,15 +1827,12 @@ describe("SAPAILanguageModel", () => {
       expect(finishPart).toBeDefined();
       if (finishPart?.type === "finish") {
         expect(finishPart.finishReason).toEqual({ raw: "stop", unified: "stop" });
-        expect(finishPart.providerMetadata).toEqual({
-          "sap-ai": {
-            finishReason: "stop",
-            requestId: "test-stream-request-id",
-            responseId: expectedStreamResponseId,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            version: expect.any(String),
-          },
-        });
+        const metadata = finishPart.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+        expect(metadata.finishReason).toBe("stop");
+        expect(metadata.requestId).toBe("test-stream-request-id");
+        expect(typeof metadata.responseId).toBe("string");
+        expect(metadata.responseId as string).toMatch(uuidRegex);
+        expect(metadata.version).toBeDefined();
       }
     });
 
@@ -1881,11 +1883,15 @@ describe("SAPAILanguageModel", () => {
 
       const MockClient = await getMockClientForApi(api);
       if (MockClient.setStreamResponseOverride) {
+        // Minimal stream response matching real SDK shapes:
+        // - Orchestration: _data is {}, getRequestId() returns undefined (not yet populated)
+        // - Foundation-models: no _data at all, no rawResponse
         MockClient.setStreamResponseOverride({
-          ...(api === "orchestration" ? { getRequestId: () => undefined } : {}),
+          ...(api === "orchestration"
+            ? { getRequestId: () => undefined, rawResponse: { headers: {} } }
+            : {}),
           getFinishReason: () => "stop",
           getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 2, total_tokens: 3 }),
-          rawResponse: { headers: {} },
           stream: {
             *[Symbol.asyncIterator]() {
               for (const c of chunks) yield c;

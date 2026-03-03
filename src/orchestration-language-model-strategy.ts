@@ -430,11 +430,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
-    // For streaming, the completion ID from _data may not be available until after consumption.
-    // Use getRequestId() which is available immediately on the stream response.
-    const streamCompletionId =
-      (streamResponse as { _data?: { final_result?: { id?: string } } })._data?.final_result?.id ??
-      streamResponse.getRequestId();
+    // SDK limitation: _data starts as {} and is populated during stream consumption.
+    // At this point, final_result.id is not yet available — falls back to UUID.
+    const streamCompletionId = (streamResponse as { _data?: { final_result?: { id?: string } } })
+      ._data?.final_result?.id;
 
     return {
       getFinishReason: () => streamResponse.getFinishReason(),

@@ -155,10 +155,10 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       (streamResponse as { rawResponse?: { headers?: unknown } }).rawResponse?.headers,
     );
 
-    // For streaming, _data may not be populated until stream completes.
-    // Fall back to x-request-id header which is immediately available.
-    const streamCompletionId =
-      (streamResponse as { _data?: { id?: string } })._data?.id ?? headers?.["x-request-id"];
+    // SDK limitation: AzureOpenAiChatCompletionStreamResponse does not expose _data.
+    // Completion ID is only available on individual chunks, not the response object.
+    // Falls back to UUID generation in base strategy.
+    const streamCompletionId = (streamResponse as { _data?: { id?: string } })._data?.id;
 
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
