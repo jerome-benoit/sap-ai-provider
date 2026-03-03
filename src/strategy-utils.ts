@@ -272,6 +272,7 @@ export interface StreamTransformerConfig {
   readonly modelId: string;
   readonly options: LanguageModelV3CallOptions;
   readonly providerName: string;
+  readonly responseHeaders?: Record<string, string>;
   readonly responseId: string;
   readonly sdkStream: AsyncIterable<SDKStreamChunk>;
   readonly streamResponseGetFinishReason: () => null | string | undefined;
@@ -718,6 +719,7 @@ export function createStreamTransformer(
     modelId,
     options,
     providerName,
+    responseHeaders,
     responseId,
     sdkStream,
     streamResponseGetFinishReason,
@@ -933,6 +935,9 @@ export function createStreamTransformer(
           providerMetadata: {
             [providerName]: {
               finishReason: streamState.finishReason.raw,
+              ...(typeof responseHeaders?.["x-request-id"] === "string"
+                ? { requestId: responseHeaders["x-request-id"] }
+                : {}),
               responseId,
               version,
             },

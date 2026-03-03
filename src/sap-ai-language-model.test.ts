@@ -172,6 +172,11 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
             prompt_tokens: 10,
             total_tokens: 15,
           },
+        rawResponse: {
+          headers: {
+            "x-request-id": "test-stream-request-id",
+          },
+        },
         stream: {
           *[Symbol.asyncIterator]() {
             for (const chunk of chunks) {
@@ -394,6 +399,11 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
             prompt_tokens: 10,
             total_tokens: 15,
           },
+        rawResponse: {
+          headers: {
+            "x-request-id": "test-stream-request-id",
+          },
+        },
         stream: {
           *[Symbol.asyncIterator]() {
             for (const chunk of chunks) {
@@ -1755,12 +1765,43 @@ describe("SAPAILanguageModel", () => {
         expect(finishPart.providerMetadata).toEqual({
           "sap-ai": {
             finishReason: "stop",
+            requestId: "test-stream-request-id",
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             responseId: expect.stringMatching(uuidRegex),
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             version: expect.any(String),
           },
         });
+      }
+    });
+
+    it("should include requestId in streaming providerMetadata from rawResponse headers", async () => {
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaContent: "Response",
+          finishReason: "stop",
+          usage: {
+            completion_tokens: 3,
+            prompt_tokens: 5,
+            total_tokens: 8,
+          },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const finishPart = parts.find((p) => p.type === "finish");
+      expect(finishPart).toBeDefined();
+      if (finishPart?.type === "finish") {
+        const metadata = finishPart.providerMetadata?.["sap-ai"] as
+          | Record<string, unknown>
+          | undefined;
+        expect(metadata).toBeDefined();
+        expect(metadata?.requestId).toBe("test-stream-request-id");
       }
     });
 

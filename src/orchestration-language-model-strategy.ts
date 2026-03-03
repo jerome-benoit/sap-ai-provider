@@ -25,6 +25,7 @@ import {
 } from "./base-language-model-strategy.js";
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { deepMerge } from "./deep-merge.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   getProviderName,
   orchestrationConfigRefSchema,
@@ -415,6 +416,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }

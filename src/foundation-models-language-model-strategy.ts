@@ -15,6 +15,7 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   type AISDKTool,
   buildModelDeployment,
@@ -145,6 +146,9 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      responseHeaders: normalizeHeaders(
+        (streamResponse as { rawResponse?: { headers?: unknown } }).rawResponse?.headers,
+      ),
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }

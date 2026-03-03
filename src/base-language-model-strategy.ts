@@ -54,6 +54,7 @@ export interface StreamCallResponse {
     | null
     | undefined
     | { completion_tokens?: number; prompt_tokens?: number };
+  readonly responseHeaders?: Record<string, string>;
   readonly stream: AsyncIterable<SDKStreamChunk>;
 }
 
@@ -152,6 +153,7 @@ export abstract class BaseLanguageModelStrategy<
         modelId: config.modelId,
         options,
         providerName: commonParts.providerName,
+        responseHeaders: streamResponse.responseHeaders,
         responseId,
         sdkStream: streamResponse.stream,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
