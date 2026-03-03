@@ -167,6 +167,9 @@ export abstract class BaseLanguageModelStrategy<
         request: {
           body: request,
         },
+        response: {
+          headers: streamResponse.responseHeaders,
+        },
         stream: transformedStream,
       };
     } catch (error) {

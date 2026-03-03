@@ -1647,6 +1647,18 @@ describe("SAPAILanguageModel", () => {
       expect(parts.some((p) => (p as { type?: string }).type === "finish")).toBe(true);
     });
 
+    it("should include response headers in doStream result", async () => {
+      const model = createModelForApi(api);
+      const prompt = createPrompt("Hello");
+
+      const result = await model.doStream({ prompt });
+
+      expect(result.response?.headers).toBeDefined();
+      expect(result.response?.headers).toMatchObject({
+        "x-request-id": "test-stream-request-id",
+      });
+    });
+
     it("should not mutate stream-start warnings when warnings occur during stream", async () => {
       await setStreamChunksForApi(api, [
         createMockStreamChunk({
