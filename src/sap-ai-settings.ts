@@ -6,6 +6,7 @@ import type {
   GroundingModule,
   MaskingModule,
   OrchestrationConfigRef,
+  OrchestrationModuleConfig,
   TranslationModule,
 } from "@sap-ai-sdk/orchestration";
 
@@ -109,6 +110,25 @@ export interface OrchestrationModelSettings {
   readonly api?: "orchestration";
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
+  /**
+   * Fallback module configurations for orchestration prompt module fallback.
+   * When provided, the SDK tries each configuration in order until one succeeds.
+   * The primary configuration is built from the model settings; these are additional
+   * fallback configurations tried if the primary fails.
+   * Each entry is a full `OrchestrationModuleConfig` with its own model, prompt, and modules.
+   * @example
+   * ```ts
+   * fallbackModuleConfigs: [
+   *   {
+   *     promptTemplating: {
+   *       model: { name: "gpt-4.1-mini" },
+   *       prompt: { template: [] },
+   *     },
+   *   },
+   * ]
+   * ```
+   */
+  readonly fallbackModuleConfigs?: OrchestrationModuleConfig[];
   readonly filtering?: FilteringModule;
   readonly grounding?: GroundingModule;
   /** @default false */
@@ -302,6 +322,7 @@ export type {
   LlmModelParams,
   OrchestrationConfigRef,
   OrchestrationModuleConfig,
+  OrchestrationModuleConfigList,
   PromptTemplatingModule,
   SystemChatMessage,
   ToolChatMessage,

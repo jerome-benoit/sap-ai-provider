@@ -104,6 +104,7 @@ export type {
   MaskingModule,
   OrchestrationConfigRef,
   OrchestrationModuleConfig,
+  OrchestrationModuleConfigList,
   PromptTemplatingModule,
   SystemChatMessage,
   ToolChatMessage,

@@ -7,6 +7,7 @@ import type {
   OrchestrationClient,
   OrchestrationConfigRef,
   OrchestrationModuleConfig,
+  OrchestrationModuleConfigList,
 } from "@sap-ai-sdk/orchestration";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -381,6 +382,15 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
       },
     };
+
+    if (settings.fallbackModuleConfigs && settings.fallbackModuleConfigs.length > 0) {
+      const configList = [
+        clientConfig,
+        ...settings.fallbackModuleConfigs,
+      ] as OrchestrationModuleConfigList;
+      return new this.ClientClass(configList, config.deploymentConfig, config.destination);
+    }
+
     return new this.ClientClass(clientConfig, config.deploymentConfig, config.destination);
   }
 

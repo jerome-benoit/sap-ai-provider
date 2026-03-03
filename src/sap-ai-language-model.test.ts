@@ -3168,6 +3168,81 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
+    describe("fallbackModuleConfigs (orchestration only)", () => {
+      beforeEach(async () => {
+        await resetMockStateForApi("orchestration");
+      });
+
+      it("should pass fallback configs as config list to OrchestrationClient constructor", async () => {
+        const fallbackConfigs = [
+          {
+            promptTemplating: {
+              model: { name: "gpt-4.1-mini" as const },
+              prompt: { template: [] as const },
+            },
+          },
+        ];
+
+        const model = createOrchModel("gpt-4o", {
+          fallbackModuleConfigs: fallbackConfigs,
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doGenerate({ prompt });
+
+        const clientConfig = await getLastOrchClientConfig();
+        const configArray = clientConfig as unknown as unknown[];
+        expect(Array.isArray(configArray)).toBe(true);
+        expect(configArray).toHaveLength(2);
+
+        const primary = configArray[0] as { promptTemplating?: { model?: { name?: string } } };
+        expect(primary.promptTemplating?.model?.name).toBe("gpt-4o");
+
+        const fallback = configArray[1] as { promptTemplating?: { model?: { name?: string } } };
+        expect(fallback.promptTemplating?.model?.name).toBe("gpt-4.1-mini");
+      });
+
+      it("should use single config when no fallback configs are provided", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const prompt = createPrompt("Hello");
+        await model.doGenerate({ prompt });
+
+        const clientConfig = await getLastOrchClientConfig();
+        expect(Array.isArray(clientConfig)).toBe(false);
+        expect(clientConfig).toHaveProperty("promptTemplating");
+      });
+
+      it("should pass fallback configs for streaming as well", async () => {
+        const fallbackConfigs = [
+          {
+            promptTemplating: {
+              model: { name: "gpt-4.1-mini" as const },
+              prompt: { template: [] as const },
+            },
+          },
+          {
+            promptTemplating: {
+              model: { name: "gpt-4.1-nano" as const },
+              prompt: { template: [] as const },
+            },
+          },
+        ];
+
+        const model = createOrchModel("gpt-4o", {
+          fallbackModuleConfigs: fallbackConfigs,
+        });
+
+        const prompt = createPrompt("Hello");
+        await model.doStream({ prompt });
+
+        const clientConfig = await getLastOrchClientConfig();
+        const configArray = clientConfig as unknown as unknown[];
+        expect(Array.isArray(configArray)).toBe(true);
+        expect(configArray).toHaveLength(3);
+      });
+    });
+
     describe("streamOptions (orchestration only)", () => {
       beforeEach(async () => {
         await resetMockStateForApi("orchestration");
