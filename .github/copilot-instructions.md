@@ -31,7 +31,7 @@ Always reference these instructions first and fallback to search or bash command
   - Outputs to `dist/` directory: `index.js`, `index.cjs`, `index.d.ts`, `index.d.cts`
 - **Build V2 library**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
   - Builds V2 facade from `src/index-v2.ts`
-  - Outputs to `dist/` directory: `index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`
+  - Outputs to `dist/` directory: `index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`, `index-v2.d.cts`
 - **Watch V2 build**: `npm run build:v2:watch` -- continuous rebuild on file changes
 - **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 files for npm package
 - **Check build outputs**: `npm run check-build` -- takes <1 second. Set timeout to 10+ seconds.

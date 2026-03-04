@@ -81,6 +81,7 @@ consistently:
     - [HTTP Status Code Reference](#http-status-code-reference)
     - [Error Handling Strategy](#error-handling-strategy)
   - [`OrchestrationErrorResponse`](#orchestrationerrorresponse)
+  - [Provider Metadata in Responses](#provider-metadata-in-responses)
 - [Utility Functions](#utility-functions)
   - [`getProviderName(providerIdentifier)`](#getprovidernameprovideridentifier)
   - [`buildDpiMaskingProvider(config)`](#builddpimaskingproviderconfig)
@@ -927,7 +928,8 @@ embedding(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings): SA
 
 #### `provider.textEmbeddingModel(modelId, settings?)`
 
-Alias for `embeddingModel()`. The V2 package only exposes this method.
+> **Deprecated:** Use `embeddingModel()` instead. Maintained for `ProviderV3`
+> interface compatibility.
 
 ```typescript
 textEmbeddingModel(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSettings): SAPAIEmbeddingModel
@@ -3311,7 +3313,7 @@ For the current package version, see [package.json](./package.json).
 ### Dependencies
 
 - **Vercel AI SDK:** v5.0+ (v6.0+ recommended) (`ai` package)
-- **SAP AI SDK:** ^2.6.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
+- **SAP AI SDK:** ^2.8.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
 - **Node.js:** >= 20
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

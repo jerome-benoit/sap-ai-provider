@@ -30,6 +30,7 @@ testing and debugging. For production code, use the SAP AI SDK with
 - [Security Best Practices](#security-best-practices)
 - [Additional Resources](#additional-resources)
 - [TypeScript Examples](#typescript-examples)
+- [Related Documentation](#related-documentation)
 
 ## Overview
 
@@ -547,3 +548,12 @@ See `examples/` directory: `example-generate-text.ts`,
 
 For production, use the TypeScript provider package for better error handling
 and type safety.
+
+---
+
+## Related Documentation
+
+- [README](./README.md) — Quick start and usage guide
+- [API Reference](./API_REFERENCE.md) — Complete API documentation
+- [Environment Setup](./ENVIRONMENT_SETUP.md) — Authentication configuration
+- [Troubleshooting](./TROUBLESHOOTING.md) — Common issues and solutions
