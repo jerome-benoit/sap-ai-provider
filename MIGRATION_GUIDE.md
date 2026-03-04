@@ -600,11 +600,11 @@ for complete documentation and [examples/](./examples/) for working code.
 - **Data Masking (DPI)**: Anonymize sensitive data (emails, names, phone
   numbers) - see [example-data-masking.ts](./examples/example-data-masking.ts)
 - **Content Filtering**: Azure Content Safety, Llama Guard - see
-  [API Reference - Content Filtering](./API_REFERENCE.md#content-filtering)
+  [API Reference - Content Filtering](./API_REFERENCE.md#buildazurecontentsafetyfiltertype-config)
 - **Response Format**: Structured outputs with JSON schema - see
-  [API Reference - Response Format](./API_REFERENCE.md#response-format)
+  [API Reference - Response Formats](./API_REFERENCE.md#response-formats)
 - **Default Settings**: Apply consistent settings across all models - see
-  [API Reference - Default Settings](./API_REFERENCE.md#default-settings)
+  [API Reference - Default Settings](./API_REFERENCE.md#default-settings-configuration-types)
 - **Grounding & Translation**: Document grounding, language translation modules
 
 For detailed examples, see the [New Features](#new-features) section below.
@@ -745,7 +745,7 @@ const model2 = provider("gpt-4.1", {
 ```
 
 **Complete documentation:**
-[API Reference - Response Format](./API_REFERENCE.md#response-format)
+[API Reference - Response Formats](./API_REFERENCE.md#response-formats)
 
 #### 5. Default Settings
 
@@ -769,15 +769,15 @@ const model2 = provider("gpt-4.1", {
 ```
 
 **Complete documentation:**
-[API Reference - Default Settings](./API_REFERENCE.md#default-settings)
+[API Reference - Default Settings](./API_REFERENCE.md#default-settings-configuration-types)
 
 #### 6. Enhanced Streaming & Error Handling
 
 Improved streaming support with better error recovery and detailed error
 messages including request IDs and error locations for debugging.
 
-**Complete documentation:** [README - Streaming](./README.md#streaming),
-[API Reference - Error Handling](./API_REFERENCE.md#error-handling)
+**Complete documentation:** [README - Streaming](./README.md#streaming-responses),
+[API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference)
 
 ---
 

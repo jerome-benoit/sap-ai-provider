@@ -20,6 +20,12 @@ export interface Heading {
   text: string;
 }
 
+/** Node in a heading tree (parent-child hierarchy based on heading levels) */
+export interface HeadingNode {
+  children: HeadingNode[];
+  heading: Heading;
+}
+
 /** ToC entry extracted from markdown content */
 export interface TocEntry {
   slug: string;
@@ -36,6 +42,38 @@ export interface ValidationResult {
 // ============================================================================
 // Core Functions
 // ============================================================================
+
+/**
+ * Build a heading tree from a flat list of headings using a stack-based algorithm.
+ * Headings are nested based on their level: an h3 after an h2 becomes a child of that h2.
+ * @param headings - Flat array of headings in document order
+ * @returns Forest of heading nodes (roots are the highest-level headings)
+ */
+export function buildHeadingTree(headings: Heading[]): HeadingNode[] {
+  const roots: HeadingNode[] = [];
+  const stack: HeadingNode[] = [];
+
+  for (const heading of headings) {
+    const node: HeadingNode = { children: [], heading };
+
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1];
+      if (top === undefined || top.heading.level < heading.level) break;
+      stack.pop();
+    }
+
+    const parent = stack.length > 0 ? stack[stack.length - 1] : undefined;
+    if (parent) {
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+
+    stack.push(node);
+  }
+
+  return roots;
+}
 
 /**
  * Extract headings from markdown content, excluding code blocks.
@@ -106,6 +144,125 @@ export function extractTocEntries(content: string): TocEntry[] {
   }
 
   return entries;
+}
+
+/**
+ * Extract slugs of ToC entries that have indented children in the ToC.
+ * A "parent" is any entry immediately followed by a more-indented entry.
+ * @param content - Markdown file content
+ * @returns Set of slugs that act as parents in the ToC hierarchy
+ */
+export function extractTocParentSlugs(content: string): Set<string> {
+  const parents = new Set<string>();
+
+  const tocMatch = /##\s+Table of Contents\s*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/i.exec(content);
+  if (!tocMatch?.[1]) return parents;
+
+  const tocSection = tocMatch[1];
+  const lineRegex = /^(\s*)-\s+\[([^\]]+)\]\(#([^)]+)\)/gm;
+  const entries: { indent: number; slug: string }[] = [];
+
+  let match: null | RegExpExecArray;
+  while ((match = lineRegex.exec(tocSection)) !== null) {
+    const indent = match[1]?.length ?? 0;
+    const slug = match[3];
+    if (slug) {
+      entries.push({ indent, slug });
+    }
+  }
+
+  for (const [i, current] of entries.entries()) {
+    const next = entries[i + 1];
+    if (next && next.indent > current.indent) {
+      parents.add(current.slug);
+    }
+  }
+
+  return parents;
+}
+
+/**
+ * Detect headings with inconsistent sibling TOC coverage.
+ * Rule: if a parent heading has explicit children in the TOC (indented entries),
+ * all siblings at that level under the same parent must also be listed.
+ * Only checks h3+ (h2 mandatory coverage is handled separately).
+ * @param roots - Heading tree from {@link buildHeadingTree}
+ * @param tocSlugs - Set of slugs present in the TOC
+ * @param tocParentSlugs - Set of slugs that have indented children in the TOC
+ * @returns Array of error messages for missing siblings
+ */
+export function findInconsistentSiblings(
+  roots: HeadingNode[],
+  tocSlugs: Set<string>,
+  tocParentSlugs: Set<string>,
+): string[] {
+  const errors: string[] = [];
+
+  /**
+   * @param heading - Heading to check
+   * @returns Whether the heading's slug exists in the TOC
+   */
+  function isInToc(heading: Heading): boolean {
+    return tocSlugs.has(heading.slug) || tocSlugs.has(heading.baseSlug);
+  }
+
+  /**
+   * @param heading - Heading to check
+   * @returns Whether the heading acts as a parent in the TOC (has indented children)
+   */
+  function isTocParent(heading: Heading): boolean {
+    return tocParentSlugs.has(heading.slug) || tocParentSlugs.has(heading.baseSlug);
+  }
+
+  /**
+   * @param parent - Parent heading node (undefined for roots)
+   * @param children - Child heading nodes to check
+   */
+  function check(parent: HeadingNode | undefined, children: HeadingNode[]): void {
+    if (children.length === 0) return;
+
+    // Only check siblings if the parent has explicit children in the TOC
+    if (parent && !isTocParent(parent.heading)) {
+      for (const child of children) {
+        check(child, child.children);
+      }
+      return;
+    }
+
+    const byLevel = new Map<number, HeadingNode[]>();
+    for (const child of children) {
+      const level = child.heading.level;
+      if (level <= 2) continue;
+      const group = byLevel.get(level);
+      if (group) {
+        group.push(child);
+      } else {
+        byLevel.set(level, [child]);
+      }
+    }
+
+    for (const [level, siblings] of byLevel) {
+      const listed = siblings.filter((s) => isInToc(s.heading));
+      const missing = siblings.filter((s) => !isInToc(s.heading));
+
+      if (listed.length > 0 && missing.length > 0) {
+        const parentText = parent?.heading.text ?? "document root";
+        for (const m of missing) {
+          errors.push(
+            `Heading "${m.heading.text}" (h${String(level)}) not in ToC, ` +
+              `but sibling(s) under "${parentText}" are listed`,
+          );
+        }
+      }
+    }
+
+    for (const child of children) {
+      check(child, child.children);
+    }
+  }
+
+  check(undefined, roots);
+  return errors;
 }
 
 /**
@@ -190,10 +347,6 @@ export function validateToc(filePath: string): ValidationResult {
   return validateTocContent(content);
 }
 
-// ============================================================================
-// CLI Entry Point
-// ============================================================================
-
 /**
  * Validate ToC against actual headings from content string.
  * @param content - Markdown content to validate
@@ -242,8 +395,18 @@ export function validateTocContent(content: string): ValidationResult {
     }
   }
 
+  // Sibling consistency: if some h3+ siblings are in the TOC, all must be
+  const contentHeadings = headings.filter((h) => h.text.toLowerCase() !== "table of contents");
+  const tree = buildHeadingTree(contentHeadings);
+  const tocParentSlugs = extractTocParentSlugs(content);
+  errors.push(...findInconsistentSiblings(tree, tocSlugs, tocParentSlugs));
+
   return { errors, skipped: false, valid: errors.length === 0 };
 }
+
+// ============================================================================
+// CLI Entry Point
+// ============================================================================
 
 // Run CLI if executed directly
 const isMainModule =

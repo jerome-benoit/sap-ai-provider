@@ -103,8 +103,8 @@ src/
 - V2 publish script: [scripts/prepare-v2-package.ts](mdc:scripts/prepare-v2-package.ts)
 - ESLint config: [eslint.config.js](mdc:eslint.config.js)
 - Output: [dist/](mdc:dist/) produces V3 (`index.js`, `index.cjs`, `index.d.ts`,
-  `index.d.cts`) and V2 (`index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`) with
-  sourcemaps.
+  `index.d.cts`) and V2 (`index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`,
+  `index-v2.d.cts`) with sourcemaps.
 - `package.json` exports are aligned for Node and ESM:
   [package.json](mdc:package.json)
 

@@ -32,6 +32,7 @@ Handler → SAP AI Core API
   - [Component Responsibilities](#component-responsibilities)
     - [`SAPAIProvider`](#sapaiprovider)
     - [`SAPAILanguageModel`](#sapailanguagemodel)
+    - [`SAPAIEmbeddingModel`](#sapaiembeddingmodel)
     - [`Authentication System`](#authentication-system)
     - [`Message Conversion`](#message-conversion)
 - [Request/Response Flow](#requestresponse-flow)
@@ -1364,8 +1365,11 @@ suggestions for which API to use instead.
 ### Memory Management
 
 1. **Stream Processing**: Use streams for large responses
-2. **Garbage Collection**: Proper cleanup of resources
-3. **Buffer Management**: Efficient handling of binary data
+2. **Pull-Based TransformStream**: SDK `AsyncIterable` → `ReadableStream` →
+   `TransformStream` pipeline matching the idiomatic Vercel AI SDK provider
+   pattern, enabling natural backpressure propagation
+3. **Garbage Collection**: Proper cleanup of resources
+4. **Buffer Management**: Efficient handling of binary data
 
 ### Monitoring and Observability
 

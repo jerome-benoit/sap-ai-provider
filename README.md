@@ -21,6 +21,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
   - [Option 1: Factory Function (Recommended for Custom Configuration)](#option-1-factory-function-recommended-for-custom-configuration)
   - [API Selection](#api-selection)
   - [Option 2: Default Instance (Quick Start)](#option-2-default-instance-quick-start)
+  - [Provider Methods](#provider-methods)
 - [Authentication](#authentication)
 - [Basic Usage](#basic-usage)
   - [Text Generation](#text-generation)
@@ -273,7 +274,8 @@ const embeddingModel = provider.embedding("text-embedding-3-small");
 | `provider.embeddingModel(modelId)`     | Creates embedding model (ProviderV3 standard) |
 | `provider.textEmbeddingModel(modelId)` | Creates embedding model (alias)               |
 
-> `embedding()`, `embeddingModel()`, and `textEmbeddingModel()` are identical.
+> `embedding()` and `embeddingModel()` are identical. `textEmbeddingModel()` is
+> deprecated in the V3 package — use `embeddingModel()` instead.
 >
 > **Note:** The V2 facade package (`@jerome-benoit/sap-ai-provider-v2`) only exposes
 > `textEmbeddingModel()` for embeddings per the `ProviderV2` specification. Use the
