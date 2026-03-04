@@ -490,20 +490,7 @@ describe("extractTocEntries", () => {
     });
   });
 
-  describe("edge cases", () => {
-    it("should return empty array when no ToC section exists", () => {
-      const content = `
-# Title
-
-## Features
-
-Some content
-`;
-      const entries = extractTocEntries(content);
-
-      expect(entries).toEqual([]);
-    });
-
+  describe("ToC header detection", () => {
     it("should be case-insensitive for ToC header", () => {
       const content = `
 ## TABLE OF CONTENTS
@@ -529,7 +516,9 @@ This ToC has no links, just text.
 
       expect(entries).toEqual([]);
     });
+  });
 
+  describe("boundary detection", () => {
     it("should stop at next h2 heading", () => {
       const content = `
 ## Table of Contents
@@ -546,6 +535,24 @@ Some regular [link](#not-in-toc) in content.
       expect(entries[0]?.slug).toBe("features");
     });
 
+    it("should stop at next h1 heading", () => {
+      const content = `
+## Table of Contents
+
+- [Features](#features)
+
+# New Document Section
+
+Some [link](#not-in-toc) here.
+`;
+      const entries = extractTocEntries(content);
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.slug).toBe("features");
+    });
+  });
+
+  describe("special characters", () => {
     it("should handle ToC entries with special characters in text", () => {
       const content = `
 ## Table of Contents
@@ -560,6 +567,25 @@ Some regular [link](#not-in-toc) in content.
       expect(entries).toHaveLength(2);
       expect(entries[0]?.text).toBe("Error Handling & Reference");
       expect(entries[1]?.text).toBe("`createSAPAIProvider()`");
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should return empty array when no ToC section exists", () => {
+      const content = `
+# Title
+
+## Features
+
+Some content
+`;
+      const entries = extractTocEntries(content);
+
+      expect(entries).toEqual([]);
+    });
+
+    it("should return empty array for empty content", () => {
+      expect(extractTocEntries("")).toEqual([]);
     });
   });
 });
@@ -1028,10 +1054,6 @@ describe("findInconsistentSiblings", () => {
 
       expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
     });
-
-    it("should return no errors when tree is empty", () => {
-      expect(findInconsistentSiblings([], new Set(), new Set())).toEqual([]);
-    });
   });
 
   describe("detection cases", () => {
@@ -1206,7 +1228,11 @@ describe("findInconsistentSiblings", () => {
     });
   });
 
-  describe("special characters in headings", () => {
+  describe("edge cases", () => {
+    it("should return no errors when tree is empty", () => {
+      expect(findInconsistentSiblings([], new Set(), new Set())).toEqual([]);
+    });
+
     it("should handle headings with special characters in slugs", () => {
       const headings = extractHeadings("## Parent\n### Error Handling & Ref\n### Other Section");
       const tree = buildHeadingTree(headings);
