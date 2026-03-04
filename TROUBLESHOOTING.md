@@ -370,7 +370,7 @@ require a specific API. For example, switching to `foundation-models` when
    ```
 
 **Reference:** See
-[API Reference - ApiSwitchError](./API_REFERENCE.md#apiswitcherror) for
+[API Reference - Error Types](./API_REFERENCE.md#error-types) for
 complete error details.
 
 ## Streaming Issues
@@ -664,7 +664,7 @@ configuration.
 
 **Solution:** Ensure your project is using AI SDK version 5.0+ (6.0+ recommended).
 
-**Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#upgrading-from-v3x-to-v4x) for V2/V3 compatibility.
+**Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for V2/V3 compatibility.
 
 ### Problem: V2 build fails
 
