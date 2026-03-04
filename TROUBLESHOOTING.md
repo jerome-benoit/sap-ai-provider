@@ -91,7 +91,7 @@ below.
 - [Embedding Issues](#embedding-issues)
   - [Problem: Too many embedding values (TooManyEmbeddingValuesForCallError)](#problem-too-many-embedding-values-toomanyembeddingvaluesforcallerror)
 - [Known Limitations](#known-limitations)
-  - [Streaming Response ID Is Client-Generated](#streaming-response-id-is-client-generated)
+  - [Streaming Response ID Source](#streaming-response-id-source)
 - [V2 Facade Package Issues](#v2-facade-package-issues)
 - [Related Documentation](#related-documentation)
 
@@ -681,40 +681,16 @@ configuration.
 This section documents known limitations of the SAP AI Provider that are either
 inherent to the underlying SAP AI SDK or are planned for future resolution.
 
-### Streaming Response ID Is Client-Generated
+### Streaming Response ID Source
 
-**Symptom:** The `response-metadata.id` in streaming responses is a
-client-generated UUID, not the server's `x-request-id`.
+**Behavior:** The `response-metadata.id` in streaming responses is extracted
+from the server's completion response when available, with a client-side UUID
+fallback. The `x-request-id` header is exposed via `providerMetadata` for
+server-side log correlation in both streaming and non-streaming responses.
 
-**Technical Details:**
-
-The SAP AI SDK's `OrchestrationStreamResponse` does not currently expose the raw
-HTTP response headers, including `x-request-id`. The provider generates a
-client-side UUID for response tracing.
-
-```typescript
-// In streaming responses:
-for await (const part of stream) {
-  if (part.type === "response-metadata") {
-    console.log(part.id); // Client-generated UUID (e.g., "550e8400-e29b-41d4-a716-446655440000")
-    // Note: This is NOT the server's x-request-id
-  }
-}
-```
-
-**Impact:**
-
-- Cannot correlate streaming responses with SAP AI Core server logs using
-  `x-request-id`
-- Non-streaming (`doGenerate`) responses correctly expose `x-request-id` in
-  `providerMetadata[SAP_AI_PROVIDER_NAME].requestId`
-
-**Status:** Waiting for SAP AI SDK enhancement. See
-[SAP AI SDK Issue #1433](https://github.com/SAP/ai-sdk-js/issues/1433).
-
-**Workaround:** For debugging, use non-streaming requests when server-side
-request correlation is required, or log the client-generated UUID for
-client-side tracing.
+**Reference:** See
+[API Reference - Provider Metadata](./API_REFERENCE.md#provider-metadata-in-responses)
+for field details and examples.
 
 ## Related Documentation
 

@@ -2191,7 +2191,15 @@ async doGenerate(
   content: LanguageModelV3Content[];
   finishReason: LanguageModelV3FinishReason;
   usage: LanguageModelV3Usage;
-  rawCall: { rawPrompt: unknown; rawSettings: Record<string, unknown> };
+  providerMetadata: Record<string, Record<string, unknown>>;
+  request: { body: unknown };
+  response: {
+    body: unknown;
+    headers: Record<string, string> | undefined;
+    id: string;
+    modelId: string;
+    timestamp: Date;
+  };
   warnings: LanguageModelV3CallWarning[];
 }>
 ```
@@ -2215,7 +2223,8 @@ async doStream(
   options: LanguageModelV3CallOptions
 ): Promise<{
   stream: ReadableStream<LanguageModelV3StreamPart>;
-  rawCall: { rawPrompt: unknown; rawSettings: Record<string, unknown> };
+  request: { body: unknown };
+  response: { headers: Record<string, string> | undefined };
 }>
 ```
 
@@ -2288,8 +2297,71 @@ for await (const part of stream) {
 }
 ```
 
-> **Note:** See [Known Limitations](./TROUBLESHOOTING.md#known-limitations) for
-> information about client-generated response IDs in streaming mode.
+> **Note:** Streaming response IDs (`response-metadata.id`) are extracted from
+> the server's completion response when available. The `x-request-id` header is
+> also exposed in `providerMetadata` for request correlation — see
+> [Provider Metadata](#provider-metadata-in-responses).
+
+---
+
+### Provider Metadata in Responses
+
+Both `doGenerate` and `doStream` results include `providerMetadata` with
+SAP-specific fields under the provider name key (default: `"sap-ai"`).
+
+**`doGenerate` — `providerMetadata[providerName]`:**
+
+| Field                | Type                  | Description                                 |
+| -------------------- | --------------------- | ------------------------------------------- |
+| `finishReason`       | `string \| undefined` | Raw finish reason from the SDK              |
+| `finishReasonMapped` | `object`              | Mapped finish reason (`{ raw, unified }`)   |
+| `requestId`          | `string \| undefined` | Server's `x-request-id` header (if present) |
+| `version`            | `string`              | Provider package version                    |
+
+**`doStream` — `finish` event `providerMetadata[providerName]`:**
+
+| Field          | Type                  | Description                                   |
+| -------------- | --------------------- | --------------------------------------------- |
+| `finishReason` | `string \| undefined` | Raw finish reason from the SDK                |
+| `requestId`    | `string \| undefined` | Server's `x-request-id` header (if present)   |
+| `responseId`   | `string`              | Server completion ID or client-generated UUID |
+| `version`      | `string`              | Provider package version                      |
+
+**Example (non-streaming):**
+
+```typescript
+import { generateText } from "ai";
+import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
+const result = await generateText({
+  model: provider("gpt-4.1"),
+  prompt: "Hello",
+});
+
+const metadata = result.providerMetadata?.[SAP_AI_PROVIDER_NAME];
+console.log(metadata?.requestId); // "abc-123-def" (server x-request-id)
+console.log(metadata?.version); // "4.x.x"
+```
+
+**Example (streaming):**
+
+```typescript
+import { streamText } from "ai";
+import { SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
+
+const result = streamText({
+  model: provider("gpt-4.1"),
+  prompt: "Hello",
+});
+
+for await (const part of result.fullStream) {
+  if (part.type === "finish") {
+    const metadata = part.providerMetadata?.[SAP_AI_PROVIDER_NAME];
+    console.log(metadata?.requestId); // Server x-request-id
+    console.log(metadata?.responseId); // Server completion ID
+  }
+}
+```
 
 ---
 
@@ -2562,6 +2634,7 @@ definitions.
 | `LlmModelParams`                        | Model-specific parameters               |
 | `OrchestrationConfigRef`                | Reference to a stored configuration     |
 | `OrchestrationModuleConfig`             | Full orchestration module configuration |
+| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks  |
 | `PromptTemplatingModule`                | Prompt template configuration           |
 
 **Module Configuration Types:**
@@ -2592,6 +2665,34 @@ const filtering: FilteringModule = {
     /* ... */
   },
 };
+```
+
+**Fallback Configuration with `OrchestrationModuleConfigList`:**
+
+An ordered list of configurations where the orchestration service tries each in
+order, falling back to the next if the prompt module is unavailable.
+
+```typescript
+import type { OrchestrationModuleConfigList } from "@jerome-benoit/sap-ai-provider";
+
+const configWithFallbacks: OrchestrationModuleConfigList = [
+  {
+    templating: [
+      /* primary template */
+    ],
+    llm: {
+      /* ... */
+    },
+  },
+  {
+    templating: [
+      /* fallback template */
+    ],
+    llm: {
+      /* ... */
+    },
+  },
+];
 ```
 
 > **Note:** These types are re-exported for convenience. They originate from
