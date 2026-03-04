@@ -831,7 +831,7 @@ Content
       expect(result.valid).toBe(true);
     });
 
-    it("should pass when no h3 siblings are in ToC", () => {
+    it("should pass when no h3 siblings are in ToC (parent gating)", () => {
       const content = `
 ## Table of Contents
 
@@ -844,126 +844,6 @@ Content
 ### Beta
 
 ### Gamma
-`;
-      const result = validateTocContent(content);
-
-      expect(result.valid).toBe(true);
-    });
-
-    it("should check sibling groups independently under different parents", () => {
-      const content = `
-## Table of Contents
-
-- [Parent A](#parent-a)
-  - [Child A1](#child-a1)
-  - [Child A2](#child-a2)
-- [Parent B](#parent-b)
-
-## Parent A
-
-### Child A1
-
-### Child A2
-
-## Parent B
-
-### Child B1
-
-### Child B2
-`;
-      const result = validateTocContent(content);
-
-      expect(result.valid).toBe(true);
-    });
-
-    it("should detect partial coverage under one parent while another is fine", () => {
-      const content = `
-## Table of Contents
-
-- [Parent A](#parent-a)
-  - [Child A1](#child-a1)
-- [Parent B](#parent-b)
-  - [Child B1](#child-b1)
-  - [Child B2](#child-b2)
-
-## Parent A
-
-### Child A1
-
-### Child A2
-
-## Parent B
-
-### Child B1
-
-### Child B2
-`;
-      const result = validateTocContent(content);
-
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("Child A2");
-      expect(result.errors[0]).toContain("Parent A");
-    });
-
-    it("should handle deep nesting (h4 siblings)", () => {
-      const content = `
-## Table of Contents
-
-- [Section](#section)
-  - [Subsection](#subsection)
-    - [Detail A](#detail-a)
-
-## Section
-
-### Subsection
-
-#### Detail A
-
-#### Detail B
-`;
-      const result = validateTocContent(content);
-
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("Detail B");
-    });
-
-    it("should report each missing sibling individually", () => {
-      const content = `
-## Table of Contents
-
-- [Section](#section)
-  - [Alpha](#alpha)
-
-## Section
-
-### Alpha
-
-### Beta
-
-### Gamma
-
-### Delta
-`;
-      const result = validateTocContent(content);
-
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(3);
-      expect(result.errors.some((e) => e.includes("Beta"))).toBe(true);
-      expect(result.errors.some((e) => e.includes("Gamma"))).toBe(true);
-      expect(result.errors.some((e) => e.includes("Delta"))).toBe(true);
-    });
-
-    it("should not flag single h3 child not in ToC (no siblings to be inconsistent with)", () => {
-      const content = `
-## Table of Contents
-
-- [Features](#features)
-
-## Features
-
-### Only Child
 `;
       const result = validateTocContent(content);
 
@@ -977,68 +857,142 @@ Content
 // ============================================================================
 
 describe("buildHeadingTree", () => {
-  it("should build flat forest from same-level headings", () => {
-    const headings = extractHeadings("## A\n## B\n## C");
-    const tree = buildHeadingTree(headings);
+  describe("flat structures", () => {
+    it("should return all same-level headings as roots", () => {
+      const headings = extractHeadings("## A\n## B\n## C");
+      const tree = buildHeadingTree(headings);
 
-    expect(tree).toHaveLength(3);
-    expect(tree.every((n) => n.children.length === 0)).toBe(true);
+      expect(tree).toHaveLength(3);
+      expect(tree.every((n) => n.children.length === 0)).toBe(true);
+    });
+
+    it("should return a single heading as a single root", () => {
+      const headings = extractHeadings("## Only");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0]?.heading.text).toBe("Only");
+      expect(tree[0]?.children).toHaveLength(0);
+    });
+
+    it("should handle many same-level siblings", () => {
+      const md = Array.from({ length: 10 }, (_, i) => `## H${String(i)}`).join("\n");
+      const tree = buildHeadingTree(extractHeadings(md));
+
+      expect(tree).toHaveLength(10);
+      expect(tree.every((n) => n.children.length === 0)).toBe(true);
+    });
   });
 
-  it("should nest h3 under preceding h2", () => {
-    const headings = extractHeadings("## Parent\n### Child A\n### Child B");
-    const tree = buildHeadingTree(headings);
+  describe("hierarchical nesting", () => {
+    it("should nest h3 under preceding h2", () => {
+      const headings = extractHeadings("## Parent\n### Child A\n### Child B");
+      const tree = buildHeadingTree(headings);
 
-    expect(tree).toHaveLength(1);
-    expect(tree[0]?.heading.text).toBe("Parent");
-    expect(tree[0]?.children).toHaveLength(2);
-    expect(tree[0]?.children[0]?.heading.text).toBe("Child A");
-    expect(tree[0]?.children[1]?.heading.text).toBe("Child B");
+      expect(tree).toHaveLength(1);
+      expect(tree[0]?.heading.text).toBe("Parent");
+      expect(tree[0]?.children).toHaveLength(2);
+      expect(tree[0]?.children[0]?.heading.text).toBe("Child A");
+      expect(tree[0]?.children[1]?.heading.text).toBe("Child B");
+    });
+
+    it("should handle multiple parents with children", () => {
+      const headings = extractHeadings("## P1\n### C1\n## P2\n### C2\n### C3");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(2);
+      expect(tree[0]?.children).toHaveLength(1);
+      expect(tree[1]?.children).toHaveLength(2);
+    });
+
+    it("should handle deep nesting (h2 > h3 > h4)", () => {
+      const headings = extractHeadings("## A\n### B\n#### C\n#### D");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0]?.children).toHaveLength(1);
+      expect(tree[0]?.children[0]?.children).toHaveLength(2);
+      expect(tree[0]?.children[0]?.children[0]?.heading.text).toBe("C");
+      expect(tree[0]?.children[0]?.children[1]?.heading.text).toBe("D");
+    });
+
+    it("should handle very deep nesting (h2 > h3 > h4 > h5 > h6)", () => {
+      const headings = extractHeadings("## A\n### B\n#### C\n##### D\n###### E");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(1);
+      const h3 = tree[0]?.children[0];
+      const h4 = h3?.children[0];
+      const h5 = h4?.children[0];
+      expect(h5?.heading.text).toBe("D");
+      expect(h5?.children[0]?.heading.text).toBe("E");
+    });
+
+    it("should handle mixed depths under same parent (h2 > h3 + h4)", () => {
+      const headings = extractHeadings("## A\n### B\n#### C\n### D");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0]?.children).toHaveLength(2);
+      expect(tree[0]?.children[0]?.heading.text).toBe("B");
+      expect(tree[0]?.children[0]?.children[0]?.heading.text).toBe("C");
+      expect(tree[0]?.children[1]?.heading.text).toBe("D");
+      expect(tree[0]?.children[1]?.children).toHaveLength(0);
+    });
   });
 
-  it("should handle multiple parents with children", () => {
-    const headings = extractHeadings("## P1\n### C1\n## P2\n### C2\n### C3");
-    const tree = buildHeadingTree(headings);
+  describe("level jumps and stack unwinding", () => {
+    it("should handle level jumps (h2 directly to h4)", () => {
+      const headings = extractHeadings("## A\n#### B\n#### C");
+      const tree = buildHeadingTree(headings);
 
-    expect(tree).toHaveLength(2);
-    expect(tree[0]?.children).toHaveLength(1);
-    expect(tree[1]?.children).toHaveLength(2);
+      expect(tree).toHaveLength(1);
+      expect(tree[0]?.children).toHaveLength(2);
+      expect(tree[0]?.children[0]?.heading.text).toBe("B");
+    });
+
+    it("should pop back to correct parent after deep nesting", () => {
+      const headings = extractHeadings("## A\n### B\n#### C\n## D\n### E");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(2);
+      expect(tree[0]?.heading.text).toBe("A");
+      expect(tree[0]?.children[0]?.heading.text).toBe("B");
+      expect(tree[0]?.children[0]?.children[0]?.heading.text).toBe("C");
+      expect(tree[1]?.heading.text).toBe("D");
+      expect(tree[1]?.children[0]?.heading.text).toBe("E");
+    });
+
+    it("should handle h6 jumping back to h2", () => {
+      const headings = extractHeadings("## A\n###### Deep\n## B");
+      const tree = buildHeadingTree(headings);
+
+      expect(tree).toHaveLength(2);
+      expect(tree[0]?.children[0]?.heading.text).toBe("Deep");
+      expect(tree[1]?.heading.text).toBe("B");
+    });
   });
 
-  it("should handle deep nesting (h2 > h3 > h4)", () => {
-    const headings = extractHeadings("## A\n### B\n#### C\n#### D");
-    const tree = buildHeadingTree(headings);
+  describe("edge cases", () => {
+    it("should return empty array for empty input", () => {
+      expect(buildHeadingTree([])).toEqual([]);
+    });
 
-    expect(tree).toHaveLength(1);
-    expect(tree[0]?.children).toHaveLength(1);
-    expect(tree[0]?.children[0]?.children).toHaveLength(2);
-    expect(tree[0]?.children[0]?.children[0]?.heading.text).toBe("C");
-    expect(tree[0]?.children[0]?.children[1]?.heading.text).toBe("D");
-  });
+    it("should handle all h1 headings as roots", () => {
+      const headings = extractHeadings("# A\n# B\n# C");
+      const tree = buildHeadingTree(headings);
 
-  it("should handle level jumps (h2 directly to h4)", () => {
-    const headings = extractHeadings("## A\n#### B\n#### C");
-    const tree = buildHeadingTree(headings);
+      expect(tree).toHaveLength(3);
+    });
 
-    expect(tree).toHaveLength(1);
-    expect(tree[0]?.children).toHaveLength(2);
-    expect(tree[0]?.children[0]?.heading.text).toBe("B");
-  });
+    it("should handle alternating levels (h2, h4, h2, h4)", () => {
+      const headings = extractHeadings("## A\n#### X\n## B\n#### Y");
+      const tree = buildHeadingTree(headings);
 
-  it("should pop back to correct parent after deep nesting", () => {
-    const headings = extractHeadings("## A\n### B\n#### C\n## D\n### E");
-    const tree = buildHeadingTree(headings);
-
-    expect(tree).toHaveLength(2);
-    expect(tree[0]?.heading.text).toBe("A");
-    expect(tree[0]?.children[0]?.heading.text).toBe("B");
-    expect(tree[0]?.children[0]?.children[0]?.heading.text).toBe("C");
-    expect(tree[1]?.heading.text).toBe("D");
-    expect(tree[1]?.children[0]?.heading.text).toBe("E");
-  });
-
-  it("should return empty array for empty input", () => {
-    expect(buildHeadingTree([])).toEqual([]);
+      expect(tree).toHaveLength(2);
+      expect(tree[0]?.children[0]?.heading.text).toBe("X");
+      expect(tree[1]?.children[0]?.heading.text).toBe("Y");
+    });
   });
 });
 
@@ -1047,82 +1001,220 @@ describe("buildHeadingTree", () => {
 // ============================================================================
 
 describe("findInconsistentSiblings", () => {
-  it("should return no errors when all siblings are in ToC", () => {
-    const headings = extractHeadings("## Parent\n### A\n### B");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["a", "b"]);
-    const tocParentSlugs = new Set(["parent"]);
+  describe("no errors cases", () => {
+    it("should return no errors when all siblings are in ToC", () => {
+      const headings = extractHeadings("## Parent\n### A\n### B");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a", "b"]);
+      const tocParentSlugs = new Set(["parent"]);
 
-    expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should return no errors when no siblings are in ToC", () => {
+      const headings = extractHeadings("## Parent\n### A\n### B\n### C");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set<string>();
+      const tocParentSlugs = new Set<string>();
+
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should return no errors for a single child (no siblings to compare)", () => {
+      const headings = extractHeadings("## Parent\n### Only");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["only"]);
+      const tocParentSlugs = new Set(["parent"]);
+
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should return no errors when tree is empty", () => {
+      expect(findInconsistentSiblings([], new Set(), new Set())).toEqual([]);
+    });
   });
 
-  it("should return no errors when no siblings are in ToC", () => {
-    const headings = extractHeadings("## Parent\n### A\n### B\n### C");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set<string>();
-    const tocParentSlugs = new Set<string>();
+  describe("detection cases", () => {
+    it("should detect when some but not all siblings are in ToC", () => {
+      const headings = extractHeadings("## Parent\n### A\n### B\n### C");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a", "b"]);
+      const tocParentSlugs = new Set(["parent"]);
 
-    expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("C");
+      expect(errors[0]).toContain("Parent");
+    });
+
+    it("should report each missing sibling individually", () => {
+      const headings = extractHeadings("## Parent\n### A\n### B\n### C\n### D");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a"]);
+      const tocParentSlugs = new Set(["parent"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(3);
+      expect(errors.some((e) => e.includes("B"))).toBe(true);
+      expect(errors.some((e) => e.includes("C"))).toBe(true);
+      expect(errors.some((e) => e.includes("D"))).toBe(true);
+    });
+
+    it("should include heading level in error message", () => {
+      const headings = extractHeadings("## Parent\n### Listed\n### Missing");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["listed"]);
+      const tocParentSlugs = new Set(["parent"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("h3");
+    });
+
+    it("should detect inconsistency at h4 level", () => {
+      const headings = extractHeadings("## A\n### B\n#### C1\n#### C2");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["b", "c1"]);
+      const tocParentSlugs = new Set(["a", "b"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("C2");
+      expect(errors[0]).toContain("h4");
+    });
+
+    it("should detect inconsistency at h5 level", () => {
+      const headings = extractHeadings("## A\n### B\n#### C\n##### D1\n##### D2");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["b", "c", "d1"]);
+      const tocParentSlugs = new Set(["a", "b", "c"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("D2");
+      expect(errors[0]).toContain("h5");
+    });
   });
 
-  it("should detect when some but not all siblings are in ToC", () => {
-    const headings = extractHeadings("## Parent\n### A\n### B\n### C");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["a", "b"]);
-    const tocParentSlugs = new Set(["parent"]);
+  describe("parent gating", () => {
+    it("should skip siblings when parent is not a ToC parent (leaf entry)", () => {
+      const headings = extractHeadings("## Parent\n### A\n### B\n### C");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a", "b"]);
+      const tocParentSlugs = new Set<string>(); // parent has no indented children in ToC
 
-    const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("C");
-    expect(errors[0]).toContain("Parent");
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should check groups under different parents independently", () => {
+      const headings = extractHeadings("## P1\n### A\n### B\n## P2\n### C\n### D");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a", "b"]);
+      const tocParentSlugs = new Set(["p1"]);
+
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should detect errors only under parents with ToC children", () => {
+      const headings = extractHeadings("## P1\n### A\n### B\n## P2\n### C\n### D");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a", "c"]);
+      const tocParentSlugs = new Set(["p1"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("B");
+      expect(errors[0]).toContain("P1");
+    });
+
+    it("should report 'document root' for root-level siblings", () => {
+      const headings = extractHeadings("### A\n### B\n### C");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a"]);
+      const tocParentSlugs = new Set<string>();
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(2);
+      expect(errors[0]).toContain("document root");
+    });
   });
 
-  it("should skip h2 headings (handled by mandatory check)", () => {
-    const headings = extractHeadings("## A\n## B\n## C");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["a"]);
-    const tocParentSlugs = new Set<string>();
+  describe("h2 exclusion", () => {
+    it("should skip h2 headings (handled by mandatory check)", () => {
+      const headings = extractHeadings("## A\n## B\n## C");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a"]);
+      const tocParentSlugs = new Set<string>();
 
-    expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should skip h2 siblings even when under a ToC parent at root level", () => {
+      const headings = extractHeadings("## A\n## B");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["a"]);
+      const tocParentSlugs = new Set(["a"]);
+
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
   });
 
-  it("should check groups under different parents independently", () => {
-    const headings = extractHeadings("## P1\n### A\n### B\n## P2\n### C\n### D");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["a", "b"]);
-    const tocParentSlugs = new Set(["p1"]);
+  describe("duplicate headings", () => {
+    it("should handle duplicate headings via baseSlug matching", () => {
+      const headings = extractHeadings("## Parent\n### Item\n### Item");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["item"]);
+      const tocParentSlugs = new Set(["parent"]);
 
-    expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
+
+    it("should detect missing duplicates when some are listed", () => {
+      const headings = extractHeadings("## Parent\n### Item\n### Item\n### Other");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["item"]); // matches both Items via baseSlug, but not Other
+      const tocParentSlugs = new Set(["parent"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("Other");
+    });
   });
 
-  it("should skip siblings when parent is a leaf entry in the ToC", () => {
-    const headings = extractHeadings("## Parent\n### A\n### B\n### C");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["a", "b"]);
-    const tocParentSlugs = new Set<string>(); // parent has no indented children in ToC
+  describe("recursive depth checking", () => {
+    it("should detect errors at multiple depths simultaneously", () => {
+      const headings = extractHeadings("## A\n### B\n#### C1\n#### C2\n### D\n#### E1\n#### E2");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["b", "c1", "d", "e1"]);
+      const tocParentSlugs = new Set(["a", "b", "d"]);
 
-    expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(2);
+      expect(errors.some((e) => e.includes("C2"))).toBe(true);
+      expect(errors.some((e) => e.includes("E2"))).toBe(true);
+    });
+
+    it("should handle deeply nested tree with errors only at leaf level", () => {
+      const headings = extractHeadings("## A\n### B\n#### C\n##### D1\n##### D2");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["b", "c", "d1"]);
+      const tocParentSlugs = new Set(["a", "b", "c"]);
+
+      const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("D2");
+    });
   });
 
-  it("should match using baseSlug for duplicate headings", () => {
-    const headings = extractHeadings("## Parent\n### Item\n### Item");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["item"]);
-    const tocParentSlugs = new Set(["parent"]);
+  describe("special characters in headings", () => {
+    it("should handle headings with special characters in slugs", () => {
+      const headings = extractHeadings("## Parent\n### Error Handling & Ref\n### Other Section");
+      const tree = buildHeadingTree(headings);
+      const tocSlugs = new Set(["error-handling--ref", "other-section"]);
+      const tocParentSlugs = new Set(["parent"]);
 
-    expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
-  });
-
-  it("should check recursively at multiple depths", () => {
-    const headings = extractHeadings("## A\n### B\n#### C1\n#### C2\n### D");
-    const tree = buildHeadingTree(headings);
-    const tocSlugs = new Set(["b", "c1", "d"]);
-    const tocParentSlugs = new Set(["a", "b"]);
-
-    const errors = findInconsistentSiblings(tree, tocSlugs, tocParentSlugs);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("C2");
-    expect(errors[0]).toContain("B");
+      expect(findInconsistentSiblings(tree, tocSlugs, tocParentSlugs)).toEqual([]);
+    });
   });
 });
 
@@ -1131,33 +1223,180 @@ describe("findInconsistentSiblings", () => {
 // ============================================================================
 
 describe("extractTocParentSlugs", () => {
-  it("should return empty set when no ToC exists", () => {
-    expect(extractTocParentSlugs("## Features\n\nSome text")).toEqual(new Set());
+  describe("basic extraction", () => {
+    it("should return empty set when no ToC exists", () => {
+      expect(extractTocParentSlugs("## Features\n\nSome text")).toEqual(new Set());
+    });
+
+    it("should return empty set when ToC has only flat entries", () => {
+      const content = `
+## Table of Contents
+
+- [A](#a)
+- [B](#b)
+- [C](#c)
+
+## A
+## B
+## C`;
+      expect(extractTocParentSlugs(content)).toEqual(new Set());
+    });
+
+    it("should identify a single parent with indented children", () => {
+      const content = `
+## Table of Contents
+
+- [Section](#section)
+  - [Alpha](#alpha)
+  - [Beta](#beta)
+
+## Section
+### Alpha
+### Beta`;
+      expect(extractTocParentSlugs(content)).toEqual(new Set(["section"]));
+    });
   });
 
-  it("should return empty set when ToC has only flat entries", () => {
-    const content = `## Table of Contents\n\n- [A](#a)\n- [B](#b)\n- [C](#c)\n\n## A\n## B\n## C`;
-    expect(extractTocParentSlugs(content)).toEqual(new Set());
+  describe("nesting levels", () => {
+    it("should identify multiple parents at different indent levels", () => {
+      const content = `
+## Table of Contents
+
+- [A](#a)
+  - [B](#b)
+    - [C](#c)
+
+## A
+### B
+#### C`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents.has("a")).toBe(true);
+      expect(parents.has("b")).toBe(true);
+      expect(parents.has("c")).toBe(false);
+    });
+
+    it("should handle three levels of nesting", () => {
+      const content = `
+## Table of Contents
+
+- [Root](#root)
+  - [Mid](#mid)
+    - [Leaf](#leaf)
+
+## Root
+### Mid
+#### Leaf`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents).toEqual(new Set(["mid", "root"]));
+    });
+
+    it("should handle multiple parents at the same indent level", () => {
+      const content = `
+## Table of Contents
+
+- [P1](#p1)
+  - [C1](#c1)
+- [P2](#p2)
+  - [C2](#c2)
+
+## P1
+### C1
+## P2
+### C2`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents).toEqual(new Set(["p1", "p2"]));
+    });
   });
 
-  it("should identify parent entries with indented children", () => {
-    const content = `## Table of Contents\n\n- [Section](#section)\n  - [Alpha](#alpha)\n  - [Beta](#beta)\n\n## Section\n### Alpha\n### Beta`;
-    expect(extractTocParentSlugs(content)).toEqual(new Set(["section"]));
+  describe("leaf vs parent distinction", () => {
+    it("should not mark leaf entries as parents", () => {
+      const content = `
+## Table of Contents
+
+- [Parent](#parent)
+  - [Child](#child)
+- [Leaf](#leaf)
+
+## Parent
+### Child
+## Leaf`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents.has("parent")).toBe(true);
+      expect(parents.has("child")).toBe(false);
+      expect(parents.has("leaf")).toBe(false);
+    });
+
+    it("should not mark the last entry as parent (no next entry)", () => {
+      const content = `
+## Table of Contents
+
+- [A](#a)
+- [B](#b)
+
+## A
+## B`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents.has("a")).toBe(false);
+      expect(parents.has("b")).toBe(false);
+    });
+
+    it("should handle entry followed by same-indent entry (not a parent)", () => {
+      const content = `
+## Table of Contents
+
+- [A](#a)
+- [B](#b)
+  - [C](#c)
+
+## A
+## B
+### C`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents.has("a")).toBe(false);
+      expect(parents.has("b")).toBe(true);
+    });
   });
 
-  it("should identify multiple parents at different levels", () => {
-    const content = `## Table of Contents\n\n- [A](#a)\n  - [B](#b)\n    - [C](#c)\n\n## A\n### B\n#### C`;
-    const parents = extractTocParentSlugs(content);
-    expect(parents.has("a")).toBe(true);
-    expect(parents.has("b")).toBe(true);
-    expect(parents.has("c")).toBe(false);
-  });
+  describe("edge cases", () => {
+    it("should return empty set for empty content", () => {
+      expect(extractTocParentSlugs("")).toEqual(new Set());
+    });
 
-  it("should not mark leaf entries as parents", () => {
-    const content = `## Table of Contents\n\n- [Parent](#parent)\n  - [Child](#child)\n- [Leaf](#leaf)\n\n## Parent\n### Child\n## Leaf`;
-    const parents = extractTocParentSlugs(content);
-    expect(parents.has("parent")).toBe(true);
-    expect(parents.has("child")).toBe(false);
-    expect(parents.has("leaf")).toBe(false);
+    it("should return empty set for ToC with a single entry", () => {
+      const content = `
+## Table of Contents
+
+- [Only](#only)
+
+## Only`;
+      expect(extractTocParentSlugs(content)).toEqual(new Set());
+    });
+
+    it("should handle tab indentation in ToC entries", () => {
+      const content = `
+## Table of Contents
+
+- [Parent](#parent)
+\t- [Child](#child)
+
+## Parent
+### Child`;
+      // Tab is 1 char indent vs 2 spaces; still greater indent
+      const parents = extractTocParentSlugs(content);
+      expect(parents.has("parent")).toBe(true);
+    });
+
+    it("should handle four-space indentation", () => {
+      const content = `
+## Table of Contents
+
+- [Parent](#parent)
+    - [Child](#child)
+
+## Parent
+### Child`;
+      const parents = extractTocParentSlugs(content);
+      expect(parents.has("parent")).toBe(true);
+    });
   });
 });

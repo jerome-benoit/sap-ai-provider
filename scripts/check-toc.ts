@@ -171,10 +171,9 @@ export function extractTocParentSlugs(content: string): Set<string> {
     }
   }
 
-  for (let i = 0; i < entries.length - 1; i++) {
-    const current = entries[i];
+  for (const [i, current] of entries.entries()) {
     const next = entries[i + 1];
-    if (current && next && next.indent > current.indent) {
+    if (next && next.indent > current.indent) {
       parents.add(current.slug);
     }
   }
@@ -348,10 +347,6 @@ export function validateToc(filePath: string): ValidationResult {
   return validateTocContent(content);
 }
 
-// ============================================================================
-// CLI Entry Point
-// ============================================================================
-
 /**
  * Validate ToC against actual headings from content string.
  * @param content - Markdown content to validate
@@ -408,6 +403,10 @@ export function validateTocContent(content: string): ValidationResult {
 
   return { errors, skipped: false, valid: errors.length === 0 };
 }
+
+// ============================================================================
+// CLI Entry Point
+// ============================================================================
 
 // Run CLI if executed directly
 const isMainModule =
