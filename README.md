@@ -21,6 +21,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
   - [Option 1: Factory Function (Recommended for Custom Configuration)](#option-1-factory-function-recommended-for-custom-configuration)
   - [API Selection](#api-selection)
   - [Option 2: Default Instance (Quick Start)](#option-2-default-instance-quick-start)
+  - [Provider Methods](#provider-methods)
 - [Authentication](#authentication)
 - [Basic Usage](#basic-usage)
   - [Text Generation](#text-generation)

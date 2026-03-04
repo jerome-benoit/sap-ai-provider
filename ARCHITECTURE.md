@@ -32,6 +32,7 @@ Handler → SAP AI Core API
   - [Component Responsibilities](#component-responsibilities)
     - [`SAPAIProvider`](#sapaiprovider)
     - [`SAPAILanguageModel`](#sapailanguagemodel)
+    - [`SAPAIEmbeddingModel`](#sapaiembeddingmodel)
     - [`Authentication System`](#authentication-system)
     - [`Message Conversion`](#message-conversion)
 - [Request/Response Flow](#requestresponse-flow)
