@@ -12,6 +12,7 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamPart,
+  LanguageModelV3Usage,
   SharedV3ProviderMetadata,
   SharedV3Warning,
 } from "@ai-sdk/provider";
@@ -212,18 +213,7 @@ export interface SDKResponse {
   getContent(): null | string | undefined;
   getFinishReason(): null | string | undefined;
   getIntermediateFailures?(): undefined | unknown[];
-  getTokenUsage():
-    | undefined
-    | {
-        completion_tokens?: number;
-        completion_tokens_details?: {
-          reasoning_tokens?: number;
-        };
-        prompt_tokens?: number;
-        prompt_tokens_details?: {
-          cached_tokens?: number;
-        };
-      };
+  getTokenUsage(): SDKTokenUsage | undefined;
   getToolCalls():
     | null
     | undefined
@@ -250,6 +240,25 @@ export interface SDKStreamChunk {
         index?: number;
       }[];
   getFinishReason(): null | string | undefined;
+}
+
+/**
+ * Token usage shape returned by SAP AI SDK responses.
+ *
+ * Shared by both doGenerate and doStream paths, this type captures the
+ * superset of fields exposed by the Orchestration (`TokenUsage`) and
+ * Foundation Models (`AzureOpenAiCompletionUsage`) SDKs.
+ * @internal
+ */
+export interface SDKTokenUsage {
+  completion_tokens?: number;
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
+  prompt_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
 }
 
 /**
@@ -295,19 +304,7 @@ export interface StreamTransformerConfig {
     | { ref_id?: number; title: string; url: string }[];
   readonly streamResponseGetFinishReason: () => null | string | undefined;
   readonly streamResponseGetIntermediateFailures?: () => undefined | unknown[];
-  readonly streamResponseGetTokenUsage: () =>
-    | null
-    | undefined
-    | {
-        completion_tokens?: number;
-        completion_tokens_details?: {
-          reasoning_tokens?: number;
-        };
-        prompt_tokens?: number;
-        prompt_tokens_details?: {
-          cached_tokens?: number;
-        };
-      };
+  readonly streamResponseGetTokenUsage: () => null | SDKTokenUsage | undefined;
   readonly url: string;
   readonly version: string;
   readonly warnings: readonly SharedV3Warning[];
@@ -467,26 +464,7 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
       modelId,
       timestamp: new Date(),
     },
-    usage: {
-      inputTokens: {
-        cacheRead: tokenUsage?.prompt_tokens_details?.cached_tokens,
-        cacheWrite: undefined,
-        noCache:
-          tokenUsage?.prompt_tokens_details?.cached_tokens != null
-            ? (tokenUsage.prompt_tokens ?? 0) - tokenUsage.prompt_tokens_details.cached_tokens
-            : tokenUsage?.prompt_tokens,
-        total: tokenUsage?.prompt_tokens,
-      },
-      outputTokens: {
-        reasoning: tokenUsage?.completion_tokens_details?.reasoning_tokens,
-        text:
-          tokenUsage?.completion_tokens_details?.reasoning_tokens != null
-            ? (tokenUsage.completion_tokens ?? 0) -
-              tokenUsage.completion_tokens_details.reasoning_tokens
-            : tokenUsage?.completion_tokens,
-        total: tokenUsage?.completion_tokens,
-      },
-    },
+    usage: mapTokenUsage(tokenUsage),
     warnings,
   };
 }
@@ -838,20 +816,9 @@ export function createStreamTransformer(
 
         const finalUsage = streamResponseGetTokenUsage();
         if (finalUsage) {
-          streamState.usage.inputTokens.total = finalUsage.prompt_tokens;
-          streamState.usage.inputTokens.cacheRead = finalUsage.prompt_tokens_details?.cached_tokens;
-          streamState.usage.inputTokens.noCache =
-            finalUsage.prompt_tokens_details?.cached_tokens != null
-              ? (finalUsage.prompt_tokens ?? 0) - finalUsage.prompt_tokens_details.cached_tokens
-              : finalUsage.prompt_tokens;
-          streamState.usage.outputTokens.total = finalUsage.completion_tokens;
-          streamState.usage.outputTokens.reasoning =
-            finalUsage.completion_tokens_details?.reasoning_tokens;
-          streamState.usage.outputTokens.text =
-            finalUsage.completion_tokens_details?.reasoning_tokens != null
-              ? (finalUsage.completion_tokens ?? 0) -
-                finalUsage.completion_tokens_details.reasoning_tokens
-              : finalUsage.completion_tokens;
+          const mapped = mapTokenUsage(finalUsage);
+          streamState.usage.inputTokens = mapped.inputTokens;
+          streamState.usage.outputTokens = mapped.outputTokens;
         }
 
         const streamCitations = streamResponseGetCitations?.();
@@ -1195,6 +1162,37 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
     default:
       return { raw, unified: "other" };
   }
+}
+
+/**
+ * Maps SAP AI SDK token usage to Vercel AI SDK LanguageModelV3Usage.
+ * @param tokenUsage - Raw token usage from the SAP SDK response.
+ * @returns Mapped usage with input/output token breakdowns.
+ * @internal
+ */
+export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): LanguageModelV3Usage {
+  const cachedTokens = tokenUsage?.prompt_tokens_details?.cached_tokens;
+  const reasoningTokens = tokenUsage?.completion_tokens_details?.reasoning_tokens;
+
+  return {
+    inputTokens: {
+      cacheRead: cachedTokens,
+      cacheWrite: undefined,
+      noCache:
+        cachedTokens != null
+          ? (tokenUsage?.prompt_tokens ?? 0) - cachedTokens
+          : tokenUsage?.prompt_tokens,
+      total: tokenUsage?.prompt_tokens,
+    },
+    outputTokens: {
+      reasoning: reasoningTokens,
+      text:
+        reasoningTokens != null
+          ? (tokenUsage?.completion_tokens ?? 0) - reasoningTokens
+          : tokenUsage?.completion_tokens,
+      total: tokenUsage?.completion_tokens,
+    },
+  };
 }
 
 /**
