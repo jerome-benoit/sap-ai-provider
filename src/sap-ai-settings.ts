@@ -313,12 +313,18 @@ export type {
   ChatCompletionRequest,
   ChatCompletionTool,
   ChatMessage,
+  ChatMessageContent,
+  ChatMessages,
+  Citation,
   DeveloperChatMessage,
   DocumentTranslationApplyToSelector,
+  FileContent,
   FunctionObject,
+  ImageContentUrl,
   LlmModelDetails,
   LlmModelParams,
   OrchestrationConfigRef,
+  OrchestrationError,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
   PromptTemplatingModule,
@@ -329,6 +335,8 @@ export type {
   TranslationOutputParameters,
   TranslationTargetLanguage,
   UserChatMessage,
+  UserChatMessageContent,
+  UserChatMessageContentItem,
 } from "@sap-ai-sdk/orchestration";
 
 export {

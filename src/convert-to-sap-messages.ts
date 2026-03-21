@@ -71,11 +71,14 @@ const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%
  * @internal
  */
 interface UserContentItem {
+  readonly file?: {
+    readonly file_data: string;
+  };
   readonly image_url?: {
     readonly url: string;
   };
   readonly text?: string;
-  readonly type: "image_url" | "text";
+  readonly type: "file" | "image_url" | "text";
 }
 
 /**
@@ -191,65 +194,37 @@ export function convertToSAPMessages(
         for (const part of message.content) {
           switch (part.type) {
             case "file": {
-              if (!part.mediaType.startsWith("image/")) {
-                throw new UnsupportedFunctionalityError({
-                  functionality: "Only image files are supported",
+              const fileDataUrl = buildDataUrl(part);
+
+              if (part.mediaType.startsWith("image/")) {
+                const supportedFormats = [
+                  "image/png",
+                  "image/jpeg",
+                  "image/jpg",
+                  "image/gif",
+                  "image/webp",
+                ];
+                if (!supportedFormats.includes(part.mediaType.toLowerCase())) {
+                  console.warn(
+                    `Image format ${part.mediaType} may not be supported by all models. ` +
+                      `Recommended formats: PNG, JPEG, GIF, WebP`,
+                  );
+                }
+
+                contentParts.push({
+                  image_url: {
+                    url: fileDataUrl,
+                  },
+                  type: "image_url",
+                });
+              } else {
+                contentParts.push({
+                  file: {
+                    file_data: fileDataUrl,
+                  },
+                  type: "file",
                 });
               }
-
-              const supportedFormats = [
-                "image/png",
-                "image/jpeg",
-                "image/jpg",
-                "image/gif",
-                "image/webp",
-              ];
-              if (!supportedFormats.includes(part.mediaType.toLowerCase())) {
-                console.warn(
-                  `Image format ${part.mediaType} may not be supported by all models. ` +
-                    `Recommended formats: PNG, JPEG, GIF, WebP`,
-                );
-              }
-
-              let imageUrl: string;
-              if (part.data instanceof URL) {
-                imageUrl = part.data.toString();
-              } else if (typeof part.data === "string") {
-                imageUrl = `data:${part.mediaType};base64,${part.data}`;
-              } else if (part.data instanceof Uint8Array) {
-                const base64Data = Buffer.from(part.data).toString("base64");
-                imageUrl = `data:${part.mediaType};base64,${base64Data}`;
-              } else if (Buffer.isBuffer(part.data)) {
-                const base64Data = Buffer.from(part.data).toString("base64");
-                imageUrl = `data:${part.mediaType};base64,${base64Data}`;
-              } else {
-                const maybeBufferLike = part.data as unknown;
-
-                if (
-                  maybeBufferLike !== null &&
-                  typeof maybeBufferLike === "object" &&
-                  "toString" in (maybeBufferLike as Record<string, unknown>)
-                ) {
-                  const base64Data = (
-                    maybeBufferLike as {
-                      toString: (encoding?: string) => string;
-                    }
-                  ).toString("base64");
-                  imageUrl = `data:${part.mediaType};base64,${base64Data}`;
-                } else {
-                  throw new UnsupportedFunctionalityError({
-                    functionality:
-                      "Unsupported file data type for image. Expected URL, base64 string, or Uint8Array.",
-                  });
-                }
-              }
-
-              contentParts.push({
-                image_url: {
-                  url: imageUrl,
-                },
-                type: "image_url",
-              });
               break;
             }
             case "text": {
@@ -321,4 +296,54 @@ export function escapeOrchestrationPlaceholders(text: string): string {
 export function unescapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
   return text.replaceAll(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
+}
+
+/**
+ * Builds a data URL from a file part's data and media type.
+ *
+ * Supports URL, base64 string, Uint8Array, Buffer, and buffer-like objects.
+ * @internal
+ * @param part - The file part containing data and mediaType.
+ * @param part.data - The file data as URL, base64 string, or Uint8Array.
+ * @param part.mediaType - The MIME type of the file.
+ * @returns The data URL string.
+ * @throws {UnsupportedFunctionalityError} If the data type is not supported.
+ */
+function buildDataUrl(part: { data: string | Uint8Array | URL; mediaType: string }): string {
+  if (part.data instanceof URL) {
+    return part.data.toString();
+  }
+
+  if (typeof part.data === "string") {
+    return `data:${part.mediaType};base64,${part.data}`;
+  }
+
+  if (part.data instanceof Uint8Array) {
+    const base64Data = Buffer.from(part.data).toString("base64");
+    return `data:${part.mediaType};base64,${base64Data}`;
+  }
+
+  if (Buffer.isBuffer(part.data)) {
+    const base64Data = Buffer.from(part.data).toString("base64");
+    return `data:${part.mediaType};base64,${base64Data}`;
+  }
+
+  const maybeBufferLike = part.data as unknown;
+
+  if (
+    maybeBufferLike !== null &&
+    typeof maybeBufferLike === "object" &&
+    "toString" in (maybeBufferLike as Record<string, unknown>)
+  ) {
+    const base64Data = (
+      maybeBufferLike as {
+        toString: (encoding?: string) => string;
+      }
+    ).toString("base64");
+    return `data:${part.mediaType};base64,${base64Data}`;
+  }
+
+  throw new UnsupportedFunctionalityError({
+    functionality: "Unsupported file data type. Expected URL, base64 string, or Uint8Array.",
+  });
 }

@@ -748,6 +748,88 @@ describe("convertToSAPMessages", () => {
     });
   });
 
+  describe("non-image file handling", () => {
+    it("should convert PDF file as base64 string to file content", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ data: "JVBERi0xLjQ=", mediaType: "application/pdf", type: "file" }],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      expect(result).toEqual([
+        {
+          content: [
+            {
+              file: { file_data: "data:application/pdf;base64,JVBERi0xLjQ=" },
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ]);
+    });
+
+    it("should convert audio file as Uint8Array to file content", () => {
+      const audioData = new Uint8Array([0xff, 0xfb, 0x90, 0x00]);
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ data: audioData, mediaType: "audio/mp3", type: "file" }],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { content: { file: { file_data: string }; type: string }[] };
+      const content = message.content[0];
+      expect(content).toBeDefined();
+      expect(content?.type).toBe("file");
+      expect(content?.file.file_data).toMatch(/^data:audio\/mp3;base64,/);
+    });
+
+    it("should convert file via URL to file content", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              data: new URL("https://example.com/document.pdf"),
+              mediaType: "application/pdf",
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      expect(result).toEqual([
+        {
+          content: [
+            {
+              file: { file_data: "https://example.com/document.pdf" },
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ]);
+    });
+
+    it("should still convert image files through image_url path", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ data: "base64data", mediaType: "image/png", type: "file" }],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      expect(result).toEqual([
+        {
+          content: [{ image_url: { url: "data:image/png;base64,base64data" }, type: "image_url" }],
+          role: "user",
+        },
+      ]);
+    });
+  });
+
   describe("full conversation", () => {
     it("should convert multi-turn conversation", () => {
       const prompt: LanguageModelV3Prompt = [
@@ -762,17 +844,6 @@ describe("convertToSAPMessages", () => {
   });
 
   describe("error handling", () => {
-    it.each([
-      { description: "audio", mediaType: "audio/mp3" },
-      { description: "pdf", mediaType: "application/pdf" },
-      { description: "video", mediaType: "video/mp4" },
-    ])("should throw for unsupported file type: $description", ({ mediaType }) => {
-      const prompt: LanguageModelV3Prompt = [
-        { content: [{ data: "base64data", mediaType, type: "file" }], role: "user" },
-      ];
-      expect(() => convertToSAPMessages(prompt)).toThrow("Only image files are supported");
-    });
-
     it("should throw for unknown user content type", () => {
       const prompt = [
         {
@@ -792,7 +863,7 @@ describe("convertToSAPMessages", () => {
           role: "user",
         },
       ];
-      expect(() => convertToSAPMessages(prompt)).toThrow("Unsupported file data type for image");
+      expect(() => convertToSAPMessages(prompt)).toThrow("Unsupported file data type");
     });
 
     it("should throw InvalidPromptError for unsupported role", () => {

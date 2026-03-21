@@ -49,11 +49,22 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  * @internal
  */
 export interface StreamCallResponse {
+  readonly getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
   readonly getFinishReason: () => null | string | undefined;
+  readonly getIntermediateFailures?: () => undefined | unknown[];
   readonly getTokenUsage: () =>
     | null
     | undefined
-    | { completion_tokens?: number; prompt_tokens?: number };
+    | {
+        completion_tokens?: number;
+        completion_tokens_details?: {
+          reasoning_tokens?: number;
+        };
+        prompt_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
+      };
   readonly responseHeaders?: Record<string, string>;
   /** Server-provided completion ID extracted from _data, if available. */
   readonly responseId?: string;
@@ -158,7 +169,9 @@ export abstract class BaseLanguageModelStrategy<
         responseHeaders: streamResponse.responseHeaders,
         responseId,
         sdkStream: streamResponse.stream,
+        streamResponseGetCitations: streamResponse.getCitations,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
+        streamResponseGetIntermediateFailures: streamResponse.getIntermediateFailures,
         streamResponseGetTokenUsage: streamResponse.getTokenUsage,
         url: this.getUrl(),
         version: VERSION,
