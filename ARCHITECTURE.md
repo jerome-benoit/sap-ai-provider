@@ -1042,7 +1042,7 @@ interface SAPAIProvider extends ProviderV3 {
 
 The message conversion system adapts between Vercel AI SDK format and SAP AI
 Core format. The `convertToSAPMessages()` function transforms prompt arrays,
-handling text content, images, tool calls, and tool results across different
+handling text content, images, files, tool calls, and tool results across different
 message formats.
 
 ### Strategy Pattern (Dual API Support)

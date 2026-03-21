@@ -2329,21 +2329,23 @@ SAP-specific fields under the provider name key (default: `"sap-ai"`).
 
 **`doGenerate` — `providerMetadata[providerName]`:**
 
-| Field                | Type                  | Description                                 |
-| -------------------- | --------------------- | ------------------------------------------- |
-| `finishReason`       | `string \| undefined` | Raw finish reason from the SDK              |
-| `finishReasonMapped` | `object`              | Mapped finish reason (`{ raw, unified }`)   |
-| `requestId`          | `string \| undefined` | Server's `x-request-id` header (if present) |
-| `version`            | `string`              | Provider package version                    |
+| Field                  | Type                  | Description                                  |
+| ---------------------- | --------------------- | -------------------------------------------- |
+| `finishReason`         | `string \| undefined` | Raw finish reason from the SDK               |
+| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`)    |
+| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration) |
+| `requestId`            | `string \| undefined` | Server's `x-request-id` header (if present)  |
+| `version`              | `string`              | Provider package version                     |
 
 **`doStream` — `finish` event `providerMetadata[providerName]`:**
 
-| Field          | Type                  | Description                                   |
-| -------------- | --------------------- | --------------------------------------------- |
-| `finishReason` | `string \| undefined` | Raw finish reason from the SDK                |
-| `requestId`    | `string \| undefined` | Server's `x-request-id` header (if present)   |
-| `responseId`   | `string`              | Server completion ID or client-generated UUID |
-| `version`      | `string`              | Provider package version                      |
+| Field                  | Type                  | Description                                   |
+| ---------------------- | --------------------- | --------------------------------------------- |
+| `finishReason`         | `string \| undefined` | Raw finish reason from the SDK                |
+| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)  |
+| `requestId`            | `string \| undefined` | Server's `x-request-id` header (if present)   |
+| `responseId`           | `string`              | Server completion ID or client-generated UUID |
+| `version`              | `string`              | Provider package version                      |
 
 **Example (non-streaming):**
 
@@ -2631,14 +2633,18 @@ definitions.
 
 **Chat Message Types:**
 
-| Type                   | Description                           |
-| ---------------------- | ------------------------------------- |
-| `ChatMessage`          | Union type for all chat message types |
-| `AssistantChatMessage` | Message from the assistant            |
-| `DeveloperChatMessage` | System/developer instructions         |
-| `SystemChatMessage`    | System message (alias for developer)  |
-| `ToolChatMessage`      | Tool/function call result message     |
-| `UserChatMessage`      | Message from the user                 |
+| Type                         | Description                                   |
+| ---------------------------- | --------------------------------------------- |
+| `AssistantChatMessage`       | Message from the assistant                    |
+| `ChatMessage`                | Union type for all chat message types         |
+| `ChatMessageContent`         | Content union for chat messages               |
+| `ChatMessages`               | Array of `ChatMessage` (message list alias)   |
+| `DeveloperChatMessage`       | System/developer instructions                 |
+| `SystemChatMessage`          | System message (alias for developer)          |
+| `ToolChatMessage`            | Tool/function call result message             |
+| `UserChatMessage`            | Message from the user                         |
+| `UserChatMessageContent`     | Content for user messages (text, image, file) |
+| `UserChatMessageContentItem` | Single content item in a user message         |
 
 **Configuration Types:**
 
@@ -2668,6 +2674,20 @@ definitions.
 | `TranslationTargetLanguage`          | Target language specification    |
 | `TranslationApplyToCategory`         | Translation scope selector       |
 | `DocumentTranslationApplyToSelector` | Document translation selector    |
+
+**Content & Response Types:**
+
+| Type              | Description                         |
+| ----------------- | ----------------------------------- |
+| `Citation`        | Source citation from model response |
+| `FileContent`     | File content in user messages       |
+| `ImageContentUrl` | Image URL content in user messages  |
+
+**Error Types:**
+
+| Type                 | Description                               |
+| -------------------- | ----------------------------------------- |
+| `OrchestrationError` | Error from orchestration module execution |
 
 **Example:**
 
