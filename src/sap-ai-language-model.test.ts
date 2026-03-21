@@ -854,7 +854,11 @@ describe("SAPAILanguageModel", () => {
    * @param overrides.toolCalls - Tool calls in the response.
    * @param overrides.usage - Token usage information.
    * @param overrides.usage.completion_tokens - Completion token count.
+   * @param overrides.usage.completion_tokens_details - Completion token details.
+   * @param overrides.usage.completion_tokens_details.reasoning_tokens - Reasoning token count.
    * @param overrides.usage.prompt_tokens - Prompt token count.
+   * @param overrides.usage.prompt_tokens_details - Prompt token details.
+   * @param overrides.usage.prompt_tokens_details.cached_tokens - Cached token count.
    * @param overrides.usage.total_tokens - Total token count.
    * @returns A mock chat response object.
    */
@@ -873,7 +877,13 @@ describe("SAPAILanguageModel", () => {
       }[];
       usage?: {
         completion_tokens: number;
+        completion_tokens_details?: {
+          reasoning_tokens?: number;
+        };
         prompt_tokens: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
         total_tokens: number;
       };
     } = {},
@@ -2869,6 +2879,9 @@ describe("SAPAILanguageModel", () => {
     });
   });
 
+  // These tests use setStreamResponseOverride instead of setStreamChunksForApi because
+  // getCitations() and getIntermediateFailures() are response-level methods on
+  // OrchestrationStreamResponse, not chunk-level data that setStreamChunksForApi supports.
   describe("doStream citations and intermediateFailures (orchestration API)", () => {
     beforeEach(async () => {
       await resetMockStateForApi("orchestration");
@@ -2981,6 +2994,73 @@ describe("SAPAILanguageModel", () => {
       }
     });
   });
+
+  describe.each<APIType>(["orchestration", "foundation-models"])(
+    "doGenerate token usage details (%s API)",
+    (api) => {
+      beforeEach(async () => {
+        await resetMockStateForApi(api);
+      });
+
+      it("should map cached_tokens to inputTokens.cacheRead", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cached_tokens: 60 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.usage.inputTokens.total).toBe(100);
+        expect(result.usage.inputTokens.cacheRead).toBe(60);
+        expect(result.usage.inputTokens.noCache).toBe(40);
+      });
+
+      it("should map reasoning_tokens to outputTokens.reasoning", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 200,
+              completion_tokens_details: { reasoning_tokens: 150 },
+              prompt_tokens: 10,
+              total_tokens: 210,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.usage.outputTokens.total).toBe(200);
+        expect(result.usage.outputTokens.reasoning).toBe(150);
+        expect(result.usage.outputTokens.text).toBe(50);
+      });
+
+      it("should leave details undefined when not present", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.usage.inputTokens.cacheRead).toBeUndefined();
+        expect(result.usage.outputTokens.reasoning).toBeUndefined();
+      });
+    },
+  );
 
   describe("configuration", () => {
     describe("masking and filtering", () => {

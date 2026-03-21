@@ -212,7 +212,18 @@ export interface SDKResponse {
   getContent(): null | string | undefined;
   getFinishReason(): null | string | undefined;
   getIntermediateFailures?(): undefined | unknown[];
-  getTokenUsage(): undefined | { completion_tokens?: number; prompt_tokens?: number };
+  getTokenUsage():
+    | undefined
+    | {
+        completion_tokens?: number;
+        completion_tokens_details?: {
+          reasoning_tokens?: number;
+        };
+        prompt_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
+      };
   getToolCalls():
     | null
     | undefined
@@ -287,7 +298,16 @@ export interface StreamTransformerConfig {
   readonly streamResponseGetTokenUsage: () =>
     | null
     | undefined
-    | { completion_tokens?: number; prompt_tokens?: number };
+    | {
+        completion_tokens?: number;
+        completion_tokens_details?: {
+          reasoning_tokens?: number;
+        };
+        prompt_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
+      };
   readonly url: string;
   readonly version: string;
   readonly warnings: readonly SharedV3Warning[];
@@ -449,14 +469,21 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     },
     usage: {
       inputTokens: {
-        cacheRead: undefined,
+        cacheRead: tokenUsage?.prompt_tokens_details?.cached_tokens,
         cacheWrite: undefined,
-        noCache: tokenUsage?.prompt_tokens,
+        noCache:
+          tokenUsage?.prompt_tokens_details?.cached_tokens != null
+            ? (tokenUsage.prompt_tokens ?? 0) - tokenUsage.prompt_tokens_details.cached_tokens
+            : tokenUsage?.prompt_tokens,
         total: tokenUsage?.prompt_tokens,
       },
       outputTokens: {
-        reasoning: undefined,
-        text: tokenUsage?.completion_tokens,
+        reasoning: tokenUsage?.completion_tokens_details?.reasoning_tokens,
+        text:
+          tokenUsage?.completion_tokens_details?.reasoning_tokens != null
+            ? (tokenUsage.completion_tokens ?? 0) -
+              tokenUsage.completion_tokens_details.reasoning_tokens
+            : tokenUsage?.completion_tokens,
         total: tokenUsage?.completion_tokens,
       },
     },
@@ -812,9 +839,19 @@ export function createStreamTransformer(
         const finalUsage = streamResponseGetTokenUsage();
         if (finalUsage) {
           streamState.usage.inputTokens.total = finalUsage.prompt_tokens;
-          streamState.usage.inputTokens.noCache = finalUsage.prompt_tokens;
+          streamState.usage.inputTokens.cacheRead = finalUsage.prompt_tokens_details?.cached_tokens;
+          streamState.usage.inputTokens.noCache =
+            finalUsage.prompt_tokens_details?.cached_tokens != null
+              ? (finalUsage.prompt_tokens ?? 0) - finalUsage.prompt_tokens_details.cached_tokens
+              : finalUsage.prompt_tokens;
           streamState.usage.outputTokens.total = finalUsage.completion_tokens;
-          streamState.usage.outputTokens.text = finalUsage.completion_tokens;
+          streamState.usage.outputTokens.reasoning =
+            finalUsage.completion_tokens_details?.reasoning_tokens;
+          streamState.usage.outputTokens.text =
+            finalUsage.completion_tokens_details?.reasoning_tokens != null
+              ? (finalUsage.completion_tokens ?? 0) -
+                finalUsage.completion_tokens_details.reasoning_tokens
+              : finalUsage.completion_tokens;
         }
 
         const streamCitations = streamResponseGetCitations?.();

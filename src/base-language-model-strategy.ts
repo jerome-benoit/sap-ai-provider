@@ -55,7 +55,16 @@ export interface StreamCallResponse {
   readonly getTokenUsage: () =>
     | null
     | undefined
-    | { completion_tokens?: number; prompt_tokens?: number };
+    | {
+        completion_tokens?: number;
+        completion_tokens_details?: {
+          reasoning_tokens?: number;
+        };
+        prompt_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+        };
+      };
   readonly responseHeaders?: Record<string, string>;
   /** Server-provided completion ID extracted from _data, if available. */
   readonly responseId?: string;
