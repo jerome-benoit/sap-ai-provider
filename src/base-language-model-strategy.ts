@@ -23,6 +23,7 @@ import {
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
+  type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
   type SDKTokenUsage,
@@ -50,7 +51,7 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  * @internal
  */
 export interface StreamCallResponse {
-  readonly getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
+  readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
   readonly getTokenUsage: () => null | SDKTokenUsage | undefined;

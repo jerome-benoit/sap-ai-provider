@@ -41,6 +41,7 @@ import {
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
+  type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
@@ -412,11 +413,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     return {
       getCitations: () =>
-        (
-          response as {
-            getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
-          }
-        ).getCitations?.(),
+        (response as { getCitations?: () => SDKCitation[] | undefined }).getCitations?.(),
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
       getIntermediateFailures: () =>
@@ -447,11 +444,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     return {
       getCitations: () =>
-        (
-          streamResponse as {
-            getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
-          }
-        ).getCitations?.(),
+        (streamResponse as { getCitations?: () => SDKCitation[] | undefined }).getCitations?.(),
       getFinishReason: () => streamResponse.getFinishReason(),
       getIntermediateFailures: () =>
         (

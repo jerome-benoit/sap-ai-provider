@@ -208,19 +208,31 @@ export type SAPToolParameters = Record<string, unknown> & {
 /**
  * @internal
  */
+export interface SDKCitation {
+  ref_id?: number;
+  title: string;
+  url: string;
+}
+
+/**
+ * @internal
+ */
+export interface SDKDeltaToolCall {
+  function?: { arguments?: string; name?: string };
+  id?: string;
+  index?: number;
+}
+
+/**
+ * @internal
+ */
 export interface SDKResponse {
-  getCitations?(): undefined | { ref_id?: number; title: string; url: string }[];
+  getCitations?(): SDKCitation[] | undefined;
   getContent(): null | string | undefined;
   getFinishReason(): null | string | undefined;
   getIntermediateFailures?(): undefined | unknown[];
   getTokenUsage(): SDKTokenUsage | undefined;
-  getToolCalls():
-    | null
-    | undefined
-    | {
-        function: { arguments: string; name: string };
-        id: string;
-      }[];
+  getToolCalls(): null | SDKToolCall[] | undefined;
   rawResponse: { headers: Headers | Record<string, string> };
   responseId?: string;
 }
@@ -231,14 +243,7 @@ export interface SDKResponse {
 export interface SDKStreamChunk {
   _data?: unknown;
   getDeltaContent(): null | string | undefined;
-  getDeltaToolCalls():
-    | null
-    | undefined
-    | {
-        function?: { arguments?: string; name?: string };
-        id?: string;
-        index?: number;
-      }[];
+  getDeltaToolCalls(): null | SDKDeltaToolCall[] | undefined;
   getFinishReason(): null | string | undefined;
 }
 
@@ -259,6 +264,14 @@ export interface SDKTokenUsage {
   prompt_tokens_details?: {
     cached_tokens?: number;
   };
+}
+
+/**
+ * @internal
+ */
+export interface SDKToolCall {
+  function: { arguments: string; name: string };
+  id: string;
 }
 
 /**
@@ -299,9 +312,7 @@ export interface StreamTransformerConfig {
   readonly responseHeaders?: Record<string, string>;
   readonly responseId: string;
   readonly sdkStream: AsyncIterable<SDKStreamChunk>;
-  readonly streamResponseGetCitations?: () =>
-    | undefined
-    | { ref_id?: number; title: string; url: string }[];
+  readonly streamResponseGetCitations?: () => SDKCitation[] | undefined;
   readonly streamResponseGetFinishReason: () => null | string | undefined;
   readonly streamResponseGetIntermediateFailures?: () => undefined | unknown[];
   readonly streamResponseGetTokenUsage: () => null | SDKTokenUsage | undefined;
