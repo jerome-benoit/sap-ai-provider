@@ -411,8 +411,18 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       response.getRequestId();
 
     return {
+      getCitations: () =>
+        (
+          response as {
+            getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
+          }
+        ).getCitations?.(),
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
+      getIntermediateFailures: () =>
+        (
+          response as { getIntermediateFailures?: () => undefined | unknown[] }
+        ).getIntermediateFailures?.(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
@@ -436,7 +446,17 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       ._data?.final_result?.id;
 
     return {
+      getCitations: () =>
+        (
+          streamResponse as {
+            getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
+          }
+        ).getCitations?.(),
       getFinishReason: () => streamResponse.getFinishReason(),
+      getIntermediateFailures: () =>
+        (
+          streamResponse as { getIntermediateFailures?: () => undefined | unknown[] }
+        ).getIntermediateFailures?.(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
       responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
       responseId: streamCompletionId,

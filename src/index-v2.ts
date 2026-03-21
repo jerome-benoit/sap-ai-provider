@@ -105,11 +105,15 @@ export type {
   ChatCompletionRequest,
   ChatCompletionTool,
   ChatMessage,
+  ChatMessageContent,
+  Citation,
   DeveloperChatMessage,
   DocumentTranslationApplyToSelector,
+  FileContent,
   FilteringModule,
   FunctionObject,
   GroundingModule,
+  ImageContentUrl,
   LlmModelDetails,
   LlmModelParams,
   MaskingModule,
@@ -125,6 +129,8 @@ export type {
   TranslationOutputParameters,
   TranslationTargetLanguage,
   UserChatMessage,
+  UserChatMessageContent,
+  UserChatMessageContentItem,
 } from "./sap-ai-settings.js";
 
 /**

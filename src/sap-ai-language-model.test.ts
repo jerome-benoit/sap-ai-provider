@@ -846,9 +846,11 @@ describe("SAPAILanguageModel", () => {
    * @param api - The API type, controls which methods are available (e.g. getRequestId is orchestration-only).
    * @param overrides - Optional values to override defaults.
    * @param overrides._data - Raw SDK internal data for completion ID extraction.
+   * @param overrides.citations - Citations for source attribution.
    * @param overrides.content - The response content.
    * @param overrides.finishReason - The finish reason.
    * @param overrides.headers - Response headers.
+   * @param overrides.intermediateFailures - Intermediate failures from retries.
    * @param overrides.toolCalls - Tool calls in the response.
    * @param overrides.usage - Token usage information.
    * @param overrides.usage.completion_tokens - Completion token count.
@@ -860,9 +862,11 @@ describe("SAPAILanguageModel", () => {
     api: "foundation-models" | "orchestration",
     overrides: {
       _data?: Record<string, unknown>;
+      citations?: { ref_id?: number; title: string; url: string }[];
       content?: null | string;
       finishReason?: string;
       headers?: Record<string, unknown>;
+      intermediateFailures?: unknown[];
       toolCalls?: {
         function: { arguments: string; name: string };
         id: string;
@@ -876,9 +880,11 @@ describe("SAPAILanguageModel", () => {
   ) => {
     const defaults = {
       _data: undefined as Record<string, unknown> | undefined,
+      citations: undefined as undefined | { ref_id?: number; title: string; url: string }[],
       content: "Hello!",
       finishReason: "stop",
       headers: { "x-request-id": "test-request-id" },
+      intermediateFailures: undefined as undefined | unknown[],
       toolCalls: undefined,
       usage: {
         completion_tokens: 5,
@@ -891,8 +897,12 @@ describe("SAPAILanguageModel", () => {
 
     return {
       ...(merged._data ? { _data: merged._data } : {}),
+      ...(api === "orchestration" ? { getCitations: () => merged.citations } : {}),
       getContent: () => merged.content,
       getFinishReason: () => merged.finishReason,
+      ...(api === "orchestration"
+        ? { getIntermediateFailures: () => merged.intermediateFailures }
+        : {}),
       ...(api === "orchestration"
         ? {
             getRequestId: () =>
@@ -2766,6 +2776,209 @@ describe("SAPAILanguageModel", () => {
 
         await expect(model.doStream({ prompt })).rejects.toThrow("Stream setup failed");
       });
+    });
+  });
+
+  describe("doGenerate citations and intermediateFailures (orchestration API)", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("orchestration");
+    });
+
+    it("should include citations as source content in doGenerate response", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+
+      MockClient.setChatCompletionResponse(
+        createMockChatResponse("orchestration", {
+          citations: [
+            { ref_id: 1, title: "SAP Docs", url: "https://help.sap.com/docs" },
+            { ref_id: 2, title: "AI Guide", url: "https://example.com/ai-guide" },
+          ],
+          content: "Hello with citations!",
+        }),
+      );
+
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Tell me about SAP");
+      const result = await model.doGenerate({ prompt });
+
+      const sources = result.content.filter(
+        (c): c is { id: string; sourceType: "url"; title: string; type: "source"; url: string } =>
+          c.type === "source",
+      );
+      expect(sources).toHaveLength(2);
+      expect(sources[0]).toEqual({
+        id: "1",
+        sourceType: "url",
+        title: "SAP Docs",
+        type: "source",
+        url: "https://help.sap.com/docs",
+      });
+      expect(sources[1]).toEqual({
+        id: "2",
+        sourceType: "url",
+        title: "AI Guide",
+        type: "source",
+        url: "https://example.com/ai-guide",
+      });
+    });
+
+    it("should not include sources when getCitations returns undefined", async () => {
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Hello");
+      const result = await model.doGenerate({ prompt });
+
+      const sources = result.content.filter((c) => c.type === "source");
+      expect(sources).toHaveLength(0);
+    });
+
+    it("should include intermediateFailures in providerMetadata when present", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+
+      const failures = [
+        { error: "timeout", model: "gpt-4o", retryCount: 1 },
+        { error: "rate_limit", model: "gpt-4o", retryCount: 2 },
+      ];
+
+      MockClient.setChatCompletionResponse(
+        createMockChatResponse("orchestration", {
+          intermediateFailures: failures,
+        }),
+      );
+
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Hello");
+      const result = await model.doGenerate({ prompt });
+
+      const metadata = result.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+      expect(metadata.intermediateFailures).toEqual(failures);
+    });
+
+    it("should not include intermediateFailures in providerMetadata when absent", async () => {
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Hello");
+      const result = await model.doGenerate({ prompt });
+
+      const metadata = result.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+      expect(metadata.intermediateFailures).toBeUndefined();
+    });
+  });
+
+  describe("doStream citations and intermediateFailures (orchestration API)", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("orchestration");
+    });
+
+    it("should emit source stream parts from getCitations", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setStreamResponseOverride) {
+        throw new Error("mock missing setStreamResponseOverride");
+      }
+
+      const chunks = [
+        createMockStreamChunk({
+          deltaContent: "Hello with sources!",
+          finishReason: "stop",
+          usage: { completion_tokens: 5, prompt_tokens: 10, total_tokens: 15 },
+        }),
+      ];
+
+      MockClient.setStreamResponseOverride({
+        getCitations: () => [{ ref_id: 1, title: "SAP Docs", url: "https://help.sap.com/docs" }],
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 5, prompt_tokens: 10, total_tokens: 15 }),
+        rawResponse: { headers: { "x-request-id": "test-stream-request-id" } },
+        stream: {
+          *[Symbol.asyncIterator]() {
+            for (const c of chunks) yield c;
+          },
+        },
+      });
+
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Tell me about SAP");
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const sourceParts = parts.filter((p) => p.type === "source");
+      expect(sourceParts).toHaveLength(1);
+      expect(sourceParts[0]).toEqual({
+        id: "1",
+        sourceType: "url",
+        title: "SAP Docs",
+        type: "source",
+        url: "https://help.sap.com/docs",
+      });
+    });
+
+    it("should include intermediateFailures in stream finish providerMetadata", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setStreamResponseOverride) {
+        throw new Error("mock missing setStreamResponseOverride");
+      }
+
+      const failures = [{ error: "timeout", model: "gpt-4o" }];
+
+      const chunks = [
+        createMockStreamChunk({
+          deltaContent: "Recovered",
+          finishReason: "stop",
+          usage: { completion_tokens: 3, prompt_tokens: 5, total_tokens: 8 },
+        }),
+      ];
+
+      MockClient.setStreamResponseOverride({
+        getFinishReason: () => "stop",
+        getIntermediateFailures: () => failures,
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 3, prompt_tokens: 5, total_tokens: 8 }),
+        rawResponse: { headers: { "x-request-id": "test-stream-request-id" } },
+        stream: {
+          *[Symbol.asyncIterator]() {
+            for (const c of chunks) yield c;
+          },
+        },
+      });
+
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Hello");
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const finishPart = parts.find((p) => p.type === "finish");
+      expect(finishPart).toBeDefined();
+      if (finishPart?.type === "finish") {
+        const metadata = finishPart.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+        expect(metadata.intermediateFailures).toEqual(failures);
+      }
+    });
+
+    it("should not include intermediateFailures in stream finish when absent", async () => {
+      await setStreamChunksForApi("orchestration", [
+        createMockStreamChunk({
+          deltaContent: "Hello",
+          finishReason: "stop",
+          usage: { completion_tokens: 3, prompt_tokens: 5, total_tokens: 8 },
+        }),
+      ]);
+
+      const model = createModelForApi("orchestration");
+      const prompt = createPrompt("Hello");
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const finishPart = parts.find((p) => p.type === "finish");
+      expect(finishPart).toBeDefined();
+      if (finishPart?.type === "finish") {
+        const metadata = finishPart.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+        expect(metadata.intermediateFailures).toBeUndefined();
+      }
     });
   });
 

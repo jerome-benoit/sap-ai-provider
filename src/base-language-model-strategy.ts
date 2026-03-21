@@ -49,7 +49,9 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  * @internal
  */
 export interface StreamCallResponse {
+  readonly getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
   readonly getFinishReason: () => null | string | undefined;
+  readonly getIntermediateFailures?: () => undefined | unknown[];
   readonly getTokenUsage: () =>
     | null
     | undefined
@@ -158,7 +160,9 @@ export abstract class BaseLanguageModelStrategy<
         responseHeaders: streamResponse.responseHeaders,
         responseId,
         sdkStream: streamResponse.stream,
+        streamResponseGetCitations: streamResponse.getCitations,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
+        streamResponseGetIntermediateFailures: streamResponse.getIntermediateFailures,
         streamResponseGetTokenUsage: streamResponse.getTokenUsage,
         url: this.getUrl(),
         version: VERSION,

@@ -5,6 +5,7 @@ import type {
   EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
+  JSONArray,
   LanguageModelV3CallOptions,
   LanguageModelV3Content,
   LanguageModelV3FinishReason,
@@ -207,8 +208,10 @@ export type SAPToolParameters = Record<string, unknown> & {
  * @internal
  */
 export interface SDKResponse {
+  getCitations?(): undefined | { ref_id?: number; title: string; url: string }[];
   getContent(): null | string | undefined;
   getFinishReason(): null | string | undefined;
+  getIntermediateFailures?(): undefined | unknown[];
   getTokenUsage(): undefined | { completion_tokens?: number; prompt_tokens?: number };
   getToolCalls():
     | null
@@ -276,7 +279,11 @@ export interface StreamTransformerConfig {
   readonly responseHeaders?: Record<string, string>;
   readonly responseId: string;
   readonly sdkStream: AsyncIterable<SDKStreamChunk>;
+  readonly streamResponseGetCitations?: () =>
+    | undefined
+    | { ref_id?: number; title: string; url: string }[];
   readonly streamResponseGetFinishReason: () => null | string | undefined;
+  readonly streamResponseGetIntermediateFailures?: () => undefined | unknown[];
   readonly streamResponseGetTokenUsage: () =>
     | null
     | undefined
@@ -399,6 +406,21 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     toolCalls,
   };
 
+  const citations = response.getCitations?.();
+  if (citations?.length) {
+    for (const citation of citations) {
+      content.push({
+        id: String(citation.ref_id ?? citation.url),
+        sourceType: "url" as const,
+        title: citation.title,
+        type: "source" as const,
+        url: citation.url,
+      });
+    }
+  }
+
+  const intermediateFailures = response.getIntermediateFailures?.();
+
   return {
     content,
     finishReason,
@@ -406,6 +428,9 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
       [providerName]: {
         finishReason: finishReasonRaw ?? "unknown",
         finishReasonMapped: finishReason,
+        ...(intermediateFailures?.length
+          ? { intermediateFailures: intermediateFailures as JSONArray }
+          : {}),
         ...(typeof responseHeaders?.["x-request-id"] === "string"
           ? { requestId: responseHeaders["x-request-id"] }
           : {}),
@@ -724,7 +749,9 @@ export function createStreamTransformer(
     responseHeaders,
     responseId,
     sdkStream,
+    streamResponseGetCitations,
     streamResponseGetFinishReason,
+    streamResponseGetIntermediateFailures,
     streamResponseGetTokenUsage,
     url,
     version,
@@ -790,11 +817,31 @@ export function createStreamTransformer(
           streamState.usage.outputTokens.text = finalUsage.completion_tokens;
         }
 
+        const streamCitations = streamResponseGetCitations?.();
+        if (streamCitations?.length) {
+          for (const citation of streamCitations) {
+            controller.enqueue({
+              id: String(citation.ref_id ?? citation.url),
+              sourceType: "url" as const,
+              title: citation.title,
+              type: "source",
+              url: citation.url,
+            });
+          }
+        }
+
+        const streamIntermediateFailures = streamResponseGetIntermediateFailures?.();
+
         controller.enqueue({
           finishReason: streamState.finishReason,
           providerMetadata: {
             [providerName]: {
               finishReason: streamState.finishReason.raw,
+              ...(streamIntermediateFailures?.length
+                ? {
+                    intermediateFailures: streamIntermediateFailures as JSONArray,
+                  }
+                : {}),
               ...(typeof responseHeaders?.["x-request-id"] === "string"
                 ? { requestId: responseHeaders["x-request-id"] }
                 : {}),
