@@ -259,9 +259,7 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected collectStreamWarnings(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: TSettings,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _sapOptions?: Record<string, unknown>,
   ): SharedV3Warning[] {
     return [];
@@ -319,9 +317,7 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected getEscapeTemplatePlaceholders(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _sapOptions: Record<string, unknown> | undefined,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: TSettings,
   ): boolean {
     return false;

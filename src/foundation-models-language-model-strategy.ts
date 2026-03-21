@@ -65,7 +65,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   }
 
   protected buildRequest(
-    config: LanguageModelStrategyConfig,
+    _config: LanguageModelStrategyConfig,
     settings: FoundationModelsModelSettings,
     options: LanguageModelV3CallOptions,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
@@ -110,7 +110,6 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   protected createClient(
     config: LanguageModelStrategyConfig,
     settings: FoundationModelsModelSettings,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): FoundationModelsClient {
     const modelDeployment = buildModelDeployment(config, settings.modelVersion);
@@ -146,7 +145,6 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
     abortSignal: AbortSignal | undefined,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: FoundationModelsModelSettings,
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
