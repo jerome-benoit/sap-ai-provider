@@ -18,7 +18,7 @@ import {
 import { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
-/** @internal */
+/** SAP AI Core deployment configuration: either a deployment ID or a resource group. */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
 
 /**

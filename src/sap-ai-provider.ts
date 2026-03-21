@@ -19,7 +19,7 @@ import {
 } from "./sap-ai-settings.js";
 import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
-/** @internal */
+/** SAP AI Core deployment configuration: either a deployment ID or a resource group. */
 export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
 
 /** SAP AI Provider interface extending Vercel AI SDK ProviderV3. */
