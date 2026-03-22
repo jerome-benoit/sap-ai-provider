@@ -202,6 +202,8 @@ export type SAPToolChoice =
  * @internal
  */
 export type SAPToolParameters = Record<string, unknown> & {
+  properties: Record<string, unknown>;
+  required: string[];
   type: "object";
 };
 
@@ -209,7 +211,9 @@ export type SAPToolParameters = Record<string, unknown> & {
  * @internal
  */
 export interface SDKCitation {
+  end_index?: number;
   ref_id?: number;
+  start_index?: number;
   title: string;
   url: string;
 }

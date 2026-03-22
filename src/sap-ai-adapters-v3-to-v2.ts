@@ -76,14 +76,14 @@ export function convertStreamPartToV2(
       };
 
     case "finish":
-      return {
-        finishReason: convertFinishReasonToV2(internalPart.finishReason),
-        type: "finish",
-        usage: convertUsageToV2(internalPart.usage),
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        {
+          finishReason: convertFinishReasonToV2(internalPart.finishReason),
+          type: "finish" as const,
+          usage: convertUsageToV2(internalPart.usage),
+        },
+        internalPart.providerMetadata,
+      );
 
     case "raw":
       return {
@@ -92,32 +92,22 @@ export function convertStreamPartToV2(
       };
 
     case "reasoning-delta":
-      return {
-        delta: internalPart.delta,
-        id: internalPart.id,
-        type: "reasoning-delta",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { delta: internalPart.delta, id: internalPart.id, type: "reasoning-delta" as const },
+        internalPart.providerMetadata,
+      );
 
     case "reasoning-end":
-      return {
-        id: internalPart.id,
-        type: "reasoning-end",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { id: internalPart.id, type: "reasoning-end" as const },
+        internalPart.providerMetadata,
+      );
 
     case "reasoning-start":
-      return {
-        id: internalPart.id,
-        type: "reasoning-start",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { id: internalPart.id, type: "reasoning-start" as const },
+        internalPart.providerMetadata,
+      );
 
     case "response-metadata":
       return {
@@ -129,28 +119,28 @@ export function convertStreamPartToV2(
 
     case "source":
       if (internalPart.sourceType === "url") {
-        return {
-          id: internalPart.id,
-          sourceType: "url",
-          title: internalPart.title,
-          type: "source",
-          url: internalPart.url,
-          ...(internalPart.providerMetadata !== undefined && {
-            providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-          }),
-        };
+        return withProviderMetadata(
+          {
+            id: internalPart.id,
+            sourceType: "url" as const,
+            title: internalPart.title,
+            type: "source" as const,
+            url: internalPart.url,
+          },
+          internalPart.providerMetadata,
+        );
       }
-      return {
-        filename: internalPart.filename,
-        id: internalPart.id,
-        mediaType: internalPart.mediaType,
-        sourceType: "document",
-        title: internalPart.title,
-        type: "source",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        {
+          filename: internalPart.filename,
+          id: internalPart.id,
+          mediaType: internalPart.mediaType,
+          sourceType: "document" as const,
+          title: internalPart.title,
+          type: "source" as const,
+        },
+        internalPart.providerMetadata,
+      );
 
     case "stream-start":
       return {
@@ -159,94 +149,77 @@ export function convertStreamPartToV2(
       };
 
     case "text-delta":
-      return {
-        delta: internalPart.delta,
-        id: internalPart.id,
-        type: "text-delta",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { delta: internalPart.delta, id: internalPart.id, type: "text-delta" as const },
+        internalPart.providerMetadata,
+      );
 
     case "text-end":
-      return {
-        id: internalPart.id,
-        type: "text-end",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { id: internalPart.id, type: "text-end" as const },
+        internalPart.providerMetadata,
+      );
 
     case "text-start":
-      return {
-        id: internalPart.id,
-        type: "text-start",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { id: internalPart.id, type: "text-start" as const },
+        internalPart.providerMetadata,
+      );
 
     case "tool-approval-request":
       return null;
 
     case "tool-call":
-      return {
-        input: internalPart.input,
-        toolCallId: internalPart.toolCallId,
-        toolName: internalPart.toolName,
-        type: "tool-call",
-        ...(internalPart.providerExecuted !== undefined && {
-          providerExecuted: internalPart.providerExecuted,
-        }),
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        {
+          input: internalPart.input,
+          toolCallId: internalPart.toolCallId,
+          toolName: internalPart.toolName,
+          type: "tool-call" as const,
+          ...(internalPart.providerExecuted !== undefined && {
+            providerExecuted: internalPart.providerExecuted,
+          }),
+        },
+        internalPart.providerMetadata,
+      );
 
     case "tool-input-delta":
-      return {
-        delta: internalPart.delta,
-        id: internalPart.id,
-        type: "tool-input-delta",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { delta: internalPart.delta, id: internalPart.id, type: "tool-input-delta" as const },
+        internalPart.providerMetadata,
+      );
 
     case "tool-input-end":
-      return {
-        id: internalPart.id,
-        type: "tool-input-end",
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        { id: internalPart.id, type: "tool-input-end" as const },
+        internalPart.providerMetadata,
+      );
 
     case "tool-input-start":
-      return {
-        id: internalPart.id,
-        toolName: internalPart.toolName,
-        type: "tool-input-start",
-        ...(internalPart.providerExecuted !== undefined && {
-          providerExecuted: internalPart.providerExecuted,
-        }),
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        {
+          id: internalPart.id,
+          toolName: internalPart.toolName,
+          type: "tool-input-start" as const,
+          ...(internalPart.providerExecuted !== undefined && {
+            providerExecuted: internalPart.providerExecuted,
+          }),
+        },
+        internalPart.providerMetadata,
+      );
 
     case "tool-result":
-      return {
-        result: internalPart.result,
-        toolCallId: internalPart.toolCallId,
-        toolName: internalPart.toolName,
-        type: "tool-result",
-        ...(internalPart.isError !== undefined && { isError: internalPart.isError }),
-        ...(internalPart.dynamic !== undefined && { providerExecuted: internalPart.dynamic }),
-        ...(internalPart.providerMetadata !== undefined && {
-          providerMetadata: convertProviderMetadataToV2(internalPart.providerMetadata),
-        }),
-      };
+      return withProviderMetadata(
+        {
+          result: internalPart.result,
+          toolCallId: internalPart.toolCallId,
+          toolName: internalPart.toolName,
+          type: "tool-result" as const,
+          ...(internalPart.isError !== undefined && { isError: internalPart.isError }),
+          ...(internalPart.dynamic !== undefined && { providerExecuted: internalPart.dynamic }),
+        },
+        internalPart.providerMetadata,
+      );
   }
 }
 
@@ -334,4 +307,18 @@ export function createV2StreamFromInternal(
       },
     }),
   );
+}
+
+/**
+ * Conditionally attaches converted provider metadata to a V2 stream part object.
+ * @param obj - The base stream part object.
+ * @param metadata - Optional V3 provider metadata to convert and attach.
+ * @returns The object, with `providerMetadata` added if metadata was defined.
+ */
+function withProviderMetadata<T extends object>(
+  obj: T,
+  metadata: SharedV3ProviderMetadata | undefined,
+): T & { providerMetadata?: SharedV2ProviderMetadata } {
+  if (metadata === undefined) return obj;
+  return { ...obj, providerMetadata: convertProviderMetadataToV2(metadata) };
 }
