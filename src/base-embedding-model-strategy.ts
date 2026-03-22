@@ -8,6 +8,7 @@ import type {
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import {
   buildEmbeddingResult,
@@ -128,4 +129,14 @@ export abstract class BaseEmbeddingModelStrategy<
    * @internal
    */
   protected abstract getUrl(): string;
+
+  protected mergeModelParams(
+    settings: SAPAIEmbeddingSettings,
+    embeddingOptions: EmbeddingProviderOptions | undefined,
+  ): Record<string, unknown> {
+    return deepMerge(
+      (settings.modelParams as Record<string, unknown> | undefined) ?? {},
+      embeddingOptions?.modelParams ?? {},
+    );
+  }
 }

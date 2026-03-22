@@ -11,7 +11,6 @@ import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 import type { EmbeddingProviderOptions } from "./strategy-utils.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
-import { deepMerge } from "./deep-merge.js";
 import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
 /**
@@ -48,10 +47,7 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     settings: SAPAIEmbeddingSettings,
     embeddingOptions: EmbeddingProviderOptions | undefined,
   ): FMEmbeddingClientWithContext {
-    const mergedParams = deepMerge(
-      (settings.modelParams as Record<string, unknown> | undefined) ?? {},
-      embeddingOptions?.modelParams ?? {},
-    );
+    const mergedParams = this.mergeModelParams(settings, embeddingOptions);
 
     return {
       client: new this.ClientClass(
