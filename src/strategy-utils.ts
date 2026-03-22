@@ -202,6 +202,8 @@ export type SAPToolChoice =
  * @internal
  */
 export type SAPToolParameters = Record<string, unknown> & {
+  properties: Record<string, unknown>;
+  required: string[];
   type: "object";
 };
 
