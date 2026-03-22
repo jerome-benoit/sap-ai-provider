@@ -211,7 +211,9 @@ export type SAPToolParameters = Record<string, unknown> & {
  * @internal
  */
 export interface SDKCitation {
+  end_index?: number;
   ref_id?: number;
+  start_index?: number;
   title: string;
   url: string;
 }
