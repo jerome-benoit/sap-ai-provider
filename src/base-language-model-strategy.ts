@@ -23,8 +23,10 @@ import {
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
+  type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
+  type SDKTokenUsage,
   StreamIdGenerator,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
@@ -49,22 +51,10 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  * @internal
  */
 export interface StreamCallResponse {
-  readonly getCitations?: () => undefined | { ref_id?: number; title: string; url: string }[];
+  readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
-  readonly getTokenUsage: () =>
-    | null
-    | undefined
-    | {
-        completion_tokens?: number;
-        completion_tokens_details?: {
-          reasoning_tokens?: number;
-        };
-        prompt_tokens?: number;
-        prompt_tokens_details?: {
-          cached_tokens?: number;
-        };
-      };
+  readonly getTokenUsage: () => null | SDKTokenUsage | undefined;
   readonly responseHeaders?: Record<string, string>;
   /** Server-provided completion ID extracted from _data, if available. */
   readonly responseId?: string;
@@ -269,9 +259,7 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected collectStreamWarnings(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: TSettings,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _sapOptions?: Record<string, unknown>,
   ): SharedV3Warning[] {
     return [];
@@ -329,9 +317,7 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected getEscapeTemplatePlaceholders(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _sapOptions: Record<string, unknown> | undefined,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _settings: TSettings,
   ): boolean {
     return false;
