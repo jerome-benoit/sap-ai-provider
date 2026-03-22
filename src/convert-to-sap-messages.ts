@@ -73,6 +73,7 @@ const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%
 interface UserContentItem {
   readonly file?: {
     readonly file_data: string;
+    readonly filename?: string;
   };
   readonly image_url?: {
     readonly url: string;
@@ -221,6 +222,7 @@ export function convertToSAPMessages(
                 contentParts.push({
                   file: {
                     file_data: fileDataUrl,
+                    ...(part.filename ? { filename: part.filename } : {}),
                   },
                   type: "file",
                 });

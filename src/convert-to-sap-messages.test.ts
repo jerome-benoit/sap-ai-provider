@@ -813,6 +813,37 @@ describe("convertToSAPMessages", () => {
       ]);
     });
 
+    it("should pass through filename when provided", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              data: "JVBERi0xLjQ=",
+              filename: "report.pdf",
+              mediaType: "application/pdf",
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      expect(result).toEqual([
+        {
+          content: [
+            {
+              file: {
+                file_data: "data:application/pdf;base64,JVBERi0xLjQ=",
+                filename: "report.pdf",
+              },
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ]);
+    });
+
     it("should still convert image files through image_url path", () => {
       const prompt: LanguageModelV3Prompt = [
         {
