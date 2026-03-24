@@ -157,7 +157,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
       validateModelParamsSettings(settings.modelParams);
     }
 
-    const mergedSettings = mergeSettingsWithApi<SAPAISettings>(
+    const mergedSettings = mergeSettingsWithApi(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
       providerApi,
@@ -179,7 +179,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
       validateEmbeddingModelParamsSettings(settings.modelParams);
     }
 
-    const mergedSettings = mergeSettingsWithApi<SAPAIEmbeddingSettings>(
+    const mergedSettings = mergeSettingsWithApi(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
       providerApi,
