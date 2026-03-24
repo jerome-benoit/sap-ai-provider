@@ -1,4 +1,7 @@
 import { defineConfig } from "tsup";
+import { version as tsVersion } from "typescript";
+
+const isTsV6 = parseInt(tsVersion.split(".")[0] ?? "0", 10) >= 6;
 
 export default defineConfig([
   {
@@ -16,7 +19,12 @@ export default defineConfig([
         (await import("./package.json", { with: { type: "json" } })).default.version,
       ),
     },
-    dts: true,
+    dts: {
+      compilerOptions: {
+        // tsup injects baseUrl: "." for rollup-plugin-dts; suppress TS 6.0 deprecation
+        ...(isTsV6 ? { ignoreDeprecations: "6.0" } : {}),
+      },
+    },
     entry: ["src/index-v2.ts"],
     format: ["cjs", "esm"],
     sourcemap: true,
