@@ -14,5 +14,6 @@
       "matchDepTypes": ["dependencies", "devDependencies", "optionalDependencies"],
       "rangeStrategy": "bump"
     }
-  ]
+  ],
+  "postUpdateOptions": ["npmInstallTwice"]
 }
