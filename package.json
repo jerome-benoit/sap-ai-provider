@@ -27,7 +27,7 @@
   "license": "Apache-2.0",
   "author": "jerome-benoit",
   "volta": {
-    "node": "24.14.0"
+    "node": "24.14.1"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
