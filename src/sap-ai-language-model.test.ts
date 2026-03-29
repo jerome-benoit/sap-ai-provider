@@ -1263,6 +1263,31 @@ describe("SAPAILanguageModel", () => {
 
         await expect(model.doGenerate({ prompt })).rejects.toThrow();
       });
+
+      it("should strip all trailing assistant messages on retry", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt: LanguageModelV3Prompt = [
+          { content: [{ text: "Hello", type: "text" }], role: "user" },
+          { content: [{ text: "First prefill", type: "text" }], role: "assistant" },
+          { content: [{ text: "Second prefill", type: "text" }], role: "assistant" },
+        ];
+
+        const result = await model.doGenerate({ prompt });
+
+        expect(result.content).toHaveLength(1);
+
+        const request = await getLastRequestForApi(api);
+        const messages = (request as { messages?: { role: string }[] }).messages ?? [];
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatchObject({ role: "user" });
+      });
     });
 
     describe("abort signal support", () => {
@@ -2583,6 +2608,35 @@ describe("SAPAILanguageModel", () => {
         const prompt = createPrompt("Hello");
 
         await expect(model.doStream({ prompt })).rejects.toThrow();
+      });
+
+      it("should strip all trailing assistant messages on retry", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setStreamSetupError) {
+          throw new Error("mock missing setStreamSetupError");
+        }
+
+        MockClient.setStreamSetupError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt: LanguageModelV3Prompt = [
+          { content: [{ text: "Hello", type: "text" }], role: "user" },
+          { content: [{ text: "First prefill", type: "text" }], role: "assistant" },
+          { content: [{ text: "Second prefill", type: "text" }], role: "assistant" },
+        ];
+
+        const result = await model.doStream({ prompt });
+
+        const parts = await readAllStreamParts(result.stream);
+        expect(parts.some((p) => p.type === "finish")).toBe(true);
+
+        const RetryMockClient = await getMockClientForApi(api);
+        const streamRequest = RetryMockClient.lastStreamRequest as {
+          messages?: { role: string }[];
+        };
+        const streamMessages = streamRequest.messages ?? [];
+        expect(streamMessages).toHaveLength(1);
+        expect(streamMessages[0]).toMatchObject({ role: "user" });
       });
     });
 
