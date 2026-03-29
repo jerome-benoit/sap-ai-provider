@@ -162,7 +162,6 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
       orchestrationConfigRef: orchestrationConfigRefSchema.optional(),
       placeholderValues: z.record(z.string(), z.string()).optional(),
       promptTemplateRef: promptTemplateRefSchema.optional(),
-      suppressPrefillErrors: z.boolean().optional(),
     }),
   ),
 );

@@ -121,7 +121,7 @@ export abstract class BaseLanguageModelStrategy<
       if (this.shouldRetryWithoutPrefill(error, settings, options)) {
         return this.doGenerate(config, settings, {
           ...options,
-          prompt: options.prompt.slice(0, -1),
+          prompt: this.stripTrailingAssistantMessages(options.prompt),
         });
       }
       throw convertToAISDKError(error, {
@@ -187,7 +187,7 @@ export abstract class BaseLanguageModelStrategy<
       if (this.shouldRetryWithoutPrefill(error, settings, options)) {
         return this.doStream(config, settings, {
           ...options,
-          prompt: options.prompt.slice(0, -1),
+          prompt: this.stripTrailingAssistantMessages(options.prompt),
         });
       }
       throw convertToAISDKError(error, {
@@ -367,6 +367,13 @@ export abstract class BaseLanguageModelStrategy<
    */
   protected abstract getUrl(): string;
 
+  /**
+   * @param error - Caught error from API call.
+   * @param settings - Model settings.
+   * @param options - Call options containing the prompt.
+   * @returns Whether the request should be retried without trailing assistant messages.
+   * @internal
+   */
   private shouldRetryWithoutPrefill(
     error: unknown,
     settings: TSettings,
@@ -381,5 +388,22 @@ export abstract class BaseLanguageModelStrategy<
       options.prompt.length > 0 &&
       options.prompt.at(-1)?.role === "assistant"
     );
+  }
+
+  /**
+   * Strips all trailing assistant messages from a prompt for prefill retry.
+   * Removes all (not just the last) to guarantee the retry cannot re-trigger.
+   * @param prompt - Original prompt array.
+   * @returns Prompt with trailing assistant messages removed.
+   * @internal
+   */
+  private stripTrailingAssistantMessages(
+    prompt: LanguageModelV3CallOptions["prompt"],
+  ): LanguageModelV3CallOptions["prompt"] {
+    let end = prompt.length;
+    while (end > 0 && prompt[end - 1]?.role === "assistant") {
+      end--;
+    }
+    return prompt.slice(0, end);
   }
 }

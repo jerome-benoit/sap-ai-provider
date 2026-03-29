@@ -1191,6 +1191,75 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
+    describe("suppressPrefillErrors", () => {
+      const prefillErrorMessage =
+        "This model does not support assistant message prefill. The conversation must end with a user message.";
+
+      const createPromptWithTrailingAssistant = (): LanguageModelV3Prompt => [
+        { content: [{ text: "Hello", type: "text" }], role: "user" },
+        { content: [{ text: "Hi there", type: "text" }], role: "assistant" },
+      ];
+
+      it("should retry without trailing assistant message on prefill error", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt = createPromptWithTrailingAssistant();
+
+        const result = await model.doGenerate({ prompt });
+
+        expect(result.content).toHaveLength(1);
+        expect(result.content[0]).toEqual({ text: "Hello!", type: "text" });
+      });
+
+      it("should propagate non-prefill errors unchanged when enabled", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(new Error("Invalid request: missing required field"));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt = createPromptWithTrailingAssistant();
+
+        await expect(model.doGenerate({ prompt })).rejects.toThrow();
+      });
+
+      it("should not retry when suppressPrefillErrors is disabled", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o");
+        const prompt = createPromptWithTrailingAssistant();
+
+        await expect(model.doGenerate({ prompt })).rejects.toThrow();
+      });
+
+      it("should not retry when last message is not assistant", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt = createPrompt("Hello");
+
+        await expect(model.doGenerate({ prompt })).rejects.toThrow();
+      });
+    });
+
     describe("abort signal support", () => {
       it("should pass abort signal via requestConfig", async () => {
         const model = createModelForApi(api);
@@ -1699,6 +1768,62 @@ describe("SAPAILanguageModel", () => {
   describe.each<APIType>(["orchestration", "foundation-models"])("doStream (%s API)", (api) => {
     beforeEach(async () => {
       await resetMockStateForApi(api);
+    });
+
+    describe("suppressPrefillErrors", () => {
+      const prefillErrorMessage =
+        "This model does not support assistant message prefill. The conversation must end with a user message.";
+
+      const createPromptWithTrailingAssistant = (): LanguageModelV3Prompt => [
+        { content: [{ text: "Hello", type: "text" }], role: "user" },
+        { content: [{ text: "Hi there", type: "text" }], role: "assistant" },
+      ];
+
+      it("should retry without trailing assistant message on prefill error", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setStreamSetupError) {
+          throw new Error("mock missing setStreamSetupError");
+        }
+
+        MockClient.setStreamSetupError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt = createPromptWithTrailingAssistant();
+
+        const result = await model.doStream({ prompt });
+
+        const parts = await readAllStreamParts(result.stream);
+        expect(parts.some((p) => p.type === "stream-start")).toBe(true);
+        expect(parts.some((p) => p.type === "finish")).toBe(true);
+      });
+
+      it("should propagate non-prefill errors unchanged when enabled", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setStreamSetupError) {
+          throw new Error("mock missing setStreamSetupError");
+        }
+
+        MockClient.setStreamSetupError(new Error("Invalid request: missing required field"));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt = createPromptWithTrailingAssistant();
+
+        await expect(model.doStream({ prompt })).rejects.toThrow();
+      });
+
+      it("should not retry when suppressPrefillErrors is disabled", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setStreamSetupError) {
+          throw new Error("mock missing setStreamSetupError");
+        }
+
+        MockClient.setStreamSetupError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o");
+        const prompt = createPromptWithTrailingAssistant();
+
+        await expect(model.doStream({ prompt })).rejects.toThrow();
+      });
     });
 
     it("should stream basic text (edge-runtime compatible)", async () => {
