@@ -228,29 +228,7 @@ export function convertSAPErrorToAPICallError(
     url?: string;
   },
 ): APICallError | LoadAPIKeyError | NoSuchModelError {
-  const error = errorResponse.error;
-
-  let message: string;
-  let code: number | undefined;
-  let location: string | undefined;
-  let requestId: string | undefined;
-
-  if (Array.isArray(error)) {
-    const firstError = error[0];
-    if (firstError) {
-      message = firstError.message;
-      code = firstError.code;
-      location = firstError.location;
-      requestId = firstError.request_id;
-    } else {
-      message = "Unknown SAP AI error";
-    }
-  } else {
-    message = error.message;
-    code = error.code;
-    location = error.location;
-    requestId = error.request_id;
-  }
+  const { code, location, message, requestId } = extractErrorFields(errorResponse);
 
   const statusCode = getStatusCodeFromSAPError(code);
 
@@ -548,12 +526,36 @@ function createAPICallError(
  *
  * @param response
  */
-function extractMessageFromErrorResponse(response: OrchestrationErrorResponse): string | undefined {
+function extractErrorFields(response: OrchestrationErrorResponse): {
+  code?: number;
+  location?: string;
+  message: string;
+  requestId?: string;
+} {
   const innerError = response.error;
   if (Array.isArray(innerError)) {
-    return (innerError[0] as { message: string }).message;
+    const first = innerError[0] as
+      | undefined
+      | { code?: number; location?: string; message: string; request_id?: string };
+    return {
+      code: first?.code,
+      location: first?.location,
+      message: first?.message ?? "Unknown SAP AI error",
+      requestId: first?.request_id,
+    };
   }
-  return (innerError as { message: string }).message;
+  const entry = innerError as {
+    code?: number;
+    location?: string;
+    message: string;
+    request_id?: string;
+  };
+  return {
+    code: entry.code,
+    location: entry.location,
+    message: entry.message,
+    requestId: entry.request_id,
+  };
 }
 
 /**
@@ -595,13 +597,13 @@ function extractSAPErrorMessage(error: unknown): string | undefined {
   const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
 
   if (isOrchestrationErrorResponse(rootError)) {
-    return extractMessageFromErrorResponse(rootError);
+    return extractErrorFields(rootError).message;
   }
 
   if (rootError instanceof Error) {
     const parsed = tryExtractSAPErrorFromMessage(rootError.message);
     if (parsed && isOrchestrationErrorResponse(parsed)) {
-      return extractMessageFromErrorResponse(parsed);
+      return extractErrorFields(parsed).message;
     }
     return rootError.message;
   }
