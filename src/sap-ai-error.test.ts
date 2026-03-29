@@ -444,7 +444,7 @@ describe("convertToAISDKError", () => {
     });
   });
 
-  describe("orchestration error conversion", () => {
+  describe("structured error conversion", () => {
     it("should convert OrchestrationErrorResponse", () => {
       const errorResponse: OrchestrationErrorResponse = {
         error: {
@@ -518,7 +518,7 @@ describe("convertToAISDKError", () => {
         errorObject: { error: [{ message: { nested: "object" } }] },
       },
       { desc: "undefined error property", errorObject: { error: undefined } },
-    ])("should not treat $desc as orchestration errors", ({ errorObject }) => {
+    ])("should not treat $desc as structured error responses", ({ errorObject }) => {
       const result = convertToAISDKError(errorObject);
 
       expect(result).toBeInstanceOf(APICallError);
