@@ -1195,21 +1195,22 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                         | Default | Description                                              |
-| ---------------------------- | ---------------------------- | ------- | -------------------------------------------------------- |
-| `modelVersion`               | `string`                     | -       | Specific model version                                   |
-| `includeReasoning`           | `boolean`                    | `false` | Include reasoning parts in SAP prompt conversion         |
-| `escapeTemplatePlaceholders` | `boolean`                    | `true`  | Escape template delimiters to prevent conflicts          |
-| `modelParams`                | `ModelParams`                | -       | Model generation parameters                              |
-| `masking`                    | `MaskingModule`              | -       | Data masking configuration (DPI)                         |
-| `filtering`                  | `FilteringModule`            | -       | Content filtering configuration                          |
-| `grounding`                  | `GroundingModule`            | -       | Document grounding configuration                         |
-| `translation`                | `TranslationModule`          | -       | Translation configuration (Orchestration only)           |
-| `placeholderValues`          | `Record<string, string>`     | -       | Default values for template placeholders                 |
-| `promptTemplateRef`          | `PromptTemplateRef`          | -       | Reference to a Prompt Registry template                  |
-| `responseFormat`             | `ResponseFormatConfig`       | -       | Response format specification                            |
-| `streamOptions`              | `OrchestrationStreamOptions` | -       | Stream options for post-LLM modules (Orchestration only) |
-| `tools`                      | `ChatCompletionTool[]`       | -       | Tool definitions in SAP AI SDK format                    |
+| Property                     | Type                         | Default | Description                                                   |
+| ---------------------------- | ---------------------------- | ------- | ------------------------------------------------------------- |
+| `modelVersion`               | `string`                     | -       | Specific model version                                        |
+| `includeReasoning`           | `boolean`                    | `false` | Include reasoning parts in SAP prompt conversion              |
+| `escapeTemplatePlaceholders` | `boolean`                    | `true`  | Escape template delimiters to prevent conflicts               |
+| `modelParams`                | `ModelParams`                | -       | Model generation parameters                                   |
+| `masking`                    | `MaskingModule`              | -       | Data masking configuration (DPI)                              |
+| `filtering`                  | `FilteringModule`            | -       | Content filtering configuration                               |
+| `grounding`                  | `GroundingModule`            | -       | Document grounding configuration                              |
+| `translation`                | `TranslationModule`          | -       | Translation configuration (Orchestration only)                |
+| `placeholderValues`          | `Record<string, string>`     | -       | Default values for template placeholders                      |
+| `promptTemplateRef`          | `PromptTemplateRef`          | -       | Reference to a Prompt Registry template                       |
+| `responseFormat`             | `ResponseFormatConfig`       | -       | Response format specification                                 |
+| `streamOptions`              | `OrchestrationStreamOptions` | -       | Stream options for post-LLM modules (Orchestration only)      |
+| `suppressPrefillErrors`      | `boolean`                    | `false` | Retry without trailing assistant message on prefill rejection |
+| `tools`                      | `ChatCompletionTool[]`       | -       | Tool definitions in SAP AI SDK format                         |
 
 **Example:**
 
@@ -1994,6 +1995,8 @@ export interface OrchestrationModelSettings {
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
+  readonly streamOptions?: OrchestrationStreamOptions;
+  readonly suppressPrefillErrors?: boolean;
   readonly tools?: ChatCompletionTool[];
   readonly translation?: TranslationModule;
 }
@@ -2023,6 +2026,7 @@ export interface FoundationModelsModelSettings {
   readonly modelParams?: FoundationModelsModelParams;
   readonly modelVersion?: string;
   readonly responseFormat?: ResponseFormat;
+  readonly suppressPrefillErrors?: boolean;
 }
 ```
 
