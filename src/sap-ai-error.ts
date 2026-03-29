@@ -666,7 +666,7 @@ function getAxiosResponseHeaders(error: unknown): Record<string, string> | undef
 }
 
 /**
- * @param code - SAP error code (may be an HTTP status or internal code).
+ * @param code - SAP error code.
  * @returns HTTP status code.
  * @internal
  */
