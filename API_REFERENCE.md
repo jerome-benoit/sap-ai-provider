@@ -1209,7 +1209,7 @@ Model-specific configuration options.
 | `promptTemplateRef`          | `PromptTemplateRef`          | -       | Reference to a Prompt Registry template                       |
 | `responseFormat`             | `ResponseFormatConfig`       | -       | Response format specification                                 |
 | `streamOptions`              | `OrchestrationStreamOptions` | -       | Stream options for post-LLM modules (Orchestration only)      |
-| `suppressPrefillErrors`      | `boolean`                    | `false` | Retry without trailing assistant message on prefill rejection |
+| `suppressPrefillErrors`      | `boolean`                    | `true`  | Retry without trailing assistant message on prefill rejection |
 | `tools`                      | `ChatCompletionTool[]`       | -       | Tool definitions in SAP AI SDK format                         |
 
 **Example:**

@@ -1244,7 +1244,7 @@ describe("SAPAILanguageModel", () => {
 
         MockClient.setChatCompletionError(new Error(prefillErrorMessage));
 
-        const model = createModelForApi(api, "gpt-4o");
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: false });
         const prompt = createPromptWithTrailingAssistant();
 
         await expect(model.doGenerate({ prompt })).rejects.toThrow();
@@ -2607,7 +2607,7 @@ describe("SAPAILanguageModel", () => {
 
         MockClient.setStreamSetupError(new Error(prefillErrorMessage));
 
-        const model = createModelForApi(api, "gpt-4o");
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: false });
         const prompt = createPromptWithTrailingAssistant();
 
         await expect(model.doStream({ prompt })).rejects.toThrow();

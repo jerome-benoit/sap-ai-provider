@@ -388,7 +388,7 @@ export abstract class BaseLanguageModelStrategy<
   ): boolean {
     const suppress =
       (settings as SAPAIModelSettings & { suppressPrefillErrors?: boolean })
-        .suppressPrefillErrors ?? false;
+        .suppressPrefillErrors ?? true;
     return (
       suppress &&
       isPrefillError(error) &&
