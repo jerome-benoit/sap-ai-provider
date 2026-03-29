@@ -368,6 +368,7 @@ export abstract class BaseLanguageModelStrategy<
   protected abstract getUrl(): string;
 
   /**
+   * Checks whether a prefill error should trigger a retry without trailing assistant messages.
    * @param error - Caught error from API call.
    * @param settings - Model settings.
    * @param options - Call options containing the prompt.
