@@ -215,6 +215,7 @@ export class UnsupportedFeatureError extends Error {
  * Converts SAP AI SDK OrchestrationErrorResponse to Vercel AI SDK APICallError.
  * @param errorResponse - SAP orchestration error response.
  * @param context - Request context.
+ * @param context.httpStatusCode - HTTP status code from the response, used as fallback when error body code is null.
  * @param context.requestBody - Original request body.
  * @param context.responseHeaders - Response headers.
  * @param context.url - Request URL.
@@ -223,6 +224,7 @@ export class UnsupportedFeatureError extends Error {
 export function convertSAPErrorToAPICallError(
   errorResponse: OrchestrationErrorResponse,
   context?: {
+    httpStatusCode?: number;
     requestBody?: unknown;
     responseHeaders?: Record<string, string>;
     url?: string;
@@ -230,7 +232,7 @@ export function convertSAPErrorToAPICallError(
 ): APICallError | LoadAPIKeyError | NoSuchModelError {
   const { code, location, message, requestId } = extractErrorFields(errorResponse);
 
-  const statusCode = getStatusCodeFromSAPError(code);
+  const statusCode = getStatusCodeFromSAPError(code, context?.httpStatusCode);
 
   const responseBody = JSON.stringify({
     error: {
@@ -326,10 +328,11 @@ export function convertToAISDKError(
 
   const rootError = getRootError(error);
 
-  const errorResponse = findOrchestrationErrorResponse(error);
+  const errorResponse = findStructuredErrorResponse(error);
   if (errorResponse) {
     return convertSAPErrorToAPICallError(errorResponse, {
       ...context,
+      httpStatusCode: getAxiosError(error)?.response?.status,
       responseHeaders: context?.responseHeaders ?? getAxiosResponseHeaders(error),
     });
   }
@@ -590,7 +593,7 @@ function extractModelIdentifier(message: string, location?: string): string | un
  * @internal
  */
 function extractSAPErrorMessage(error: unknown): string | undefined {
-  const errorResponse = findOrchestrationErrorResponse(error);
+  const errorResponse = findStructuredErrorResponse(error);
   if (errorResponse) {
     return extractErrorFields(errorResponse).message;
   }
@@ -607,21 +610,21 @@ function extractSAPErrorMessage(error: unknown): string | undefined {
  * @returns Orchestration error response if found in the error chain, undefined otherwise.
  * @internal
  */
-function findOrchestrationErrorResponse(error: unknown): OrchestrationErrorResponse | undefined {
+function findStructuredErrorResponse(error: unknown): OrchestrationErrorResponse | undefined {
   const rootError = getRootError(error);
 
-  if (isOrchestrationErrorResponse(rootError)) {
+  if (isStructuredErrorResponse(rootError)) {
     return rootError;
   }
 
   const axiosData = getAxiosError(error)?.response?.data;
-  if (axiosData && isOrchestrationErrorResponse(axiosData)) {
+  if (axiosData && isStructuredErrorResponse(axiosData)) {
     return axiosData;
   }
 
   if (rootError instanceof Error) {
     const parsed = tryExtractSAPErrorFromMessage(rootError.message);
-    if (parsed && isOrchestrationErrorResponse(parsed)) {
+    if (parsed && isStructuredErrorResponse(parsed)) {
       return parsed;
     }
   }
@@ -636,7 +639,9 @@ function findOrchestrationErrorResponse(error: unknown): OrchestrationErrorRespo
  */
 function getAxiosError(
   error: unknown,
-): undefined | { isAxiosError: true; response?: { data?: unknown; headers?: unknown } } {
+):
+  | undefined
+  | { isAxiosError: true; response?: { data?: unknown; headers?: unknown; status?: number } } {
   if (!(error instanceof Error)) return undefined;
 
   const rootCause = getRootError(error);
@@ -644,11 +649,14 @@ function getAxiosError(
 
   const maybeAxios = rootCause as {
     isAxiosError?: boolean;
-    response?: { data?: unknown; headers?: unknown };
+    response?: { data?: unknown; headers?: unknown; status?: number };
   };
 
   if (maybeAxios.isAxiosError !== true) return undefined;
-  return maybeAxios as { isAxiosError: true; response?: { data?: unknown; headers?: unknown } };
+  return maybeAxios as {
+    isAxiosError: true;
+    response?: { data?: unknown; headers?: unknown; status?: number };
+  };
 }
 
 /**
@@ -684,14 +692,17 @@ function getRootError(error: unknown): unknown {
 
 /**
  * @param code - SAP error code.
+ * @param httpStatusCode - HTTP status code from the response, used as fallback.
  * @returns HTTP status code.
  * @internal
  */
-function getStatusCodeFromSAPError(code?: number): number {
-  if (!code) return HTTP_STATUS.INTERNAL_ERROR;
-
-  if (code >= 100 && code < 600) {
+function getStatusCodeFromSAPError(code?: number, httpStatusCode?: number): number {
+  if (code && code >= 100 && code < 600) {
     return code;
+  }
+
+  if (httpStatusCode && httpStatusCode >= 100 && httpStatusCode < 600) {
+    return httpStatusCode;
   }
 
   return HTTP_STATUS.INTERNAL_ERROR;
@@ -713,11 +724,25 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
+ * @param statusCode - HTTP status code.
+ * @returns True if error is retryable.
+ * @internal
+ */
+function isRetryable(statusCode: number): boolean {
+  return (
+    statusCode === HTTP_STATUS.REQUEST_TIMEOUT ||
+    statusCode === HTTP_STATUS.CONFLICT ||
+    statusCode === HTTP_STATUS.RATE_LIMIT ||
+    (statusCode >= HTTP_STATUS.INTERNAL_ERROR && statusCode < 600)
+  );
+}
+
+/**
  * @param error - Error to check.
  * @returns True if error is an orchestration error response.
  * @internal
  */
-function isOrchestrationErrorResponse(error: unknown): error is OrchestrationErrorResponse {
+function isStructuredErrorResponse(error: unknown): error is OrchestrationErrorResponse {
   if (error === null || typeof error !== "object" || !("error" in error)) {
     return false;
   }
@@ -736,7 +761,7 @@ function isOrchestrationErrorResponse(error: unknown): error is OrchestrationErr
       if (typeof errorEntry.message !== "string") {
         return false;
       }
-      if ("code" in entry && typeof errorEntry.code !== "number") {
+      if ("code" in entry && errorEntry.code != null && typeof errorEntry.code !== "number") {
         return false;
       }
       return true;
@@ -751,25 +776,11 @@ function isOrchestrationErrorResponse(error: unknown): error is OrchestrationErr
   if (typeof errorObj.message !== "string") {
     return false;
   }
-  if ("code" in innerError && typeof errorObj.code !== "number") {
+  if ("code" in innerError && errorObj.code != null && typeof errorObj.code !== "number") {
     return false;
   }
 
   return true;
-}
-
-/**
- * @param statusCode - HTTP status code.
- * @returns True if error is retryable.
- * @internal
- */
-function isRetryable(statusCode: number): boolean {
-  return (
-    statusCode === HTTP_STATUS.REQUEST_TIMEOUT ||
-    statusCode === HTTP_STATUS.CONFLICT ||
-    statusCode === HTTP_STATUS.RATE_LIMIT ||
-    (statusCode >= HTTP_STATUS.INTERNAL_ERROR && statusCode < 600)
-  );
 }
 
 /**

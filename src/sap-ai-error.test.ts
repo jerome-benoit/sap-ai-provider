@@ -463,8 +463,53 @@ describe("convertToAISDKError", () => {
       expect(result.message).toContain("Orchestration error");
     });
 
+    it("should convert Azure OpenAI error format (code: null)", () => {
+      const errorResponse = {
+        error: {
+          code: null,
+          message: "This model does not support assistant message prefill.",
+          param: null,
+          type: "invalid_request_error",
+        },
+      };
+
+      const result = convertToAISDKError(errorResponse) as APICallError;
+
+      expect(result.statusCode).toBe(500);
+      expect(result.message).toContain("does not support assistant message prefill");
+    });
+
+    it("should use HTTP status code as fallback when error body code is null", () => {
+      const axiosError = new Error("Request failed with status code 400.");
+      Object.assign(axiosError, {
+        isAxiosError: true,
+        response: {
+          data: {
+            error: {
+              code: null,
+              message: "Invalid request parameters.",
+              param: null,
+              type: "invalid_request_error",
+            },
+          },
+          status: 400,
+        },
+      });
+
+      const outerError = new Error("Request failed with status code 400.");
+      Object.defineProperty(outerError, "name", { value: "ErrorWithCause" });
+      Object.defineProperty(outerError, "rootCause", { get: () => axiosError });
+
+      const result = convertToAISDKError(outerError) as APICallError;
+
+      expect(result.statusCode).toBe(400);
+      expect(result.isRetryable).toBe(false);
+      expect(result.message).toContain("Invalid request parameters.");
+    });
+
     it.each([
       { desc: "non-string message", errorObject: { error: { message: 123 } } },
+      { desc: "string code", errorObject: { error: { code: "invalid", message: "test" } } },
       { desc: "array with non-object entries", errorObject: { error: ["not an object"] } },
       { desc: "array with null entries", errorObject: { error: [null, { message: "valid" }] } },
       { desc: "array with entries missing message", errorObject: { error: [{ code: 400 }] } },
