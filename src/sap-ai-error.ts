@@ -326,21 +326,12 @@ export function convertToAISDKError(
 
   const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
 
-  if (isOrchestrationErrorResponse(rootError)) {
-    return convertSAPErrorToAPICallError(rootError, {
+  const errorResponse = findOrchestrationErrorResponse(error);
+  if (errorResponse) {
+    return convertSAPErrorToAPICallError(errorResponse, {
       ...context,
       responseHeaders: context?.responseHeaders ?? getAxiosResponseHeaders(error),
     });
-  }
-
-  if (rootError instanceof Error) {
-    const parsedError = tryExtractSAPErrorFromMessage(rootError.message);
-    if (parsedError && isOrchestrationErrorResponse(parsedError)) {
-      return convertSAPErrorToAPICallError(parsedError, {
-        ...context,
-        responseHeaders: context?.responseHeaders ?? getAxiosResponseHeaders(error),
-      });
-    }
   }
 
   if (isAbortError(rootError)) {
@@ -523,8 +514,9 @@ function createAPICallError(
 }
 
 /**
- *
- * @param response
+ * @param response - SAP orchestration error response.
+ * @returns Destructured error fields (message, code, location, requestId).
+ * @internal
  */
 function extractErrorFields(response: OrchestrationErrorResponse): {
   code?: number;
@@ -589,26 +581,43 @@ function extractModelIdentifier(message: string, location?: string): string | un
 }
 
 /**
- * @param error - Error to check.
- * @returns True if error is an AbortError from AbortController.
+ * @param error - Raw SDK error to extract a message from.
+ * @returns SAP error message string, or undefined if not extractable.
  * @internal
  */
 function extractSAPErrorMessage(error: unknown): string | undefined {
+  const errorResponse = findOrchestrationErrorResponse(error);
+  if (errorResponse) {
+    return extractErrorFields(errorResponse).message;
+  }
+
+  const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
+  if (rootError instanceof Error) {
+    return rootError.message;
+  }
+  return typeof rootError === "string" ? rootError : undefined;
+}
+
+/**
+ * @param error - Raw SDK error to traverse.
+ * @returns Orchestration error response if found in the error chain, undefined otherwise.
+ * @internal
+ */
+function findOrchestrationErrorResponse(error: unknown): OrchestrationErrorResponse | undefined {
   const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
 
   if (isOrchestrationErrorResponse(rootError)) {
-    return extractErrorFields(rootError).message;
+    return rootError;
   }
 
   if (rootError instanceof Error) {
     const parsed = tryExtractSAPErrorFromMessage(rootError.message);
     if (parsed && isOrchestrationErrorResponse(parsed)) {
-      return extractErrorFields(parsed).message;
+      return parsed;
     }
-    return rootError.message;
   }
 
-  return typeof rootError === "string" ? rootError : undefined;
+  return undefined;
 }
 
 /**
@@ -657,7 +666,7 @@ function getAxiosResponseHeaders(error: unknown): Record<string, string> | undef
 }
 
 /**
- * @param code - SAP error code.
+ * @param code - SAP error code (may be an HTTP status or internal code).
  * @returns HTTP status code.
  * @internal
  */
@@ -672,8 +681,9 @@ function getStatusCodeFromSAPError(code?: number): number {
 }
 
 /**
- *
- * @param error
+ * @param error - Error to check.
+ * @returns True if error is an AbortError from AbortController.
+ * @internal
  */
 function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") {
