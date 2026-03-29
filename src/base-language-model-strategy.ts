@@ -13,7 +13,7 @@ import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
-import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
+import { convertToAISDKError, isPrefillError, normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
 import {
   buildGenerateResult,
@@ -118,6 +118,12 @@ export abstract class BaseLanguageModelStrategy<
         warnings: [...commonParts.warnings, ...warnings],
       });
     } catch (error) {
+      if (this.shouldRetryWithoutPrefill(error, settings, options)) {
+        return this.doGenerate(config, settings, {
+          ...options,
+          prompt: options.prompt.slice(0, -1),
+        });
+      }
       throw convertToAISDKError(error, {
         operation: "doGenerate",
         requestBody: createAISDKRequestBodySummary(options),
@@ -178,6 +184,12 @@ export abstract class BaseLanguageModelStrategy<
         stream: transformedStream,
       };
     } catch (error) {
+      if (this.shouldRetryWithoutPrefill(error, settings, options)) {
+        return this.doStream(config, settings, {
+          ...options,
+          prompt: options.prompt.slice(0, -1),
+        });
+      }
       throw convertToAISDKError(error, {
         operation: "doStream",
         requestBody: createAISDKRequestBodySummary(options),
@@ -354,4 +366,20 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected abstract getUrl(): string;
+
+  private shouldRetryWithoutPrefill(
+    error: unknown,
+    settings: TSettings,
+    options: LanguageModelV3CallOptions,
+  ): boolean {
+    const suppress =
+      (settings as SAPAIModelSettings & { suppressPrefillErrors?: boolean })
+        .suppressPrefillErrors ?? false;
+    return (
+      suppress &&
+      isPrefillError(error) &&
+      options.prompt.length > 0 &&
+      options.prompt.at(-1)?.role === "assistant"
+    );
+  }
 }

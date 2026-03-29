@@ -458,6 +458,17 @@ export function convertToAISDKError(
 }
 
 /**
+ * @param error - Raw error from the SAP AI SDK.
+ * @returns True if the error indicates the model does not support assistant message prefill.
+ * @internal
+ */
+export function isPrefillError(error: unknown): boolean {
+  return (
+    extractSAPErrorMessage(error)?.includes("does not support assistant message prefill") ?? false
+  );
+}
+
+/**
  * Normalizes various header formats to a string record.
  * @param headers - Headers to normalize.
  * @returns Normalized headers record.
@@ -534,6 +545,18 @@ function createAPICallError(
 }
 
 /**
+ *
+ * @param response
+ */
+function extractMessageFromErrorResponse(response: OrchestrationErrorResponse): string | undefined {
+  const innerError = response.error;
+  if (Array.isArray(innerError)) {
+    return (innerError[0] as { message: string }).message;
+  }
+  return (innerError as { message: string }).message;
+}
+
+/**
  * @param message - Error message.
  * @param location - Error location.
  * @returns Extracted model identifier.
@@ -561,6 +584,29 @@ function extractModelIdentifier(message: string, location?: string): string | un
   }
 
   return undefined;
+}
+
+/**
+ * @param error - Error to check.
+ * @returns True if error is an AbortError from AbortController.
+ * @internal
+ */
+function extractSAPErrorMessage(error: unknown): string | undefined {
+  const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
+
+  if (isOrchestrationErrorResponse(rootError)) {
+    return extractMessageFromErrorResponse(rootError);
+  }
+
+  if (rootError instanceof Error) {
+    const parsed = tryExtractSAPErrorFromMessage(rootError.message);
+    if (parsed && isOrchestrationErrorResponse(parsed)) {
+      return extractMessageFromErrorResponse(parsed);
+    }
+    return rootError.message;
+  }
+
+  return typeof rootError === "string" ? rootError : undefined;
 }
 
 /**
@@ -624,9 +670,8 @@ function getStatusCodeFromSAPError(code?: number): number {
 }
 
 /**
- * @param error - Error to check.
- * @returns True if error is an AbortError from AbortController.
- * @internal
+ *
+ * @param error
  */
 function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") {
