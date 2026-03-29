@@ -614,6 +614,11 @@ function findOrchestrationErrorResponse(error: unknown): OrchestrationErrorRespo
     return rootError;
   }
 
+  const axiosData = getAxiosError(error)?.response?.data;
+  if (axiosData && isOrchestrationErrorResponse(axiosData)) {
+    return axiosData;
+  }
+
   if (rootError instanceof Error) {
     const parsed = tryExtractSAPErrorFromMessage(rootError.message);
     if (parsed && isOrchestrationErrorResponse(parsed)) {

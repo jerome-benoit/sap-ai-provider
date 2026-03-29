@@ -195,6 +195,7 @@ describe("convertSAPErrorToAPICallError", () => {
       expect(result).toBeInstanceOf(APICallError);
       if (result instanceof APICallError) {
         expect(result.statusCode).toBe(400);
+        expect(result.isRetryable).toBe(false);
       }
       expect(result.message).toContain("First error");
     });
@@ -219,11 +220,12 @@ describe("convertSAPErrorToAPICallError", () => {
 
       const result = convertSAPErrorToAPICallError(errorResponse);
 
-      expect(result.message).toContain("First error in list");
       expect(result).toBeInstanceOf(APICallError);
       if (result instanceof APICallError) {
         expect(result.statusCode).toBe(400);
+        expect(result.isRetryable).toBe(false);
       }
+      expect(result.message).toContain("First error in list");
     });
   });
 
@@ -453,9 +455,11 @@ describe("convertToAISDKError", () => {
         },
       };
 
-      const result = convertToAISDKError(errorResponse);
+      const result = convertToAISDKError(errorResponse) as APICallError;
 
       expect(result).toBeInstanceOf(APICallError);
+      expect(result.statusCode).toBe(500);
+      expect(result.isRetryable).toBe(true);
       expect(result.message).toContain("Orchestration error");
     });
 
@@ -872,6 +876,7 @@ describe("convertToAISDKError", () => {
         const result = convertToAISDKError(axiosError) as APICallError;
 
         expect(result.statusCode).toBe(400);
+        expect(result.isRetryable).toBe(false);
         expect(result.responseBody).toBeDefined();
         expect(result.message).toContain("SAP AI Core Error Response:");
         expect(result.message).toContain("DESTINATION_NOT_FOUND");
@@ -1053,7 +1058,37 @@ describe("convertToAISDKError", () => {
         expect(result.responseBody).toContain("[Unable to serialize: object]");
       });
 
-      it("should extract axios error nested in ErrorWithCause", () => {
+      it("should extract OrchestrationErrorResponse from Axios error nested in ErrorWithCause", () => {
+        const axiosError = new Error("Request failed with status code 400.");
+        Object.assign(axiosError, {
+          isAxiosError: true,
+          response: {
+            data: {
+              error: {
+                code: 400,
+                location: "LLM Module",
+                message: "Model rejected the request.",
+                request_id: "axios-wrapped-123",
+              },
+            },
+          },
+        });
+
+        const outerError = new Error("Request failed with status code 400.");
+        Object.defineProperty(outerError, "name", { value: "ErrorWithCause" });
+        Object.defineProperty(outerError, "rootCause", { get: () => axiosError });
+
+        const result = convertToAISDKError(outerError) as APICallError;
+
+        expect(result.statusCode).toBe(400);
+        expect(result.isRetryable).toBe(false);
+        expect(result.responseBody).toBeDefined();
+        expect(result.message).toContain("Model rejected the request.");
+        const responseBody = JSON.parse(result.responseBody ?? "{}") as ParsedResponseBody;
+        expect(responseBody.error.request_id).toBe("axios-wrapped-123");
+      });
+
+      it("should fall back to status code extraction for non-orchestration Axios data in ErrorWithCause", () => {
         const axiosError = new Error("Request failed with status code 401.");
         Object.assign(axiosError, {
           isAxiosError: true,
@@ -1072,8 +1107,8 @@ describe("convertToAISDKError", () => {
         const result = convertToAISDKError(outerError) as APICallError;
 
         expect(result.statusCode).toBe(401);
+        expect(result.isRetryable).toBe(false);
         expect(result.responseBody).toBeDefined();
-        expect(result.message).toContain("Unauthorized");
       });
 
       it("should handle errors without axios response body", () => {
@@ -1086,66 +1121,66 @@ describe("convertToAISDKError", () => {
         expect(result.message).not.toContain("SAP AI Core Error Response:");
       });
     });
+  });
+});
 
-    describe("isPrefillError", () => {
-      it("should detect prefill error from OrchestrationErrorResponse", () => {
-        const error = {
-          error: {
-            code: 400,
-            location: "LLM Module",
-            message:
-              "This model does not support assistant message prefill. The conversation must end with a user message.",
-            request_id: "test-request-id",
-          },
-        };
-        expect(isPrefillError(error)).toBe(true);
-      });
-
-      it("should detect prefill error from Error with prefill message text", () => {
-        const error = new Error(
+describe("isPrefillError", () => {
+  it("should detect prefill error from OrchestrationErrorResponse", () => {
+    const error = {
+      error: {
+        code: 400,
+        location: "LLM Module",
+        message:
           "This model does not support assistant message prefill. The conversation must end with a user message.",
-        );
-        expect(isPrefillError(error)).toBe(true);
-      });
+        request_id: "test-request-id",
+      },
+    };
+    expect(isPrefillError(error)).toBe(true);
+  });
 
-      it("should detect prefill error from Error with JSON in message", () => {
-        const error = new Error(
-          'Request failed: {"error":{"code":400,"message":"This model does not support assistant message prefill. The conversation must end with a user message."}}',
-        );
-        expect(isPrefillError(error)).toBe(true);
-      });
+  it("should detect prefill error from Error with prefill message text", () => {
+    const error = new Error(
+      "This model does not support assistant message prefill. The conversation must end with a user message.",
+    );
+    expect(isPrefillError(error)).toBe(true);
+  });
 
-      it("should detect prefill error with only prefill keyword", () => {
-        const error = new Error("This model does not support assistant message prefill.");
-        expect(isPrefillError(error)).toBe(true);
-      });
+  it("should detect prefill error from Error with JSON in message", () => {
+    const error = new Error(
+      'Request failed: {"error":{"code":400,"message":"This model does not support assistant message prefill. The conversation must end with a user message."}}',
+    );
+    expect(isPrefillError(error)).toBe(true);
+  });
 
-      it("should detect prefill error with only conversation-must-end keyword", () => {
-        const error = new Error("The conversation must end with a user message.");
-        expect(isPrefillError(error)).toBe(true);
-      });
+  it("should detect prefill error with only prefill keyword", () => {
+    const error = new Error("This model does not support assistant message prefill.");
+    expect(isPrefillError(error)).toBe(true);
+  });
 
-      it("should detect prefill error regardless of casing", () => {
-        const error = new Error("This Model Does Not Support Assistant Message Prefill.");
-        expect(isPrefillError(error)).toBe(true);
-      });
+  it("should detect prefill error with only conversation-must-end keyword", () => {
+    const error = new Error("The conversation must end with a user message.");
+    expect(isPrefillError(error)).toBe(true);
+  });
 
-      it("should return false for non-prefill 400 error", () => {
-        const error = {
-          error: {
-            code: 400,
-            message: "Invalid request: missing required field 'model'",
-          },
-        };
-        expect(isPrefillError(error)).toBe(false);
-      });
+  it("should detect prefill error regardless of casing", () => {
+    const error = new Error("This Model Does Not Support Assistant Message Prefill.");
+    expect(isPrefillError(error)).toBe(true);
+  });
 
-      it("should return false for non-error values", () => {
-        expect(isPrefillError(null)).toBe(false);
-        expect(isPrefillError(undefined)).toBe(false);
-        expect(isPrefillError("some string")).toBe(false);
-        expect(isPrefillError(42)).toBe(false);
-      });
-    });
+  it("should return false for non-prefill 400 error", () => {
+    const error = {
+      error: {
+        code: 400,
+        message: "Invalid request: missing required field 'model'",
+      },
+    };
+    expect(isPrefillError(error)).toBe(false);
+  });
+
+  it("should return false for non-error values", () => {
+    expect(isPrefillError(null)).toBe(false);
+    expect(isPrefillError(undefined)).toBe(false);
+    expect(isPrefillError("some string")).toBe(false);
+    expect(isPrefillError(42)).toBe(false);
   });
 });
