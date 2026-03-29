@@ -1289,7 +1289,7 @@ describe("SAPAILanguageModel", () => {
         expect(messages[0]).toMatchObject({ role: "user" });
       });
 
-      it("should not retry when stripped prompt does not end with user message", async () => {
+      it("should retry even when stripped prompt does not end with user message", async () => {
         const MockClient = await getMockClientForApi(api);
         if (!MockClient.setChatCompletionError) {
           throw new Error("mock missing setChatCompletionError");
@@ -1303,7 +1303,14 @@ describe("SAPAILanguageModel", () => {
           { content: [{ text: "Hi there", type: "text" }], role: "assistant" },
         ];
 
-        await expect(model.doGenerate({ prompt })).rejects.toThrow();
+        const result = await model.doGenerate({ prompt });
+
+        expect(result.content).toHaveLength(1);
+
+        const request = await getLastRequestForApi(api);
+        const messages = (request as { messages?: { role: string }[] }).messages ?? [];
+        expect(messages).toHaveLength(1);
+        expect(messages.every((m) => m.role !== "assistant")).toBe(true);
       });
     });
 
@@ -2656,7 +2663,7 @@ describe("SAPAILanguageModel", () => {
         expect(streamMessages[0]).toMatchObject({ role: "user" });
       });
 
-      it("should not retry when stripped prompt does not end with user message", async () => {
+      it("should retry even when stripped prompt does not end with user message", async () => {
         const MockClient = await getMockClientForApi(api);
         if (!MockClient.setStreamSetupError) {
           throw new Error("mock missing setStreamSetupError");
@@ -2670,7 +2677,18 @@ describe("SAPAILanguageModel", () => {
           { content: [{ text: "Hi there", type: "text" }], role: "assistant" },
         ];
 
-        await expect(model.doStream({ prompt })).rejects.toThrow();
+        const result = await model.doStream({ prompt });
+
+        const parts = await readAllStreamParts(result.stream);
+        expect(parts.some((p) => p.type === "finish")).toBe(true);
+
+        const RetryMockClient = await getMockClientForApi(api);
+        const streamRequest = RetryMockClient.lastStreamRequest as {
+          messages?: { role: string }[];
+        };
+        const streamMessages = streamRequest.messages ?? [];
+        expect(streamMessages).toHaveLength(1);
+        expect(streamMessages.every((m) => m.role !== "assistant")).toBe(true);
       });
     });
 

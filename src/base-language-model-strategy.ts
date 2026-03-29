@@ -120,7 +120,7 @@ export abstract class BaseLanguageModelStrategy<
     } catch (error) {
       if (this.shouldRetryWithoutPrefill(error, settings, options)) {
         const retryPrompt = this.stripTrailingAssistantMessages(options.prompt);
-        if (retryPrompt.length > 0 && retryPrompt.at(-1)?.role === "user") {
+        if (retryPrompt.length > 0) {
           return this.doGenerate(config, settings, {
             ...options,
             prompt: retryPrompt,
@@ -189,7 +189,7 @@ export abstract class BaseLanguageModelStrategy<
     } catch (error) {
       if (this.shouldRetryWithoutPrefill(error, settings, options)) {
         const retryPrompt = this.stripTrailingAssistantMessages(options.prompt);
-        if (retryPrompt.length > 0 && retryPrompt.at(-1)?.role === "user") {
+        if (retryPrompt.length > 0) {
           return this.doStream(config, settings, {
             ...options,
             prompt: retryPrompt,
