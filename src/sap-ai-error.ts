@@ -426,15 +426,19 @@ export function convertToAISDKError(
   );
 }
 
+const PREFILL_ERROR_KEYWORDS = [
+  "does not support assistant message prefill",
+  "conversation must end with a user message",
+] as const;
+
 /**
  * @param error - Raw error from the SAP AI SDK.
  * @returns True if the error indicates the model does not support assistant message prefill.
  * @internal
  */
 export function isPrefillError(error: unknown): boolean {
-  return (
-    extractSAPErrorMessage(error)?.includes("does not support assistant message prefill") ?? false
-  );
+  const message = extractSAPErrorMessage(error)?.toLowerCase();
+  return message !== undefined && PREFILL_ERROR_KEYWORDS.some((kw) => message.includes(kw));
 }
 
 /**

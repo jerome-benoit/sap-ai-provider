@@ -1115,6 +1115,16 @@ describe("convertToAISDKError", () => {
         expect(isPrefillError(error)).toBe(true);
       });
 
+      it("should detect prefill error with only conversation-must-end keyword", () => {
+        const error = new Error("The conversation must end with a user message.");
+        expect(isPrefillError(error)).toBe(true);
+      });
+
+      it("should detect prefill error regardless of casing", () => {
+        const error = new Error("This Model Does Not Support Assistant Message Prefill.");
+        expect(isPrefillError(error)).toBe(true);
+      });
+
       it("should return false for non-prefill 400 error", () => {
         const error = {
           error: {
