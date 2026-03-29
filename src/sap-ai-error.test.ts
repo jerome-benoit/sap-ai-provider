@@ -476,6 +476,7 @@ describe("convertToAISDKError", () => {
       const result = convertToAISDKError(errorResponse) as APICallError;
 
       expect(result.statusCode).toBe(500);
+      expect(result.isRetryable).toBe(true);
       expect(result.message).toContain("does not support assistant message prefill");
     });
 
