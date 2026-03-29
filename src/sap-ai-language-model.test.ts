@@ -1288,6 +1288,23 @@ describe("SAPAILanguageModel", () => {
         expect(messages).toHaveLength(1);
         expect(messages[0]).toMatchObject({ role: "user" });
       });
+
+      it("should not retry when stripped prompt does not end with user message", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionError) {
+          throw new Error("mock missing setChatCompletionError");
+        }
+
+        MockClient.setChatCompletionError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt: LanguageModelV3Prompt = [
+          { content: "You are helpful", role: "system" },
+          { content: [{ text: "Hi there", type: "text" }], role: "assistant" },
+        ];
+
+        await expect(model.doGenerate({ prompt })).rejects.toThrow();
+      });
     });
 
     describe("abort signal support", () => {
@@ -2637,6 +2654,23 @@ describe("SAPAILanguageModel", () => {
         const streamMessages = streamRequest.messages ?? [];
         expect(streamMessages).toHaveLength(1);
         expect(streamMessages[0]).toMatchObject({ role: "user" });
+      });
+
+      it("should not retry when stripped prompt does not end with user message", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setStreamSetupError) {
+          throw new Error("mock missing setStreamSetupError");
+        }
+
+        MockClient.setStreamSetupError(new Error(prefillErrorMessage));
+
+        const model = createModelForApi(api, "gpt-4o", { suppressPrefillErrors: true });
+        const prompt: LanguageModelV3Prompt = [
+          { content: "You are helpful", role: "system" },
+          { content: [{ text: "Hi there", type: "text" }], role: "assistant" },
+        ];
+
+        await expect(model.doStream({ prompt })).rejects.toThrow();
       });
     });
 

@@ -119,10 +119,13 @@ export abstract class BaseLanguageModelStrategy<
       });
     } catch (error) {
       if (this.shouldRetryWithoutPrefill(error, settings, options)) {
-        return this.doGenerate(config, settings, {
-          ...options,
-          prompt: this.stripTrailingAssistantMessages(options.prompt),
-        });
+        const retryPrompt = this.stripTrailingAssistantMessages(options.prompt);
+        if (retryPrompt.length > 0 && retryPrompt.at(-1)?.role === "user") {
+          return this.doGenerate(config, settings, {
+            ...options,
+            prompt: retryPrompt,
+          });
+        }
       }
       throw convertToAISDKError(error, {
         operation: "doGenerate",
@@ -185,10 +188,13 @@ export abstract class BaseLanguageModelStrategy<
       };
     } catch (error) {
       if (this.shouldRetryWithoutPrefill(error, settings, options)) {
-        return this.doStream(config, settings, {
-          ...options,
-          prompt: this.stripTrailingAssistantMessages(options.prompt),
-        });
+        const retryPrompt = this.stripTrailingAssistantMessages(options.prompt);
+        if (retryPrompt.length > 0 && retryPrompt.at(-1)?.role === "user") {
+          return this.doStream(config, settings, {
+            ...options,
+            prompt: retryPrompt,
+          });
+        }
       }
       throw convertToAISDKError(error, {
         operation: "doStream",
