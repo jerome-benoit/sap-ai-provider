@@ -228,29 +228,7 @@ export function convertSAPErrorToAPICallError(
     url?: string;
   },
 ): APICallError | LoadAPIKeyError | NoSuchModelError {
-  const error = errorResponse.error;
-
-  let message: string;
-  let code: number | undefined;
-  let location: string | undefined;
-  let requestId: string | undefined;
-
-  if (Array.isArray(error)) {
-    const firstError = error[0];
-    if (firstError) {
-      message = firstError.message;
-      code = firstError.code;
-      location = firstError.location;
-      requestId = firstError.request_id;
-    } else {
-      message = "Unknown SAP AI error";
-    }
-  } else {
-    message = error.message;
-    code = error.code;
-    location = error.location;
-    requestId = error.request_id;
-  }
+  const { code, location, message, requestId } = extractErrorFields(errorResponse);
 
   const statusCode = getStatusCodeFromSAPError(code);
 
@@ -346,23 +324,14 @@ export function convertToAISDKError(
     return error;
   }
 
-  const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
+  const rootError = getRootError(error);
 
-  if (isOrchestrationErrorResponse(rootError)) {
-    return convertSAPErrorToAPICallError(rootError, {
+  const errorResponse = findOrchestrationErrorResponse(error);
+  if (errorResponse) {
+    return convertSAPErrorToAPICallError(errorResponse, {
       ...context,
       responseHeaders: context?.responseHeaders ?? getAxiosResponseHeaders(error),
     });
-  }
-
-  if (rootError instanceof Error) {
-    const parsedError = tryExtractSAPErrorFromMessage(rootError.message);
-    if (parsedError && isOrchestrationErrorResponse(parsedError)) {
-      return convertSAPErrorToAPICallError(parsedError, {
-        ...context,
-        responseHeaders: context?.responseHeaders ?? getAxiosResponseHeaders(error),
-      });
-    }
   }
 
   if (isAbortError(rootError)) {
@@ -457,6 +426,21 @@ export function convertToAISDKError(
   );
 }
 
+const PREFILL_ERROR_KEYWORDS = [
+  "does not support assistant message prefill",
+  "conversation must end with a user message",
+] as const;
+
+/**
+ * @param error - Raw error from the SAP AI SDK.
+ * @returns True if the error indicates the model does not support assistant message prefill.
+ * @internal
+ */
+export function isPrefillError(error: unknown): boolean {
+  const message = extractSAPErrorMessage(error)?.toLowerCase();
+  return message !== undefined && PREFILL_ERROR_KEYWORDS.some((kw) => message.includes(kw));
+}
+
 /**
  * Normalizes various header formats to a string record.
  * @param headers - Headers to normalize.
@@ -534,6 +518,43 @@ function createAPICallError(
 }
 
 /**
+ * @param response - SAP orchestration error response.
+ * @returns Destructured error fields (message, code, location, requestId).
+ * @internal
+ */
+function extractErrorFields(response: OrchestrationErrorResponse): {
+  code?: number;
+  location?: string;
+  message: string;
+  requestId?: string;
+} {
+  const innerError = response.error;
+  if (Array.isArray(innerError)) {
+    const first = innerError[0] as
+      | undefined
+      | { code?: number; location?: string; message: string; request_id?: string };
+    return {
+      code: first?.code,
+      location: first?.location,
+      message: first?.message ?? "Unknown SAP AI error",
+      requestId: first?.request_id,
+    };
+  }
+  const entry = innerError as {
+    code?: number;
+    location?: string;
+    message: string;
+    request_id?: string;
+  };
+  return {
+    code: entry.code,
+    location: entry.location,
+    message: entry.message,
+    requestId: entry.request_id,
+  };
+}
+
+/**
  * @param message - Error message.
  * @param location - Error location.
  * @returns Extracted model identifier.
@@ -564,6 +585,46 @@ function extractModelIdentifier(message: string, location?: string): string | un
 }
 
 /**
+ * @param error - Raw SDK error to extract a message from.
+ * @returns SAP error message string, or undefined if not extractable.
+ * @internal
+ */
+function extractSAPErrorMessage(error: unknown): string | undefined {
+  const errorResponse = findOrchestrationErrorResponse(error);
+  if (errorResponse) {
+    return extractErrorFields(errorResponse).message;
+  }
+
+  const rootError = getRootError(error);
+  if (rootError instanceof Error) {
+    return rootError.message;
+  }
+  return typeof rootError === "string" ? rootError : undefined;
+}
+
+/**
+ * @param error - Raw SDK error to traverse.
+ * @returns Orchestration error response if found in the error chain, undefined otherwise.
+ * @internal
+ */
+function findOrchestrationErrorResponse(error: unknown): OrchestrationErrorResponse | undefined {
+  const rootError = getRootError(error);
+
+  if (isOrchestrationErrorResponse(rootError)) {
+    return rootError;
+  }
+
+  if (rootError instanceof Error) {
+    const parsed = tryExtractSAPErrorFromMessage(rootError.message);
+    if (parsed && isOrchestrationErrorResponse(parsed)) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * @param error - Error to extract Axios error from.
  * @returns Axios error if found.
  * @internal
@@ -573,8 +634,7 @@ function getAxiosError(
 ): undefined | { isAxiosError: true; response?: { data?: unknown; headers?: unknown } } {
   if (!(error instanceof Error)) return undefined;
 
-  const rootCause = isErrorWithCause(error) ? error.rootCause : error;
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- typeof null === "object" in JS
+  const rootCause = getRootError(error);
   if (typeof rootCause !== "object" || rootCause === null) return undefined;
 
   const maybeAxios = rootCause as {
@@ -606,6 +666,15 @@ function getAxiosResponseHeaders(error: unknown): Record<string, string> | undef
   const axiosError = getAxiosError(error);
   if (!axiosError) return undefined;
   return normalizeHeaders(axiosError.response?.headers);
+}
+
+/**
+ * @param error - Raw error, potentially wrapping a root cause.
+ * @returns The root cause if the error wraps one, otherwise the error itself.
+ * @internal
+ */
+function getRootError(error: unknown): unknown {
+  return error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
 }
 
 /**

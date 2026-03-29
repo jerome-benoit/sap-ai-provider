@@ -94,6 +94,8 @@ export interface FoundationModelsModelSettings {
   readonly modelParams?: FoundationModelsModelParams;
   readonly modelVersion?: string;
   readonly responseFormat?: ResponseFormat;
+  /** @default true */
+  readonly suppressPrefillErrors?: boolean;
 }
 
 /** Default settings configuration when using Orchestration API. */
@@ -151,6 +153,8 @@ export interface OrchestrationModelSettings {
    * Only applies when using `streamText()` with orchestration modules.
    */
   readonly streamOptions?: OrchestrationStreamOptions;
+  /** @default true */
+  readonly suppressPrefillErrors?: boolean;
   readonly tools?: ChatCompletionTool[];
   readonly translation?: TranslationModule;
 }
@@ -302,6 +306,8 @@ export interface SAPAISettings {
   readonly responseFormat?: ResponseFormat;
   /** Orchestration API only. */
   readonly streamOptions?: OrchestrationStreamOptions;
+  /** @default true */
+  readonly suppressPrefillErrors?: boolean;
   /** Orchestration API only. */
   readonly tools?: ChatCompletionTool[];
   /** Orchestration API only. */
