@@ -324,7 +324,7 @@ export function convertToAISDKError(
     return error;
   }
 
-  const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
+  const rootError = getRootError(error);
 
   const errorResponse = findOrchestrationErrorResponse(error);
   if (errorResponse) {
@@ -591,7 +591,7 @@ function extractSAPErrorMessage(error: unknown): string | undefined {
     return extractErrorFields(errorResponse).message;
   }
 
-  const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
+  const rootError = getRootError(error);
   if (rootError instanceof Error) {
     return rootError.message;
   }
@@ -604,7 +604,7 @@ function extractSAPErrorMessage(error: unknown): string | undefined {
  * @internal
  */
 function findOrchestrationErrorResponse(error: unknown): OrchestrationErrorResponse | undefined {
-  const rootError = error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
+  const rootError = getRootError(error);
 
   if (isOrchestrationErrorResponse(rootError)) {
     return rootError;
@@ -630,8 +630,7 @@ function getAxiosError(
 ): undefined | { isAxiosError: true; response?: { data?: unknown; headers?: unknown } } {
   if (!(error instanceof Error)) return undefined;
 
-  const rootCause = isErrorWithCause(error) ? error.rootCause : error;
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- typeof null === "object" in JS
+  const rootCause = getRootError(error);
   if (typeof rootCause !== "object" || rootCause === null) return undefined;
 
   const maybeAxios = rootCause as {
@@ -663,6 +662,15 @@ function getAxiosResponseHeaders(error: unknown): Record<string, string> | undef
   const axiosError = getAxiosError(error);
   if (!axiosError) return undefined;
   return normalizeHeaders(axiosError.response?.headers);
+}
+
+/**
+ * @param error - Raw error, potentially wrapping a root cause.
+ * @returns The root cause if the error wraps one, otherwise the error itself.
+ * @internal
+ */
+function getRootError(error: unknown): unknown {
+  return error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
 }
 
 /**
