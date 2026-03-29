@@ -10,7 +10,6 @@ import {
   ApiSwitchError,
   convertSAPErrorToAPICallError,
   convertToAISDKError,
-  isPrefillError,
   normalizeHeaders,
   UnsupportedFeatureError,
 } from "./sap-ai-error";
@@ -467,7 +466,7 @@ describe("convertToAISDKError", () => {
       const errorResponse = {
         error: {
           code: null,
-          message: "This model does not support assistant message prefill.",
+          message: "Invalid request parameters.",
           param: null,
           type: "invalid_request_error",
         },
@@ -477,7 +476,7 @@ describe("convertToAISDKError", () => {
 
       expect(result.statusCode).toBe(500);
       expect(result.isRetryable).toBe(true);
-      expect(result.message).toContain("does not support assistant message prefill");
+      expect(result.message).toContain("Invalid request parameters.");
     });
 
     it("should use HTTP status code as fallback when error body code is null", () => {
@@ -1167,66 +1166,5 @@ describe("convertToAISDKError", () => {
         expect(result.message).not.toContain("SAP AI Core Error Response:");
       });
     });
-  });
-});
-
-describe("isPrefillError", () => {
-  it("should detect prefill error from OrchestrationErrorResponse", () => {
-    const error = {
-      error: {
-        code: 400,
-        location: "LLM Module",
-        message:
-          "This model does not support assistant message prefill. The conversation must end with a user message.",
-        request_id: "test-request-id",
-      },
-    };
-    expect(isPrefillError(error)).toBe(true);
-  });
-
-  it("should detect prefill error from Error with prefill message text", () => {
-    const error = new Error(
-      "This model does not support assistant message prefill. The conversation must end with a user message.",
-    );
-    expect(isPrefillError(error)).toBe(true);
-  });
-
-  it("should detect prefill error from Error with JSON in message", () => {
-    const error = new Error(
-      'Request failed: {"error":{"code":400,"message":"This model does not support assistant message prefill. The conversation must end with a user message."}}',
-    );
-    expect(isPrefillError(error)).toBe(true);
-  });
-
-  it("should detect prefill error with only prefill keyword", () => {
-    const error = new Error("This model does not support assistant message prefill.");
-    expect(isPrefillError(error)).toBe(true);
-  });
-
-  it("should detect prefill error with only conversation-must-end keyword", () => {
-    const error = new Error("The conversation must end with a user message.");
-    expect(isPrefillError(error)).toBe(true);
-  });
-
-  it("should detect prefill error regardless of casing", () => {
-    const error = new Error("This Model Does Not Support Assistant Message Prefill.");
-    expect(isPrefillError(error)).toBe(true);
-  });
-
-  it("should return false for non-prefill 400 error", () => {
-    const error = {
-      error: {
-        code: 400,
-        message: "Invalid request: missing required field 'model'",
-      },
-    };
-    expect(isPrefillError(error)).toBe(false);
-  });
-
-  it("should return false for non-error values", () => {
-    expect(isPrefillError(null)).toBe(false);
-    expect(isPrefillError(undefined)).toBe(false);
-    expect(isPrefillError("some string")).toBe(false);
-    expect(isPrefillError(42)).toBe(false);
   });
 });

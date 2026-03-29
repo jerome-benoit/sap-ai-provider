@@ -429,21 +429,6 @@ export function convertToAISDKError(
   );
 }
 
-const PREFILL_ERROR_KEYWORDS = [
-  "does not support assistant message prefill",
-  "conversation must end with a user message",
-] as const;
-
-/**
- * @param error - Raw error from the SAP AI SDK.
- * @returns True if the error indicates the model does not support assistant message prefill.
- * @internal
- */
-export function isPrefillError(error: unknown): boolean {
-  const message = extractSAPErrorMessage(error)?.toLowerCase();
-  return message !== undefined && PREFILL_ERROR_KEYWORDS.some((kw) => message.includes(kw));
-}
-
 /**
  * Normalizes various header formats to a string record.
  * @param headers - Headers to normalize.
@@ -585,24 +570,6 @@ function extractModelIdentifier(message: string, location?: string): string | un
   }
 
   return undefined;
-}
-
-/**
- * @param error - Raw SDK error to extract a message from.
- * @returns SAP error message string, or undefined if not extractable.
- * @internal
- */
-function extractSAPErrorMessage(error: unknown): string | undefined {
-  const errorResponse = findStructuredErrorResponse(error);
-  if (errorResponse) {
-    return extractErrorFields(errorResponse).message;
-  }
-
-  const rootError = getRootError(error);
-  if (rootError instanceof Error) {
-    return rootError.message;
-  }
-  return typeof rootError === "string" ? rootError : undefined;
 }
 
 /**

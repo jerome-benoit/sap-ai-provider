@@ -13,7 +13,7 @@ import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
-import { convertToAISDKError, isPrefillError, normalizeHeaders } from "./sap-ai-error.js";
+import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
 import {
   buildGenerateResult,
@@ -118,15 +118,6 @@ export abstract class BaseLanguageModelStrategy<
         warnings: [...commonParts.warnings, ...warnings],
       });
     } catch (error) {
-      if (this.shouldRetryWithoutPrefill(error, settings, options)) {
-        const retryPrompt = this.stripTrailingAssistantMessages(options.prompt);
-        if (retryPrompt.length > 0) {
-          return this.doGenerate(config, settings, {
-            ...options,
-            prompt: retryPrompt,
-          });
-        }
-      }
       throw convertToAISDKError(error, {
         operation: "doGenerate",
         requestBody: createAISDKRequestBodySummary(options),
@@ -187,15 +178,6 @@ export abstract class BaseLanguageModelStrategy<
         stream: transformedStream,
       };
     } catch (error) {
-      if (this.shouldRetryWithoutPrefill(error, settings, options)) {
-        const retryPrompt = this.stripTrailingAssistantMessages(options.prompt);
-        if (retryPrompt.length > 0) {
-          return this.doStream(config, settings, {
-            ...options,
-            prompt: retryPrompt,
-          });
-        }
-      }
       throw convertToAISDKError(error, {
         operation: "doStream",
         requestBody: createAISDKRequestBodySummary(options),
@@ -372,45 +354,4 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected abstract getUrl(): string;
-
-  /**
-   * Checks whether a prefill error should trigger a retry without trailing assistant messages.
-   * @param error - Caught error from API call.
-   * @param settings - Model settings.
-   * @param options - Call options containing the prompt.
-   * @returns Whether the request should be retried without trailing assistant messages.
-   * @internal
-   */
-  private shouldRetryWithoutPrefill(
-    error: unknown,
-    settings: TSettings,
-    options: LanguageModelV3CallOptions,
-  ): boolean {
-    const suppress =
-      (settings as SAPAIModelSettings & { suppressPrefillErrors?: boolean })
-        .suppressPrefillErrors ?? true;
-    return (
-      suppress &&
-      isPrefillError(error) &&
-      options.prompt.length > 0 &&
-      options.prompt.at(-1)?.role === "assistant"
-    );
-  }
-
-  /**
-   * Strips all trailing assistant messages from a prompt for prefill retry.
-   * Removes all (not just the last) to guarantee the retry cannot re-trigger.
-   * @param prompt - Original prompt array.
-   * @returns Prompt with trailing assistant messages removed.
-   * @internal
-   */
-  private stripTrailingAssistantMessages(
-    prompt: LanguageModelV3CallOptions["prompt"],
-  ): LanguageModelV3CallOptions["prompt"] {
-    let end = prompt.length;
-    while (end > 0 && prompt[end - 1]?.role === "assistant") {
-      end--;
-    }
-    return prompt.slice(0, end);
-  }
 }
