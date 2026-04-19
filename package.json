@@ -78,8 +78,8 @@
   "dependencies": {
     "@ai-sdk/provider": "^3.0.8",
     "@ai-sdk/provider-utils": "^4.0.23",
-    "@sap-ai-sdk/foundation-models": "^2.9.0",
-    "@sap-ai-sdk/orchestration": "^2.9.0",
+    "@sap-ai-sdk/foundation-models": "^2.10.0",
+    "@sap-ai-sdk/orchestration": "^2.10.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -88,9 +88,9 @@
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.4",
     "dotenv": "^17.4.2",
-    "eslint": "^10.2.0",
+    "eslint": "^10.2.1",
     "eslint-plugin-jsdoc": "^62.9.0",
-    "eslint-plugin-perfectionist": "^5.8.0",
+    "eslint-plugin-perfectionist": "^5.9.0",
     "globals": "^17.5.0",
     "markdown-link-check": "^3.14.2",
     "markdownlint-cli2": "^0.22.0",
