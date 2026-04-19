@@ -26,12 +26,30 @@ context: |
   - Must work in both Node.js and Edge runtimes
 
   ### Source Structure
-  - src/index.ts - Main exports
-  - src/sap-ai-provider.ts - Provider factory
-  - src/sap-ai-language-model.ts - Language model implementation
-  - src/sap-ai-embedding-model.ts - Embedding model implementation
-  - src/sap-ai-settings.ts - Types and settings
-  - src/convert-to-sap-messages.ts - Message conversion utilities
+  - src/index.ts - V3 public API exports (main entry)
+  - src/index-v2.ts - V2 public API exports (facade entry)
+  - src/sap-ai-provider.ts - V3 provider factory
+  - src/sap-ai-provider-v2.ts - V2 provider factory (wraps V3)
+  - src/sap-ai-language-model.ts - V3 language model (LanguageModelV3)
+  - src/sap-ai-language-model-v2.ts - V2 language model (wraps V3)
+  - src/sap-ai-embedding-model.ts - V3 embedding model (EmbeddingModelV3)
+  - src/sap-ai-embedding-model-v2.ts - V2 embedding model (wraps V3)
+  - src/sap-ai-adapters-v3-to-v2.ts - V3→V2 format conversion
+  - src/sap-ai-settings.ts - Types, settings, and SAP SDK re-exports
+  - src/sap-ai-provider-options.ts - Zod schemas for provider options
+  - src/sap-ai-validation.ts - API resolution and validation
+  - src/sap-ai-error.ts - Error handling (UnsupportedFeatureError, ApiSwitchError)
+  - src/sap-ai-strategy.ts - Strategy factory (lazy loading)
+  - src/base-language-model-strategy.ts - Base language model strategy (Template Method)
+  - src/base-embedding-model-strategy.ts - Base embedding model strategy (Template Method)
+  - src/orchestration-language-model-strategy.ts - Orchestration API language model
+  - src/orchestration-embedding-model-strategy.ts - Orchestration API embedding model
+  - src/foundation-models-language-model-strategy.ts - Foundation Models API language model
+  - src/foundation-models-embedding-model-strategy.ts - Foundation Models API embedding model
+  - src/strategy-utils.ts - Shared strategy utilities
+  - src/convert-to-sap-messages.ts - Message format conversion
+  - src/deep-merge.ts - Deep merge utility
+  - src/version.ts - Package version constant
 
   ### Conventions
   - JSDoc comments required for all public APIs

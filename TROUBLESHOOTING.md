@@ -81,7 +81,6 @@ below.
   - [Problem: Slow response times](#problem-slow-response-times)
   - [Problem: High token usage / costs](#problem-high-token-usage--costs)
 - [Debugging Tools](#debugging-tools)
-  - [Enable Verbose Logging](#enable-verbose-logging)
   - [Control SAP Cloud SDK Log Level](#control-sap-cloud-sdk-log-level)
   - [Use cURL for Direct API Testing](#use-curl-for-direct-api-testing)
   - [Check Token Validity](#check-token-validity)
@@ -146,7 +145,7 @@ request, incompatible features
 
 - Validate configuration against TypeScript types
 - Check API Reference for valid parameter ranges
-- Enable verbose logging to see exact request
+- Enable verbose logging (`logLevel: 'debug'` on the provider) to see exact request
 
 ### Problem: Template Placeholder Conflicts
 
@@ -485,12 +484,6 @@ complete error details.
 3. Monitor usage: `console.log(result.usage)`
 
 ## Debugging Tools
-
-### Enable Verbose Logging
-
-```bash
-export DEBUG=sap-ai-provider:*
-```
 
 ### Control SAP Cloud SDK Log Level
 
