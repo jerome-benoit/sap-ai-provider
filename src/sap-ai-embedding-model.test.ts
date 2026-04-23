@@ -289,6 +289,7 @@ describe("SAPAIEmbeddingModel", () => {
   async function getLastEmbedCallForApi(
     api: APIType,
   ): Promise<FMEmbedCall | OrchestrationEmbedCall | undefined>;
+  // eslint-disable-next-line jsdoc/require-jsdoc
   async function getLastEmbedCallForApi(
     api: APIType,
   ): Promise<FMEmbedCall | OrchestrationEmbedCall | undefined> {
