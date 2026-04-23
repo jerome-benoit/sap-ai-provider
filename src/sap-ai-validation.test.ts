@@ -19,7 +19,7 @@ import {
  * @returns The mock settings cast to SAPAIEmbeddingSettings.
  */
 function mockEmbeddingSettings(partial: Record<string, unknown>): SAPAIEmbeddingSettings {
-  return partial as SAPAIEmbeddingSettings;
+  return partial;
 }
 
 /**
@@ -30,7 +30,7 @@ function mockEmbeddingSettings(partial: Record<string, unknown>): SAPAIEmbedding
  * @returns The mock settings cast to SAPAIModelSettings.
  */
 function mockSettings(partial: Record<string, unknown>): SAPAIModelSettings {
-  return partial as SAPAIModelSettings;
+  return partial;
 }
 
 describe("resolveApi", () => {

@@ -208,7 +208,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     });
   };
 
-  return provider as SAPAIProviderV2;
+  return provider;
 }
 
 /** Default SAP AI provider instance with automatic authentication via SAP AI SDK. */

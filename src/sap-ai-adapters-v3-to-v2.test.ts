@@ -126,8 +126,8 @@ describe("convertUsageToV2", () => {
         cacheRead: 10,
         cacheWrite: undefined,
         noCache: undefined,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-        total: undefined as any,
+
+        total: undefined,
       },
       outputTokens: {
         reasoning: undefined,
@@ -154,8 +154,8 @@ describe("convertUsageToV2", () => {
       outputTokens: {
         reasoning: 10,
         text: undefined,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-        total: undefined as any,
+
+        total: undefined,
       },
     };
 

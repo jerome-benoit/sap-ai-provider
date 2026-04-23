@@ -17,7 +17,6 @@ import {
 } from "./base-language-model-strategy.js";
 import { normalizeHeaders } from "./sap-ai-error.js";
 import {
-  type AISDKTool,
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
@@ -75,9 +74,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   } {
     const warnings: SharedV3Warning[] = [];
 
-    const toolsResult = convertToolsToSAPFormat<AzureOpenAiChatCompletionTool>(
-      options.tools as AISDKTool[] | undefined,
-    );
+    const toolsResult = convertToolsToSAPFormat<AzureOpenAiChatCompletionTool>(options.tools);
     warnings.push(...toolsResult.warnings);
 
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
@@ -98,8 +95,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       ...(responseFormat ? { response_format: responseFormat } : {}),
       ...(settings.dataSources?.length
         ? {
-            data_sources:
-              settings.dataSources as AzureOpenAiChatCompletionParameters["data_sources"],
+            data_sources: settings.dataSources,
           }
         : {}),
     };

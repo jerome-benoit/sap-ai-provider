@@ -90,6 +90,6 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     return {
       input: values,
       ...(mergedParams ?? {}),
-    } as AzureOpenAiEmbeddingParameters;
+    };
   }
 }

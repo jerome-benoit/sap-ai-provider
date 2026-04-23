@@ -1,5 +1,4 @@
 /** Unit tests for SAP AI Embedding Model. */
-import type { EmbeddingModelV3CallOptions } from "@ai-sdk/provider";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -344,7 +343,7 @@ describe("SAPAIEmbeddingModel", () => {
         expect(() =>
           createModelForApi(api, "text-embedding-ada-002", {
             modelParams,
-          } as never),
+          }),
         ).toThrow();
       });
     },
@@ -359,7 +358,7 @@ describe("SAPAIEmbeddingModel", () => {
       const model = createModelForApi(api);
       const result = await model.doEmbed({
         values: ["Hello", "World"],
-      } as EmbeddingModelV3CallOptions);
+      });
 
       expect(result.embeddings).toEqual([
         [0.1, 0.2, 0.3],
@@ -468,9 +467,9 @@ describe("SAPAIEmbeddingModel", () => {
           values: ["Test"],
         });
 
-        const lastCall = await getLastEmbedCallForApi(api);
         if (api === "foundation-models") {
-          expect((lastCall as FMEmbedCall | undefined)?.request.dimensions).toBe(1024);
+          const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
+          expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.dimensions).toBe(1024);
         } else {
           const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
           expect(

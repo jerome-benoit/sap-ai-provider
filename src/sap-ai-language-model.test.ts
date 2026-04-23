@@ -547,9 +547,7 @@ describe("SAPAILanguageModel", () => {
   const createFMModel = (modelId = "gpt-4o", settings: Record<string, unknown> = {}) => {
     return new SAPAILanguageModel(
       modelId,
-      { api: "foundation-models", ...settings } as ConstructorParameters<
-        typeof SAPAILanguageModel
-      >[1],
+      { api: "foundation-models", ...settings },
       {
         deploymentConfig: { deploymentId: "test-deployment" },
         provider: "sap-ai",
@@ -3807,9 +3805,9 @@ describe("SAPAILanguageModel", () => {
       },
     );
 
-    describe.each([
-      { api: "orchestration" as APIType, apiName: "Orchestration" },
-      { api: "foundation-models" as APIType, apiName: "Foundation Models" },
+    describe.each<{ api: APIType; apiName: string }>([
+      { api: "orchestration", apiName: "Orchestration" },
+      { api: "foundation-models", apiName: "Foundation Models" },
     ])("model parameters ($apiName API)", ({ api }) => {
       const optionOverrideTestCases = [
         {

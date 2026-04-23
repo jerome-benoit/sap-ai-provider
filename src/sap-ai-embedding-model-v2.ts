@@ -139,7 +139,7 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
       response: result.response
         ? {
             body: result.response.body,
-            headers: result.response.headers as SharedV2Headers | undefined,
+            headers: result.response.headers,
           }
         : undefined,
       usage: result.usage,

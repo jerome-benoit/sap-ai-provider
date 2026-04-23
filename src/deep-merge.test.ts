@@ -12,7 +12,7 @@ import { deepMerge, deepMergeTwo } from "./deep-merge";
 describe("deepMerge", () => {
   describe("basic merging", () => {
     it("should merge two flat objects", () => {
-      const result = deepMerge({ a: 1, b: 2 }, { b: 3, c: 4 } as Record<string, unknown>);
+      const result = deepMerge<Record<string, number>>({ a: 1, b: 2 }, { b: 3, c: 4 });
       expect(result).toEqual({ a: 1, b: 3, c: 4 });
     });
 

@@ -52,9 +52,7 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
 
     const moduleConfig: EmbeddingModuleConfig = {
       embeddings: embeddingConfig,
-      ...(settings.masking && hasKeys(settings.masking as object)
-        ? { masking: settings.masking }
-        : {}),
+      ...(settings.masking && hasKeys(settings.masking) ? { masking: settings.masking } : {}),
     };
 
     return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);

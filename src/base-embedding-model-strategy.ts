@@ -50,8 +50,7 @@ export abstract class BaseEmbeddingModelStrategy<
       options,
     );
 
-    const embeddingType =
-      embeddingOptions?.type ?? (settings.type as EmbeddingType | undefined) ?? "text";
+    const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
 
     try {
       const client = this.createClient(config, settings, embeddingOptions);

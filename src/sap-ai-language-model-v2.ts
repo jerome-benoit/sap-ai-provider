@@ -129,7 +129,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
       response: result.response
         ? {
             body: result.response.body,
-            headers: result.response.headers as SharedV2Headers | undefined,
+            headers: result.response.headers,
             id: result.response.id,
             modelId: result.response.modelId,
             timestamp: result.response.timestamp,
@@ -156,7 +156,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
       request: result.request,
       response: result.response
         ? {
-            headers: result.response.headers as SharedV2Headers | undefined,
+            headers: result.response.headers,
           }
         : undefined,
       stream: createV2StreamFromInternal(result.stream),

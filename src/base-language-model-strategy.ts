@@ -217,8 +217,8 @@ export abstract class BaseLanguageModelStrategy<
     const { modelParams, warnings: paramWarnings } = buildModelParams({
       options,
       paramMappings: this.getParamMappings(),
-      providerModelParams: sapOptions?.modelParams as Record<string, unknown> | undefined,
-      settingsModelParams: settings.modelParams as Record<string, unknown> | undefined,
+      providerModelParams: sapOptions?.modelParams,
+      settingsModelParams: settings.modelParams,
     });
     warnings.push(...paramWarnings);
 
@@ -335,9 +335,7 @@ export abstract class BaseLanguageModelStrategy<
     settings: TSettings,
   ): boolean {
     return (
-      (sapOptions?.includeReasoning as boolean | undefined) ??
-      (settings as SAPAIModelSettings & { includeReasoning?: boolean }).includeReasoning ??
-      false
+      (sapOptions?.includeReasoning as boolean | undefined) ?? settings.includeReasoning ?? false
     );
   }
 

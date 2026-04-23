@@ -33,7 +33,6 @@ import {
   sapAILanguageModelProviderOptions,
 } from "./sap-ai-provider-options.js";
 import {
-  type AISDKTool,
   buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
@@ -184,7 +183,7 @@ function copyOrchestrationModules(
 ): void {
   for (const key of ORCHESTRATION_MODULE_KEYS) {
     const value = source[key];
-    if (value && hasKeys(value as object)) {
+    if (value && hasKeys(value)) {
       target[key] = value;
     }
   }
@@ -272,8 +271,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const { modelParams, warnings: paramWarnings } = buildModelParams({
       options,
       paramMappings: this.getParamMappings(),
-      providerModelParams: sapOptions?.modelParams as Record<string, unknown> | undefined,
-      settingsModelParams: settings.modelParams as Record<string, unknown> | undefined,
+      providerModelParams: sapOptions?.modelParams,
+      settingsModelParams: settings.modelParams,
     });
     warnings.push(...paramWarnings);
 
@@ -380,7 +379,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
           name: config.modelId,
           ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
         },
-        prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
+        prompt: promptConfig,
       },
     };
 
@@ -573,7 +572,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
           params: effectiveModelParams,
           ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
         },
-        prompt: promptConfig as OrchestrationModuleConfig["promptTemplating"]["prompt"],
+        prompt: promptConfig,
       },
     };
 
@@ -694,7 +693,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       | undefined;
 
     const orchestrationConfig = this.buildOrchestrationModuleConfig(config, settings, {
-      modelParams: commonParts.modelParams as SAPModelParams,
+      modelParams: commonParts.modelParams,
       promptTemplateRef,
       responseFormat,
       toolChoice,
@@ -752,7 +751,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     for (const key of CONFIG_REF_IGNORED_MODULES) {
       const value = settings[key as keyof OrchestrationModelSettings];
       if (value !== undefined) {
-        if (typeof value === "object" && Object.keys(value as object).length === 0) {
+        if (typeof value === "object" && Object.keys(value).length === 0) {
           continue; // Skip empty objects
         }
         ignoredSettings.push(key);
@@ -867,7 +866,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     }
 
     if (optionsTools && optionsTools.length > 0) {
-      const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools as AISDKTool[]);
+      const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools);
       warnings.push(...result.warnings);
       return result.tools;
     }

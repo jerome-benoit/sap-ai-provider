@@ -252,7 +252,7 @@ export function convertToSAPMessages(
                 role: "user",
               }
             : {
-                content: contentParts as UserChatMessage["content"],
+                content: contentParts,
                 role: "user",
               };
 

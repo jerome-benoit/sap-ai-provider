@@ -528,7 +528,7 @@ export function buildModelParams(config: BuildModelParamsConfig): BuildModelPara
 
   applyParameterOverrides(
     modelParams,
-    options as Record<string, unknown>,
+    options,
     providerModelParams,
     settingsModelParams,
     paramMappings,
