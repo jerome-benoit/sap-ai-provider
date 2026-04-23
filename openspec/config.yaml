@@ -14,8 +14,8 @@ context: |
   - Formatting: Prettier + ESLint
 
   ### Key Dependencies
-  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, zod
-  - Peer: ai (Vercel AI SDK), zod
+  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models, zod
+  - Peer: ai (Vercel AI SDK ^5.0.0 || ^6.0.0)
   - SAP SDKs: @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models
 
   ### Architecture Patterns

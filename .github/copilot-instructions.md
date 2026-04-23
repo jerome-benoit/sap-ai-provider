@@ -57,7 +57,13 @@ This repository publishes two npm packages from the same codebase:
 - **Prettier formatting check**: `npm run prettier-check` -- takes ~1 second. Set timeout to 10+ seconds.
 - **Auto-fix formatting**: `npm run prettier-fix`
 - **Linting**: `npm run lint` -- takes ~2 seconds. Set timeout to 15+ seconds.
+  - Runs `lint:md:all` (Markdown linting + TOC validation + Mermaid diagram validation) then ESLint
+  - `lint:md` — markdownlint on all `*.md` files
+  - `lint:md:toc` — validates Table of Contents via `scripts/check-toc.ts`
+  - `lint:md:mermaid` — validates Mermaid diagrams in Markdown files
+  - `lint:md:fix` — auto-fix Markdown lint issues
 - **Auto-fix linting issues**: `npm run lint-fix`
+- **Clean build outputs**: `npm run clean` -- removes `dist/` directory
 
 ### Development Workflow
 
@@ -121,6 +127,8 @@ This should complete in approximately 15 seconds total and all commands should p
 ├── .github/               # GitHub Actions workflows and configs
 ├── examples/              # Example usage files (10 examples)
 ├── scripts/               # Build and publish scripts
+│   ├── check-toc.ts                                  # Markdown TOC validation (used by lint:md:toc)
+│   ├── check-toc.test.ts                              # Tests for check-toc
 │   └── prepare-v2-package.ts                         # V2 publish preparation script
 ├── src/                   # TypeScript source code
 │   │   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
@@ -151,8 +159,10 @@ This should complete in approximately 15 seconds total and all commands should p
 │   ├── foundation-models-embedding-model-strategy.ts# Foundation Models embedding strategy
 │   ├── convert-to-sap-messages.ts                   # Message format conversion
 │   ├── deep-merge.ts                                 # Deep merge utility
-│   └── version.ts                                    # Package version constant
+│   ├── version.ts                                    # Package version constant
+│   └── *.test.ts                                     # Co-located unit tests (13 files)
 ├── dist/                  # Build outputs (gitignored)
+├── eslint.config.js      # ESLint flat configuration
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
 ├── tsup.config.ts        # V3 build configuration
@@ -215,8 +225,8 @@ This should complete in approximately 15 seconds total and all commands should p
 
 ### Package Dependencies
 
-- **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `zod`
-- **Peer**: `ai` (Vercel AI SDK), `zod`
+- **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
+- **Peer**: `ai` (Vercel AI SDK `^5.0.0 || ^6.0.0`)
 - **Dev**: TypeScript, Vitest, tsup, ESLint, Prettier, dotenv
 - **Node requirement**: Node.js 20+
 
@@ -241,6 +251,10 @@ npm run prepare:v2       # Rename V2 files for publish
 npm run check-build      # <1s - Verify V3 build outputs
 npm run check-build:v2   # <1s - Verify V2 build outputs
 npm run prettier-check   # ~1s - Check formatting
+npm run lint             # ~2s - Markdown lint + TOC + Mermaid + ESLint
+npm run lint-fix         # Auto-fix lint issues
+npm run lint:md:fix      # Auto-fix Markdown lint issues
+npm run clean            # Remove dist/ directory
 
 # Complete validation
 npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
