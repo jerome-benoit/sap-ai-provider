@@ -278,17 +278,27 @@ describe("SAPAIEmbeddingModel", () => {
 
   /**
    * Gets the last embed call for a given API type.
+   * Returns a discriminated type based on the API parameter.
    * @param api - The API type.
-   * @returns The last embed call parameters.
+   * @returns The last embed call parameters, typed per API.
    */
-  const getLastEmbedCallForApi = async (api: APIType) => {
+  async function getLastEmbedCallForApi(api: "foundation-models"): Promise<FMEmbedCall | undefined>;
+  async function getLastEmbedCallForApi(
+    api: "orchestration",
+  ): Promise<OrchestrationEmbedCall | undefined>;
+  async function getLastEmbedCallForApi(
+    api: APIType,
+  ): Promise<FMEmbedCall | OrchestrationEmbedCall | undefined>;
+  async function getLastEmbedCallForApi(
+    api: APIType,
+  ): Promise<FMEmbedCall | OrchestrationEmbedCall | undefined> {
     if (api === "foundation-models") {
       const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
       return MockAzureOpenAiEmbeddingClient.lastEmbedCall;
     }
     const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
     return MockOrchestrationEmbeddingClient.lastEmbedCall;
-  };
+  }
 
   describe.each<APIType>(["orchestration", "foundation-models"])(
     "model properties (%s API)",
@@ -468,8 +478,8 @@ describe("SAPAIEmbeddingModel", () => {
         });
 
         if (api === "foundation-models") {
-          const { MockAzureOpenAiEmbeddingClient } = await getMockFMClient();
-          expect(MockAzureOpenAiEmbeddingClient.lastEmbedCall?.request.dimensions).toBe(1024);
+          const lastCall = await getLastEmbedCallForApi(api);
+          expect(lastCall?.request.dimensions).toBe(1024);
         } else {
           const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
           expect(
