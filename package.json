@@ -80,7 +80,7 @@
     "@ai-sdk/provider-utils": "^4.0.26",
     "@sap-ai-sdk/foundation-models": "^2.10.0",
     "@sap-ai-sdk/orchestration": "^2.10.0",
-    "zod": "^4.4.1"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
