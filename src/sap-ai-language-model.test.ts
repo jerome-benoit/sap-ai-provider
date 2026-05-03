@@ -2470,6 +2470,68 @@ describe("SAPAILanguageModel", () => {
       expect(toolCall?.input).toBe('{"customer":"Acme"}');
     });
 
+    it("should replay buffered arguments as tool-input-delta when id arrives after arguments", async () => {
+      const realId = "vertex_tool_buffered_args_test";
+
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '{"a":', name: "buffered_fn" },
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '"b"}' },
+              id: realId,
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 5, prompt_tokens: 3, total_tokens: 8 },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("test buffered args");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const toolInputStart = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+          p.type === "tool-input-start",
+      );
+      const toolInputDeltas = parts.filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+          p.type === "tool-input-delta",
+      );
+      const toolCall = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+          p.type === "tool-call",
+      );
+
+      expect(toolInputStart).toBeDefined();
+      expect(toolInputStart?.id).toBe(realId);
+      expect(toolInputStart?.toolName).toBe("buffered_fn");
+
+      expect(toolInputDeltas).toHaveLength(2);
+      expect(toolInputDeltas[0]?.id).toBe(realId);
+      expect(toolInputDeltas[0]?.delta).toBe('{"a":');
+      expect(toolInputDeltas[1]?.id).toBe(realId);
+      expect(toolInputDeltas[1]?.delta).toBe('"b"}');
+
+      const concatenatedDeltas = toolInputDeltas.map((d) => d.delta).join("");
+      expect(concatenatedDeltas).toBe('{"a":"b"}');
+
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.toolCallId).toBe(realId);
+      expect(toolCall?.input).toBe('{"a":"b"}');
+    });
+
     it("should handle Unicode and multi-byte characters in large streams without corruption", async () => {
       const unicodeContent =
         "Hello 世界! 🌍🌎🌏 Привет мир! مرحبا بالعالم " +
