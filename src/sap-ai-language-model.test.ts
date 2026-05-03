@@ -2558,6 +2558,10 @@ describe("SAPAILanguageModel", () => {
         (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
           p.type === "tool-input-start",
       );
+      const toolInputDeltas = parts.filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+          p.type === "tool-input-delta",
+      );
       const toolCall = parts.find(
         (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
           p.type === "tool-call",
@@ -2566,6 +2570,10 @@ describe("SAPAILanguageModel", () => {
       expect(toolInputStart).toBeDefined();
       expect(toolInputStart?.id).toMatch(uuidRegex);
       expect(toolInputStart?.toolName).toBe("no_id_tool");
+
+      expect(toolInputDeltas).toHaveLength(1);
+      expect(toolInputDeltas[0]?.id).toBe(toolInputStart?.id);
+      expect(toolInputDeltas[0]?.delta).toBe('{"x":1}');
 
       expect(toolCall).toBeDefined();
       expect(toolCall?.toolCallId).toMatch(uuidRegex);
