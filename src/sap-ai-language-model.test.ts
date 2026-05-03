@@ -2532,6 +2532,47 @@ describe("SAPAILanguageModel", () => {
       expect(toolCall?.input).toBe('{"a":"b"}');
     });
 
+    it("should generate a fallback UUID when tool call id is never provided by the API", async () => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '{"x":1}', name: "no_id_tool" },
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 5, prompt_tokens: 3, total_tokens: 8 },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("test fallback id");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const toolInputStart = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+          p.type === "tool-input-start",
+      );
+      const toolCall = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+          p.type === "tool-call",
+      );
+
+      expect(toolInputStart).toBeDefined();
+      expect(toolInputStart?.id).toMatch(uuidRegex);
+      expect(toolInputStart?.toolName).toBe("no_id_tool");
+
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.toolCallId).toMatch(uuidRegex);
+      expect(toolCall?.toolCallId).toBe(toolInputStart?.id);
+      expect(toolCall?.input).toBe('{"x":1}');
+    });
+
     it("should handle Unicode and multi-byte characters in large streams without corruption", async () => {
       const unicodeContent =
         "Hello 世界! 🌍🌎🌏 Привет мир! مرحبا بالعالم " +
