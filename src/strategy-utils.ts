@@ -985,6 +985,13 @@ export function createStreamTransformer(
                 toolName: tc.toolName,
                 type: "tool-input-start",
               });
+              if (tc.arguments.length > 0) {
+                controller.enqueue({
+                  delta: tc.arguments,
+                  id: tc.id,
+                  type: "tool-input-delta",
+                });
+              }
             }
 
             const argumentsDelta = toolCallChunk.function?.arguments;
