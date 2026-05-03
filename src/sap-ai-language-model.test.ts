@@ -2457,9 +2457,12 @@ describe("SAPAILanguageModel", () => {
       expect(toolInputStart?.id).toBe(realId);
       expect(toolInputStart?.toolName).toBe("query_bookings");
 
+      expect(toolInputDeltas).toHaveLength(2);
       for (const delta of toolInputDeltas) {
         expect(delta.id).toBe(realId);
       }
+      const concatenatedDeltas = toolInputDeltas.map((d) => d.delta).join("");
+      expect(concatenatedDeltas).toBe('{"customer":"Acme"}');
 
       expect(toolCall).toBeDefined();
       expect(toolCall?.toolCallId).toBe(realId);
