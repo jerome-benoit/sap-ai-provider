@@ -2401,6 +2401,72 @@ describe("SAPAILanguageModel", () => {
       expect(parsed2.query).toHaveLength(5000);
     });
 
+    it("should emit consistent tool call IDs when id arrives on a later chunk than function name (Vertex pattern)", async () => {
+      const realId = "vertex_tool_be5b294b-ece3-46f0-8b0d-22cd00000000";
+
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { name: "query_bookings" },
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '{"customer":' },
+              id: realId,
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '"Acme"}' },
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 10, prompt_tokens: 5, total_tokens: 15 },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("show bookings");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const toolInputStart = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+          p.type === "tool-input-start",
+      );
+      const toolInputDeltas = parts.filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+          p.type === "tool-input-delta",
+      );
+      const toolCall = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+          p.type === "tool-call",
+      );
+
+      expect(toolInputStart).toBeDefined();
+      expect(toolInputStart?.id).toBe(realId);
+      expect(toolInputStart?.toolName).toBe("query_bookings");
+
+      for (const delta of toolInputDeltas) {
+        expect(delta.id).toBe(realId);
+      }
+
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.toolCallId).toBe(realId);
+      expect(toolCall?.toolName).toBe("query_bookings");
+      expect(toolCall?.input).toBe('{"customer":"Acme"}');
+    });
+
     it("should handle Unicode and multi-byte characters in large streams without corruption", async () => {
       const unicodeContent =
         "Hello 世界! 🌍🌎🌏 Привет мир! مرحبا بالعالم " +
