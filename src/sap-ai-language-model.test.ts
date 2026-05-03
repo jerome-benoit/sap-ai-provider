@@ -2899,7 +2899,7 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should flush tool calls that never received input-start", async () => {
+      it("should emit tool-input-start when toolName arrives on a later chunk than id", async () => {
         await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaToolCalls: [
@@ -2932,7 +2932,24 @@ describe("SAPAILanguageModel", () => {
         const { stream } = await model.doStream({ prompt });
         const parts = await readAllStreamParts(stream);
 
+        const toolInputStart = parts.find(
+          (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+            p.type === "tool-input-start",
+        );
+        const toolInputDeltas = parts.filter(
+          (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+            p.type === "tool-input-delta",
+        );
         const toolCall = parts.find((p) => p.type === "tool-call");
+
+        expect(toolInputStart).toBeDefined();
+        expect(toolInputStart?.id).toBe("call_no_start");
+        expect(toolInputStart?.toolName).toBe("delayed_name");
+
+        expect(toolInputDeltas).toHaveLength(2);
+        expect(toolInputDeltas[0]?.delta).toBe('{"partial":');
+        expect(toolInputDeltas[1]?.delta).toBe('"value"}');
+
         expect(toolCall).toBeDefined();
         expect(toolCall).toEqual({
           input: '{"partial":"value"}',
