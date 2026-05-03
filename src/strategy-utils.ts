@@ -332,7 +332,7 @@ export interface ToolCallInProgress {
   arguments: string;
   didEmitCall: boolean;
   didEmitInputStart: boolean;
-  id: string;
+  id: string | undefined;
   toolName?: string;
 }
 
@@ -351,6 +351,13 @@ export class StreamIdGenerator {
    * @returns A UUID string for identifying a text block.
    */
   generateTextBlockId(): string {
+    return crypto.randomUUID();
+  }
+
+  /**
+   * @returns A UUID string for identifying a tool call when the API does not provide one.
+   */
+  generateToolCallId(): string {
     return crypto.randomUUID();
   }
 }
@@ -782,6 +789,31 @@ export function createStreamTransformer(
   const streamState = createInitialStreamState();
   const toolCallsInProgress = new Map<number, ToolCallInProgress>();
 
+  /**
+   * Emits tool-input-start and replays any buffered arguments as a delta.
+   * @param tc - The in-progress tool call state.
+   * @param controller - The transform stream controller to enqueue events into.
+   */
+  function emitToolInputStart(
+    tc: ToolCallInProgress,
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+  ): void {
+    if (tc.didEmitInputStart || tc.id == null) return;
+    tc.didEmitInputStart = true;
+    controller.enqueue({
+      id: tc.id,
+      toolName: tc.toolName ?? "",
+      type: "tool-input-start",
+    });
+    if (tc.arguments.length > 0) {
+      controller.enqueue({
+        delta: tc.arguments,
+        id: tc.id,
+        type: "tool-input-delta",
+      });
+    }
+  }
+
   return convertAsyncIteratorToReadableStream(
     safeIterate(sdkStream)[Symbol.asyncIterator](),
   ).pipeThrough(
@@ -795,14 +827,8 @@ export function createStreamTransformer(
             continue;
           }
 
-          if (!tc.didEmitInputStart) {
-            tc.didEmitInputStart = true;
-            controller.enqueue({
-              id: tc.id,
-              toolName: tc.toolName ?? "",
-              type: "tool-input-start",
-            });
-          }
+          tc.id ??= idGenerator.generateToolCallId();
+          emitToolInputStart(tc, controller);
 
           didEmitAnyToolCalls = true;
           tc.didEmitCall = true;
@@ -952,7 +978,10 @@ export function createStreamTransformer(
                 arguments: "",
                 didEmitCall: false,
                 didEmitInputStart: false,
-                id: toolCallChunk.id ?? `tool_${String(index)}`,
+                id:
+                  typeof toolCallChunk.id === "string" && toolCallChunk.id.length > 0
+                    ? toolCallChunk.id
+                    : undefined,
                 toolName: toolCallChunk.function?.name,
               });
             }
@@ -960,7 +989,11 @@ export function createStreamTransformer(
             const tc = toolCallsInProgress.get(index);
             if (!tc) continue;
 
-            if (toolCallChunk.id) {
+            if (
+              typeof toolCallChunk.id === "string" &&
+              toolCallChunk.id.length > 0 &&
+              tc.id === undefined
+            ) {
               tc.id = toolCallChunk.id;
             }
 
@@ -969,20 +1002,15 @@ export function createStreamTransformer(
               tc.toolName = nextToolName;
             }
 
-            if (!tc.didEmitInputStart && tc.toolName) {
-              tc.didEmitInputStart = true;
-              controller.enqueue({
-                id: tc.id,
-                toolName: tc.toolName,
-                type: "tool-input-start",
-              });
+            if (!tc.didEmitInputStart && tc.toolName != null && tc.id != null) {
+              emitToolInputStart(tc, controller);
             }
 
             const argumentsDelta = toolCallChunk.function?.arguments;
             if (typeof argumentsDelta === "string" && argumentsDelta.length > 0) {
               tc.arguments += argumentsDelta;
 
-              if (tc.didEmitInputStart) {
+              if (tc.didEmitInputStart && tc.id != null) {
                 controller.enqueue({
                   delta: argumentsDelta,
                   id: tc.id,
@@ -1003,14 +1031,9 @@ export function createStreamTransformer(
               if (tc.didEmitCall) {
                 continue;
               }
-              if (!tc.didEmitInputStart) {
-                tc.didEmitInputStart = true;
-                controller.enqueue({
-                  id: tc.id,
-                  toolName: tc.toolName ?? "",
-                  type: "tool-input-start",
-                });
-              }
+
+              tc.id ??= idGenerator.generateToolCallId();
+              emitToolInputStart(tc, controller);
 
               tc.didEmitCall = true;
               controller.enqueue({ id: tc.id, type: "tool-input-end" });

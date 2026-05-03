@@ -2401,6 +2401,186 @@ describe("SAPAILanguageModel", () => {
       expect(parsed2.query).toHaveLength(5000);
     });
 
+    it("should emit consistent tool call IDs when id arrives on a later chunk than function name (Vertex pattern)", async () => {
+      const realId = "vertex_tool_be5b294b-ece3-46f0-8b0d-22cd00000000";
+
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { name: "query_bookings" },
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '{"customer":' },
+              id: realId,
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '"Acme"}' },
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 10, prompt_tokens: 5, total_tokens: 15 },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("show bookings");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const toolInputStart = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+          p.type === "tool-input-start",
+      );
+      const toolInputDeltas = parts.filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+          p.type === "tool-input-delta",
+      );
+      const toolCall = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+          p.type === "tool-call",
+      );
+
+      expect(toolInputStart).toBeDefined();
+      expect(toolInputStart?.id).toBe(realId);
+      expect(toolInputStart?.toolName).toBe("query_bookings");
+
+      expect(toolInputDeltas).toHaveLength(2);
+      for (const delta of toolInputDeltas) {
+        expect(delta.id).toBe(realId);
+      }
+      const concatenatedDeltas = toolInputDeltas.map((d) => d.delta).join("");
+      expect(concatenatedDeltas).toBe('{"customer":"Acme"}');
+
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.toolCallId).toBe(realId);
+      expect(toolCall?.toolName).toBe("query_bookings");
+      expect(toolCall?.input).toBe('{"customer":"Acme"}');
+    });
+
+    it("should replay buffered arguments as tool-input-delta when id arrives after arguments", async () => {
+      const realId = "vertex_tool_buffered_args_test";
+
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '{"a":', name: "buffered_fn" },
+              index: 0,
+            },
+          ],
+        }),
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '"b"}' },
+              id: realId,
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 5, prompt_tokens: 3, total_tokens: 8 },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("test buffered args");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const toolInputStart = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+          p.type === "tool-input-start",
+      );
+      const toolInputDeltas = parts.filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+          p.type === "tool-input-delta",
+      );
+      const toolCall = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+          p.type === "tool-call",
+      );
+
+      expect(toolInputStart).toBeDefined();
+      expect(toolInputStart?.id).toBe(realId);
+      expect(toolInputStart?.toolName).toBe("buffered_fn");
+
+      expect(toolInputDeltas).toHaveLength(2);
+      expect(toolInputDeltas[0]?.id).toBe(realId);
+      expect(toolInputDeltas[0]?.delta).toBe('{"a":');
+      expect(toolInputDeltas[1]?.id).toBe(realId);
+      expect(toolInputDeltas[1]?.delta).toBe('"b"}');
+
+      const concatenatedDeltas = toolInputDeltas.map((d) => d.delta).join("");
+      expect(concatenatedDeltas).toBe('{"a":"b"}');
+
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.toolCallId).toBe(realId);
+      expect(toolCall?.input).toBe('{"a":"b"}');
+    });
+
+    it("should generate a fallback UUID when tool call id is never provided by the API", async () => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+      await setStreamChunksForApi(api, [
+        createMockStreamChunk({
+          deltaToolCalls: [
+            {
+              function: { arguments: '{"x":1}', name: "no_id_tool" },
+              index: 0,
+            },
+          ],
+          finishReason: "tool_calls",
+          usage: { completion_tokens: 5, prompt_tokens: 3, total_tokens: 8 },
+        }),
+      ]);
+
+      const model = createModelForApi(api);
+      const prompt = createPrompt("test fallback id");
+
+      const { stream } = await model.doStream({ prompt });
+      const parts = await readAllStreamParts(stream);
+
+      const toolInputStart = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+          p.type === "tool-input-start",
+      );
+      const toolInputDeltas = parts.filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+          p.type === "tool-input-delta",
+      );
+      const toolCall = parts.find(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+          p.type === "tool-call",
+      );
+
+      expect(toolInputStart).toBeDefined();
+      expect(toolInputStart?.id).toMatch(uuidRegex);
+      expect(toolInputStart?.toolName).toBe("no_id_tool");
+
+      expect(toolInputDeltas).toHaveLength(1);
+      expect(toolInputDeltas[0]?.id).toBe(toolInputStart?.id);
+      expect(toolInputDeltas[0]?.delta).toBe('{"x":1}');
+
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.toolCallId).toMatch(uuidRegex);
+      expect(toolCall?.toolCallId).toBe(toolInputStart?.id);
+      expect(toolCall?.input).toBe('{"x":1}');
+    });
+
     it("should handle Unicode and multi-byte characters in large streams without corruption", async () => {
       const unicodeContent =
         "Hello 世界! 🌍🌎🌏 Привет мир! مرحبا بالعالم " +
@@ -2727,7 +2907,7 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should flush tool calls that never received input-start", async () => {
+      it("should emit tool-input-start when toolName arrives on a later chunk than id", async () => {
         await setStreamChunksForApi(api, [
           createMockStreamChunk({
             deltaToolCalls: [
@@ -2760,7 +2940,24 @@ describe("SAPAILanguageModel", () => {
         const { stream } = await model.doStream({ prompt });
         const parts = await readAllStreamParts(stream);
 
+        const toolInputStart = parts.find(
+          (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> =>
+            p.type === "tool-input-start",
+        );
+        const toolInputDeltas = parts.filter(
+          (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-input-delta" }> =>
+            p.type === "tool-input-delta",
+        );
         const toolCall = parts.find((p) => p.type === "tool-call");
+
+        expect(toolInputStart).toBeDefined();
+        expect(toolInputStart?.id).toBe("call_no_start");
+        expect(toolInputStart?.toolName).toBe("delayed_name");
+
+        expect(toolInputDeltas).toHaveLength(2);
+        expect(toolInputDeltas[0]?.delta).toBe('{"partial":');
+        expect(toolInputDeltas[1]?.delta).toBe('"value"}');
+
         expect(toolCall).toBeDefined();
         expect(toolCall).toEqual({
           input: '{"partial":"value"}',
