@@ -1,0 +1,49 @@
+name: Sandcastle
+
+on:
+  # schedule:
+  #   - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+
+concurrency:
+  group: sandcastle
+  cancel-in-progress: false
+
+jobs:
+  sandcastle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - name: Validate secrets
+        run: |
+          if [ -z "$OPENCODE_AUTH_CONTENT" ]; then
+            echo "::error::OPENCODE_AUTH_CONTENT secret is not configured"
+            exit 1
+          fi
+        env:
+          OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
+
+      - run: docker build -t sandcastle-sap-ai .sandcastle/
+
+      - name: Create sandbox env
+        run: |
+          printf 'GITHUB_TOKEN=%s\n' "$GITHUB_TOKEN" > .sandcastle/.env
+          printf 'OPENCODE_AUTH_CONTENT=%s\n' "$OPENCODE_AUTH_CONTENT" >> .sandcastle/.env
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
+
+      - run: npm run sandcastle
