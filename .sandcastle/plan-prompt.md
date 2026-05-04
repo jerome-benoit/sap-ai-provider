@@ -9,7 +9,7 @@ Read `AGENTS.md` for project conventions.
 
 ## Open Issues
 
-!`gh issue list --state open --json number,title,labels,body --limit 50 {{LABEL_FILTER}}`
+{{ISSUES_JSON}}
 
 ## Steps
 

@@ -1,28 +1,104 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
+import { execSync } from "node:child_process";
+import crypto from "node:crypto";
+import { z } from "zod";
 
 const BRANCH_PREFIX = "agent/issue";
 const ESCAPED_PREFIX = BRANCH_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const BRANCH_PATTERN = new RegExp(`^${ESCAPED_PREFIX}-\\d+-[\\w-]+$`);
 const ISSUE_LABEL = "sandcastle";
-const LABEL_FILTER = `--label "${ISSUE_LABEL}"`;
 const MAX_PLANNER_RETRIES = 5;
+const MAX_CRITIC_ROUNDS = 5;
+const ITERATION_BUDGET = [100, 50, 25, 10, 10];
 const MAX_PARALLEL = 3;
 const DOCKER_IMAGE = "sandcastle-sap-ai";
 
+const FindingSchema = z.object({
+  category: z.enum(["security", "logic", "performance", "architecture", "style"]),
+  confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
+  description: z.string(),
+  file: z.string(),
+  line: z.number().optional(),
+  severity: z.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]),
+  suggestion: z.string().optional(),
+  title: z.string(),
+});
+const FindingsSchema = z.array(FindingSchema);
+type Finding = z.infer<typeof FindingSchema>;
+
+/**
+ * @param f - Finding to compute dedup key for.
+ * @returns Composite key for deterministic deduplication.
+ */
+function findingKey(f: Finding): string {
+  const normalizedTitle = f.title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${f.file}::${f.category}::${normalizedTitle}`;
+}
+
+/**
+ * @param stdout - Agent stdout to parse findings from.
+ * @param nonce - Unique tag identifier for this run.
+ * @returns Parsed findings array or null on parse failure.
+ */
+function parseFindings(stdout: string, nonce: string): Finding[] | null {
+  const tagPattern = new RegExp(`<findings-${nonce}>([\\s\\S]*?)<\\/findings-${nonce}>`, "g");
+  const matches = [...stdout.matchAll(tagPattern)];
+  const raw = matches.at(-1)?.[1]?.trim() ?? "[]";
+  const cleaned = raw.replace(/^```(?:json)?\s*\n?/g, "").replace(/\n?```\s*$/g, "");
+  try {
+    return FindingsSchema.parse(JSON.parse(cleaned));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param text - Raw text to strip injection-prone tags from.
+ * @returns Sanitized text safe for prompt injection.
+ */
+function sanitizeForPrompt(text: string): string {
+  return text.replace(/<\/?(?:plan|findings[\w-]*|promise)[^>]*>/gi, "");
+}
+
+// --- Phase 1: Fetch and sanitize issues ---
+
+const rawIssues = JSON.parse(
+  execSync(
+    `gh issue list --state open --json number,title,labels,body --limit 50 --label "${ISSUE_LABEL}"`,
+  ).toString(),
+) as { body: string; labels: { name: string }[]; number: number; title: string }[];
+
+const issuesJson = rawIssues.map((i) => ({
+  body: sanitizeForPrompt(i.body),
+  labels: i.labels.map((l) => l.name),
+  number: i.number,
+  title: i.title,
+}));
+
+if (issuesJson.length === 0) {
+  console.log("No issues with label '%s'. Exiting.", ISSUE_LABEL);
+  process.exit(0);
+}
+
+// --- Phase 2: Plan ---
+
 let workCompleted = false;
 
-for (let iteration = 1; iteration <= MAX_PLANNER_RETRIES; iteration++) {
-  console.log(`\n=== Iteration ${String(iteration)}/${String(MAX_PLANNER_RETRIES)} ===\n`);
+for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
+  console.log(`\n=== Planner attempt ${String(attempt)}/${String(MAX_PLANNER_RETRIES)} ===\n`);
 
-  // Phase 1: Plan
   const plan = await sandcastle.run({
     agent: sandcastle.opencode("github-copilot/claude-opus-4.6"),
     maxIterations: 1,
     name: "Planner",
     promptArgs: {
       BRANCH_PREFIX,
-      LABEL_FILTER,
+      ISSUES_JSON: JSON.stringify(issuesJson, null, 2),
     },
     promptFile: "./.sandcastle/plan-prompt.md",
     sandbox: docker({ imageName: DOCKER_IMAGE }),
@@ -31,62 +107,51 @@ for (let iteration = 1; iteration <= MAX_PLANNER_RETRIES; iteration++) {
   const planMatches = [...plan.stdout.matchAll(/<plan>([\s\S]*?)<\/plan>/g)];
   const planMatch = planMatches.at(-1);
   if (!planMatch) {
-    console.error("Planner did not produce a <plan> tag. Skipping iteration.");
+    console.error("Planner did not produce a <plan> tag. Retrying.");
     continue;
   }
 
   const planContent = planMatch[1] ?? "";
-  let issues: { branch: string; id: string; title: string }[];
+  let issues: { body: string; branch: string; id: string; title: string }[];
   try {
     const parsed = JSON.parse(planContent) as { issues: unknown[] };
     if (!Array.isArray(parsed.issues)) {
-      console.error("Planner output missing issues array. Skipping iteration.");
+      console.error("Planner output missing issues array. Retrying.");
       continue;
     }
     const validated = parsed.issues.filter(
-      (entry): entry is { branch: string; id: string; title: string } => {
-        if (typeof entry !== "object" || entry === null) {
-          console.warn("  Skipping non-object issue entry");
-          return false;
-        }
+      (entry): entry is { body: string; branch: string; id: string; title: string } => {
+        if (typeof entry !== "object" || entry === null) return false;
         const item = entry as Record<string, unknown>;
-        if (typeof item.id !== "string" || !/^\d+$/.test(item.id)) {
-          console.warn(`  Skipping issue with invalid id: ${String(item.id)}`);
-          return false;
-        }
-        if (typeof item.branch !== "string") {
-          console.warn("  Skipping issue with missing branch");
-          return false;
-        }
-        if (typeof item.title !== "string") {
-          console.warn("  Skipping issue with missing title");
-          return false;
-        }
-        if (!BRANCH_PATTERN.test(item.branch)) {
-          console.warn(`  Skipping issue with invalid branch: ${item.branch}`);
-          return false;
-        }
+        if (typeof item.id !== "string" || !/^\d+$/.test(item.id)) return false;
+        if (typeof item.branch !== "string" || !BRANCH_PATTERN.test(item.branch)) return false;
+        if (typeof item.title !== "string") return false;
         return true;
       },
     );
-    issues = validated;
+    // Attach sanitized body from our fetched data
+    issues = validated.map((v) => ({
+      ...v,
+      body: issuesJson.find((i) => String(i.number) === v.id)?.body ?? "",
+    }));
   } catch {
-    console.error("Planner produced invalid JSON. Skipping iteration.");
+    console.error("Planner produced invalid JSON. Retrying.");
     continue;
   }
 
   if (issues.length === 0) {
-    console.log("No issues to work on. Exiting.");
+    console.log("No actionable issues. Exiting.");
     workCompleted = true;
     break;
   }
 
-  console.log(`Planning complete. ${String(issues.length)} issue(s) to work in parallel:`);
+  console.log(`Plan: ${String(issues.length)} issue(s) to work on:`);
   for (const issue of issues) {
     console.log(`  #${issue.id}: ${issue.title} → ${issue.branch}`);
   }
 
-  // Phase 2: Execute + Review (semaphore for MAX_PARALLEL)
+  // --- Phase 3: Implement ↔ Critic loop (parallel, max 3) ---
+
   let running = 0;
   const queue: (() => void)[] = [];
   const acquire = () =>
@@ -115,99 +180,186 @@ for (let iteration = 1; iteration <= MAX_PLANNER_RETRIES; iteration++) {
           sandbox: docker({ imageName: DOCKER_IMAGE }),
         });
 
-        const result = await sandbox.run({
-          agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
-          maxIterations: 100,
-          name: "Implementer #" + issue.id,
-          promptArgs: {
-            BRANCH: issue.branch,
-            ISSUE_TITLE: issue.title,
-            TASK_ID: issue.id,
-          },
-          promptFile: "./.sandcastle/implement-prompt.md",
-        });
+        const seenKeys = new Set<string>();
+        let lastFindings: Finding[] = [];
+        let converged = false;
+        let totalCommits = 0;
 
-        if (result.commits.length > 0) {
-          try {
-            await sandbox.run({
+        for (let round = 1; round <= MAX_CRITIC_ROUNDS; round++) {
+          const budget = ITERATION_BUDGET[round - 1] ?? 10;
+          const findingsArg = lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "";
+
+          console.log(
+            `  #${issue.id} round ${String(round)}/${String(MAX_CRITIC_ROUNDS)} (budget: ${String(budget)})`,
+          );
+
+          // Implementer
+          const impl = await sandbox.run({
+            agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+            maxIterations: budget,
+            name: `Implementer #${issue.id} R${String(round)}`,
+            promptArgs: {
+              BRANCH: issue.branch,
+              FINDINGS: findingsArg,
+              ISSUE_BODY: issue.body,
+              ISSUE_TITLE: issue.title,
+              TASK_ID: issue.id,
+            },
+            promptFile: "./.sandcastle/implement-prompt.md",
+          });
+
+          totalCommits += impl.commits.length;
+
+          if (round === 1 && impl.commits.length === 0) {
+            console.warn(`  #${issue.id}: 0 commits on round 1. Skipping.`);
+            break;
+          }
+
+          // Critic
+          const nonce = crypto.randomBytes(4).toString("hex");
+
+          let critic = await sandbox.run({
+            agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+            maxIterations: 1,
+            name: `Critic #${issue.id} R${String(round)}`,
+            promptArgs: {
+              BRANCH: issue.branch,
+              NONCE: nonce,
+            },
+            promptFile: "./.sandcastle/critic-prompt.md",
+          });
+
+          let findings = parseFindings(critic.stdout, nonce);
+
+          // Retry once on parse failure
+          if (findings === null) {
+            console.warn(`  #${issue.id}: Critic parse failed. Retrying.`);
+            critic = await sandbox.run({
               agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
-              maxIterations: 10,
-              name: "Reviewer #" + issue.id,
+              maxIterations: 1,
+              name: `Critic #${issue.id} R${String(round)} retry`,
               promptArgs: {
                 BRANCH: issue.branch,
+                NONCE: nonce,
               },
-              promptFile: "./.sandcastle/review-prompt.md",
+              promptFile: "./.sandcastle/critic-prompt.md",
             });
-          } catch (reviewError: unknown) {
-            const msg = reviewError instanceof Error ? reviewError.message : String(reviewError);
-            console.warn(`  Reviewer for #${issue.id} failed, proceeding unreviewed: ${msg}`);
+            findings = parseFindings(critic.stdout, nonce);
+          }
+
+          if (findings === null) {
+            console.warn(`  #${issue.id}: Critic failed twice. Breaking (non-converged).`);
+            break;
+          }
+
+          // Dedup
+          const newFindings = findings.filter(
+            (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f)),
+          );
+          for (const f of newFindings) {
+            seenKeys.add(findingKey(f));
+          }
+
+          console.log(
+            `  #${issue.id}: ${String(findings.length)} findings, ${String(newFindings.length)} new`,
+          );
+
+          if (newFindings.length === 0) {
+            converged = true;
+            break;
+          }
+
+          lastFindings = newFindings;
+        }
+
+        // --- Final validation (host-side, deterministic) ---
+        if (totalCommits > 0) {
+          const cwd = sandbox.worktreePath;
+          let validationPassed = false;
+
+          try {
+            execSync(
+              "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2",
+              { cwd, stdio: "pipe" },
+            );
+            validationPassed = true;
+          } catch {
+            console.warn(`  #${issue.id}: Validation failed.`);
+          }
+
+          // Rebase on latest main
+          try {
+            execSync("git fetch origin main && git rebase origin/main", {
+              cwd,
+              stdio: "pipe",
+            });
+            if (validationPassed) {
+              // Post-rebase smoke test
+              try {
+                execSync("npm run type-check && npm run test", {
+                  cwd,
+                  stdio: "pipe",
+                });
+              } catch {
+                validationPassed = false;
+              }
+            }
+            execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
+          } catch {
+            // Rebase failed — push un-rebased
+            try {
+              execSync("git rebase --abort", { cwd, stdio: "pipe" });
+            } catch {
+              /* empty */
+            }
+            execSync("git push", { cwd, stdio: "pipe" });
+          }
+
+          // Create PR
+          const isDraft = !converged || !validationPassed;
+          const draftFlag = isDraft ? " --draft" : "";
+          const outstandingNote =
+            !converged && lastFindings.length > 0
+              ? `\n\n⚠️ Outstanding findings:\n${lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
+              : "";
+          const validationNote = !validationPassed
+            ? "\n\n⚠️ Validation did not pass. Manual review required."
+            : "";
+
+          const prTitle = `fix: resolve #${issue.id} — ${issue.title}`;
+          const prBody = `## Description\n\nAutomated fix for #${issue.id}: ${issue.title}\n\n## Type of Change\n\n- [x] Bug fix (non-breaking change that fixes an issue)\n\n## Checklist\n\n- [x] I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${issue.id}${outstandingNote}${validationNote}`;
+
+          try {
+            execSync(
+              `gh pr create${draftFlag} --head "${issue.branch}" --base main --title "${prTitle}" --body "${prBody.replace(/"/g, '\\"')}"`,
+              { cwd, stdio: "pipe" },
+            );
+            console.log(`  #${issue.id}: PR created${isDraft ? " (draft)" : ""}.`);
+            workCompleted = true;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`  #${issue.id}: PR creation failed: ${msg}`);
           }
         }
 
-        return result;
+        return { converged, issue, totalCommits };
       } finally {
         release();
       }
     }),
   );
 
+  // Log failures
   for (const [i, outcome] of settled.entries()) {
     if (outcome.status === "rejected") {
-      const currentIssue = issues[i];
+      const issue = issues[i];
       const reason: unknown = outcome.reason;
-      const errorMessage =
-        reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
-      console.error(
-        `  ✗ #${currentIssue?.id ?? String(i)} (${currentIssue?.branch ?? "unknown"}) failed: ${errorMessage}`,
-      );
+      const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+      console.error(`  ✗ #${issue?.id ?? String(i)} failed: ${msg}`);
     }
   }
 
-  const completedIssues = settled
-    .map((outcome, i) => ({ issue: issues[i], outcome }))
-    .filter(
-      (
-        entry,
-      ): entry is {
-        issue: (typeof issues)[number];
-        outcome: PromiseFulfilledResult<Awaited<ReturnType<typeof sandcastle.run>>>;
-      } =>
-        entry.issue !== undefined &&
-        entry.outcome.status === "fulfilled" &&
-        entry.outcome.value.commits.length > 0,
-    )
-    .map((entry) => entry.issue);
-
-  const completedBranches = completedIssues.map((i) => i.branch);
-
-  if (completedBranches.length === 0) {
-    console.log("No commits produced. Nothing to merge.");
-    break;
-  }
-
-  // Phase 3: Merge
-  try {
-    await sandcastle.run({
-      agent: sandcastle.opencode("github-copilot/claude-opus-4.6"),
-      maxIterations: 10,
-      name: "Merger",
-      promptArgs: {
-        BRANCHES: completedBranches.map((b) => `- ${b}`).join("\n"),
-        ISSUES: completedIssues.map((i) => `- #${i.id}: ${i.title}`).join("\n"),
-      },
-      promptFile: "./.sandcastle/merge-prompt.md",
-      sandbox: docker({ imageName: DOCKER_IMAGE }),
-    });
-
-    console.log("\nPR created.");
-    workCompleted = true;
-    break;
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    console.error(`Merge phase failed: ${errorMessage}`);
-    console.error("Branches are pushed and available for manual merge.");
-    break;
-  }
+  break; // Plan executed — exit planner retry loop
 }
 
 console.log("\nAll done.");
