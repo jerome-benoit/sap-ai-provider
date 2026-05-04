@@ -1,0 +1,214 @@
+name: CI Failure Detector
+
+on:
+  workflow_run:
+    workflows: ["PR Checks"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: ci-failure-detector
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  issues: write
+
+jobs:
+  detect-and-report:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - name: Skip self-triggered runs
+        id: check-self
+        run: |
+          WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
+          if [[ "$WORKFLOW_NAME" == "CI Failure Detector" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch failed job logs
+        if: steps.check-self.outputs.skip == 'false'
+        id: fetch-logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          REPO="${{ github.repository }}"
+
+          # Get failed jobs
+          JOBS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs[] | select(.conclusion == "failure")')
+
+          if [[ -z "$JOBS" ]]; then
+            echo "No failed jobs found"
+            echo "has_failures=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_failures=true" >> "$GITHUB_OUTPUT"
+
+          # Get first failed job details
+          FIRST_JOB=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '[.jobs[] | select(.conclusion == "failure")] | first')
+          JOB_NAME=$(echo "$FIRST_JOB" | jq -r '.name')
+          JOB_ID=$(echo "$FIRST_JOB" | jq -r '.id')
+
+          echo "job_name=$JOB_NAME" >> "$GITHUB_OUTPUT"
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+
+          # Fetch job logs
+          LOG_OUTPUT=$(gh api "repos/$REPO/actions/jobs/$JOB_ID/logs" 2>/dev/null || echo "Log retrieval failed")
+
+          # Extract relevant error lines (last 50 lines or error patterns)
+          ERROR_LINES=$(echo "$LOG_OUTPUT" | grep -E "(error|Error|ERROR|FAIL|failed|✗|×)" | tail -20 || echo "See run URL for details")
+
+          # Save logs to file to handle multiline
+          echo "$ERROR_LINES" > /tmp/error_lines.txt
+          echo "$LOG_OUTPUT" | tail -50 > /tmp/full_log_tail.txt
+
+      - name: Classify failure
+        if: steps.check-self.outputs.skip == 'false' && steps.fetch-logs.outputs.has_failures == 'true'
+        id: classify
+        run: |
+          JOB_NAME="${{ steps.fetch-logs.outputs.job_name }}"
+          ERROR_CONTENT=$(cat /tmp/error_lines.txt 2>/dev/null || echo "")
+
+          # Classify failure type
+          CATEGORY="code"
+          FAILING_COMMAND="npm run type-check && npm run test && npm run lint && npm run build"
+
+          if echo "$JOB_NAME $ERROR_CONTENT" | grep -qiE "lint|prettier|eslint|markdown"; then
+            CATEGORY="code"
+            FAILING_COMMAND="npm run lint && npm run prettier-check"
+          elif echo "$JOB_NAME $ERROR_CONTENT" | grep -qiE "type.check|typescript|tsc"; then
+            CATEGORY="code"
+            FAILING_COMMAND="npm run type-check"
+          elif echo "$JOB_NAME $ERROR_CONTENT" | grep -qiE "test|vitest|jest|spec"; then
+            CATEGORY="test"
+            FAILING_COMMAND="npm run test"
+          elif echo "$JOB_NAME $ERROR_CONTENT" | grep -qiE "build|tsup|compile"; then
+            CATEGORY="code"
+            FAILING_COMMAND="npm run build && npm run check-build"
+          elif echo "$JOB_NAME $ERROR_CONTENT" | grep -qiE "npm install|npm ci|dependency|package"; then
+            CATEGORY="dependency"
+            FAILING_COMMAND="npm ci"
+          elif echo "$ERROR_CONTENT" | grep -qiE "runner|OOM|out of memory|timeout|rate limit|502|503|504|network"; then
+            CATEGORY="infrastructure"
+          fi
+
+          echo "category=$CATEGORY" >> "$GITHUB_OUTPUT"
+          echo "failing_command=$FAILING_COMMAND" >> "$GITHUB_OUTPUT"
+
+      - name: Filter transient failures
+        if: steps.check-self.outputs.skip == 'false' && steps.fetch-logs.outputs.has_failures == 'true'
+        id: filter-transient
+        run: |
+          CATEGORY="${{ steps.classify.outputs.category }}"
+          if [[ "$CATEGORY" == "infrastructure" ]]; then
+            echo "is_transient=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping infrastructure/transient failure"
+          else
+            echo "is_transient=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deduplicate issues
+        if: |
+          steps.check-self.outputs.skip == 'false' &&
+          steps.fetch-logs.outputs.has_failures == 'true' &&
+          steps.filter-transient.outputs.is_transient == 'false'
+        id: dedup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
+
+          # Search for existing open issue with sandcastle + ci-failure labels for this workflow
+          EXISTING=$(gh api "repos/$REPO/issues" \
+            --jq "[.[] | select(.state == \"open\" and (.labels | map(.name) | contains([\"sandcastle\", \"ci-failure\"])) and (.title | contains(\"$WORKFLOW_NAME\")))] | first | .number" \
+            2>/dev/null || echo "null")
+
+          if [[ "$EXISTING" != "null" && -n "$EXISTING" ]]; then
+            echo "existing_issue=$EXISTING" >> "$GITHUB_OUTPUT"
+            echo "Found existing issue #$EXISTING"
+          else
+            echo "existing_issue=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Add comment to existing issue
+        if: |
+          steps.check-self.outputs.skip == 'false' &&
+          steps.fetch-logs.outputs.has_failures == 'true' &&
+          steps.filter-transient.outputs.is_transient == 'false' &&
+          steps.dedup.outputs.existing_issue != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          ISSUE_NUMBER="${{ steps.dedup.outputs.existing_issue }}"
+          RUN_URL="${{ github.event.workflow_run.html_url }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          COMMIT_MSG="${{ github.event.workflow_run.head_commit.message }}"
+
+          COMMENT_BODY="## Recurrence detected
+
+          **New failing run**: $RUN_URL
+          **Commit**: \`${SHA:0:7}\` — $COMMIT_MSG"
+
+          gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" \
+            -f body="$COMMENT_BODY" \
+            --method POST
+
+          echo "Added comment to existing issue #$ISSUE_NUMBER"
+
+      - name: Create new issue
+        if: |
+          steps.check-self.outputs.skip == 'false' &&
+          steps.fetch-logs.outputs.has_failures == 'true' &&
+          steps.filter-transient.outputs.is_transient == 'false' &&
+          steps.dedup.outputs.existing_issue == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          JOB_NAME="${{ steps.fetch-logs.outputs.job_name }}"
+          RUN_URL="${{ github.event.workflow_run.html_url }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          COMMIT_MSG="${{ github.event.workflow_run.head_commit.message }}"
+          FAILING_COMMAND="${{ steps.classify.outputs.failing_command }}"
+          WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
+
+          ERROR_LINES=$(cat /tmp/error_lines.txt 2>/dev/null || echo "See run URL for details")
+          if [[ -z "$ERROR_LINES" ]]; then
+            ERROR_LINES=$(cat /tmp/full_log_tail.txt 2>/dev/null | tail -20 || echo "See run URL for details")
+          fi
+
+          ISSUE_BODY="## CI Failure: $JOB_NAME
+
+          **Run**: $RUN_URL
+          **Commit**: \`${SHA:0:7}\` — $COMMIT_MSG
+          **Job**: $JOB_NAME
+
+          ### Error Output
+          \`\`\`
+          $ERROR_LINES
+          \`\`\`
+
+          ### Reproduction
+          \`\`\`bash
+          $FAILING_COMMAND
+          \`\`\`
+
+          ### Acceptance Criteria
+          - [ ] \`$FAILING_COMMAND\` passes
+          - [ ] No regressions in existing tests"
+
+          gh issue create \
+            --repo "$REPO" \
+            --title "CI Failure: $WORKFLOW_NAME — $JOB_NAME" \
+            --body "$ISSUE_BODY" \
+            --label "sandcastle" \
+            --label "ci-failure"
+
+          echo "Created new issue for CI failure"
