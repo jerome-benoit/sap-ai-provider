@@ -1,6 +1,6 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import crypto from "node:crypto";
 import { z } from "zod";
 
@@ -27,6 +27,171 @@ const FindingSchema = z.object({
 const FindingsSchema = z.array(FindingSchema);
 type Finding = z.infer<typeof FindingSchema>;
 
+// --- Zod schema for GitHub issue list response (fix #6) ---
+
+const RawIssueSchema = z.object({
+  body: z.string(),
+  labels: z.array(z.object({ name: z.string() })),
+  number: z.number(),
+  title: z.string(),
+});
+const RawIssuesSchema = z.array(RawIssueSchema);
+
+// --- Type alias for sandbox instance ---
+
+type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
+
+/**
+ * @param sandbox - The sandcastle sandbox instance.
+ * @param cwd - Working directory (worktree path).
+ * @param issue - Issue metadata.
+ * @param issue.body
+ * @param issue.branch
+ * @param issue.id
+ * @param issue.title
+ * @param converged - Whether the critic loop converged.
+ * @param lastFindings - Outstanding findings from the last round.
+ * @param round - The round at which the critic loop ended.
+ * @returns Whether work was completed (PR created).
+ */
+async function finalizeIssue(
+  sandbox: SandboxInstance,
+  cwd: string,
+  issue: { body: string; branch: string; id: string; title: string },
+  converged: boolean,
+  lastFindings: Finding[],
+  round: number,
+): Promise<boolean> {
+  let validationPassed = false;
+
+  try {
+    execSync(
+      "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2",
+      { cwd, stdio: "pipe" },
+    );
+    validationPassed = true;
+  } catch {
+    console.warn(`  #${issue.id}: Validation failed.`);
+  }
+
+  // --- Validation retry round (fix #7) ---
+  if (!validationPassed && round < MAX_CRITIC_ROUNDS) {
+    const retryBudget = ITERATION_BUDGET[MAX_CRITIC_ROUNDS - 1] ?? 10;
+    console.log(
+      `  #${issue.id}: Retrying one more implement→critic round (budget: ${String(retryBudget)})`,
+    );
+
+    const retryNonce = crypto.randomBytes(4).toString("hex");
+
+    await sandbox.run({
+      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+      maxIterations: retryBudget,
+      name: `Implementer #${issue.id} retry`,
+      promptArgs: {
+        BRANCH: issue.branch,
+        FINDINGS: lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "",
+        ISSUE_BODY: issue.body,
+        ISSUE_TITLE: issue.title,
+        TASK_ID: issue.id,
+      },
+      promptFile: "./.sandcastle/implement-prompt.md",
+    });
+
+    await sandbox.run({
+      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+      maxIterations: 1,
+      name: `Critic #${issue.id} retry-validation`,
+      promptArgs: {
+        BRANCH: issue.branch,
+        NONCE: retryNonce,
+      },
+      promptFile: "./.sandcastle/critic-prompt.md",
+    });
+
+    // Re-validate after retry
+    try {
+      execSync(
+        "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2",
+        { cwd, stdio: "pipe" },
+      );
+      validationPassed = true;
+      console.log(`  #${issue.id}: Validation passed after retry round.`);
+    } catch {
+      console.warn(`  #${issue.id}: Validation still fails after retry. Will create draft PR.`);
+    }
+  }
+
+  // Rebase on latest main
+  try {
+    execSync("git fetch origin main && git rebase origin/main", {
+      cwd,
+      stdio: "pipe",
+    });
+    if (validationPassed) {
+      // Post-rebase smoke test
+      try {
+        execSync("npm run type-check && npm run test", {
+          cwd,
+          stdio: "pipe",
+        });
+      } catch {
+        validationPassed = false;
+      }
+    }
+    execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
+  } catch {
+    // Rebase failed — push un-rebased
+    try {
+      execSync("git rebase --abort", { cwd, stdio: "pipe" });
+    } catch {
+      /* empty */
+    }
+    try {
+      execSync("git push", { cwd, stdio: "pipe" });
+    } catch (pushErr: unknown) {
+      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      console.warn(`  #${issue.id}: git push failed after rebase abort: ${pushMsg}`);
+    }
+  }
+
+  // Create PR (fix #1: use execFileSync to avoid shell injection)
+  const isDraft = !converged || !validationPassed;
+  const outstandingNote =
+    !converged && lastFindings.length > 0
+      ? `\n\n⚠️ Outstanding findings:\n${lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
+      : "";
+  const validationNote = !validationPassed
+    ? "\n\n⚠️ Validation did not pass. Manual review required."
+    : "";
+
+  const prTitle = `fix: resolve #${issue.id} — ${issue.title}`;
+  const prBody = `## Description\n\nAutomated fix for #${issue.id}: ${issue.title}\n\n## Type of Change\n\n- [x] Bug fix (non-breaking change that fixes an issue)\n\n## Checklist\n\n- [x] I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${issue.id}${outstandingNote}${validationNote}`;
+
+  const prArgs = [
+    "pr",
+    "create",
+    ...(isDraft ? ["--draft"] : []),
+    "--head",
+    issue.branch,
+    "--base",
+    "main",
+    "--title",
+    prTitle,
+    "--body",
+    prBody,
+  ];
+
+  try {
+    execFileSync("gh", prArgs, { cwd, encoding: "utf-8", stdio: "pipe" });
+    console.log(`  #${issue.id}: PR created${isDraft ? " (draft)" : ""}.`);
+    return true;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  #${issue.id}: PR creation failed: ${msg}`);
+    return false;
+  }
+}
+
 /**
  * @param f - Finding to compute dedup key for.
  * @returns Composite key for deterministic deduplication.
@@ -48,6 +213,9 @@ function findingKey(f: Finding): string {
 function parseFindings(stdout: string, nonce: string): Finding[] | null {
   const tagPattern = new RegExp(`<findings-${nonce}>([\\s\\S]*?)<\\/findings-${nonce}>`, "g");
   const matches = [...stdout.matchAll(tagPattern)];
+  if (matches.length === 0) {
+    return null;
+  }
   const raw = matches.at(-1)?.[1]?.trim() ?? "[]";
   const cleaned = raw.replace(/^```(?:json)?\s*\n?/g, "").replace(/\n?```\s*$/g, "");
   try {
@@ -67,11 +235,18 @@ function sanitizeForPrompt(text: string): string {
 
 // --- Phase 1: Fetch and sanitize issues ---
 
-const rawIssues = JSON.parse(
-  execSync(
+let rawIssuesJson: string;
+try {
+  rawIssuesJson = execSync(
     `gh issue list --state open --json number,title,labels,body --limit 50 --label "${ISSUE_LABEL}"`,
-  ).toString(),
-) as { body: string; labels: { name: string }[]; number: number; title: string }[];
+    { encoding: "utf-8" },
+  );
+} catch {
+  console.error("Failed to fetch issues. Ensure gh is installed and authenticated.");
+  process.exit(1);
+}
+
+const rawIssues = RawIssuesSchema.parse(JSON.parse(rawIssuesJson));
 
 const issuesJson = rawIssues.map((i) => ({
   body: sanitizeForPrompt(i.body),
@@ -184,8 +359,10 @@ for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
         let lastFindings: Finding[] = [];
         let converged = false;
         let totalCommits = 0;
+        let lastRound = 0;
 
         for (let round = 1; round <= MAX_CRITIC_ROUNDS; round++) {
+          lastRound = round;
           const budget = ITERATION_BUDGET[round - 1] ?? 10;
           const findingsArg = lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "";
 
@@ -272,73 +449,19 @@ for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
           lastFindings = newFindings;
         }
 
-        // --- Final validation (host-side, deterministic) ---
+        // --- Final validation, rebase, and PR creation ---
         if (totalCommits > 0) {
           const cwd = sandbox.worktreePath;
-          let validationPassed = false;
-
-          try {
-            execSync(
-              "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2",
-              { cwd, stdio: "pipe" },
-            );
-            validationPassed = true;
-          } catch {
-            console.warn(`  #${issue.id}: Validation failed.`);
-          }
-
-          // Rebase on latest main
-          try {
-            execSync("git fetch origin main && git rebase origin/main", {
-              cwd,
-              stdio: "pipe",
-            });
-            if (validationPassed) {
-              // Post-rebase smoke test
-              try {
-                execSync("npm run type-check && npm run test", {
-                  cwd,
-                  stdio: "pipe",
-                });
-              } catch {
-                validationPassed = false;
-              }
-            }
-            execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
-          } catch {
-            // Rebase failed — push un-rebased
-            try {
-              execSync("git rebase --abort", { cwd, stdio: "pipe" });
-            } catch {
-              /* empty */
-            }
-            execSync("git push", { cwd, stdio: "pipe" });
-          }
-
-          // Create PR
-          const isDraft = !converged || !validationPassed;
-          const draftFlag = isDraft ? " --draft" : "";
-          const outstandingNote =
-            !converged && lastFindings.length > 0
-              ? `\n\n⚠️ Outstanding findings:\n${lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
-              : "";
-          const validationNote = !validationPassed
-            ? "\n\n⚠️ Validation did not pass. Manual review required."
-            : "";
-
-          const prTitle = `fix: resolve #${issue.id} — ${issue.title}`;
-          const prBody = `## Description\n\nAutomated fix for #${issue.id}: ${issue.title}\n\n## Type of Change\n\n- [x] Bug fix (non-breaking change that fixes an issue)\n\n## Checklist\n\n- [x] I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${issue.id}${outstandingNote}${validationNote}`;
-
-          try {
-            execSync(
-              `gh pr create${draftFlag} --head "${issue.branch}" --base main --title "${prTitle}" --body "${prBody.replace(/"/g, '\\"')}"`,
-              { cwd, stdio: "pipe" },
-            );
-            console.log(`  #${issue.id}: PR created${isDraft ? " (draft)" : ""}.`);
+          const prCreated = await finalizeIssue(
+            sandbox,
+            cwd,
+            issue,
+            converged,
+            lastFindings,
+            lastRound,
+          );
+          if (prCreated) {
             workCompleted = true;
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.error(`  #${issue.id}: PR creation failed: ${msg}`);
           }
         }
 
