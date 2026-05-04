@@ -18,7 +18,8 @@
     "examples",
     "test-quick.ts",
     "*.config.ts",
-    "tsup.config.v2.ts"
+    "tsup.config.v2.ts",
+    ".sandcastle/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }
