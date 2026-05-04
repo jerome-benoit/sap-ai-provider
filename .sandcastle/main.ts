@@ -81,32 +81,26 @@ async function finalizeIssue(
       `  #${issue.id}: Retrying one more implement→critic round (budget: ${String(retryBudget)})`,
     );
 
-    const retryNonce = crypto.randomBytes(4).toString("hex");
-
-    await sandbox.run({
-      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
-      maxIterations: retryBudget,
-      name: `Implementer #${issue.id} retry`,
-      promptArgs: {
-        BRANCH: issue.branch,
-        FINDINGS: lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "",
-        ISSUE_BODY: issue.body,
-        ISSUE_TITLE: issue.title,
-        TASK_ID: issue.id,
-      },
-      promptFile: "./.sandcastle/implement-prompt.md",
-    });
-
-    await sandbox.run({
-      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
-      maxIterations: 1,
-      name: `Critic #${issue.id} retry-validation`,
-      promptArgs: {
-        BRANCH: issue.branch,
-        NONCE: retryNonce,
-      },
-      promptFile: "./.sandcastle/critic-prompt.md",
-    });
+    try {
+      await sandbox.run({
+        agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+        maxIterations: retryBudget,
+        name: `Implementer #${issue.id} retry`,
+        promptArgs: {
+          BRANCH: issue.branch,
+          FINDINGS: lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "",
+          ISSUE_BODY: issue.body,
+          ISSUE_TITLE: issue.title,
+          TASK_ID: issue.id,
+        },
+        promptFile: "./.sandcastle/implement-prompt.md",
+      });
+    } catch (retryErr: unknown) {
+      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      console.warn(
+        `  #${issue.id}: Implementer retry threw: ${retryMsg}. Falling through to PR creation.`,
+      );
+    }
 
     // Re-validate after retry
     try {
@@ -122,11 +116,13 @@ async function finalizeIssue(
   }
 
   // Rebase on latest main
+  let rebaseSucceeded = false;
   try {
     execSync("git fetch origin main && git rebase origin/main", {
       cwd,
       stdio: "pipe",
     });
+    rebaseSucceeded = true;
     if (validationPassed) {
       // Post-rebase smoke test
       try {
@@ -138,9 +134,8 @@ async function finalizeIssue(
         validationPassed = false;
       }
     }
-    execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
   } catch {
-    // Rebase failed — push un-rebased
+    // Rebase failed — abort and push un-rebased
     try {
       execSync("git rebase --abort", { cwd, stdio: "pipe" });
     } catch {
@@ -151,6 +146,17 @@ async function finalizeIssue(
     } catch (pushErr: unknown) {
       const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
       console.warn(`  #${issue.id}: git push failed after rebase abort: ${pushMsg}`);
+    }
+  }
+
+  if (rebaseSucceeded) {
+    try {
+      execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
+    } catch (pushErr: unknown) {
+      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      console.warn(
+        `  #${issue.id}: git push --force-with-lease failed (branch un-pushed, PR creation will fail gracefully): ${pushMsg}`,
+      );
     }
   }
 
