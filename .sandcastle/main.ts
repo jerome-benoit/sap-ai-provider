@@ -30,7 +30,10 @@ type Finding = z.infer<typeof FindingSchema>;
 // --- Zod schema for GitHub issue list response (fix #6) ---
 
 const RawIssueSchema = z.object({
-  body: z.string(),
+  body: z
+    .string()
+    .nullable()
+    .transform((b) => b ?? ""),
   labels: z.array(z.object({ name: z.string() })),
   number: z.number(),
   title: z.string(),
@@ -252,7 +255,13 @@ try {
   process.exit(1);
 }
 
-const rawIssues = RawIssuesSchema.parse(JSON.parse(rawIssuesJson));
+let rawIssues: z.infer<typeof RawIssuesSchema>;
+try {
+  rawIssues = RawIssuesSchema.parse(JSON.parse(rawIssuesJson));
+} catch {
+  console.error("Failed to parse issues JSON. Unexpected format from gh CLI.");
+  process.exit(1);
+}
 
 const issuesJson = rawIssues.map((i) => ({
   body: sanitizeForPrompt(i.body),
