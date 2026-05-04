@@ -10,7 +10,7 @@ git checkout {{BRANCH}}
 
 ## Changes to Review
 
-!`git diff main...{{BRANCH}}`
+!`git diff --stat main...{{BRANCH}}`
 
 ## Commits on This Branch
 
@@ -45,14 +45,7 @@ If any command fails:
 
 ## Quality Checks
 
-After validation passes, verify:
-
-- No `any` types introduced without justification.
-- No `console.log` left in source (tests excluded).
-- Public APIs have JSDoc comments.
-- New code has corresponding test coverage.
-
-Fix violations and commit.
+After validation passes, verify compliance with the coding standards in `CONTRIBUTING.md`. Fix violations and commit.
 
 ## Rules
 
@@ -63,7 +56,11 @@ Fix violations and commit.
 
 ## Completion
 
-When the full suite passes cleanly, output:
+When the full suite passes cleanly, push the fixes and output:
+
+```bash
+git push
+```
 
 ```text
 <promise>COMPLETE</promise>

@@ -4,7 +4,7 @@ Read open GitHub issues and produce a parallelizable execution plan.
 
 ## Context
 
-This is a TypeScript library (`@jerome-benoit/sap-ai-provider`) — Node 24+, npm, Vitest, tsup.
+This is a TypeScript library (`@jerome-benoit/sap-ai-provider`) — Node 20+, npm, Vitest, tsup.
 Read `AGENTS.md` for project conventions.
 
 ## Open Issues
@@ -39,3 +39,11 @@ Read `AGENTS.md` for project conventions.
   ```
 
 - Do not implement anything. Only produce the plan.
+
+## Completion
+
+After outputting the plan, output:
+
+```text
+<promise>COMPLETE</promise>
+```
