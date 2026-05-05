@@ -180,6 +180,11 @@ export async function runRefinementLoop(
         cwd: sandbox.worktreePath,
         stdio: "pipe",
       });
+      const commitCount = execFileSync("git", ["rev-list", "--count", "main..HEAD"], {
+        cwd: sandbox.worktreePath,
+        encoding: "utf-8",
+      }).trim();
+      totalCommits = parseInt(commitCount, 10) || 0;
     } catch {
       /* empty */
     }
