@@ -88,6 +88,7 @@ export async function runRefinementLoop(
         execFileSync("sh", ["-c", VALIDATION_COMMAND], {
           cwd: sandbox.worktreePath,
           stdio: "pipe",
+          timeout: 120_000,
         });
         // Validation passed mid-loop — deterministic convergence
         totalCommits += result.commits;
@@ -106,20 +107,6 @@ export async function runRefinementLoop(
       `  #${spec.id}: ${String(result.findings.length)} findings, ${String(newFindings.length)} new`,
     );
 
-    // Best-state checkpoint (SWE-Agent pattern)
-    if (newFindings.length < bestFindingsCount) {
-      bestFindingsCount = newFindings.length;
-      try {
-        bestSha = execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: sandbox.worktreePath,
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-        }).trim();
-      } catch {
-        /* empty */
-      }
-    }
-
     // Quality ratchet: rollback if findings increased (regression)
     const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
     if (
@@ -135,6 +122,21 @@ export async function runRefinementLoop(
       status = "exhausted";
       break;
     }
+
+    // Best-state checkpoint (SWE-Agent pattern) — after ratchet passes
+    if (newFindings.length < bestFindingsCount) {
+      bestFindingsCount = newFindings.length;
+      try {
+        bestSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: sandbox.worktreePath,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+      } catch {
+        /* empty */
+      }
+    }
+
     totalCommits += result.commits;
     previousFindingsCount = nonLowFindings.length;
 
@@ -149,6 +151,16 @@ export async function runRefinementLoop(
       if (criticalPersistent.length > 0) {
         lastFindings = criticalPersistent;
         status = "exhausted";
+        // Capture current HEAD so post-loop reset is a no-op (code matches findings)
+        try {
+          bestSha = execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: sandbox.worktreePath,
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+          }).trim();
+        } catch {
+          /* empty */
+        }
         break;
       }
       if (nonLowFindings.length > 0) {
