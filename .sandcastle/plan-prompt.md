@@ -31,6 +31,7 @@ Read `AGENTS.md` for project conventions.
 
 - Exclude issues labeled `wontfix`, `duplicate`, or `question`.
 - Exclude issues that depend on another open issue (mention "blocked by #N" or similar).
+- Prefer issues where scope fits a single-file change over cross-cutting refactors.
 - If every issue is blocked, include the single highest-priority candidate (fewest/weakest dependencies).
 - If no actionable issues exist, output:
 
