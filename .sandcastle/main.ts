@@ -457,7 +457,12 @@ for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
           );
 
           if (newFindings.length === 0) {
-            converged = true;
+            if (findings.length > 0) {
+              lastFindings = findings;
+              converged = false;
+            } else {
+              converged = true;
+            }
             break;
           }
 
