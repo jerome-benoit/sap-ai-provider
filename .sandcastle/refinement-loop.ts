@@ -6,7 +6,13 @@ import { join, sep } from "node:path";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
-import { VALIDATION_COMMAND } from "./constants.js";
+import {
+  AGENT_MODEL,
+  CONTEXT_HASH_RADIUS,
+  HASH_PREFIX_LENGTH,
+  VALIDATION_COMMAND,
+  VALIDATION_TIMEOUT_MS,
+} from "./constants.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS, parseFindingsSafe } from "./types.js";
 
 /** Options for configuring the refinement loop. */
@@ -307,10 +313,14 @@ function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, stri
       .createHash("sha256")
       .update(normalizedTitle)
       .digest("hex")
-      .slice(0, 16);
+      .slice(0, HASH_PREFIX_LENGTH);
     return `${f.file || "global"}::${f.category}::${titleHash}`;
   }
-  const contextHash = hashContextLines({ cwd, file: f.file, line: f.line }, 3, fileCache);
+  const contextHash = hashContextLines(
+    { cwd, file: f.file, line: f.line },
+    CONTEXT_HASH_RADIUS,
+    fileCache,
+  );
   return `${f.file}::${f.category}::${contextHash}`;
 }
 
@@ -366,7 +376,7 @@ async function executeRound(
   let implementerResult: Awaited<ReturnType<typeof sandbox.run>>;
   try {
     implementerResult = await sandbox.run({
-      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+      agent: sandcastle.opencode(AGENT_MODEL),
       maxIterations: budget,
       name: `Implementer #${spec.id} R${String(round)}`,
       promptArgs: {
@@ -434,13 +444,13 @@ function hashContextLines(
       .createHash("sha256")
       .update(`${file}:${String(line)}:${normalized}`)
       .digest("hex")
-      .slice(0, 16);
+      .slice(0, HASH_PREFIX_LENGTH);
   } catch {
     return crypto
       .createHash("sha256")
       .update(`${file}:${String(line)}:fallback`)
       .digest("hex")
-      .slice(0, 16);
+      .slice(0, HASH_PREFIX_LENGTH);
   }
 }
 
@@ -520,7 +530,7 @@ async function runCritic(
   nonce: string,
 ): Promise<Finding[] | null> {
   let critic = await sandbox.run({
-    agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+    agent: sandcastle.opencode(AGENT_MODEL),
     maxIterations: 1,
     name: `Critic #${spec.id} R${String(round)}`,
     promptArgs: {
@@ -535,7 +545,7 @@ async function runCritic(
   if (findings === null) {
     console.warn(`  #${spec.id}: Critic parse failed. Retrying.`);
     critic = await sandbox.run({
-      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+      agent: sandcastle.opencode(AGENT_MODEL),
       maxIterations: 1,
       name: `Critic #${spec.id} R${String(round)} retry`,
       promptArgs: {
@@ -560,7 +570,7 @@ function runMidLoopValidation(cwd: string): boolean {
     execFileSync("sh", ["-c", VALIDATION_COMMAND], {
       cwd,
       stdio: "pipe",
-      timeout: 120_000,
+      timeout: VALIDATION_TIMEOUT_MS,
     });
     return true;
   } catch {

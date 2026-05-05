@@ -5,7 +5,13 @@ import { z } from "zod";
 
 import type { TaskSpec } from "./types.js";
 
-import { GIT_TIMEOUT_MS, MAX_TITLE_LENGTH, toErrorMessage } from "./constants.js";
+import {
+  GIT_TIMEOUT_MS,
+  MAX_TITLE_LENGTH,
+  PLANNER_MODEL,
+  TASK_TIMEOUT_MS,
+  toErrorMessage,
+} from "./constants.js";
 
 const RawIssueSchema = z.object({
   body: z
@@ -74,8 +80,8 @@ export class GithubIssueSource implements TaskSource {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       console.log(`\n=== Planner attempt ${String(attempt)}/${String(this.maxRetries)} ===\n`);
 
-      const plan = await sandcastle.run({
-        agent: sandcastle.opencode("github-copilot/claude-opus-4.6"),
+      const planPromise = sandcastle.run({
+        agent: sandcastle.opencode(PLANNER_MODEL),
         maxIterations: 1,
         name: "Planner",
         promptArgs: {
@@ -85,6 +91,15 @@ export class GithubIssueSource implements TaskSource {
         promptFile: "./.sandcastle/plan-prompt.md",
         sandbox: docker({ imageName: this.dockerImage }),
       });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("Planner timed out"));
+        }, TASK_TIMEOUT_MS).unref();
+      });
+      timeoutPromise.catch(() => {
+        /* suppress unhandled rejection when planner completes before timeout */
+      });
+      const plan = await Promise.race([planPromise, timeoutPromise]);
 
       const planMatches = [...plan.stdout.matchAll(/<plan>([\s\S]*?)<\/plan>/g)];
       const planMatch = planMatches.at(-1);
