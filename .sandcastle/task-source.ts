@@ -1,6 +1,6 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { z } from "zod";
 
 import type { TaskSpec } from "./types.js";
@@ -121,8 +121,20 @@ export class GithubIssueSource implements TaskSource {
   }[] {
     let rawIssuesJson: string;
     try {
-      rawIssuesJson = execSync(
-        `gh issue list --state open --json number,title,labels,body --limit 50 --label "${this.label}"`,
+      rawIssuesJson = execFileSync(
+        "gh",
+        [
+          "issue",
+          "list",
+          "--state",
+          "open",
+          "--json",
+          "number,title,labels,body",
+          "--limit",
+          "50",
+          "--label",
+          this.label,
+        ],
         { encoding: "utf-8" },
       );
     } catch {

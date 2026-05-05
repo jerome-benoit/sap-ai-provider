@@ -84,7 +84,7 @@ export async function finalizeTask(
     rebaseSucceeded = true;
     if (validationPassed) {
       try {
-        execSync("npm run type-check && npm run test", {
+        execSync(VALIDATION_COMMAND, {
           cwd,
           stdio: "pipe",
         });
