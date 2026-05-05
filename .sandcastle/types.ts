@@ -68,6 +68,33 @@ export const MAX_CRITIC_ROUNDS = 5;
  */
 export const ITERATION_BUDGET_PER_ROUND = 50;
 
+/**
+ * Configuration for a refinement loop strategy.
+ * Defines prompts, argument builders, convergence, and finalization.
+ */
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type StrategyConfig = {
+  /** Path to the actor (implementer) prompt file. */
+  actorPromptFile: string;
+  /** Builds promptArgs for the actor run from task spec and previous findings. */
+  buildActorArgs: (spec: TaskSpec, findings: Finding[]) => Record<string, string>;
+  /** Builds promptArgs for the critic run from task spec and nonce. */
+  buildCriticArgs: (spec: TaskSpec, nonce: string) => Record<string, string>;
+  /** Path to the critic prompt file. */
+  criticPromptFile: string;
+  /** Finalizes the task after the loop completes. Returns success indicator. */
+  finalize: (
+    spec: TaskSpec,
+    loopResult: LoopResult,
+    sandbox: SandboxInstance,
+    cwd: string,
+  ) => Promise<{ success: boolean }>;
+  /** Determines if the finalization result counts as completed work. */
+  isWorkComplete: (finalizeResult: { success: boolean }) => boolean;
+  /** Optional custom convergence check. When omitted, default loop logic applies. */
+  shouldConverge?: (findings: Finding[], round: number, totalCommits: number) => boolean;
+};
+
 /** Specification for a task to be implemented. */
 export interface TaskSpec {
   /** Sanitized issue body text. */
