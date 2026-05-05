@@ -1,11 +1,11 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
-import { execFileSync } from "node:child_process";
 import { z } from "zod";
 
 import type { TaskSpec } from "./types.js";
 
 import {
+  execFileAsync,
   GIT_TIMEOUT_MS,
   MAX_TITLE_LENGTH,
   PLANNER_MODEL,
@@ -70,7 +70,7 @@ export class GithubIssueSource implements TaskSource {
    * @returns Array of task specifications to implement.
    */
   async discover(): Promise<TaskSpec[]> {
-    const issuesJson = this.fetchAndSanitizeIssues();
+    const issuesJson = await this.fetchAndSanitizeIssues();
 
     if (issuesJson.length === 0) {
       console.log("No issues with label '%s'. Exiting.", this.label);
@@ -132,15 +132,17 @@ export class GithubIssueSource implements TaskSource {
     return [];
   }
 
-  private fetchAndSanitizeIssues(): {
-    body: string;
-    labels: string[];
-    number: number;
-    title: string;
-  }[] {
+  private async fetchAndSanitizeIssues(): Promise<
+    {
+      body: string;
+      labels: string[];
+      number: number;
+      title: string;
+    }[]
+  > {
     let rawIssuesJson: string;
     try {
-      rawIssuesJson = execFileSync(
+      const { stdout } = await execFileAsync(
         "gh",
         [
           "issue",
@@ -154,8 +156,9 @@ export class GithubIssueSource implements TaskSource {
           "--label",
           this.label,
         ],
-        { encoding: "utf-8", timeout: GIT_TIMEOUT_MS },
+        { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024, timeout: GIT_TIMEOUT_MS },
       );
+      rawIssuesJson = stdout;
     } catch (err) {
       console.error(
         `Failed to fetch issues: ${toErrorMessage(err)}. Ensure gh is installed and authenticated.`,

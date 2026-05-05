@@ -1,5 +1,4 @@
 import * as sandcastle from "@ai-hero/sandcastle";
-import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
@@ -9,6 +8,7 @@ import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from 
 import {
   AGENT_MODEL,
   CONTEXT_HASH_RADIUS,
+  execFileAsync,
   HASH_PREFIX_LENGTH,
   VALIDATION_COMMAND,
   VALIDATION_TIMEOUT_MS,
@@ -124,7 +124,7 @@ export async function runRefinementLoop(
     if (result.findings === null) break;
     const findings: Finding[] = result.findings;
 
-    if (result.commits > 0 && runMidLoopValidation(sandbox.worktreePath)) {
+    if (result.commits > 0 && (await runMidLoopValidation(sandbox.worktreePath))) {
       totalCommits += result.commits;
       status = "converged";
       break;
@@ -139,7 +139,7 @@ export async function runRefinementLoop(
 
     const nonLowFindings = findings.filter((f) => f.confidence !== "LOW");
     if (
-      checkQualityRatchet(
+      await checkQualityRatchet(
         { beforeSha: result.beforeSha, cwd, round, spec },
         nonLowFindings.length,
         previousFindingsCount,
@@ -151,14 +151,14 @@ export async function runRefinementLoop(
 
     if (newFindings.length < bestFindingsCount) {
       bestFindingsCount = newFindings.length;
-      bestSha = captureHeadSha(cwd);
+      bestSha = await captureHeadSha(cwd);
     }
 
     totalCommits += result.commits;
     previousFindingsCount = nonLowFindings.length;
     onRoundComplete(round, findings);
 
-    const convergenceResult = checkConvergence(cwd, findings, newFindings, nonLowFindings);
+    const convergenceResult = await checkConvergence(cwd, findings, newFindings, nonLowFindings);
     if (convergenceResult !== null) {
       lastFindings = convergenceResult.lastFindings;
       status = convergenceResult.status;
@@ -170,7 +170,7 @@ export async function runRefinementLoop(
   }
 
   if (shouldResetToBest(status, bestSha)) {
-    totalCommits = resetToBestState(sandbox.worktreePath, bestSha, totalCommits);
+    totalCommits = await resetToBestState(sandbox.worktreePath, bestSha, totalCommits);
   }
 
   return { lastFindings, roundsCompleted, status, totalCommits };
@@ -181,13 +181,10 @@ export async function runRefinementLoop(
  * @param cwd - Working directory for git operations.
  * @returns The HEAD SHA or empty string.
  */
-function captureHeadSha(cwd: string): string {
+async function captureHeadSha(cwd: string): Promise<string> {
   try {
-    return execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd });
+    return stdout.trim();
   } catch {
     return "";
   }
@@ -201,12 +198,12 @@ function captureHeadSha(cwd: string): string {
  * @param nonLowFindings - Non-LOW-confidence findings.
  * @returns A ConvergenceResult if the loop should break, or null to continue.
  */
-function checkConvergence(
+async function checkConvergence(
   cwd: string,
   allFindings: Finding[],
   newFindings: Finding[],
   nonLowFindings: Finding[],
-): ConvergenceResult | null {
+): Promise<ConvergenceResult | null> {
   if (newFindings.length !== 0) return null;
 
   // Severity-weighted convergence (OpenHands pattern):
@@ -217,7 +214,7 @@ function checkConvergence(
   if (criticalPersistent.length > 0) {
     // Capture current HEAD so post-loop reset is a no-op (code matches findings)
     return {
-      bestSha: captureHeadSha(cwd),
+      bestSha: await captureHeadSha(cwd),
       lastFindings: criticalPersistent,
       status: "exhausted",
     };
@@ -264,27 +261,24 @@ function checkEarlyExit(
  * @param previousCount - Number of non-LOW findings from the previous round.
  * @returns True if a regression was detected and rollback performed.
  */
-function checkQualityRatchet(
+async function checkQualityRatchet(
   ctx: RatchetContext,
   findingsCount: number,
   previousCount: number,
-): boolean {
+): Promise<boolean> {
   const { beforeSha, cwd, round, spec } = ctx;
   if (round <= 2 || findingsCount <= previousCount) {
     return false;
   }
 
-  // Validate SHA format before passing to execFileSync
+  // Validate SHA format before passing to execFileAsync
   if (!/^[0-9a-f]{40}$/.test(beforeSha)) {
     console.warn(`  #${spec.id}: Invalid SHA for rollback, skipping reset.`);
     return true;
   }
 
   try {
-    execFileSync("git", ["reset", "--hard", beforeSha], {
-      cwd,
-      stdio: "pipe",
-    });
+    await execFileAsync("git", ["reset", "--hard", beforeSha], { cwd });
     console.warn(
       `  #${spec.id} R${String(round)}: Regression detected (${String(previousCount)} → ${String(findingsCount)}). Rolled back.`,
     );
@@ -363,11 +357,10 @@ async function executeRound(
   // Capture SHA before implementer runs (for quality ratchet rollback)
   let beforeSha = "";
   try {
-    beforeSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], {
       cwd: sandbox.worktreePath,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    });
+    beforeSha = stdout.trim();
   } catch {
     console.warn(`  #${spec.id}: Failed to capture HEAD SHA before round ${String(round)}.`);
   }
@@ -486,17 +479,15 @@ function parseFindings(stdout: string, nonce: string): Finding[] | null {
  * @param currentCommits - Current total commits (fallback if recount fails).
  * @returns Updated total commit count.
  */
-function resetToBestState(cwd: string, bestSha: string, currentCommits: number): number {
+async function resetToBestState(
+  cwd: string,
+  bestSha: string,
+  currentCommits: number,
+): Promise<number> {
   try {
-    execFileSync("git", ["reset", "--hard", bestSha], {
-      cwd,
-      stdio: "pipe",
-    });
-    const commitCount = execFileSync("git", ["rev-list", "--count", "main..HEAD"], {
-      cwd,
-      encoding: "utf-8",
-    }).trim();
-    return parseInt(commitCount, 10) || 0;
+    await execFileAsync("git", ["reset", "--hard", bestSha], { cwd });
+    const { stdout } = await execFileAsync("git", ["rev-list", "--count", "main..HEAD"], { cwd });
+    return parseInt(stdout.trim(), 10) || 0;
   } catch {
     return currentCommits;
   }
@@ -565,11 +556,11 @@ async function runCritic(
  * @param cwd - Working directory for the validation command.
  * @returns True if validation passed (deterministic convergence), false otherwise.
  */
-function runMidLoopValidation(cwd: string): boolean {
+async function runMidLoopValidation(cwd: string): Promise<boolean> {
   try {
-    execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+    await execFileAsync("sh", ["-c", VALIDATION_COMMAND], {
       cwd,
-      stdio: "pipe",
+      maxBuffer: 8 * 1024 * 1024,
       timeout: VALIDATION_TIMEOUT_MS,
     });
     return true;

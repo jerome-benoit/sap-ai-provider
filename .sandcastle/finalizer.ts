@@ -1,11 +1,11 @@
 import * as sandcastle from "@ai-hero/sandcastle";
-import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
 import {
   AGENT_MODEL,
+  execFileAsync,
   GIT_TIMEOUT_MS,
   MAX_STDERR_CHARS,
   PUSH_TIMEOUT_MS,
@@ -29,7 +29,7 @@ export async function finalizeTask(
   sandbox: SandboxInstance,
   cwd: string,
 ): Promise<FinalizeResult> {
-  let validationPassed = runValidation(cwd, spec);
+  let validationPassed = await runValidation(cwd, spec);
 
   // Retry one more round if validation failed and budget remains
   if (!validationPassed && loopResult.roundsCompleted < MAX_CRITIC_ROUNDS) {
@@ -63,9 +63,9 @@ export async function finalizeTask(
     }
 
     try {
-      execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+      await execFileAsync("sh", ["-c", VALIDATION_COMMAND], {
         cwd,
-        stdio: "pipe",
+        maxBuffer: 8 * 1024 * 1024,
         timeout: VALIDATION_TIMEOUT_MS,
       });
       validationPassed = true;
@@ -76,12 +76,12 @@ export async function finalizeTask(
   }
 
   // Rebase on latest main
-  const rebaseSucceeded = attemptRebase(cwd);
+  const rebaseSucceeded = await attemptRebase(cwd);
   if (rebaseSucceeded && validationPassed) {
     try {
-      execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+      await execFileAsync("sh", ["-c", VALIDATION_COMMAND], {
         cwd,
-        stdio: "pipe",
+        maxBuffer: 8 * 1024 * 1024,
         timeout: VALIDATION_TIMEOUT_MS,
       });
     } catch (postRebaseErr: unknown) {
@@ -94,7 +94,7 @@ export async function finalizeTask(
   }
 
   // Push
-  const pushSucceeded = pushBranch(cwd, spec, rebaseSucceeded);
+  const pushSucceeded = await pushBranch(cwd, spec, rebaseSucceeded);
   if (!pushSucceeded) {
     console.warn(`  #${spec.id}: Push did not succeed; PR may reference unpushed commits.`);
   }
@@ -104,7 +104,7 @@ export async function finalizeTask(
 
   let prCreated = false;
   try {
-    execFileSync("gh", prArgs, { cwd, encoding: "utf-8", stdio: "pipe" });
+    await execFileAsync("gh", prArgs, { cwd, maxBuffer: 8 * 1024 * 1024 });
     console.log(`  #${spec.id}: PR created${isDraft ? " (draft)" : ""}.`);
     prCreated = true;
   } catch (err: unknown) {
@@ -121,18 +121,17 @@ export async function finalizeTask(
  * @param cwd - Working directory (worktree path).
  * @returns `true` if rebase succeeded, `false` otherwise.
  */
-function attemptRebase(cwd: string): boolean {
+async function attemptRebase(cwd: string): Promise<boolean> {
   try {
-    execFileSync("git", ["fetch", "origin", "main"], {
+    await execFileAsync("git", ["fetch", "origin", "main"], {
       cwd,
-      stdio: "pipe",
       timeout: GIT_TIMEOUT_MS,
     });
-    execFileSync("git", ["rebase", "origin/main"], { cwd, stdio: "pipe", timeout: GIT_TIMEOUT_MS });
+    await execFileAsync("git", ["rebase", "origin/main"], { cwd, timeout: GIT_TIMEOUT_MS });
     return true;
   } catch {
     try {
-      execFileSync("git", ["rebase", "--abort"], { cwd, stdio: "pipe" });
+      await execFileAsync("git", ["rebase", "--abort"], { cwd });
     } catch {
       /* empty */
     }
@@ -218,12 +217,11 @@ function extractStderr(err: unknown): string {
  * @param rebaseSucceeded - Whether the preceding rebase completed successfully.
  * @returns `true` if the primary push succeeded, `false` otherwise.
  */
-function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): boolean {
+async function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): Promise<boolean> {
   if (rebaseSucceeded) {
     try {
-      execFileSync("git", ["push", "--force-with-lease"], {
+      await execFileAsync("git", ["push", "--force-with-lease"], {
         cwd,
-        stdio: "pipe",
         timeout: PUSH_TIMEOUT_MS,
       });
       return true;
@@ -231,11 +229,14 @@ function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): bool
       const pushMsg = toErrorMessage(pushErr);
       try {
         const suffix = crypto.randomBytes(4).toString("hex");
-        execFileSync("git", ["push", "origin", `HEAD:refs/heads/rescue/${spec.branch}-${suffix}`], {
-          cwd,
-          stdio: "pipe",
-          timeout: PUSH_TIMEOUT_MS,
-        });
+        await execFileAsync(
+          "git",
+          ["push", "origin", `HEAD:refs/heads/rescue/${spec.branch}-${suffix}`],
+          {
+            cwd,
+            timeout: PUSH_TIMEOUT_MS,
+          },
+        );
         console.warn(
           `  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-${suffix}`,
         );
@@ -248,7 +249,7 @@ function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): bool
     }
   } else {
     try {
-      execFileSync("git", ["push"], { cwd, stdio: "pipe", timeout: PUSH_TIMEOUT_MS });
+      await execFileAsync("git", ["push"], { cwd, timeout: PUSH_TIMEOUT_MS });
       return true;
     } catch (pushErr: unknown) {
       const pushMsg = toErrorMessage(pushErr);
@@ -264,11 +265,11 @@ function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): bool
  * @param spec - The task specification (used for logging).
  * @returns `true` if validation passed, `false` otherwise.
  */
-function runValidation(cwd: string, spec: TaskSpec): boolean {
+async function runValidation(cwd: string, spec: TaskSpec): Promise<boolean> {
   try {
-    execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+    await execFileAsync("sh", ["-c", VALIDATION_COMMAND], {
       cwd,
-      stdio: "pipe",
+      maxBuffer: 8 * 1024 * 1024,
       timeout: VALIDATION_TIMEOUT_MS,
     });
     return true;

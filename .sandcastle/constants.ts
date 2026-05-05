@@ -1,10 +1,14 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import util from "node:util";
 
 /** Model identifier used for implementation and critic agents. */
 export const AGENT_MODEL = "github-copilot/claude-sonnet-4.6";
 
 /** Number of context lines around a diff hunk used for hash computation. */
 export const CONTEXT_HASH_RADIUS = 3;
+
+/** Async execFile — does not block the event loop. Same error shape as execFileSync. */
+export const execFileAsync = util.promisify(execFile);
 
 /** Timeout in milliseconds for git operations. */
 export const GIT_TIMEOUT_MS = 30_000;
@@ -39,13 +43,12 @@ export const VALIDATION_TIMEOUT_MS = 120_000;
  * @param cwd - Absolute path to the git repository root.
  * @returns The full SHA string, or `null` if the command fails.
  */
-export function getHeadSha(cwd: string): null | string {
+export async function getHeadSha(cwd: string): Promise<null | string> {
   try {
-    return execFileSync("git", ["rev-parse", "HEAD"], {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], {
       cwd,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    });
+    return stdout.trim();
   } catch {
     return null;
   }
