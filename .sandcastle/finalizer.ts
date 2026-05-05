@@ -223,7 +223,7 @@ function extractStderr(err: unknown): string {
 async function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): Promise<boolean> {
   if (rebaseSucceeded) {
     try {
-      await execFileAsync("git", ["push", "--force-with-lease"], {
+      await execFileAsync("git", ["push", "--force-with-lease", "origin", "HEAD"], {
         cwd,
         timeout: PUSH_TIMEOUT_MS,
       });
@@ -252,7 +252,10 @@ async function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean)
     }
   } else {
     try {
-      await execFileAsync("git", ["push"], { cwd, timeout: PUSH_TIMEOUT_MS });
+      await execFileAsync("git", ["push", "-u", "origin", "HEAD"], {
+        cwd,
+        timeout: PUSH_TIMEOUT_MS,
+      });
       return true;
     } catch (pushErr: unknown) {
       const pushMsg = toErrorMessage(pushErr);
