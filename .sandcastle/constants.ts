@@ -14,8 +14,11 @@ export const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 export const CONTEXT_HASH_RADIUS = 3;
 
 /** Docker bind-mounts shared across all sandboxes (warm npm cache for faster installs). */
-export const DOCKER_MOUNTS: readonly { hostPath: string; readonly: boolean; sandboxPath: string }[] =
-  [{ hostPath: join(homedir(), ".npm"), readonly: true, sandboxPath: "/home/agent/.npm" }];
+export const DOCKER_MOUNTS: readonly {
+  hostPath: string;
+  readonly: boolean;
+  sandboxPath: string;
+}[] = [{ hostPath: join(homedir(), ".npm"), readonly: true, sandboxPath: "/home/agent/.npm" }];
 
 /** Timeout in milliseconds for git operations. */
 export const GIT_TIMEOUT_MS = 30_000;
