@@ -108,10 +108,8 @@ export async function runRefinementLoop(
       const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
       if (nonLowFindings.length > 0) {
         lastFindings = nonLowFindings;
-        status = "exhausted";
-      } else {
-        status = "converged";
       }
+      status = "converged";
       break;
     }
 

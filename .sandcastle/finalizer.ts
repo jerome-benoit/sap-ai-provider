@@ -82,7 +82,7 @@ export async function finalizeTask(
   pushBranch(cwd, spec, rebaseSucceeded);
 
   // Build PR arguments and create PR
-  const { isDraft, prArgs } = buildPrArgs(spec, loopResult, validationPassed);
+  const { isDraft, prArgs } = buildPrArgs(spec, loopResult, validationPassed, rebaseSucceeded);
 
   let prCreated = false;
   try {
@@ -124,21 +124,26 @@ function attemptRebase(cwd: string, _spec: TaskSpec): boolean {
  * @param spec - The task specification.
  * @param loopResult - The result from the refinement loop.
  * @param validationPassed - Whether the validation suite passed.
+ * @param rebaseSucceeded - Whether the rebase onto main succeeded.
  * @returns Object with `isDraft` flag and `prArgs` string array.
  */
 function buildPrArgs(
   spec: TaskSpec,
   loopResult: LoopResult,
   validationPassed: boolean,
+  rebaseSucceeded: boolean,
 ): { isDraft: boolean; prArgs: string[] } {
   const converged = loopResult.status === "converged";
   const isDraft = !converged || !validationPassed;
   const outstandingNote =
     !converged && loopResult.lastFindings.length > 0
-      ? `\n\n\u26a0\ufe0f Outstanding findings:\n${loopResult.lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
+      ? `\n\n⚠️ Outstanding findings:\n${loopResult.lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
       : "";
   const validationNote = !validationPassed
-    ? "\n\n\u26a0\ufe0f Validation did not pass. Manual review required."
+    ? "\n\n⚠️ Validation did not pass. Manual review required."
+    : "";
+  const rebaseNote = !rebaseSucceeded
+    ? "\n\n⚠️ Rebase failed. Branch is not rebased onto main."
     : "";
 
   const validationCheck = validationPassed ? "- [x]" : "- [ ]";
@@ -154,7 +159,7 @@ function buildPrArgs(
       : commitPrefix === "fix"
         ? "Bug fix (non-breaking change that fixes an issue)"
         : "Refactoring (no functional changes)";
-  const prBody = `## Description\n\nAutomated ${commitPrefix} for #${spec.id}: ${spec.title}\n\n## Type of Change\n\n- [x] ${typeOfChange}\n\n## Checklist\n\n${validationCheck} I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${spec.id}${outstandingNote}${validationNote}`;
+  const prBody = `## Description\n\nAutomated ${commitPrefix} for #${spec.id}: ${spec.title}\n\n## Type of Change\n\n- [x] ${typeOfChange}\n\n## Checklist\n\n${validationCheck} I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${spec.id}${outstandingNote}${validationNote}${rebaseNote}`;
 
   const prArgs = [
     "pr",

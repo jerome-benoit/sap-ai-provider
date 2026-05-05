@@ -111,6 +111,7 @@ export class GithubIssueSource implements TaskSource {
     }
 
     console.warn("Planner failed to produce a valid plan after all retries.");
+    process.exitCode = 1;
     return [];
   }
 
@@ -205,9 +206,9 @@ export class GithubIssueSource implements TaskSource {
 }
 
 /**
- * Strips injection-prone tags from text.
+ * Strips agent-control tags from text to reduce prompt-injection risk.
  * @param text - Raw text to sanitize.
- * @returns Sanitized text safe for prompt injection.
+ * @returns Text with plan/findings/promise tags removed.
  */
 function sanitizeForPrompt(text: string): string {
   return text.replace(/<\/?(?:plan|findings|promise)[^>]*>/gi, "");
