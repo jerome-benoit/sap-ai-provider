@@ -52,7 +52,7 @@ If no issues are found, output:
 ## Known Design Decisions (do not flag)
 
 - Mid-loop validation convergence bypasses critic (ARCS pattern — deterministic tests > subjective review).
-- `process.exit()` at script end kills timed-out sandboxes (no cooperative cancellation available in sandcastle).
+- Agent runs use `idleTimeoutSeconds` and `completionSignal` for cooperative cancellation.
 - Content-addressed dedup hash includes line number (collision reduction tradeoff, bounded by hard cap).
 
 ## Completion

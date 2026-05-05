@@ -2,7 +2,7 @@ import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 import { ConcurrencyPool } from "./concurrency-pool.js";
-import { TASK_TIMEOUT_MS } from "./constants.js";
+import { DOCKER_MOUNTS, TASK_TIMEOUT_MS } from "./constants.js";
 import { finalizeTask } from "./finalizer.js";
 import { runRefinementLoop } from "./refinement-loop.js";
 import { GithubIssueSource } from "./task-source.js";
@@ -56,7 +56,7 @@ if (tasks.length === 0) {
               hooks: {
                 sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
               },
-              sandbox: docker({ imageName: DOCKER_IMAGE }),
+              sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
             });
 
             const loopResult = await runRefinementLoop(spec, sandbox, {

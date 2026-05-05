@@ -1,8 +1,21 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+/** Idle timeout in seconds for agent runs — prevents stalled agents from consuming task budget. */
+export const AGENT_IDLE_TIMEOUT_S = 300;
+
 /** Model identifier used for implementation and critic agents. */
 export const AGENT_MODEL = "github-copilot/claude-sonnet-4.6";
 
+/** Substring that signals an agent has completed its work — stops iteration early. */
+export const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
+
 /** Number of context lines around a diff hunk used for hash computation. */
 export const CONTEXT_HASH_RADIUS = 3;
+
+/** Docker bind-mounts shared across all sandboxes (warm npm cache for faster installs). */
+export const DOCKER_MOUNTS: readonly { hostPath: string; readonly: boolean; sandboxPath: string }[] =
+  [{ hostPath: join(homedir(), ".npm"), readonly: true, sandboxPath: "/home/agent/.npm" }];
 
 /** Timeout in milliseconds for git operations. */
 export const GIT_TIMEOUT_MS = 30_000;

@@ -6,7 +6,9 @@ import { join, sep } from "node:path";
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
 import {
+  AGENT_IDLE_TIMEOUT_S,
   AGENT_MODEL,
+  COMPLETION_SIGNAL,
   CONTEXT_HASH_RADIUS,
   HASH_PREFIX_LENGTH,
   VALIDATION_COMMAND,
@@ -370,6 +372,8 @@ async function executeRound(
   try {
     implementerResult = await sandbox.run({
       agent: sandcastle.opencode(AGENT_MODEL),
+      completionSignal: COMPLETION_SIGNAL,
+      idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: budget,
       name: `Implementer #${spec.id} R${String(round)}`,
       promptArgs: {
@@ -522,6 +526,8 @@ async function runCritic(
 ): Promise<Finding[] | null> {
   let critic = await sandbox.run({
     agent: sandcastle.opencode(AGENT_MODEL),
+    completionSignal: COMPLETION_SIGNAL,
+    idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
     maxIterations: 1,
     name: `Critic #${spec.id} R${String(round)}`,
     promptArgs: {
@@ -537,6 +543,8 @@ async function runCritic(
     console.warn(`  #${spec.id}: Critic parse failed. Retrying.`);
     critic = await sandbox.run({
       agent: sandcastle.opencode(AGENT_MODEL),
+      completionSignal: COMPLETION_SIGNAL,
+      idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: 1,
       name: `Critic #${spec.id} R${String(round)} retry`,
       promptArgs: {

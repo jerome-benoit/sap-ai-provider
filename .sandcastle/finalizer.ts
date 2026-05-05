@@ -4,7 +4,9 @@ import crypto from "node:crypto";
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
 import {
+  AGENT_IDLE_TIMEOUT_S,
   AGENT_MODEL,
+  COMPLETION_SIGNAL,
   GIT_TIMEOUT_MS,
   MAX_STDERR_CHARS,
   PUSH_TIMEOUT_MS,
@@ -40,6 +42,8 @@ export async function finalizeTask(
     try {
       await sandbox.run({
         agent: sandcastle.opencode(AGENT_MODEL),
+        completionSignal: COMPLETION_SIGNAL,
+        idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
         maxIterations: retryBudget,
         name: `Implementer #${spec.id} retry`,
         promptArgs: {

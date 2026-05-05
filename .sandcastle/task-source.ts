@@ -5,6 +5,9 @@ import { z } from "zod";
 import type { TaskSpec } from "./types.js";
 
 import {
+  AGENT_IDLE_TIMEOUT_S,
+  COMPLETION_SIGNAL,
+  DOCKER_MOUNTS,
   GIT_TIMEOUT_MS,
   MAX_TITLE_LENGTH,
   PLANNER_MODEL,
@@ -79,28 +82,22 @@ export class GithubIssueSource implements TaskSource {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       console.log(`\n=== Planner attempt ${String(attempt)}/${String(this.maxRetries)} ===\n`);
 
-      const planPromise = sandcastle.run({
-        agent: sandcastle.opencode(PLANNER_MODEL),
-        maxIterations: 1,
-        name: "Planner",
-        promptArgs: {
-          BRANCH_PREFIX: this.branchPrefix,
-          ISSUES_JSON: JSON.stringify(issuesJson, null, 2),
-        },
-        promptFile: "./.sandcastle/plan-prompt.md",
-        sandbox: docker({ imageName: this.dockerImage }),
-      });
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error("Planner timed out"));
-        }, TASK_TIMEOUT_MS).unref();
-      });
-      timeoutPromise.catch(() => {
-        /* suppress unhandled rejection when planner completes before timeout */
-      });
       let plan: Awaited<ReturnType<typeof sandcastle.run>>;
       try {
-        plan = await Promise.race([planPromise, timeoutPromise]);
+        plan = await sandcastle.run({
+          agent: sandcastle.opencode(PLANNER_MODEL),
+          completionSignal: COMPLETION_SIGNAL,
+          idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
+          maxIterations: 1,
+          name: "Planner",
+          promptArgs: {
+            BRANCH_PREFIX: this.branchPrefix,
+            ISSUES_JSON: JSON.stringify(issuesJson, null, 2),
+          },
+          promptFile: "./.sandcastle/plan-prompt.md",
+          sandbox: docker({ imageName: this.dockerImage, mounts: [...DOCKER_MOUNTS] }),
+          signal: AbortSignal.timeout(TASK_TIMEOUT_MS),
+        });
       } catch {
         console.error("Planner timed out or failed. Retrying.");
         continue;
