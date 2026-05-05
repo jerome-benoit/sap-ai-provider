@@ -8,6 +8,9 @@ import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from 
 
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS, parseFindingsSafe } from "./types.js";
 
+const VALIDATION_COMMAND =
+  "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2";
+
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
   /** Budget of iterations per round (flat constant applied to every round). */
@@ -49,6 +52,8 @@ export async function runRefinementLoop(
   let totalCommits = 0;
   let roundsCompleted = 0;
   let previousFindingsCount = Infinity;
+  let bestSha = "";
+  let bestFindingsCount = Infinity;
 
   for (let round = 1; round <= maxRounds; round++) {
     roundsCompleted = round;
@@ -77,6 +82,22 @@ export async function runRefinementLoop(
       break;
     }
 
+    // Fix 1: Validation in-loop (ARCS pattern) — deterministic convergence signal
+    if (result.commits > 0) {
+      try {
+        execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+          cwd: sandbox.worktreePath,
+          stdio: "pipe",
+        });
+        // Validation passed mid-loop — deterministic convergence
+        totalCommits += result.commits;
+        status = "converged";
+        break;
+      } catch {
+        // Validation failed — continue to critic for feedback
+      }
+    }
+
     // Dedup via context hash
     const cwd = sandbox.worktreePath;
     const newFindings = deduplicateFindings(result.findings, seenKeys, cwd);
@@ -84,6 +105,20 @@ export async function runRefinementLoop(
     console.log(
       `  #${spec.id}: ${String(result.findings.length)} findings, ${String(newFindings.length)} new`,
     );
+
+    // Best-state checkpoint (SWE-Agent pattern)
+    if (newFindings.length < bestFindingsCount) {
+      bestFindingsCount = newFindings.length;
+      try {
+        bestSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          cwd: sandbox.worktreePath,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+      } catch {
+        /* empty */
+      }
+    }
 
     // Quality ratchet: rollback if findings increased (regression)
     const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
@@ -106,6 +141,16 @@ export async function runRefinementLoop(
     opts?.onRoundComplete?.(round, result.findings);
 
     if (newFindings.length === 0) {
+      // Severity-weighted convergence (OpenHands pattern):
+      // Don't converge if CRITICAL/HIGH findings persist, even if already seen
+      const criticalPersistent = result.findings.filter(
+        (f) => (f.severity === "CRITICAL" || f.severity === "HIGH") && f.confidence !== "LOW",
+      );
+      if (criticalPersistent.length > 0) {
+        lastFindings = criticalPersistent;
+        status = "exhausted";
+        break;
+      }
       if (nonLowFindings.length > 0) {
         lastFindings = nonLowFindings;
       }
@@ -114,6 +159,18 @@ export async function runRefinementLoop(
     }
 
     lastFindings = newFindings;
+  }
+
+  // Best-state reset: if not converged, restore best intermediate state
+  if (status !== "converged" && /^[0-9a-f]{40}$/.test(bestSha)) {
+    try {
+      execFileSync("git", ["reset", "--hard", bestSha], {
+        cwd: sandbox.worktreePath,
+        stdio: "pipe",
+      });
+    } catch {
+      /* empty */
+    }
   }
 
   return { lastFindings, roundsCompleted, status, totalCommits };
