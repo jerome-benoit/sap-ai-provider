@@ -89,3 +89,5 @@ if (tasks.length === 0) {
     process.exitCode = 1;
   }
 }
+
+process.exit(process.exitCode ?? 0);
