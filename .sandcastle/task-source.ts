@@ -110,6 +110,7 @@ export class GithubIssueSource implements TaskSource {
       return tasks;
     }
 
+    console.warn("Planner failed to produce a valid plan after all retries.");
     return [];
   }
 
@@ -169,7 +170,7 @@ export class GithubIssueSource implements TaskSource {
         return null;
       }
       const validated = parsed.issues.filter(
-        (entry): entry is { body: string; branch: string; id: string; title: string } => {
+        (entry): entry is { branch: string; id: string; title: string } => {
           if (typeof entry !== "object" || entry === null) return false;
           const item = entry as Record<string, unknown>;
           if (typeof item.id !== "string" || !/^\d+$/.test(item.id)) return false;
@@ -180,11 +181,17 @@ export class GithubIssueSource implements TaskSource {
         },
       );
 
-      return validated.map((v) => ({
-        ...v,
-        body: issuesJson.find((i) => String(i.number) === v.id)?.body ?? "",
-        labels: issuesJson.find((i) => String(i.number) === v.id)?.labels ?? [],
-      }));
+      return validated
+        .map((v) => {
+          const source = issuesJson.find((i) => String(i.number) === v.id);
+          if (!source) return null;
+          return {
+            ...v,
+            body: source.body,
+            labels: source.labels,
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null);
     } catch {
       console.error("Planner produced invalid JSON. Retrying.");
       return null;

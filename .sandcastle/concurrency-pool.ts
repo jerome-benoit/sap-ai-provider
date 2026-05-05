@@ -6,9 +6,13 @@ export class ConcurrencyPool {
   private running = 0;
 
   /**
-   * @param max - Maximum number of concurrent tasks.
+   * @param max - Maximum number of concurrent tasks. Must be >= 1.
    */
-  constructor(private readonly max: number) {}
+  constructor(private readonly max: number) {
+    if (max < 1) {
+      throw new RangeError("ConcurrencyPool max must be >= 1");
+    }
+  }
 
   /**
    * Executes the given async function, waiting if the pool is at capacity.
