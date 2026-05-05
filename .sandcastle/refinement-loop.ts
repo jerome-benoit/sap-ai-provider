@@ -65,15 +65,15 @@ export async function runRefinementLoop(
       break;
     }
 
-    if (round > 1 && result.commits === 0) {
-      status = "exhausted";
-      break;
-    }
-
     if (result.findings === null) {
       totalCommits += result.commits;
       console.warn(`  #${spec.id}: Critic failed twice. Breaking (non-converged).`);
       status = "failed";
+      break;
+    }
+
+    if (round > 1 && result.commits === 0) {
+      status = "exhausted";
       break;
     }
 
