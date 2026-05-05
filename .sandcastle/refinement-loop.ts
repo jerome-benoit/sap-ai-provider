@@ -68,6 +68,11 @@ export async function runRefinementLoop(
       break;
     }
 
+    if (round > 1 && impl.commits.length === 0) {
+      status = "exhausted";
+      break;
+    }
+
     // Critic
     const nonce = crypto.randomBytes(4).toString("hex");
     const findings = await runCritic(sandbox, spec, round, nonce);
