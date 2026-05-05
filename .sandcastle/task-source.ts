@@ -99,7 +99,13 @@ export class GithubIssueSource implements TaskSource {
       timeoutPromise.catch(() => {
         /* suppress unhandled rejection when planner completes before timeout */
       });
-      const plan = await Promise.race([planPromise, timeoutPromise]);
+      let plan: Awaited<ReturnType<typeof sandcastle.run>>;
+      try {
+        plan = await Promise.race([planPromise, timeoutPromise]);
+      } catch {
+        console.error("Planner timed out or failed. Retrying.");
+        continue;
+      }
 
       const planMatches = [...plan.stdout.matchAll(/<plan>([\s\S]*?)<\/plan>/g)];
       const planMatch = planMatches.at(-1);
@@ -159,7 +165,7 @@ export class GithubIssueSource implements TaskSource {
         { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024, timeout: GIT_TIMEOUT_MS },
       );
       rawIssuesJson = stdout;
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(
         `Failed to fetch issues: ${toErrorMessage(err)}. Ensure gh is installed and authenticated.`,
       );
@@ -169,7 +175,7 @@ export class GithubIssueSource implements TaskSource {
     let rawIssues: z.infer<typeof RawIssuesSchema>;
     try {
       rawIssues = RawIssuesSchema.parse(JSON.parse(rawIssuesJson));
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(
         `Failed to parse issues JSON: ${toErrorMessage(err)}. Unexpected format from gh CLI.`,
       );
@@ -221,7 +227,7 @@ export class GithubIssueSource implements TaskSource {
           };
         })
         .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(`Planner produced invalid JSON: ${toErrorMessage(err)}. Retrying.`);
       return null;
     }
