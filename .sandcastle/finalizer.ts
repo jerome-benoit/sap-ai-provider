@@ -5,15 +5,14 @@ import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./ty
 
 import {
   AGENT_MODEL,
-  execFileAsync,
   GIT_TIMEOUT_MS,
   MAX_STDERR_CHARS,
   PUSH_TIMEOUT_MS,
-  toErrorMessage,
   VALIDATION_COMMAND,
   VALIDATION_TIMEOUT_MS,
 } from "./constants.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
+import { execFileAsync, toErrorMessage } from "./utils.js";
 
 /**
  * Finalizes a task after the refinement loop: validates, retries if needed, rebases, pushes, and creates a PR.

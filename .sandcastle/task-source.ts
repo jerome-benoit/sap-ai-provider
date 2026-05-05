@@ -5,13 +5,12 @@ import { z } from "zod";
 import type { TaskSpec } from "./types.js";
 
 import {
-  execFileAsync,
   GIT_TIMEOUT_MS,
   MAX_TITLE_LENGTH,
   PLANNER_MODEL,
   TASK_TIMEOUT_MS,
-  toErrorMessage,
 } from "./constants.js";
+import { execFileAsync, toErrorMessage } from "./utils.js";
 
 const RawIssueSchema = z.object({
   body: z

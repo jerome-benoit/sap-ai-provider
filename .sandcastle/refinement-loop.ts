@@ -8,12 +8,12 @@ import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from 
 import {
   AGENT_MODEL,
   CONTEXT_HASH_RADIUS,
-  execFileAsync,
   HASH_PREFIX_LENGTH,
   VALIDATION_COMMAND,
   VALIDATION_TIMEOUT_MS,
 } from "./constants.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS, parseFindingsSafe } from "./types.js";
+import { execFileAsync } from "./utils.js";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
