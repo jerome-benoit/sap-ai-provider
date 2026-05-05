@@ -40,10 +40,11 @@ jobs:
 
       - name: Create sandbox env
         run: |
-          printf 'GITHUB_TOKEN=%s\n' "$GITHUB_TOKEN" > .sandcastle/.env
+          printf 'GH_TOKEN=%s\n' "$GH_TOKEN" > .sandcastle/.env
+          printf 'GITHUB_TOKEN=%s\n' "$GITHUB_TOKEN" >> .sandcastle/.env
           printf 'OPENCODE_AUTH_CONTENT=%s\n' "$OPENCODE_AUTH_CONTENT" >> .sandcastle/.env
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
 
       - run: npm run sandcastle
