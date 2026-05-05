@@ -1,12 +1,12 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
-import { readFileSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { join, sep } from "node:path";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
-import { FindingsSchema, ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
+import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS, parseFindingsSafe } from "./types.js";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
@@ -105,7 +105,6 @@ export async function runRefinementLoop(
     opts?.onRoundComplete?.(round, result.findings);
 
     if (newFindings.length === 0) {
-      const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
       if (nonLowFindings.length > 0) {
         lastFindings = nonLowFindings;
       }
@@ -137,7 +136,7 @@ function checkQualityRatchet(
   beforeSha: string,
   cwd: string,
 ): boolean {
-  if (round <= 1 || findingsCount <= previousCount) {
+  if (round <= 2 || findingsCount <= previousCount) {
     return false;
   }
 
@@ -170,11 +169,12 @@ function checkQualityRatchet(
  * @returns Array of new, non-LOW-confidence findings.
  */
 function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: string): Finding[] {
+  const fileCache = new Map<string, string>();
   const newFindings = findings.filter(
-    (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f, cwd)),
+    (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f, cwd, fileCache)),
   );
   for (const f of newFindings) {
-    seenKeys.add(findingKey(f, cwd));
+    seenKeys.add(findingKey(f, cwd, fileCache));
   }
   return newFindings;
 }
@@ -210,19 +210,26 @@ async function executeRound(
   }
 
   // Implementer
-  const impl = await sandbox.run({
-    agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
-    maxIterations: budget,
-    name: `Implementer #${spec.id} R${String(round)}`,
-    promptArgs: {
-      BRANCH: spec.branch,
-      FINDINGS: findingsArg,
-      ISSUE_BODY: spec.body,
-      ISSUE_TITLE: spec.title,
-      TASK_ID: spec.id,
-    },
-    promptFile: "./.sandcastle/implement-prompt.md",
-  });
+  let impl: Awaited<ReturnType<typeof sandbox.run>>;
+  try {
+    impl = await sandbox.run({
+      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+      maxIterations: budget,
+      name: `Implementer #${spec.id} R${String(round)}`,
+      promptArgs: {
+        BRANCH: spec.branch,
+        FINDINGS: findingsArg,
+        ISSUE_BODY: spec.body,
+        ISSUE_TITLE: spec.title,
+        TASK_ID: spec.id,
+      },
+      promptFile: "./.sandcastle/implement-prompt.md",
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.error(`  #${spec.id} R${String(round)}: Implementer threw: ${msg}`);
+    return { beforeSha, commits: 0, findings: null };
+  }
 
   // Critic
   const nonce = crypto.randomBytes(4).toString("hex");
@@ -235,9 +242,10 @@ async function executeRound(
  * Computes a deduplication key for a finding using a context hash of surrounding lines.
  * @param f - Finding to compute a key for.
  * @param cwd - Working directory (worktree path) for reading file context.
+ * @param fileCache - Optional cache of file contents keyed by resolved path.
  * @returns Composite dedup key.
  */
-function findingKey(f: Finding, cwd: string): string {
+function findingKey(f: Finding, cwd: string, fileCache?: Map<string, string>): string {
   if (!f.file || f.line == null) {
     const normalizedTitle = f.title
       .toLowerCase()
@@ -251,33 +259,56 @@ function findingKey(f: Finding, cwd: string): string {
       .slice(0, 16);
     return `${f.file || "global"}::${f.category}::${titleHash}`;
   }
-  const contextHash = hashContextLines(cwd, f.file, f.line, 3);
+  const contextHash = hashContextLines(cwd, f.file, f.line, 3, fileCache);
   return `${f.file}::${f.category}::${contextHash}`;
 }
 
 /**
- * Hashes the target line content for dedup stability.
+ * Hashes a window of lines around the finding for dedup stability.
  * @param cwd - Working directory.
  * @param file - Relative file path.
  * @param line - Line number of the finding.
- * @param _radius - Unused; kept for call-site compatibility.
+ * @param radius - Number of lines above/below to include in the context window.
+ * @param fileCache - Optional cache of file contents keyed by resolved path.
  * @returns Truncated SHA-256 hex digest.
  */
-function hashContextLines(cwd: string, file: string, line: number, _radius: number): string {
+function hashContextLines(
+  cwd: string,
+  file: string,
+  line: number,
+  radius: number,
+  fileCache?: Map<string, string>,
+): string {
   try {
-    const fullPath = resolve(cwd, file);
-    if (!fullPath.startsWith(resolve(cwd) + sep)) {
+    const fullPath = realpathSync(join(cwd, file));
+    if (!fullPath.startsWith(realpathSync(cwd) + sep)) {
       throw new Error("Path traversal");
     }
-    const raw = readFileSync(fullPath, "utf-8");
+    let raw: string;
+    const cached = fileCache?.get(fullPath);
+    if (cached !== undefined) {
+      raw = cached;
+    } else {
+      raw = readFileSync(fullPath, "utf-8");
+      if (fileCache) fileCache.set(fullPath, raw);
+    }
     const lines = raw.split("\n");
-    const targetLine = lines[Math.max(0, line - 1)] ?? "";
-    const normalized = targetLine.replace(/\s+/g, " ").trim();
-    // Include file path as salt to prevent cross-file hash collisions
-    return crypto.createHash("sha256").update(`${file}:${normalized}`).digest("hex").slice(0, 16);
+    const idx = Math.min(Math.max(0, line - 1), lines.length - 1);
+    const start = Math.max(0, idx - radius);
+    const end = Math.min(lines.length - 1, idx + radius);
+    const window = lines.slice(start, end + 1).join("\n");
+    const normalized = window.replace(/\s+/g, " ").trim();
+    return crypto
+      .createHash("sha256")
+      .update(`${file}:${String(line)}:${normalized}`)
+      .digest("hex")
+      .slice(0, 16);
   } catch {
-    const truncTitle = file.slice(0, 30) + String(line);
-    return crypto.createHash("sha256").update(truncTitle).digest("hex").slice(0, 16);
+    return crypto
+      .createHash("sha256")
+      .update(`${file}:${String(line)}:fallback`)
+      .digest("hex")
+      .slice(0, 16);
   }
 }
 
@@ -288,18 +319,22 @@ function hashContextLines(cwd: string, file: string, line: number, _radius: numb
  * @returns Parsed findings array or null on parse failure.
  */
 function parseFindings(stdout: string, nonce: string): Finding[] | null {
+  if (!/^[0-9a-f]+$/.test(nonce)) return null;
   const tagPattern = new RegExp(`<findings-${nonce}>([\\s\\S]*?)<\\/findings-${nonce}>`, "g");
   const matches = [...stdout.matchAll(tagPattern)];
-  if (matches.length === 0) {
-    return null;
+  if (matches.length === 0) return null;
+  // Find last non-trivial match
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const raw = matches[i]?.[1]?.trim() ?? "";
+    if (raw.length < 2) continue;
+    const cleaned = raw.replace(/^```(?:json)?\s*\n?/g, "").replace(/\n?```\s*$/g, "");
+    try {
+      return parseFindingsSafe(JSON.parse(cleaned));
+    } catch {
+      continue;
+    }
   }
-  const raw = matches.at(-1)?.[1]?.trim() ?? "[]";
-  const cleaned = raw.replace(/^```(?:json)?\s*\n?/g, "").replace(/\n?```\s*$/g, "");
-  try {
-    return FindingsSchema.parse(JSON.parse(cleaned));
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**

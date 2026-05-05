@@ -48,10 +48,27 @@ export type LoopStatus = "converged" | "exhausted" | "failed" | "skipped";
 /** Type alias for a sandcastle sandbox instance. */
 export type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 
+/**
+ * Parses a findings array with partial recovery — invalid entries are discarded.
+ * @param data - Raw parsed JSON value to validate as a findings array.
+ * @returns Array of valid findings (may be empty).
+ */
+export function parseFindingsSafe(data: unknown): Finding[] {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((entry) => FindingSchema.safeParse(entry))
+    .filter((r): r is z.ZodSafeParseSuccess<Finding> => r.success)
+    .map((r) => r.data);
+}
+
 /** Maximum implement↔critic rounds before giving up. */
 export const MAX_CRITIC_ROUNDS = 5;
 
-/** Token budget applied uniformly to every implement round. */
+/**
+ * Flat iteration budget per round (intentionally constant, not decreasing).
+ * Evidence: ARCS (arXiv:2504.20434), SWE-Agent, AutoCodeRover all use flat budgets.
+ * Decreasing schedules penalize harder residual problems in later rounds.
+ */
 export const ITERATION_BUDGET_PER_ROUND = 50;
 
 /** Specification for a task to be implemented. */

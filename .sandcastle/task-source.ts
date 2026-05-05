@@ -211,5 +211,9 @@ export class GithubIssueSource implements TaskSource {
  * @returns Text with plan/findings/promise tags removed.
  */
 function sanitizeForPrompt(text: string): string {
-  return text.replace(/<\/?(?:plan|findings|promise)[^>]*>/gi, "");
+  const normalized = text.normalize("NFKC");
+  return normalized.replace(
+    /<\/?(?:plan|findings|promise|system|code|instructions|implement|review|tool_call)[^>]*>/gi,
+    "",
+  );
 }

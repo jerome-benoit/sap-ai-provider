@@ -11,6 +11,7 @@ const BRANCH_PREFIX = "agent/issue";
 const ISSUE_LABEL = "sandcastle";
 const MAX_PARALLEL = 3;
 const DOCKER_IMAGE = "sandcastle-sap-ai";
+const TASK_TIMEOUT_MS = 15 * 60 * 1000;
 
 const source = new GithubIssueSource({
   branchPrefix: BRANCH_PREFIX,
@@ -27,30 +28,39 @@ if (tasks.length === 0) {
 
   const settled = await Promise.allSettled(
     tasks.map((spec) =>
-      pool.run(async () => {
-        await using sandbox = await sandcastle.createSandbox({
-          branch: spec.branch,
-          copyToWorktree: ["node_modules"],
-          hooks: {
-            sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
-          },
-          sandbox: docker({ imageName: DOCKER_IMAGE }),
-        });
+      pool.run(() =>
+        Promise.race([
+          (async () => {
+            await using sandbox = await sandcastle.createSandbox({
+              branch: spec.branch,
+              copyToWorktree: ["node_modules"],
+              hooks: {
+                sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
+              },
+              sandbox: docker({ imageName: DOCKER_IMAGE }),
+            });
 
-        const loopResult = await runRefinementLoop(spec, sandbox, {
-          iterationBudget: ITERATION_BUDGET_PER_ROUND,
-          maxRounds: MAX_CRITIC_ROUNDS,
-        });
+            const loopResult = await runRefinementLoop(spec, sandbox, {
+              iterationBudget: ITERATION_BUDGET_PER_ROUND,
+              maxRounds: MAX_CRITIC_ROUNDS,
+            });
 
-        let prCreated = false;
-        if (loopResult.totalCommits > 0) {
-          const cwd = sandbox.worktreePath;
-          const result = await finalizeTask(spec, loopResult, sandbox, cwd);
-          prCreated = result.prCreated;
-        }
+            let prCreated = false;
+            if (loopResult.totalCommits > 0) {
+              const cwd = sandbox.worktreePath;
+              const result = await finalizeTask(spec, loopResult, sandbox, cwd);
+              prCreated = result.prCreated;
+            }
 
-        return { prCreated, spec };
-      }),
+            return { prCreated, spec };
+          })(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`Task #${spec.id} timed out after ${String(TASK_TIMEOUT_MS)}ms`));
+            }, TASK_TIMEOUT_MS);
+          }),
+        ]),
+      ),
     ),
   );
 

@@ -14,11 +14,11 @@ export class ConcurrencyPool {
   private tail: null | QueueNode = null;
 
   /**
-   * @param max - Maximum number of concurrent tasks. Must be >= 1.
+   * @param max - Maximum number of concurrent tasks. Must be a positive integer >= 1.
    */
   constructor(private readonly max: number) {
-    if (max < 1) {
-      throw new RangeError("ConcurrencyPool max must be >= 1");
+    if (!Number.isInteger(max) || max < 1) {
+      throw new RangeError("ConcurrencyPool max must be a positive integer >= 1");
     }
   }
 
@@ -26,6 +26,7 @@ export class ConcurrencyPool {
    * Executes the given async function, waiting if the pool is at capacity.
    * @param fn - Async function to execute within the pool.
    * @returns The result of the function.
+   * @remarks Re-entrant calls using the same pool instance may deadlock when all slots are occupied.
    */
   async run<T>(fn: () => Promise<T>): Promise<T> {
     await this.acquire();

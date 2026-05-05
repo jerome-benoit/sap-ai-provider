@@ -1,5 +1,6 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
@@ -79,7 +80,10 @@ export async function finalizeTask(
   }
 
   // Push
-  pushBranch(cwd, spec, rebaseSucceeded);
+  const pushSucceeded = pushBranch(cwd, spec, rebaseSucceeded);
+  if (!pushSucceeded) {
+    console.warn(`  #${spec.id}: Push did not succeed; PR may reference unpushed commits.`);
+  }
 
   // Build PR arguments and create PR
   const { isDraft, prArgs } = buildPrArgs(spec, loopResult, validationPassed, rebaseSucceeded);
@@ -195,32 +199,39 @@ function extractStderr(err: unknown): string {
  * @param cwd - Working directory (worktree path).
  * @param spec - The task specification.
  * @param rebaseSucceeded - Whether the preceding rebase completed successfully.
+ * @returns `true` if the primary push succeeded, `false` otherwise.
  */
-function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): void {
+function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): boolean {
   if (rebaseSucceeded) {
     try {
       execFileSync("git", ["push", "--force-with-lease"], { cwd, stdio: "pipe" });
+      return true;
     } catch (pushErr: unknown) {
       const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
       try {
-        execFileSync(
-          "git",
-          ["push", "origin", `HEAD:refs/heads/rescue/${spec.branch}-${String(Date.now())}`],
-          { cwd, stdio: "pipe" },
+        const suffix = crypto.randomBytes(4).toString("hex");
+        execFileSync("git", ["push", "origin", `HEAD:refs/heads/rescue/${spec.branch}-${suffix}`], {
+          cwd,
+          stdio: "pipe",
+        });
+        console.warn(
+          `  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-${suffix}`,
         );
-        console.warn(`  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-...`);
       } catch {
         console.error(
           `  #${spec.id}: Push failed and rescue failed. Commits will be lost on sandbox disposal: ${pushMsg}`,
         );
       }
+      return false;
     }
   } else {
     try {
       execFileSync("git", ["push"], { cwd, stdio: "pipe" });
+      return true;
     } catch (pushErr: unknown) {
       const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
       console.warn(`  #${spec.id}: git push failed after rebase abort: ${pushMsg}`);
+      return false;
     }
   }
 }
