@@ -457,8 +457,9 @@ for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
           );
 
           if (newFindings.length === 0) {
-            if (findings.length > 0) {
-              lastFindings = findings;
+            const nonLowFindings = findings.filter((f) => f.confidence !== "LOW");
+            if (nonLowFindings.length > 0) {
+              lastFindings = nonLowFindings;
               converged = false;
             } else {
               converged = true;
