@@ -1,14 +1,15 @@
 import * as sandcastle from "@ai-hero/sandcastle";
+import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
-import { FindingsSchema, ITERATION_BUDGET, MAX_CRITIC_ROUNDS } from "./types.js";
+import { FindingsSchema, ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
-  /** Budget of iterations per round (array indexed by round - 1). */
-  iterationBudget?: readonly number[];
+  /** Budget of iterations per round (flat constant applied to every round). */
+  iterationBudget?: number;
   /** Maximum number of implement↔critic rounds. */
   maxRounds?: number;
   /** Optional callback invoked after each round completes. */
@@ -28,22 +29,34 @@ export async function runRefinementLoop(
   opts?: RefinementLoopOptions,
 ): Promise<LoopResult> {
   const maxRounds = opts?.maxRounds ?? MAX_CRITIC_ROUNDS;
-  const iterationBudget = opts?.iterationBudget ?? ITERATION_BUDGET;
+  const budget = opts?.iterationBudget ?? ITERATION_BUDGET_PER_ROUND;
 
   const seenKeys = new Set<string>();
   let lastFindings: Finding[] = [];
   let status: LoopStatus = "exhausted";
   let totalCommits = 0;
   let roundsCompleted = 0;
+  let previousFindingsCount = Infinity;
 
   for (let round = 1; round <= maxRounds; round++) {
     roundsCompleted = round;
-    const budget = iterationBudget[round - 1] ?? 10;
     const findingsArg = lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "";
 
     console.log(
       `  #${spec.id} round ${String(round)}/${String(maxRounds)} (budget: ${String(budget)})`,
     );
+
+    // Capture SHA before implementer runs (for quality ratchet rollback)
+    let beforeRoundSha = "";
+    try {
+      beforeRoundSha = execSync("git rev-parse HEAD", {
+        cwd: sandbox.worktreePath,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
+    } catch {
+      /* empty */
+    }
 
     // Implementer
     const impl = await sandbox.run({
@@ -83,17 +96,36 @@ export async function runRefinementLoop(
       break;
     }
 
-    // Dedup
+    // Dedup via context hash
+    const cwd = sandbox.worktreePath;
     const newFindings = findings.filter(
-      (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f)),
+      (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f, cwd)),
     );
     for (const f of newFindings) {
-      seenKeys.add(findingKey(f));
+      seenKeys.add(findingKey(f, cwd));
     }
 
     console.log(
       `  #${spec.id}: ${String(findings.length)} findings, ${String(newFindings.length)} new`,
     );
+
+    // Quality ratchet: rollback if findings increased (regression)
+    if (round > 1 && findings.length > previousFindingsCount) {
+      try {
+        execSync(`git reset --hard ${beforeRoundSha}`, {
+          cwd: sandbox.worktreePath,
+          stdio: "pipe",
+        });
+        console.warn(
+          `  #${spec.id} R${String(round)}: Regression detected (${String(previousFindingsCount)} → ${String(findings.length)}). Rolled back.`,
+        );
+      } catch {
+        /* empty */
+      }
+      status = "exhausted";
+      break;
+    }
+    previousFindingsCount = findings.length;
 
     opts?.onRoundComplete?.(round, findings);
 
@@ -115,17 +147,48 @@ export async function runRefinementLoop(
 }
 
 /**
- * Computes a deduplication key for a finding.
+ * Computes a deduplication key for a finding using a context hash of surrounding lines.
  * @param f - Finding to compute a key for.
+ * @param cwd - Working directory (worktree path) for reading file context.
  * @returns Composite dedup key.
  */
-function findingKey(f: Finding): string {
-  const normalizedTitle = f.title
-    .toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return `${f.file}::${f.category}::${normalizedTitle}`;
+function findingKey(f: Finding, cwd: string): string {
+  if (!f.file || f.line == null) {
+    const truncTitle = f.title
+      .toLowerCase()
+      .slice(0, 50)
+      .replace(/[^\w\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return `${f.file || "global"}::${f.category}::${truncTitle}`;
+  }
+  const contextHash = hashContextLines(cwd, f.file, f.line, 3);
+  return `${f.file}::${f.category}::${contextHash}`;
+}
+
+/**
+ * Hashes ±radius lines around the given line in a file for dedup stability.
+ * @param cwd - Working directory.
+ * @param file - Relative file path.
+ * @param line - Line number of the finding.
+ * @param radius - Number of context lines above and below.
+ * @returns Truncated SHA-256 hex digest.
+ */
+function hashContextLines(cwd: string, file: string, line: number, radius: number): string {
+  try {
+    const start = Math.max(1, line - radius);
+    const end = line + radius;
+    const content = execSync(`sed -n '${String(start)},${String(end)}p' "${file}"`, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const normalized = content.replace(/\s+/g, " ").trim();
+    return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+  } catch {
+    const truncTitle = file.slice(0, 30) + String(line);
+    return crypto.createHash("sha256").update(truncTitle).digest("hex").slice(0, 16);
+  }
 }
 
 /**

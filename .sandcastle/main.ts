@@ -5,7 +5,7 @@ import { ConcurrencyPool } from "./concurrency-pool.js";
 import { finalizeTask } from "./finalizer.js";
 import { runRefinementLoop } from "./refinement-loop.js";
 import { GithubIssueSource } from "./task-source.js";
-import { ITERATION_BUDGET, MAX_CRITIC_ROUNDS } from "./types.js";
+import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 
 const BRANCH_PREFIX = "agent/issue";
 const ISSUE_LABEL = "sandcastle";
@@ -39,7 +39,7 @@ const settled = await Promise.allSettled(
       });
 
       const loopResult = await runRefinementLoop(spec, sandbox, {
-        iterationBudget: ITERATION_BUDGET,
+        iterationBudget: ITERATION_BUDGET_PER_ROUND,
         maxRounds: MAX_CRITIC_ROUNDS,
       });
 

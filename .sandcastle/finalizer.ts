@@ -3,7 +3,7 @@ import { execFileSync, execSync } from "node:child_process";
 
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
-import { ITERATION_BUDGET, MAX_CRITIC_ROUNDS } from "./types.js";
+import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 
 const VALIDATION_COMMAND =
   "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2";
@@ -36,7 +36,7 @@ export async function finalizeTask(
   }
 
   if (!validationPassed && loopResult.roundsCompleted < MAX_CRITIC_ROUNDS) {
-    const retryBudget = ITERATION_BUDGET[MAX_CRITIC_ROUNDS - 1] ?? 10;
+    const retryBudget = ITERATION_BUDGET_PER_ROUND;
     console.log(
       `  #${spec.id}: Retrying one more implement round (budget: ${String(retryBudget)})`,
     );
@@ -88,7 +88,14 @@ export async function finalizeTask(
           cwd,
           stdio: "pipe",
         });
-      } catch {
+      } catch (postRebaseErr: unknown) {
+        const postRebaseStderr =
+          postRebaseErr instanceof Error && "stderr" in postRebaseErr
+            ? String((postRebaseErr as { stderr: unknown }).stderr).slice(0, 500)
+            : "";
+        console.warn(
+          `  #${spec.id}: Post-rebase validation failed.${postRebaseStderr ? `\n${postRebaseStderr}` : ""}`,
+        );
         validationPassed = false;
       }
     }
@@ -111,9 +118,17 @@ export async function finalizeTask(
       execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
     } catch (pushErr: unknown) {
       const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
-      console.warn(
-        `  #${spec.id}: git push --force-with-lease failed (branch un-pushed, PR creation will fail gracefully): ${pushMsg}`,
-      );
+      try {
+        execSync(`git push origin HEAD:refs/heads/rescue/${spec.branch}-${String(Date.now())}`, {
+          cwd,
+          stdio: "pipe",
+        });
+        console.warn(`  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-...`);
+      } catch {
+        console.error(
+          `  #${spec.id}: Push failed and rescue failed. Commits will be lost on sandbox disposal: ${pushMsg}`,
+        );
+      }
     }
   }
 
