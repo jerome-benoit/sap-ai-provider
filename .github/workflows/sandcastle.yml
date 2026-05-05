@@ -47,3 +47,5 @@ jobs:
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
 
       - run: npm run sandcastle
+        env:
+          GH_TOKEN: ${{ github.token }}
