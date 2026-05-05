@@ -57,7 +57,7 @@ if (tasks.length === 0) {
           new Promise<never>((_, reject) => {
             setTimeout(() => {
               reject(new Error(`Task #${spec.id} timed out after ${String(TASK_TIMEOUT_MS)}ms`));
-            }, TASK_TIMEOUT_MS);
+            }, TASK_TIMEOUT_MS).unref();
           }),
         ]),
       ),

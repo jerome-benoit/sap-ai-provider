@@ -233,7 +233,14 @@ async function executeRound(
 
   // Critic
   const nonce = crypto.randomBytes(4).toString("hex");
-  const findings = await runCritic(sandbox, spec, round, nonce);
+  let findings: Finding[] | null;
+  try {
+    findings = await runCritic(sandbox, spec, round, nonce);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  #${spec.id} R${String(round)}: Critic threw: ${msg}`);
+    findings = null;
+  }
 
   return { beforeSha, commits: impl.commits.length, findings };
 }
