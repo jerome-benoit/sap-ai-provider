@@ -48,6 +48,12 @@ export type LoopStatus = "converged" | "exhausted" | "failed" | "skipped";
 /** Type alias for a sandcastle sandbox instance. */
 export type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 
+/** Maximum implement↔critic rounds before giving up. */
+export const MAX_CRITIC_ROUNDS = 5;
+
+/** Token budget per round (decreasing). Index = round - 1. */
+export const ITERATION_BUDGET = [100, 50, 25, 10, 10] as const;
+
 /** Specification for a task to be implemented. */
 export interface TaskSpec {
   /** Sanitized issue body text. */

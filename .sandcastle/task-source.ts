@@ -142,7 +142,7 @@ export class GithubIssueSource implements TaskSource {
       body: sanitizeForPrompt(i.body),
       labels: i.labels.map((l) => l.name),
       number: i.number,
-      title: i.title,
+      title: sanitizeForPrompt(i.title),
     }));
   }
 

@@ -3,15 +3,12 @@ import crypto from "node:crypto";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
-import { FindingsSchema } from "./types.js";
-
-const DEFAULT_MAX_ROUNDS = 5;
-const DEFAULT_ITERATION_BUDGET = [100, 50, 25, 10, 10];
+import { FindingsSchema, ITERATION_BUDGET, MAX_CRITIC_ROUNDS } from "./types.js";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
   /** Budget of iterations per round (array indexed by round - 1). */
-  iterationBudget?: number[];
+  iterationBudget?: readonly number[];
   /** Maximum number of implement↔critic rounds. */
   maxRounds?: number;
   /** Optional callback invoked after each round completes. */
@@ -30,8 +27,8 @@ export async function runRefinementLoop(
   sandbox: SandboxInstance,
   opts?: RefinementLoopOptions,
 ): Promise<LoopResult> {
-  const maxRounds = opts?.maxRounds ?? DEFAULT_MAX_ROUNDS;
-  const iterationBudget = opts?.iterationBudget ?? DEFAULT_ITERATION_BUDGET;
+  const maxRounds = opts?.maxRounds ?? MAX_CRITIC_ROUNDS;
+  const iterationBudget = opts?.iterationBudget ?? ITERATION_BUDGET;
 
   const seenKeys = new Set<string>();
   let lastFindings: Finding[] = [];

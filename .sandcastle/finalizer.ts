@@ -3,8 +3,8 @@ import { execFileSync, execSync } from "node:child_process";
 
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
-const MAX_CRITIC_ROUNDS = 5;
-const ITERATION_BUDGET = [100, 50, 25, 10, 10];
+import { ITERATION_BUDGET, MAX_CRITIC_ROUNDS } from "./types.js";
+
 const VALIDATION_COMMAND =
   "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2";
 
@@ -134,7 +134,13 @@ export async function finalizeTask(
       ? "fix"
       : "chore";
   const prTitle = `${commitPrefix}: resolve #${spec.id} — ${spec.title}`;
-  const prBody = `## Description\n\nAutomated fix for #${spec.id}: ${spec.title}\n\n## Type of Change\n\n- [x] Bug fix (non-breaking change that fixes an issue)\n\n## Checklist\n\n${validationCheck} I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${spec.id}${outstandingNote}${validationNote}`;
+  const typeOfChange =
+    commitPrefix === "feat"
+      ? "New feature (non-breaking change that adds functionality)"
+      : commitPrefix === "fix"
+        ? "Bug fix (non-breaking change that fixes an issue)"
+        : "Refactoring (no functional changes)";
+  const prBody = `## Description\n\nAutomated ${commitPrefix} for #${spec.id}: ${spec.title}\n\n## Type of Change\n\n- [x] ${typeOfChange}\n\n## Checklist\n\n${validationCheck} I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${spec.id}${outstandingNote}${validationNote}`;
 
   const prArgs = [
     "pr",

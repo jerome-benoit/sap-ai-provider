@@ -5,13 +5,12 @@ import { ConcurrencyPool } from "./concurrency-pool.js";
 import { finalizeTask } from "./finalizer.js";
 import { runRefinementLoop } from "./refinement-loop.js";
 import { GithubIssueSource } from "./task-source.js";
+import { ITERATION_BUDGET, MAX_CRITIC_ROUNDS } from "./types.js";
 
 const BRANCH_PREFIX = "agent/issue";
 const ISSUE_LABEL = "sandcastle";
 const MAX_PARALLEL = 3;
 const DOCKER_IMAGE = "sandcastle-sap-ai";
-const ITERATION_BUDGET = [100, 50, 25, 10, 10];
-const MAX_CRITIC_ROUNDS = 5;
 
 const source = new GithubIssueSource({
   branchPrefix: BRANCH_PREFIX,
