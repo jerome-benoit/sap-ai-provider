@@ -181,17 +181,18 @@ export class GithubIssueSource implements TaskSource {
         },
       );
 
-      return validated
-        .map((v) => {
-          const source = issuesJson.find((i) => String(i.number) === v.id);
-          if (!source) return null;
-          return {
-            ...v,
-            body: source.body,
-            labels: source.labels,
-          };
-        })
-        .filter((v): v is NonNullable<typeof v> => v !== null);
+    const issueMap = new Map(issuesJson.map((i) => [String(i.number), i]));
+    return validated
+      .map((v) => {
+        const source = issueMap.get(v.id);
+        if (!source) return null;
+        return {
+          ...v,
+          body: source.body,
+          labels: source.labels,
+        };
+      })
+      .filter((v): v is NonNullable<typeof v> => v !== null);
     } catch {
       console.error("Planner produced invalid JSON. Retrying.");
       return null;
@@ -205,5 +206,5 @@ export class GithubIssueSource implements TaskSource {
  * @returns Sanitized text safe for prompt injection.
  */
 function sanitizeForPrompt(text: string): string {
-  return text.replace(/<\/?(?:plan|findings[\w-]*|promise)[^>]*>/gi, "");
+  return text.replace(/<\/?(?:plan|findings|promise)[^>]*>/gi, "");
 }

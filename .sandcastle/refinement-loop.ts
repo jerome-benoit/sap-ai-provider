@@ -1,6 +1,8 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { execSync } from "node:child_process";
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
@@ -73,8 +75,6 @@ export async function runRefinementLoop(
       promptFile: "./.sandcastle/implement-prompt.md",
     });
 
-    totalCommits += impl.commits.length;
-
     if (round === 1 && impl.commits.length === 0) {
       console.warn(`  #${spec.id}: 0 commits on round 1. Skipping.`);
       status = "skipped";
@@ -110,7 +110,8 @@ export async function runRefinementLoop(
     );
 
     // Quality ratchet: rollback if findings increased (regression)
-    if (round > 1 && findings.length > previousFindingsCount) {
+    const nonLowFindings = findings.filter((f) => f.confidence !== "LOW");
+    if (round > 1 && nonLowFindings.length > previousFindingsCount) {
       try {
         execSync(`git reset --hard ${beforeRoundSha}`, {
           cwd: sandbox.worktreePath,
@@ -125,7 +126,8 @@ export async function runRefinementLoop(
       status = "exhausted";
       break;
     }
-    previousFindingsCount = findings.length;
+    totalCommits += impl.commits.length;
+    previousFindingsCount = nonLowFindings.length;
 
     opts?.onRoundComplete?.(round, findings);
 
@@ -154,37 +156,38 @@ export async function runRefinementLoop(
  */
 function findingKey(f: Finding, cwd: string): string {
   if (!f.file || f.line == null) {
-    const truncTitle = f.title
+    const normalizedTitle = f.title
       .toLowerCase()
-      .slice(0, 50)
       .replace(/[^\w\s]/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    return `${f.file || "global"}::${f.category}::${truncTitle}`;
+    const titleHash = crypto.createHash("sha256").update(normalizedTitle).digest("hex").slice(0, 16);
+    return `${f.file || "global"}::${f.category}::${titleHash}`;
   }
   const contextHash = hashContextLines(cwd, f.file, f.line, 3);
   return `${f.file}::${f.category}::${contextHash}`;
 }
 
 /**
- * Hashes ±radius lines around the given line in a file for dedup stability.
+ * Hashes the target line content for dedup stability.
  * @param cwd - Working directory.
  * @param file - Relative file path.
  * @param line - Line number of the finding.
- * @param radius - Number of context lines above and below.
+ * @param _radius - Unused; kept for call-site compatibility.
  * @returns Truncated SHA-256 hex digest.
  */
-function hashContextLines(cwd: string, file: string, line: number, radius: number): string {
+function hashContextLines(cwd: string, file: string, line: number, _radius: number): string {
   try {
-    const start = Math.max(1, line - radius);
-    const end = line + radius;
-    const content = execSync(`sed -n '${String(start)},${String(end)}p' "${file}"`, {
-      cwd,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const normalized = content.replace(/\s+/g, " ").trim();
-    return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+    const fullPath = join(cwd, file);
+    if (!fullPath.startsWith(cwd)) {
+      throw new Error("Path traversal");
+    }
+    const raw = readFileSync(fullPath, "utf-8");
+    const lines = raw.split("\n");
+    const targetLine = lines[Math.max(0, line - 1)] ?? "";
+    const normalized = targetLine.replace(/\s+/g, " ").trim();
+    // Include file path as salt to prevent cross-file hash collisions
+    return crypto.createHash("sha256").update(`${file}:${normalized}`).digest("hex").slice(0, 16);
   } catch {
     const truncTitle = file.slice(0, 30) + String(line);
     return crypto.createHash("sha256").update(truncTitle).digest("hex").slice(0, 16);

@@ -1,8 +1,16 @@
+/** Internal node for the O(1) FIFO waiting queue. Not exported. */
+interface QueueNode {
+  resolve: () => void;
+  next: QueueNode | null;
+}
+
 /**
  * A concurrency limiter that restricts parallel execution to a maximum number of tasks.
+ * Queue operations are O(1) amortized (singly-linked list).
  */
 export class ConcurrencyPool {
-  private readonly queue: (() => void)[] = [];
+  private head: QueueNode | null = null;
+  private tail: QueueNode | null = null;
   private running = 0;
 
   /**
@@ -34,16 +42,27 @@ export class ConcurrencyPool {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
-      this.queue.push(resolve);
+      const node: QueueNode = { resolve, next: null };
+      if (this.tail === null) {
+        this.head = node;
+        this.tail = node;
+      } else {
+        this.tail.next = node;
+        this.tail = node;
+      }
     });
   }
 
   private release(): void {
     this.running--;
-    const next = this.queue.shift();
-    if (next) {
+    const next = this.head;
+    if (next !== null) {
+      this.head = next.next;
+      if (this.head === null) {
+        this.tail = null;
+      }
       this.running++;
-      next();
+      next.resolve();
     }
   }
 }
