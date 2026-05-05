@@ -3,8 +3,8 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 import { ConcurrencyPool } from "./concurrency-pool.js";
 import { DOCKER_MOUNTS, TASK_TIMEOUT_MS } from "./constants.js";
-import { finalizeTask } from "./finalizer.js";
 import { runRefinementLoop } from "./refinement-loop.js";
+import { implementStrategy } from "./strategies.js";
 import { GithubIssueSource } from "./task-source.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 
@@ -62,16 +62,16 @@ if (tasks.length === 0) {
             const loopResult = await runRefinementLoop(spec, sandbox, {
               iterationBudget: ITERATION_BUDGET_PER_ROUND,
               maxRounds: MAX_CRITIC_ROUNDS,
-            });
+            }, implementStrategy);
 
-            let prCreated = false;
+            let workSuccess = false;
             if (loopResult.totalCommits > 0) {
               const cwd = sandbox.worktreePath;
-              const result = await finalizeTask(spec, loopResult, sandbox, cwd);
-              prCreated = result.prCreated;
+              const finalizeResult = await implementStrategy.finalize(spec, loopResult, sandbox, cwd);
+              workSuccess = implementStrategy.isWorkComplete(finalizeResult);
             }
 
-            return { prCreated, spec };
+            return { spec, success: workSuccess };
           })(),
           TASK_TIMEOUT_MS,
           `Task #${spec.id}`,
@@ -81,7 +81,7 @@ if (tasks.length === 0) {
   );
 
   const workCompleted = settled.some(
-    (outcome) => outcome.status === "fulfilled" && outcome.value.prCreated,
+    (outcome) => outcome.status === "fulfilled" && outcome.value.success,
   );
 
   for (const [i, outcome] of settled.entries()) {
