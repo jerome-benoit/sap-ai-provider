@@ -6,10 +6,8 @@ import { join, sep } from "node:path";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
+import { VALIDATION_COMMAND } from "./constants.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS, parseFindingsSafe } from "./types.js";
-
-const VALIDATION_COMMAND =
-  "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
@@ -19,6 +17,53 @@ export interface RefinementLoopOptions {
   maxRounds?: number;
   /** Optional callback invoked after each round completes. */
   onRoundComplete?: (round: number, findings: Finding[]) => void;
+}
+
+/** Result of a convergence check. */
+interface ConvergenceResult {
+  /** Best SHA to restore (empty string = no update). */
+  bestSha: string;
+  /** Updated last findings. */
+  lastFindings: Finding[];
+  /** New loop status. */
+  status: LoopStatus;
+}
+
+/**
+ * Input descriptor for hashing a window of source lines around a finding.
+ */
+interface HashInput {
+  /** Working directory (worktree path) for resolving the file. */
+  readonly cwd: string;
+  /** Relative file path of the finding. */
+  readonly file: string;
+  /** Line number of the finding (1-indexed). */
+  readonly line: number;
+}
+
+/**
+ * Context passed to the quality ratchet check.
+ * Groups the per-round identifiers needed for regression detection and rollback.
+ */
+interface RatchetContext {
+  /** SHA of HEAD before the implementer ran (used for rollback). */
+  readonly beforeSha: string;
+  /** Working directory for git operations. */
+  readonly cwd: string;
+  /** Current round number (1-indexed). */
+  readonly round: number;
+  /** The task specification. */
+  readonly spec: TaskSpec;
+}
+
+/** Resolved loop options with defaults applied. */
+interface ResolvedLoopOptions {
+  /** Iteration budget per round. */
+  budget: number;
+  /** Maximum number of rounds. */
+  maxRounds: number;
+  /** Optional round-complete callback (no-op if not provided). */
+  onRoundComplete: (round: number, findings: Finding[]) => void;
 }
 
 /** Result of a single implement↔critic round. */
@@ -43,8 +88,7 @@ export async function runRefinementLoop(
   sandbox: SandboxInstance,
   opts?: RefinementLoopOptions,
 ): Promise<LoopResult> {
-  const maxRounds = opts?.maxRounds ?? MAX_CRITIC_ROUNDS;
-  const budget = opts?.iterationBudget ?? ITERATION_BUDGET_PER_ROUND;
+  const { budget, maxRounds, onRoundComplete } = resolveLoopOptions(opts);
 
   const seenKeys = new Set<string>();
   let lastFindings: Finding[] = [];
@@ -64,153 +108,162 @@ export async function runRefinementLoop(
 
     const result = await executeRound(spec, sandbox, round, budget, lastFindings);
 
-    if (round === 1 && result.commits === 0) {
-      console.warn(`  #${spec.id}: 0 commits on round 1. Skipping.`);
-      status = "skipped";
+    const earlyExit = checkEarlyExit(spec, round, result, totalCommits);
+    if (earlyExit !== null) {
+      totalCommits = earlyExit.totalCommits;
+      status = earlyExit.status;
       break;
     }
 
-    if (result.findings === null) {
+    if (result.findings === null) break;
+    const findings: Finding[] = result.findings;
+
+    if (result.commits > 0 && runMidLoopValidation(sandbox.worktreePath)) {
       totalCommits += result.commits;
-      console.warn(`  #${spec.id}: Critic failed twice. Breaking (non-converged).`);
-      status = "failed";
+      status = "converged";
       break;
     }
 
-    if (round > 1 && result.commits === 0) {
-      status = "exhausted";
-      break;
-    }
-
-    // Fix 1: Validation in-loop (ARCS pattern) — deterministic convergence signal
-    if (result.commits > 0) {
-      try {
-        execFileSync("sh", ["-c", VALIDATION_COMMAND], {
-          cwd: sandbox.worktreePath,
-          stdio: "pipe",
-          timeout: 120_000,
-        });
-        // Validation passed mid-loop — deterministic convergence
-        totalCommits += result.commits;
-        status = "converged";
-        break;
-      } catch {
-        // Validation failed — continue to critic for feedback
-      }
-    }
-
-    // Dedup via context hash
     const cwd = sandbox.worktreePath;
-    const newFindings = deduplicateFindings(result.findings, seenKeys, cwd);
+    const newFindings = deduplicateFindings(findings, seenKeys, cwd);
 
     console.log(
-      `  #${spec.id}: ${String(result.findings.length)} findings, ${String(newFindings.length)} new`,
+      `  #${spec.id}: ${String(findings.length)} findings, ${String(newFindings.length)} new`,
     );
 
-    // Quality ratchet: rollback if findings increased (regression)
-    const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
+    const nonLowFindings = findings.filter((f) => f.confidence !== "LOW");
     if (
       checkQualityRatchet(
-        spec,
-        round,
+        { beforeSha: result.beforeSha, cwd, round, spec },
         nonLowFindings.length,
         previousFindingsCount,
-        result.beforeSha,
-        cwd,
       )
     ) {
       status = "exhausted";
       break;
     }
 
-    // Best-state checkpoint (SWE-Agent pattern) — after ratchet passes
     if (newFindings.length < bestFindingsCount) {
       bestFindingsCount = newFindings.length;
-      try {
-        bestSha = execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: sandbox.worktreePath,
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-        }).trim();
-      } catch {
-        /* empty */
-      }
+      bestSha = captureHeadSha(cwd);
     }
 
     totalCommits += result.commits;
     previousFindingsCount = nonLowFindings.length;
+    onRoundComplete(round, findings);
 
-    opts?.onRoundComplete?.(round, result.findings);
-
-    if (newFindings.length === 0) {
-      // Severity-weighted convergence (OpenHands pattern):
-      // Don't converge if CRITICAL/HIGH findings persist, even if already seen
-      const criticalPersistent = result.findings.filter(
-        (f) => (f.severity === "CRITICAL" || f.severity === "HIGH") && f.confidence !== "LOW",
-      );
-      if (criticalPersistent.length > 0) {
-        lastFindings = criticalPersistent;
-        status = "exhausted";
-        // Capture current HEAD so post-loop reset is a no-op (code matches findings)
-        try {
-          bestSha = execFileSync("git", ["rev-parse", "HEAD"], {
-            cwd: sandbox.worktreePath,
-            encoding: "utf-8",
-            stdio: ["pipe", "pipe", "pipe"],
-          }).trim();
-        } catch {
-          /* empty */
-        }
-        break;
-      }
-      if (nonLowFindings.length > 0) {
-        lastFindings = nonLowFindings;
-      }
-      status = "converged";
+    const convergenceResult = checkConvergence(cwd, findings, newFindings, nonLowFindings);
+    if (convergenceResult !== null) {
+      lastFindings = convergenceResult.lastFindings;
+      status = convergenceResult.status;
+      bestSha = convergenceResult.bestSha;
       break;
     }
 
     lastFindings = newFindings;
   }
 
-  // Best-state reset: if not converged, restore best intermediate state
-  if (status !== "converged" && /^[0-9a-f]{40}$/.test(bestSha)) {
-    try {
-      execFileSync("git", ["reset", "--hard", bestSha], {
-        cwd: sandbox.worktreePath,
-        stdio: "pipe",
-      });
-      const commitCount = execFileSync("git", ["rev-list", "--count", "main..HEAD"], {
-        cwd: sandbox.worktreePath,
-        encoding: "utf-8",
-      }).trim();
-      totalCommits = parseInt(commitCount, 10) || 0;
-    } catch {
-      /* empty */
-    }
+  if (shouldResetToBest(status, bestSha)) {
+    totalCommits = resetToBestState(sandbox.worktreePath, bestSha, totalCommits);
   }
 
   return { lastFindings, roundsCompleted, status, totalCommits };
 }
 
 /**
- * Checks whether findings regressed compared to the previous round and rolls back if so.
+ * Captures the current HEAD SHA, returning empty string on failure.
+ * @param cwd - Working directory for git operations.
+ * @returns The HEAD SHA or empty string.
+ */
+function captureHeadSha(cwd: string): string {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Checks whether the current round converged (no new findings).
+ * @param cwd - Working directory for git operations.
+ * @param allFindings - All findings from the critic.
+ * @param newFindings - Deduplicated new findings.
+ * @param nonLowFindings - Non-LOW-confidence findings.
+ * @returns A ConvergenceResult if the loop should break, or null to continue.
+ */
+function checkConvergence(
+  cwd: string,
+  allFindings: Finding[],
+  newFindings: Finding[],
+  nonLowFindings: Finding[],
+): ConvergenceResult | null {
+  if (newFindings.length !== 0) return null;
+
+  // Severity-weighted convergence (OpenHands pattern):
+  // Don't converge if CRITICAL/HIGH findings persist, even if already seen
+  const criticalPersistent = allFindings.filter(
+    (f) => (f.severity === "CRITICAL" || f.severity === "HIGH") && f.confidence !== "LOW",
+  );
+  if (criticalPersistent.length > 0) {
+    // Capture current HEAD so post-loop reset is a no-op (code matches findings)
+    return {
+      bestSha: captureHeadSha(cwd),
+      lastFindings: criticalPersistent,
+      status: "exhausted",
+    };
+  }
+
+  return {
+    bestSha: "",
+    lastFindings: nonLowFindings.length > 0 ? nonLowFindings : [],
+    status: "converged",
+  };
+}
+
+/**
+ * Checks whether the round result warrants an early exit from the loop.
  * @param spec - The task specification.
  * @param round - Current round number.
+ * @param result - The round result.
+ * @param totalCommits - Running total of commits before this round.
+ * @returns An object with updated status and totalCommits if early exit, or null to continue.
+ */
+function checkEarlyExit(
+  spec: TaskSpec,
+  round: number,
+  result: RoundResult,
+  totalCommits: number,
+): null | { status: LoopStatus; totalCommits: number } {
+  if (round === 1 && result.commits === 0) {
+    console.warn(`  #${spec.id}: 0 commits on round 1. Skipping.`);
+    return { status: "skipped", totalCommits };
+  }
+  if (result.findings === null) {
+    console.warn(`  #${spec.id}: Critic failed twice. Breaking (non-converged).`);
+    return { status: "failed", totalCommits: totalCommits + result.commits };
+  }
+  if (round > 1 && result.commits === 0) {
+    return { status: "exhausted", totalCommits };
+  }
+  return null;
+}
+
+/**
+ * @param ctx - Ratchet context containing spec, round, beforeSha, and cwd.
  * @param findingsCount - Number of non-LOW findings this round.
  * @param previousCount - Number of non-LOW findings from the previous round.
- * @param beforeSha - SHA to reset to on regression.
- * @param cwd - Working directory for git operations.
  * @returns True if a regression was detected and rollback performed.
  */
 function checkQualityRatchet(
-  spec: TaskSpec,
-  round: number,
+  ctx: RatchetContext,
   findingsCount: number,
   previousCount: number,
-  beforeSha: string,
-  cwd: string,
 ): boolean {
+  const { beforeSha, cwd, round, spec } = ctx;
   if (round <= 2 || findingsCount <= previousCount) {
     return false;
   }
@@ -237,6 +290,31 @@ function checkQualityRatchet(
 }
 
 /**
+ * Computes a deduplication key for a finding using a context hash of surrounding lines.
+ * @param f - Finding to compute a key for.
+ * @param cwd - Working directory (worktree path) for reading file context.
+ * @param fileCache - Optional cache of file contents keyed by resolved path.
+ * @returns Composite dedup key.
+ */
+function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, string>): string {
+  if (!f.file || f.line == null) {
+    const normalizedTitle = f.title
+      .toLowerCase()
+      .replace(/[^\w\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const titleHash = crypto
+      .createHash("sha256")
+      .update(normalizedTitle)
+      .digest("hex")
+      .slice(0, 16);
+    return `${f.file || "global"}::${f.category}::${titleHash}`;
+  }
+  const contextHash = hashContextLines({ cwd, file: f.file, line: f.line }, 3, fileCache);
+  return `${f.file}::${f.category}::${contextHash}`;
+}
+
+/**
  * Filters findings by confidence and deduplicates against previously seen keys.
  * @param findings - Raw findings from the critic.
  * @param seenKeys - Set of previously seen dedup keys (mutated: new keys are added).
@@ -246,10 +324,10 @@ function checkQualityRatchet(
 function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: string): Finding[] {
   const fileCache = new Map<string, string>();
   const newFindings = findings.filter(
-    (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f, cwd, fileCache)),
+    (f) => f.confidence !== "LOW" && !seenKeys.has(computeFindingKey(f, cwd, fileCache)),
   );
   for (const f of newFindings) {
-    seenKeys.add(findingKey(f, cwd, fileCache));
+    seenKeys.add(computeFindingKey(f, cwd, fileCache));
   }
   return newFindings;
 }
@@ -285,9 +363,9 @@ async function executeRound(
   }
 
   // Implementer
-  let impl: Awaited<ReturnType<typeof sandbox.run>>;
+  let implementerResult: Awaited<ReturnType<typeof sandbox.run>>;
   try {
-    impl = await sandbox.run({
+    implementerResult = await sandbox.run({
       agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
       maxIterations: budget,
       name: `Implementer #${spec.id} R${String(round)}`,
@@ -317,50 +395,22 @@ async function executeRound(
     findings = null;
   }
 
-  return { beforeSha, commits: impl.commits.length, findings };
-}
-
-/**
- * Computes a deduplication key for a finding using a context hash of surrounding lines.
- * @param f - Finding to compute a key for.
- * @param cwd - Working directory (worktree path) for reading file context.
- * @param fileCache - Optional cache of file contents keyed by resolved path.
- * @returns Composite dedup key.
- */
-function findingKey(f: Finding, cwd: string, fileCache?: Map<string, string>): string {
-  if (!f.file || f.line == null) {
-    const normalizedTitle = f.title
-      .toLowerCase()
-      .replace(/[^\w\s]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const titleHash = crypto
-      .createHash("sha256")
-      .update(normalizedTitle)
-      .digest("hex")
-      .slice(0, 16);
-    return `${f.file || "global"}::${f.category}::${titleHash}`;
-  }
-  const contextHash = hashContextLines(cwd, f.file, f.line, 3, fileCache);
-  return `${f.file}::${f.category}::${contextHash}`;
+  return { beforeSha, commits: implementerResult.commits.length, findings };
 }
 
 /**
  * Hashes a window of lines around the finding for dedup stability.
- * @param cwd - Working directory.
- * @param file - Relative file path.
- * @param line - Line number of the finding.
+ * @param input - Hash input containing cwd, file, and line.
  * @param radius - Number of lines above/below to include in the context window.
  * @param fileCache - Optional cache of file contents keyed by resolved path.
  * @returns Truncated SHA-256 hex digest.
  */
 function hashContextLines(
-  cwd: string,
-  file: string,
-  line: number,
+  input: HashInput,
   radius: number,
   fileCache?: Map<string, string>,
 ): string {
+  const { cwd, file, line } = input;
   try {
     const fullPath = realpathSync(join(cwd, file));
     if (!fullPath.startsWith(realpathSync(cwd) + sep)) {
@@ -420,6 +470,42 @@ function parseFindings(stdout: string, nonce: string): Finding[] | null {
 }
 
 /**
+ * Resets the worktree to the best intermediate state and recounts commits.
+ * @param cwd - Working directory for git operations.
+ * @param bestSha - The SHA to reset to.
+ * @param currentCommits - Current total commits (fallback if recount fails).
+ * @returns Updated total commit count.
+ */
+function resetToBestState(cwd: string, bestSha: string, currentCommits: number): number {
+  try {
+    execFileSync("git", ["reset", "--hard", bestSha], {
+      cwd,
+      stdio: "pipe",
+    });
+    const commitCount = execFileSync("git", ["rev-list", "--count", "main..HEAD"], {
+      cwd,
+      encoding: "utf-8",
+    }).trim();
+    return parseInt(commitCount, 10) || 0;
+  } catch {
+    return currentCommits;
+  }
+}
+
+/**
+ * Resolves loop options, applying defaults for missing values.
+ * @param opts - Optional loop options.
+ * @returns Resolved options with all fields populated.
+ */
+function resolveLoopOptions(opts: RefinementLoopOptions | undefined): ResolvedLoopOptions {
+  return {
+    budget: opts?.iterationBudget ?? ITERATION_BUDGET_PER_ROUND,
+    maxRounds: opts?.maxRounds ?? MAX_CRITIC_ROUNDS,
+    onRoundComplete: opts?.onRoundComplete ?? (() => undefined),
+  };
+}
+
+/**
  * Runs the critic agent, retrying once on parse failure.
  * @param sandbox - The sandcastle sandbox instance.
  * @param spec - The task specification.
@@ -462,4 +548,32 @@ async function runCritic(
   }
 
   return findings;
+}
+
+/**
+ * Runs the mid-loop validation command (ARCS pattern).
+ * @param cwd - Working directory for the validation command.
+ * @returns True if validation passed (deterministic convergence), false otherwise.
+ */
+function runMidLoopValidation(cwd: string): boolean {
+  try {
+    execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+      cwd,
+      stdio: "pipe",
+      timeout: 120_000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true if the best-state reset should be applied after the loop.
+ * @param status - Final loop status.
+ * @param bestSha - Best intermediate SHA (empty string if none captured).
+ * @returns True if reset should be applied.
+ */
+function shouldResetToBest(status: LoopStatus, bestSha: string): boolean {
+  return status !== "converged" && /^[0-9a-f]{40}$/.test(bestSha);
 }

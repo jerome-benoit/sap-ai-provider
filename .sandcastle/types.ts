@@ -2,6 +2,16 @@ import type * as sandcastle from "@ai-hero/sandcastle";
 
 import { z } from "zod";
 
+/** Result of post-loop finalization. */
+export interface FinalizeResult {
+  /** Whether the PR was marked as draft. */
+  isDraft: boolean;
+  /** Whether a PR was successfully created. */
+  prCreated: boolean;
+  /** Whether validation passed. */
+  validationPassed: boolean;
+}
+
 /** Zod schema for a single critic finding. */
 export const FindingSchema = z.object({
   category: z.enum(["security", "logic", "performance", "architecture", "style"]),
@@ -13,19 +23,6 @@ export const FindingSchema = z.object({
   suggestion: z.string().optional(),
   title: z.string(),
 });
-
-/** Zod schema for an array of critic findings. */
-export const FindingsSchema = z.array(FindingSchema);
-
-/** Result of post-loop finalization. */
-export interface FinalizeResult {
-  /** Whether the PR was marked as draft. */
-  isDraft: boolean;
-  /** Whether a PR was successfully created. */
-  prCreated: boolean;
-  /** Whether validation passed. */
-  validationPassed: boolean;
-}
 
 /** A single critic finding parsed from agent output. */
 export type Finding = z.infer<typeof FindingSchema>;

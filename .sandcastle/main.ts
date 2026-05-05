@@ -2,6 +2,7 @@ import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 import { ConcurrencyPool } from "./concurrency-pool.js";
+import { TASK_TIMEOUT_MS } from "./constants.js";
 import { finalizeTask } from "./finalizer.js";
 import { runRefinementLoop } from "./refinement-loop.js";
 import { GithubIssueSource } from "./task-source.js";
@@ -11,7 +12,25 @@ const BRANCH_PREFIX = "agent/issue";
 const ISSUE_LABEL = "sandcastle";
 const MAX_PARALLEL = 3;
 const DOCKER_IMAGE = "sandcastle-sap-ai";
-const TASK_TIMEOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Races a promise against a timeout, rejecting with a descriptive error if the timeout fires first.
+ * @param promise - The promise to race against the timeout.
+ * @param ms - Timeout duration in milliseconds.
+ * @param label - Human-readable label used in the timeout error message.
+ * @returns The resolved value of the promise if it completes before the timeout.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`${label} timed out after ${String(ms)}ms`));
+    }, ms).unref();
+  });
+  timeoutPromise.catch(() => {
+    /* suppress unhandled rejection when task completes before timeout */
+  });
+  return Promise.race([promise, timeoutPromise]);
+}
 
 const source = new GithubIssueSource({
   branchPrefix: BRANCH_PREFIX,
@@ -29,7 +48,7 @@ if (tasks.length === 0) {
   const settled = await Promise.allSettled(
     tasks.map((spec) =>
       pool.run(() =>
-        Promise.race([
+        withTimeout(
           (async () => {
             await using sandbox = await sandcastle.createSandbox({
               branch: spec.branch,
@@ -54,18 +73,9 @@ if (tasks.length === 0) {
 
             return { prCreated, spec };
           })(),
-          (() => {
-            const p = new Promise<never>((_, reject) => {
-              setTimeout(() => {
-                reject(new Error(`Task #${spec.id} timed out after ${String(TASK_TIMEOUT_MS)}ms`));
-              }, TASK_TIMEOUT_MS).unref();
-            });
-            p.catch(() => {
-              /* suppress unhandled rejection when task completes before timeout */
-            });
-            return p;
-          })(),
-        ]),
+          TASK_TIMEOUT_MS,
+          `Task #${spec.id}`,
+        ),
       ),
     ),
   );

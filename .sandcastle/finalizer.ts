@@ -4,10 +4,16 @@ import crypto from "node:crypto";
 
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
+import {
+  AGENT_MODEL,
+  GIT_TIMEOUT_MS,
+  MAX_STDERR_CHARS,
+  PUSH_TIMEOUT_MS,
+  toErrorMessage,
+  VALIDATION_COMMAND,
+  VALIDATION_TIMEOUT_MS,
+} from "./constants.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
-
-const VALIDATION_COMMAND =
-  "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2";
 
 /**
  * Finalizes a task after the refinement loop: validates, retries if needed, rebases, pushes, and creates a PR.
@@ -34,7 +40,7 @@ export async function finalizeTask(
 
     try {
       await sandbox.run({
-        agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+        agent: sandcastle.opencode(AGENT_MODEL),
         maxIterations: retryBudget,
         name: `Implementer #${spec.id} retry`,
         promptArgs: {
@@ -50,14 +56,18 @@ export async function finalizeTask(
         promptFile: "./.sandcastle/implement-prompt.md",
       });
     } catch (retryErr: unknown) {
-      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      const retryMsg = toErrorMessage(retryErr);
       console.warn(
         `  #${spec.id}: Implementer retry threw: ${retryMsg}. Falling through to PR creation.`,
       );
     }
 
     try {
-      execFileSync("sh", ["-c", VALIDATION_COMMAND], { cwd, stdio: "pipe" });
+      execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+        cwd,
+        stdio: "pipe",
+        timeout: VALIDATION_TIMEOUT_MS,
+      });
       validationPassed = true;
       console.log(`  #${spec.id}: Validation passed after retry round.`);
     } catch {
@@ -66,10 +76,14 @@ export async function finalizeTask(
   }
 
   // Rebase on latest main
-  const rebaseSucceeded = attemptRebase(cwd, spec);
+  const rebaseSucceeded = attemptRebase(cwd);
   if (rebaseSucceeded && validationPassed) {
     try {
-      execFileSync("sh", ["-c", VALIDATION_COMMAND], { cwd, stdio: "pipe" });
+      execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+        cwd,
+        stdio: "pipe",
+        timeout: VALIDATION_TIMEOUT_MS,
+      });
     } catch (postRebaseErr: unknown) {
       const postRebaseStderr = extractStderr(postRebaseErr);
       console.warn(
@@ -94,7 +108,7 @@ export async function finalizeTask(
     console.log(`  #${spec.id}: PR created${isDraft ? " (draft)" : ""}.`);
     prCreated = true;
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = toErrorMessage(err);
     console.error(`  #${spec.id}: PR creation failed: ${msg}`);
   }
 
@@ -105,13 +119,16 @@ export async function finalizeTask(
  * Fetches origin/main and rebases the current branch onto it.
  * On failure, aborts the rebase cleanly.
  * @param cwd - Working directory (worktree path).
- * @param _spec - Task specification (unused, reserved for future logging).
  * @returns `true` if rebase succeeded, `false` otherwise.
  */
-function attemptRebase(cwd: string, _spec: TaskSpec): boolean {
+function attemptRebase(cwd: string): boolean {
   try {
-    execFileSync("git", ["fetch", "origin", "main"], { cwd, stdio: "pipe" });
-    execFileSync("git", ["rebase", "origin/main"], { cwd, stdio: "pipe" });
+    execFileSync("git", ["fetch", "origin", "main"], {
+      cwd,
+      stdio: "pipe",
+      timeout: GIT_TIMEOUT_MS,
+    });
+    execFileSync("git", ["rebase", "origin/main"], { cwd, stdio: "pipe", timeout: GIT_TIMEOUT_MS });
     return true;
   } catch {
     try {
@@ -189,7 +206,7 @@ function buildPrArgs(
  */
 function extractStderr(err: unknown): string {
   return err instanceof Error && "stderr" in err
-    ? String((err as { stderr: unknown }).stderr).slice(0, 500)
+    ? String((err as { stderr: unknown }).stderr).slice(0, MAX_STDERR_CHARS)
     : "";
 }
 
@@ -204,15 +221,20 @@ function extractStderr(err: unknown): string {
 function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): boolean {
   if (rebaseSucceeded) {
     try {
-      execFileSync("git", ["push", "--force-with-lease"], { cwd, stdio: "pipe" });
+      execFileSync("git", ["push", "--force-with-lease"], {
+        cwd,
+        stdio: "pipe",
+        timeout: PUSH_TIMEOUT_MS,
+      });
       return true;
     } catch (pushErr: unknown) {
-      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      const pushMsg = toErrorMessage(pushErr);
       try {
         const suffix = crypto.randomBytes(4).toString("hex");
         execFileSync("git", ["push", "origin", `HEAD:refs/heads/rescue/${spec.branch}-${suffix}`], {
           cwd,
           stdio: "pipe",
+          timeout: PUSH_TIMEOUT_MS,
         });
         console.warn(
           `  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-${suffix}`,
@@ -226,10 +248,10 @@ function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): bool
     }
   } else {
     try {
-      execFileSync("git", ["push"], { cwd, stdio: "pipe" });
+      execFileSync("git", ["push"], { cwd, stdio: "pipe", timeout: PUSH_TIMEOUT_MS });
       return true;
     } catch (pushErr: unknown) {
-      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      const pushMsg = toErrorMessage(pushErr);
       console.warn(`  #${spec.id}: git push failed after rebase abort: ${pushMsg}`);
       return false;
     }
@@ -244,7 +266,11 @@ function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): bool
  */
 function runValidation(cwd: string, spec: TaskSpec): boolean {
   try {
-    execFileSync("sh", ["-c", VALIDATION_COMMAND], { cwd, stdio: "pipe" });
+    execFileSync("sh", ["-c", VALIDATION_COMMAND], {
+      cwd,
+      stdio: "pipe",
+      timeout: VALIDATION_TIMEOUT_MS,
+    });
     return true;
   } catch (err: unknown) {
     const stderr = extractStderr(err);

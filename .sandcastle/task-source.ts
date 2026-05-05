@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import type { TaskSpec } from "./types.js";
 
+import { GIT_TIMEOUT_MS, MAX_TITLE_LENGTH, toErrorMessage } from "./constants.js";
+
 const RawIssueSchema = z.object({
   body: z
     .string()
@@ -137,26 +139,30 @@ export class GithubIssueSource implements TaskSource {
           "--label",
           this.label,
         ],
-        { encoding: "utf-8" },
+        { encoding: "utf-8", timeout: GIT_TIMEOUT_MS },
       );
-    } catch {
-      console.error("Failed to fetch issues. Ensure gh is installed and authenticated.");
+    } catch (err) {
+      console.error(
+        `Failed to fetch issues: ${toErrorMessage(err)}. Ensure gh is installed and authenticated.`,
+      );
       process.exit(1);
     }
 
     let rawIssues: z.infer<typeof RawIssuesSchema>;
     try {
       rawIssues = RawIssuesSchema.parse(JSON.parse(rawIssuesJson));
-    } catch {
-      console.error("Failed to parse issues JSON. Unexpected format from gh CLI.");
+    } catch (err) {
+      console.error(
+        `Failed to parse issues JSON: ${toErrorMessage(err)}. Unexpected format from gh CLI.`,
+      );
       process.exit(1);
     }
 
-    return rawIssues.map((i) => ({
-      body: sanitizeForPrompt(i.body),
-      labels: i.labels.map((l) => l.name),
-      number: i.number,
-      title: sanitizeForPrompt(i.title),
+    return rawIssues.map((issue) => ({
+      body: sanitizeForPrompt(issue.body),
+      labels: issue.labels.map((label) => label.name),
+      number: issue.number,
+      title: sanitizeForPrompt(issue.title),
     }));
   }
 
@@ -178,28 +184,27 @@ export class GithubIssueSource implements TaskSource {
           if (typeof item.branch !== "string" || !this.branchPattern.test(item.branch))
             return false;
           if (typeof item.title !== "string") return false;
-          if (item.title.length > 200) return false;
-          for (let ci = 0; ci < item.title.length; ci++) {
-            if (item.title.charCodeAt(ci) < 0x20) return false;
-          }
+          if (item.title.length > MAX_TITLE_LENGTH) return false;
+          // eslint-disable-next-line no-control-regex
+          if (/[\x00-\x1f]/.test(item.title)) return false;
           return true;
         },
       );
 
-      const issueMap = new Map(issuesJson.map((i) => [String(i.number), i]));
+      const issueMap = new Map(issuesJson.map((issue) => [String(issue.number), issue]));
       return validated
-        .map((v) => {
-          const source = issueMap.get(v.id);
+        .map((entry) => {
+          const source = issueMap.get(entry.id);
           if (!source) return null;
           return {
-            ...v,
+            ...entry,
             body: source.body,
             labels: source.labels,
           };
         })
-        .filter((v): v is NonNullable<typeof v> => v !== null);
-    } catch {
-      console.error("Planner produced invalid JSON. Retrying.");
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    } catch (err) {
+      console.error(`Planner produced invalid JSON: ${toErrorMessage(err)}. Retrying.`);
       return null;
     }
   }
