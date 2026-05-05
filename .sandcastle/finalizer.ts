@@ -140,8 +140,8 @@ function buildPrArgs(
   const converged = loopResult.status === "converged";
   const isDraft = !converged || !validationPassed;
   const outstandingNote =
-    !converged && loopResult.lastFindings.length > 0
-      ? `\n\n⚠️ Outstanding findings:\n${loopResult.lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
+    loopResult.lastFindings.length > 0
+      ? `\n\n${converged ? "ℹ️ Known findings (not addressed):" : "⚠️ Outstanding findings:"}\n${loopResult.lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
       : "";
   const validationNote = !validationPassed
     ? "\n\n⚠️ Validation did not pass. Manual review required."
