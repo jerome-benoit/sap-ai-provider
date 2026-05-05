@@ -1,5 +1,5 @@
 import * as sandcastle from "@ai-hero/sandcastle";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 import type { FinalizeResult, LoopResult, SandboxInstance, TaskSpec } from "./types.js";
 
@@ -22,19 +22,9 @@ export async function finalizeTask(
   sandbox: SandboxInstance,
   cwd: string,
 ): Promise<FinalizeResult> {
-  let validationPassed = false;
+  let validationPassed = runValidation(cwd, spec);
 
-  try {
-    execSync(VALIDATION_COMMAND, { cwd, stdio: "pipe" });
-    validationPassed = true;
-  } catch (err: unknown) {
-    const stderr =
-      err instanceof Error && "stderr" in err
-        ? String((err as { stderr: unknown }).stderr).slice(0, 500)
-        : "";
-    console.warn(`  #${spec.id}: Validation failed.${stderr ? `\n${stderr}` : ""}`);
-  }
-
+  // Retry one more round if validation failed and budget remains
   if (!validationPassed && loopResult.roundsCompleted < MAX_CRITIC_ROUNDS) {
     const retryBudget = ITERATION_BUDGET_PER_ROUND;
     console.log(
@@ -66,7 +56,7 @@ export async function finalizeTask(
     }
 
     try {
-      execSync(VALIDATION_COMMAND, { cwd, stdio: "pipe" });
+      execFileSync("sh", ["-c", VALIDATION_COMMAND], { cwd, stdio: "pipe" });
       validationPassed = true;
       console.log(`  #${spec.id}: Validation passed after retry round.`);
     } catch {
@@ -75,71 +65,80 @@ export async function finalizeTask(
   }
 
   // Rebase on latest main
-  let rebaseSucceeded = false;
-  try {
-    execSync("git fetch origin main && git rebase origin/main", {
-      cwd,
-      stdio: "pipe",
-    });
-    rebaseSucceeded = true;
-    if (validationPassed) {
-      try {
-        execSync(VALIDATION_COMMAND, {
-          cwd,
-          stdio: "pipe",
-        });
-      } catch (postRebaseErr: unknown) {
-        const postRebaseStderr =
-          postRebaseErr instanceof Error && "stderr" in postRebaseErr
-            ? String((postRebaseErr as { stderr: unknown }).stderr).slice(0, 500)
-            : "";
-        console.warn(
-          `  #${spec.id}: Post-rebase validation failed.${postRebaseStderr ? `\n${postRebaseStderr}` : ""}`,
-        );
-        validationPassed = false;
-      }
+  const rebaseSucceeded = attemptRebase(cwd, spec);
+  if (rebaseSucceeded && validationPassed) {
+    try {
+      execFileSync("sh", ["-c", VALIDATION_COMMAND], { cwd, stdio: "pipe" });
+    } catch (postRebaseErr: unknown) {
+      const postRebaseStderr = extractStderr(postRebaseErr);
+      console.warn(
+        `  #${spec.id}: Post-rebase validation failed.${postRebaseStderr ? `\n${postRebaseStderr}` : ""}`,
+      );
+      validationPassed = false;
     }
+  }
+
+  // Push
+  pushBranch(cwd, spec, rebaseSucceeded);
+
+  // Build PR arguments and create PR
+  const { isDraft, prArgs } = buildPrArgs(spec, loopResult, validationPassed);
+
+  let prCreated = false;
+  try {
+    execFileSync("gh", prArgs, { cwd, encoding: "utf-8", stdio: "pipe" });
+    console.log(`  #${spec.id}: PR created${isDraft ? " (draft)" : ""}.`);
+    prCreated = true;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  #${spec.id}: PR creation failed: ${msg}`);
+  }
+
+  return { isDraft, prCreated, validationPassed };
+}
+
+/**
+ * Fetches origin/main and rebases the current branch onto it.
+ * On failure, aborts the rebase cleanly.
+ * @param cwd - Working directory (worktree path).
+ * @param _spec - Task specification (unused, reserved for future logging).
+ * @returns `true` if rebase succeeded, `false` otherwise.
+ */
+function attemptRebase(cwd: string, _spec: TaskSpec): boolean {
+  try {
+    execFileSync("git", ["fetch", "origin", "main"], { cwd, stdio: "pipe" });
+    execFileSync("git", ["rebase", "origin/main"], { cwd, stdio: "pipe" });
+    return true;
   } catch {
     try {
-      execSync("git rebase --abort", { cwd, stdio: "pipe" });
+      execFileSync("git", ["rebase", "--abort"], { cwd, stdio: "pipe" });
     } catch {
       /* empty */
     }
-    try {
-      execSync("git push", { cwd, stdio: "pipe" });
-    } catch (pushErr: unknown) {
-      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
-      console.warn(`  #${spec.id}: git push failed after rebase abort: ${pushMsg}`);
-    }
+    return false;
   }
+}
 
-  if (rebaseSucceeded) {
-    try {
-      execSync("git push --force-with-lease", { cwd, stdio: "pipe" });
-    } catch (pushErr: unknown) {
-      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
-      try {
-        execSync(`git push origin HEAD:refs/heads/rescue/${spec.branch}-${String(Date.now())}`, {
-          cwd,
-          stdio: "pipe",
-        });
-        console.warn(`  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-...`);
-      } catch {
-        console.error(
-          `  #${spec.id}: Push failed and rescue failed. Commits will be lost on sandbox disposal: ${pushMsg}`,
-        );
-      }
-    }
-  }
-
+/**
+ * Builds the PR title, body, and `gh pr create` argument list.
+ * @param spec - The task specification.
+ * @param loopResult - The result from the refinement loop.
+ * @param validationPassed - Whether the validation suite passed.
+ * @returns Object with `isDraft` flag and `prArgs` string array.
+ */
+function buildPrArgs(
+  spec: TaskSpec,
+  loopResult: LoopResult,
+  validationPassed: boolean,
+): { isDraft: boolean; prArgs: string[] } {
   const converged = loopResult.status === "converged";
   const isDraft = !converged || !validationPassed;
   const outstandingNote =
     !converged && loopResult.lastFindings.length > 0
-      ? `\n\n⚠️ Outstanding findings:\n${loopResult.lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
+      ? `\n\n\u26a0\ufe0f Outstanding findings:\n${loopResult.lastFindings.map((f) => `- [${f.severity}] ${f.file}: ${f.title}`).join("\n")}`
       : "";
   const validationNote = !validationPassed
-    ? "\n\n⚠️ Validation did not pass. Manual review required."
+    ? "\n\n\u26a0\ufe0f Validation did not pass. Manual review required."
     : "";
 
   const validationCheck = validationPassed ? "- [x]" : "- [ ]";
@@ -148,7 +147,7 @@ export async function finalizeTask(
     : spec.labels.includes("bug")
       ? "fix"
       : "chore";
-  const prTitle = `${commitPrefix}: resolve #${spec.id} — ${spec.title}`;
+  const prTitle = `${commitPrefix}: resolve #${spec.id} \u2014 ${spec.title}`;
   const typeOfChange =
     commitPrefix === "feat"
       ? "New feature (non-breaking change that adds functionality)"
@@ -171,15 +170,69 @@ export async function finalizeTask(
     prBody,
   ];
 
-  let prCreated = false;
-  try {
-    execFileSync("gh", prArgs, { cwd, encoding: "utf-8", stdio: "pipe" });
-    console.log(`  #${spec.id}: PR created${isDraft ? " (draft)" : ""}.`);
-    prCreated = true;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`  #${spec.id}: PR creation failed: ${msg}`);
-  }
+  return { isDraft, prArgs };
+}
 
-  return { isDraft, prCreated, validationPassed };
+/**
+ * Extracts stderr from a caught error, truncated to 500 chars.
+ * @param err - The caught error value.
+ * @returns Stderr string or empty string if unavailable.
+ */
+function extractStderr(err: unknown): string {
+  return err instanceof Error && "stderr" in err
+    ? String((err as { stderr: unknown }).stderr).slice(0, 500)
+    : "";
+}
+
+/**
+ * Pushes the branch to origin. When rebase succeeded, uses force-with-lease
+ * with a rescue-branch fallback. When rebase was aborted, does a plain push.
+ * @param cwd - Working directory (worktree path).
+ * @param spec - The task specification.
+ * @param rebaseSucceeded - Whether the preceding rebase completed successfully.
+ */
+function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): void {
+  if (rebaseSucceeded) {
+    try {
+      execFileSync("git", ["push", "--force-with-lease"], { cwd, stdio: "pipe" });
+    } catch (pushErr: unknown) {
+      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      try {
+        execFileSync(
+          "git",
+          ["push", "origin", `HEAD:refs/heads/rescue/${spec.branch}-${String(Date.now())}`],
+          { cwd, stdio: "pipe" },
+        );
+        console.warn(`  #${spec.id}: Push failed. Commits preserved at rescue/${spec.branch}-...`);
+      } catch {
+        console.error(
+          `  #${spec.id}: Push failed and rescue failed. Commits will be lost on sandbox disposal: ${pushMsg}`,
+        );
+      }
+    }
+  } else {
+    try {
+      execFileSync("git", ["push"], { cwd, stdio: "pipe" });
+    } catch (pushErr: unknown) {
+      const pushMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      console.warn(`  #${spec.id}: git push failed after rebase abort: ${pushMsg}`);
+    }
+  }
+}
+
+/**
+ * Runs the full validation suite.
+ * @param cwd - Working directory (worktree path).
+ * @param spec - The task specification (used for logging).
+ * @returns `true` if validation passed, `false` otherwise.
+ */
+function runValidation(cwd: string, spec: TaskSpec): boolean {
+  try {
+    execFileSync("sh", ["-c", VALIDATION_COMMAND], { cwd, stdio: "pipe" });
+    return true;
+  } catch (err: unknown) {
+    const stderr = extractStderr(err);
+    console.warn(`  #${spec.id}: Validation failed.${stderr ? `\n${stderr}` : ""}`);
+    return false;
+  }
 }

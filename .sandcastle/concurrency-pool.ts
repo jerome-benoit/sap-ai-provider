@@ -1,7 +1,7 @@
 /** Internal node for the O(1) FIFO waiting queue. Not exported. */
 interface QueueNode {
+  next: null | QueueNode;
   resolve: () => void;
-  next: QueueNode | null;
 }
 
 /**
@@ -9,9 +9,9 @@ interface QueueNode {
  * Queue operations are O(1) amortized (singly-linked list).
  */
 export class ConcurrencyPool {
-  private head: QueueNode | null = null;
-  private tail: QueueNode | null = null;
+  private head: null | QueueNode = null;
   private running = 0;
+  private tail: null | QueueNode = null;
 
   /**
    * @param max - Maximum number of concurrent tasks. Must be >= 1.
@@ -42,7 +42,7 @@ export class ConcurrencyPool {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
-      const node: QueueNode = { resolve, next: null };
+      const node: QueueNode = { next: null, resolve };
       if (this.tail === null) {
         this.head = node;
         this.tail = node;

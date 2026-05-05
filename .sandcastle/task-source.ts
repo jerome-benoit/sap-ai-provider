@@ -177,22 +177,26 @@ export class GithubIssueSource implements TaskSource {
           if (typeof item.branch !== "string" || !this.branchPattern.test(item.branch))
             return false;
           if (typeof item.title !== "string") return false;
+          if (item.title.length > 200) return false;
+          for (let ci = 0; ci < item.title.length; ci++) {
+            if (item.title.charCodeAt(ci) < 0x20) return false;
+          }
           return true;
         },
       );
 
-    const issueMap = new Map(issuesJson.map((i) => [String(i.number), i]));
-    return validated
-      .map((v) => {
-        const source = issueMap.get(v.id);
-        if (!source) return null;
-        return {
-          ...v,
-          body: source.body,
-          labels: source.labels,
-        };
-      })
-      .filter((v): v is NonNullable<typeof v> => v !== null);
+      const issueMap = new Map(issuesJson.map((i) => [String(i.number), i]));
+      return validated
+        .map((v) => {
+          const source = issueMap.get(v.id);
+          if (!source) return null;
+          return {
+            ...v,
+            body: source.body,
+            labels: source.labels,
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null);
     } catch {
       console.error("Planner produced invalid JSON. Retrying.");
       return null;

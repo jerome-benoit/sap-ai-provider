@@ -1,8 +1,8 @@
 import * as sandcastle from "@ai-hero/sandcastle";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { resolve, sep } from "node:path";
 
 import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
 
@@ -16,6 +16,16 @@ export interface RefinementLoopOptions {
   maxRounds?: number;
   /** Optional callback invoked after each round completes. */
   onRoundComplete?: (round: number, findings: Finding[]) => void;
+}
+
+/** Result of a single implement↔critic round. */
+interface RoundResult {
+  /** SHA of HEAD before the implementer ran. */
+  beforeSha: string;
+  /** Number of commits made by the implementer. */
+  commits: number;
+  /** Parsed findings from the critic, or null on critic failure. */
+  findings: Finding[] | null;
 }
 
 /**
@@ -42,55 +52,25 @@ export async function runRefinementLoop(
 
   for (let round = 1; round <= maxRounds; round++) {
     roundsCompleted = round;
-    const findingsArg = lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "";
 
     console.log(
       `  #${spec.id} round ${String(round)}/${String(maxRounds)} (budget: ${String(budget)})`,
     );
 
-    // Capture SHA before implementer runs (for quality ratchet rollback)
-    let beforeRoundSha = "";
-    try {
-      beforeRoundSha = execSync("git rev-parse HEAD", {
-        cwd: sandbox.worktreePath,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim();
-    } catch {
-      /* empty */
-    }
+    const result = await executeRound(spec, sandbox, round, budget, lastFindings);
 
-    // Implementer
-    const impl = await sandbox.run({
-      agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
-      maxIterations: budget,
-      name: `Implementer #${spec.id} R${String(round)}`,
-      promptArgs: {
-        BRANCH: spec.branch,
-        FINDINGS: findingsArg,
-        ISSUE_BODY: spec.body,
-        ISSUE_TITLE: spec.title,
-        TASK_ID: spec.id,
-      },
-      promptFile: "./.sandcastle/implement-prompt.md",
-    });
-
-    if (round === 1 && impl.commits.length === 0) {
+    if (round === 1 && result.commits === 0) {
       console.warn(`  #${spec.id}: 0 commits on round 1. Skipping.`);
       status = "skipped";
       break;
     }
 
-    if (round > 1 && impl.commits.length === 0) {
+    if (round > 1 && result.commits === 0) {
       status = "exhausted";
       break;
     }
 
-    // Critic
-    const nonce = crypto.randomBytes(4).toString("hex");
-    const findings = await runCritic(sandbox, spec, round, nonce);
-
-    if (findings === null) {
+    if (result.findings === null) {
       console.warn(`  #${spec.id}: Critic failed twice. Breaking (non-converged).`);
       status = "failed";
       break;
@@ -98,41 +78,34 @@ export async function runRefinementLoop(
 
     // Dedup via context hash
     const cwd = sandbox.worktreePath;
-    const newFindings = findings.filter(
-      (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f, cwd)),
-    );
-    for (const f of newFindings) {
-      seenKeys.add(findingKey(f, cwd));
-    }
+    const newFindings = deduplicateFindings(result.findings, seenKeys, cwd);
 
     console.log(
-      `  #${spec.id}: ${String(findings.length)} findings, ${String(newFindings.length)} new`,
+      `  #${spec.id}: ${String(result.findings.length)} findings, ${String(newFindings.length)} new`,
     );
 
     // Quality ratchet: rollback if findings increased (regression)
-    const nonLowFindings = findings.filter((f) => f.confidence !== "LOW");
-    if (round > 1 && nonLowFindings.length > previousFindingsCount) {
-      try {
-        execSync(`git reset --hard ${beforeRoundSha}`, {
-          cwd: sandbox.worktreePath,
-          stdio: "pipe",
-        });
-        console.warn(
-          `  #${spec.id} R${String(round)}: Regression detected (${String(previousFindingsCount)} → ${String(findings.length)}). Rolled back.`,
-        );
-      } catch {
-        /* empty */
-      }
+    const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
+    if (
+      checkQualityRatchet(
+        spec,
+        round,
+        nonLowFindings.length,
+        previousFindingsCount,
+        result.beforeSha,
+        cwd,
+      )
+    ) {
       status = "exhausted";
       break;
     }
-    totalCommits += impl.commits.length;
+    totalCommits += result.commits;
     previousFindingsCount = nonLowFindings.length;
 
-    opts?.onRoundComplete?.(round, findings);
+    opts?.onRoundComplete?.(round, result.findings);
 
     if (newFindings.length === 0) {
-      const nonLowFindings = findings.filter((f) => f.confidence !== "LOW");
+      const nonLowFindings = result.findings.filter((f) => f.confidence !== "LOW");
       if (nonLowFindings.length > 0) {
         lastFindings = nonLowFindings;
         status = "exhausted";
@@ -149,6 +122,118 @@ export async function runRefinementLoop(
 }
 
 /**
+ * Checks whether findings regressed compared to the previous round and rolls back if so.
+ * @param spec - The task specification.
+ * @param round - Current round number.
+ * @param findingsCount - Number of non-LOW findings this round.
+ * @param previousCount - Number of non-LOW findings from the previous round.
+ * @param beforeSha - SHA to reset to on regression.
+ * @param cwd - Working directory for git operations.
+ * @returns True if a regression was detected and rollback performed.
+ */
+function checkQualityRatchet(
+  spec: TaskSpec,
+  round: number,
+  findingsCount: number,
+  previousCount: number,
+  beforeSha: string,
+  cwd: string,
+): boolean {
+  if (round <= 1 || findingsCount <= previousCount) {
+    return false;
+  }
+
+  // Validate SHA format before passing to execFileSync
+  if (!/^[0-9a-f]{40}$/.test(beforeSha)) {
+    console.warn(`  #${spec.id}: Invalid SHA for rollback, skipping reset.`);
+    return true;
+  }
+
+  try {
+    execFileSync("git", ["reset", "--hard", beforeSha], {
+      cwd,
+      stdio: "pipe",
+    });
+    console.warn(
+      `  #${spec.id} R${String(round)}: Regression detected (${String(previousCount)} → ${String(findingsCount)}). Rolled back.`,
+    );
+  } catch {
+    console.warn(`  #${spec.id}: Failed to reset to ${beforeSha} after regression.`);
+  }
+
+  return true;
+}
+
+/**
+ * Filters findings by confidence and deduplicates against previously seen keys.
+ * @param findings - Raw findings from the critic.
+ * @param seenKeys - Set of previously seen dedup keys (mutated: new keys are added).
+ * @param cwd - Working directory for context hashing.
+ * @returns Array of new, non-LOW-confidence findings.
+ */
+function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: string): Finding[] {
+  const newFindings = findings.filter(
+    (f) => f.confidence !== "LOW" && !seenKeys.has(findingKey(f, cwd)),
+  );
+  for (const f of newFindings) {
+    seenKeys.add(findingKey(f, cwd));
+  }
+  return newFindings;
+}
+
+/**
+ * Executes a single implement↔critic round.
+ * @param spec - The task specification.
+ * @param sandbox - The sandcastle sandbox instance.
+ * @param round - Current round number (1-indexed).
+ * @param budget - Iteration budget for the implementer.
+ * @param lastFindings - Findings from the previous round to feed to the implementer.
+ * @returns The round result containing commits, findings, and the pre-round SHA.
+ */
+async function executeRound(
+  spec: TaskSpec,
+  sandbox: SandboxInstance,
+  round: number,
+  budget: number,
+  lastFindings: Finding[],
+): Promise<RoundResult> {
+  const findingsArg = lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "";
+
+  // Capture SHA before implementer runs (for quality ratchet rollback)
+  let beforeSha = "";
+  try {
+    beforeSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: sandbox.worktreePath,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    console.warn(`  #${spec.id}: Failed to capture HEAD SHA before round ${String(round)}.`);
+  }
+
+  // Implementer
+  const impl = await sandbox.run({
+    agent: sandcastle.opencode("github-copilot/claude-sonnet-4.6"),
+    maxIterations: budget,
+    name: `Implementer #${spec.id} R${String(round)}`,
+    promptArgs: {
+      BRANCH: spec.branch,
+      FINDINGS: findingsArg,
+      ISSUE_BODY: spec.body,
+      ISSUE_TITLE: spec.title,
+      TASK_ID: spec.id,
+    },
+    promptFile: "./.sandcastle/implement-prompt.md",
+  });
+
+  // Critic
+  const nonce = crypto.randomBytes(4).toString("hex");
+  const findings = await runCritic(sandbox, spec, round, nonce);
+
+  return { beforeSha, commits: impl.commits.length, findings };
+}
+
+/**
  * Computes a deduplication key for a finding using a context hash of surrounding lines.
  * @param f - Finding to compute a key for.
  * @param cwd - Working directory (worktree path) for reading file context.
@@ -161,7 +246,11 @@ function findingKey(f: Finding, cwd: string): string {
       .replace(/[^\w\s]/g, "")
       .replace(/\s+/g, " ")
       .trim();
-    const titleHash = crypto.createHash("sha256").update(normalizedTitle).digest("hex").slice(0, 16);
+    const titleHash = crypto
+      .createHash("sha256")
+      .update(normalizedTitle)
+      .digest("hex")
+      .slice(0, 16);
     return `${f.file || "global"}::${f.category}::${titleHash}`;
   }
   const contextHash = hashContextLines(cwd, f.file, f.line, 3);
@@ -178,8 +267,8 @@ function findingKey(f: Finding, cwd: string): string {
  */
 function hashContextLines(cwd: string, file: string, line: number, _radius: number): string {
   try {
-    const fullPath = join(cwd, file);
-    if (!fullPath.startsWith(cwd)) {
+    const fullPath = resolve(cwd, file);
+    if (!fullPath.startsWith(resolve(cwd) + sep)) {
       throw new Error("Path traversal");
     }
     const raw = readFileSync(fullPath, "utf-8");
