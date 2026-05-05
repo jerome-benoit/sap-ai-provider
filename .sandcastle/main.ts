@@ -48,10 +48,11 @@ type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
  * @param sandbox - The sandcastle sandbox instance.
  * @param cwd - Working directory (worktree path).
  * @param issue - Issue metadata.
- * @param issue.body
- * @param issue.branch
- * @param issue.id
- * @param issue.title
+ * @param issue.body - Sanitized issue body text.
+ * @param issue.branch - Git branch name for this issue.
+ * @param issue.id - GitHub issue number as string.
+ * @param issue.labels - Issue label names.
+ * @param issue.title - Issue title.
  * @param converged - Whether the critic loop converged.
  * @param lastFindings - Outstanding findings from the last round.
  * @param round - The round at which the critic loop ended.
@@ -60,7 +61,7 @@ type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 async function finalizeIssue(
   sandbox: SandboxInstance,
   cwd: string,
-  issue: { body: string; branch: string; id: string; title: string },
+  issue: { body: string; branch: string; id: string; labels: string[]; title: string },
   converged: boolean,
   lastFindings: Finding[],
   round: number,
@@ -73,15 +74,19 @@ async function finalizeIssue(
       { cwd, stdio: "pipe" },
     );
     validationPassed = true;
-  } catch {
-    console.warn(`  #${issue.id}: Validation failed.`);
+  } catch (err: unknown) {
+    const stderr =
+      err instanceof Error && "stderr" in err
+        ? String((err as { stderr: unknown }).stderr).slice(0, 500)
+        : "";
+    console.warn(`  #${issue.id}: Validation failed.${stderr ? `\n${stderr}` : ""}`);
   }
 
   // --- Validation retry round (fix #7) ---
   if (!validationPassed && round < MAX_CRITIC_ROUNDS) {
     const retryBudget = ITERATION_BUDGET[MAX_CRITIC_ROUNDS - 1] ?? 10;
     console.log(
-      `  #${issue.id}: Retrying one more implement→critic round (budget: ${String(retryBudget)})`,
+      `  #${issue.id}: Retrying one more implement round (budget: ${String(retryBudget)})`,
     );
 
     try {
@@ -173,8 +178,14 @@ async function finalizeIssue(
     ? "\n\n⚠️ Validation did not pass. Manual review required."
     : "";
 
-  const prTitle = `fix: resolve #${issue.id} — ${issue.title}`;
-  const prBody = `## Description\n\nAutomated fix for #${issue.id}: ${issue.title}\n\n## Type of Change\n\n- [x] Bug fix (non-breaking change that fixes an issue)\n\n## Checklist\n\n- [x] I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${issue.id}${outstandingNote}${validationNote}`;
+  const validationCheck = validationPassed ? "- [x]" : "- [ ]";
+  const commitPrefix = issue.labels.includes("feature request")
+    ? "feat"
+    : issue.labels.includes("bug")
+      ? "fix"
+      : "chore";
+  const prTitle = `${commitPrefix}: resolve #${issue.id} — ${issue.title}`;
+  const prBody = `## Description\n\nAutomated fix for #${issue.id}: ${issue.title}\n\n## Type of Change\n\n- [x] Bug fix (non-breaking change that fixes an issue)\n\n## Checklist\n\n${validationCheck} I have run validation suite\n- [x] My changes follow the existing code style\n\n## Related Issues\n\nFixes #${issue.id}${outstandingNote}${validationNote}`;
 
   const prArgs = [
     "pr",
@@ -302,7 +313,7 @@ for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
   }
 
   const planContent = planMatch[1] ?? "";
-  let issues: { body: string; branch: string; id: string; title: string }[];
+  let issues: { body: string; branch: string; id: string; labels: string[]; title: string }[];
   try {
     const parsed = JSON.parse(planContent) as { issues: unknown[] };
     if (!Array.isArray(parsed.issues)) {
@@ -323,6 +334,7 @@ for (let attempt = 1; attempt <= MAX_PLANNER_RETRIES; attempt++) {
     issues = validated.map((v) => ({
       ...v,
       body: issuesJson.find((i) => String(i.number) === v.id)?.body ?? "",
+      labels: issuesJson.find((i) => String(i.number) === v.id)?.labels ?? [],
     }));
   } catch {
     console.error("Planner produced invalid JSON. Retrying.");
