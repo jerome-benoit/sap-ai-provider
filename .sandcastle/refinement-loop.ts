@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
 
-import type { Finding, LoopResult, LoopStatus, SandboxInstance, TaskSpec } from "./types.js";
+import type { Finding, LoopResult, LoopStatus, SandboxInstance, StrategyConfig, TaskSpec } from "./types.js";
 
 import {
   AGENT_IDLE_TIMEOUT_S,
@@ -89,12 +89,14 @@ interface RoundResult {
  * @param spec - The task specification.
  * @param sandbox - The sandcastle sandbox instance.
  * @param opts - Optional configuration for rounds, budget, and callbacks.
+ * @param strategy - Optional strategy config for prompt/arg customization.
  * @returns The loop result with status, commits, findings, and rounds completed.
  */
 export async function runRefinementLoop(
   spec: TaskSpec,
   sandbox: SandboxInstance,
   opts?: RefinementLoopOptions,
+  strategy?: StrategyConfig,
 ): Promise<LoopResult> {
   const { budget, maxRounds, onRoundComplete } = resolveLoopOptions(opts);
 
@@ -114,7 +116,7 @@ export async function runRefinementLoop(
       `  #${spec.id} round ${String(round)}/${String(maxRounds)} (budget: ${String(budget)})`,
     );
 
-    const result = await executeRound(spec, sandbox, round, budget, lastFindings);
+    const result = await executeRound(spec, sandbox, round, budget, lastFindings, strategy);
 
     const earlyExit = checkEarlyExit(spec, round, result, totalCommits);
     if (earlyExit !== null) {
@@ -159,6 +161,12 @@ export async function runRefinementLoop(
     totalCommits += result.commits;
     previousFindingsCount = nonLowFindings.length;
     onRoundComplete(round, findings);
+
+    if (strategy?.shouldConverge?.(findings, round, totalCommits)) {
+      lastFindings = findings;
+      status = "converged";
+      break;
+    }
 
     const convergenceResult = await checkConvergence(cwd, findings, newFindings, nonLowFindings);
     if (convergenceResult !== null) {
@@ -345,6 +353,7 @@ function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: st
  * @param round - Current round number (1-indexed).
  * @param budget - Iteration budget for the implementer.
  * @param lastFindings - Findings from the previous round to feed to the implementer.
+ * @param strategy - Optional strategy config for prompt/arg customization.
  * @returns The round result containing commits, findings, and the pre-round SHA.
  */
 async function executeRound(
@@ -353,6 +362,7 @@ async function executeRound(
   round: number,
   budget: number,
   lastFindings: Finding[],
+  strategy?: StrategyConfig,
 ): Promise<RoundResult> {
   const findingsArg = lastFindings.length > 0 ? JSON.stringify(lastFindings, null, 2) : "";
 
@@ -376,14 +386,16 @@ async function executeRound(
       idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: budget,
       name: `Implementer #${spec.id} R${String(round)}`,
-      promptArgs: {
-        BRANCH: spec.branch,
-        FINDINGS: findingsArg,
-        ISSUE_BODY: spec.body,
-        ISSUE_TITLE: spec.title,
-        TASK_ID: spec.id,
-      },
-      promptFile: "./.sandcastle/implement-prompt.md",
+      promptArgs: strategy
+        ? strategy.buildActorArgs(spec, lastFindings)
+        : {
+            BRANCH: spec.branch,
+            FINDINGS: findingsArg,
+            ISSUE_BODY: spec.body,
+            ISSUE_TITLE: spec.title,
+            TASK_ID: spec.id,
+          },
+      promptFile: strategy?.actorPromptFile ?? "./.sandcastle/implement-prompt.md",
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
@@ -395,7 +407,7 @@ async function executeRound(
   const nonce = crypto.randomBytes(4).toString("hex");
   let findings: Finding[] | null;
   try {
-    findings = await runCritic(sandbox, spec, round, nonce);
+    findings = await runCritic(sandbox, spec, round, nonce, strategy);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  #${spec.id} R${String(round)}: Critic threw: ${msg}`);
@@ -516,6 +528,7 @@ function resolveLoopOptions(opts: RefinementLoopOptions | undefined): ResolvedLo
  * @param spec - The task specification.
  * @param round - Current round number.
  * @param nonce - Unique nonce for parsing.
+ * @param strategy - Optional strategy config for prompt/arg customization.
  * @returns Parsed findings or null if both attempts failed.
  */
 async function runCritic(
@@ -523,6 +536,7 @@ async function runCritic(
   spec: TaskSpec,
   round: number,
   nonce: string,
+  strategy?: StrategyConfig,
 ): Promise<Finding[] | null> {
   let critic = await sandbox.run({
     agent: sandcastle.opencode(AGENT_MODEL),
@@ -530,11 +544,13 @@ async function runCritic(
     idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
     maxIterations: 1,
     name: `Critic #${spec.id} R${String(round)}`,
-    promptArgs: {
-      BRANCH: spec.branch,
-      NONCE: nonce,
-    },
-    promptFile: "./.sandcastle/critic-prompt.md",
+    promptArgs: strategy
+      ? strategy.buildCriticArgs(spec, nonce)
+      : {
+          BRANCH: spec.branch,
+          NONCE: nonce,
+        },
+    promptFile: strategy?.criticPromptFile ?? "./.sandcastle/critic-prompt.md",
   });
 
   let findings = parseFindings(critic.stdout, nonce);
@@ -547,11 +563,13 @@ async function runCritic(
       idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: 1,
       name: `Critic #${spec.id} R${String(round)} retry`,
-      promptArgs: {
-        BRANCH: spec.branch,
-        NONCE: nonce,
-      },
-      promptFile: "./.sandcastle/critic-prompt.md",
+      promptArgs: strategy
+        ? strategy.buildCriticArgs(spec, nonce)
+        : {
+            BRANCH: spec.branch,
+            NONCE: nonce,
+          },
+      promptFile: strategy?.criticPromptFile ?? "./.sandcastle/critic-prompt.md",
     });
     findings = parseFindings(critic.stdout, nonce);
   }
