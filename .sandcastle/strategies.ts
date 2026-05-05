@@ -9,7 +9,13 @@ import {
   VALIDATION_COMMAND,
   VALIDATION_TIMEOUT_MS,
 } from "./constants.js";
-import { attemptRebase, buildPrArgs, extractStderr, pushBranch, runValidation } from "./finalizer.js";
+import {
+  attemptRebase,
+  buildPrArgs,
+  extractStderr,
+  pushBranch,
+  runValidation,
+} from "./finalizer.js";
 import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 import { execFileAsync, toErrorMessage } from "./utils.js";
 

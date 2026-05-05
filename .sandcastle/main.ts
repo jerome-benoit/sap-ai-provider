@@ -59,15 +59,25 @@ if (tasks.length === 0) {
               sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
             });
 
-            const loopResult = await runRefinementLoop(spec, sandbox, {
-              iterationBudget: ITERATION_BUDGET_PER_ROUND,
-              maxRounds: MAX_CRITIC_ROUNDS,
-            }, implementStrategy);
+            const loopResult = await runRefinementLoop(
+              spec,
+              sandbox,
+              {
+                iterationBudget: ITERATION_BUDGET_PER_ROUND,
+                maxRounds: MAX_CRITIC_ROUNDS,
+              },
+              implementStrategy,
+            );
 
             let workSuccess = false;
             if (loopResult.totalCommits > 0) {
               const cwd = sandbox.worktreePath;
-              const finalizeResult = await implementStrategy.finalize(spec, loopResult, sandbox, cwd);
+              const finalizeResult = await implementStrategy.finalize(
+                spec,
+                loopResult,
+                sandbox,
+                cwd,
+              );
               workSuccess = implementStrategy.isWorkComplete(finalizeResult);
             }
 

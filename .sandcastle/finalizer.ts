@@ -113,7 +113,11 @@ export function extractStderr(err: unknown): string {
  * @param rebaseSucceeded - Whether the preceding rebase completed successfully.
  * @returns `true` if the primary push succeeded, `false` otherwise.
  */
-export async function pushBranch(cwd: string, spec: TaskSpec, rebaseSucceeded: boolean): Promise<boolean> {
+export async function pushBranch(
+  cwd: string,
+  spec: TaskSpec,
+  rebaseSucceeded: boolean,
+): Promise<boolean> {
   if (rebaseSucceeded) {
     try {
       await execFileAsync("git", ["push", "--force-with-lease", "origin", "HEAD"], {

@@ -3,7 +3,14 @@ import crypto from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
 
-import type { Finding, LoopResult, LoopStatus, SandboxInstance, StrategyConfig, TaskSpec } from "./types.js";
+import type {
+  Finding,
+  LoopResult,
+  LoopStatus,
+  SandboxInstance,
+  StrategyConfig,
+  TaskSpec,
+} from "./types.js";
 
 import {
   AGENT_IDLE_TIMEOUT_S,
