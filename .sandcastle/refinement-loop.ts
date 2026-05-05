@@ -71,6 +71,7 @@ export async function runRefinementLoop(
     }
 
     if (result.findings === null) {
+      totalCommits += result.commits;
       console.warn(`  #${spec.id}: Critic failed twice. Breaking (non-converged).`);
       status = "failed";
       break;
