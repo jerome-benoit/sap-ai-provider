@@ -54,11 +54,17 @@ if (tasks.length === 0) {
 
             return { prCreated, spec };
           })(),
-          new Promise<never>((_, reject) => {
-            setTimeout(() => {
-              reject(new Error(`Task #${spec.id} timed out after ${String(TASK_TIMEOUT_MS)}ms`));
-            }, TASK_TIMEOUT_MS).unref();
-          }),
+          (() => {
+            const p = new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                reject(new Error(`Task #${spec.id} timed out after ${String(TASK_TIMEOUT_MS)}ms`));
+              }, TASK_TIMEOUT_MS).unref();
+            });
+            p.catch(() => {
+              /* suppress unhandled rejection when task completes before timeout */
+            });
+            return p;
+          })(),
         ]),
       ),
     ),
