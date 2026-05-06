@@ -53,9 +53,6 @@ function resolveNpmCachePath(): string | undefined {
 /** Timeout in milliseconds for git operations. */
 export const GIT_TIMEOUT_MS = 30_000;
 
-/** Grace period in milliseconds for timed-out tasks to clean up their sandboxes. */
-export const GRACE_TIMEOUT_MS = 30_000;
-
 /** Number of characters to retain from a SHA for display purposes. */
 export const HASH_PREFIX_LENGTH = 16;
 

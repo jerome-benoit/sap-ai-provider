@@ -35,6 +35,8 @@ export interface RefinementLoopOptions {
   onRoundComplete?: (round: number, findings: Finding[]) => void;
   /** When true, run one extra implementer attempt if post-loop validation fails. */
   postLoopValidationRetry?: boolean;
+  /** Optional abort signal for cooperative cancellation. */
+  signal?: AbortSignal;
 }
 
 /** Result of a convergence check. */
@@ -109,6 +111,7 @@ export async function runRefinementLoop(
   opts?: RefinementLoopOptions,
 ): Promise<LoopResult> {
   const { budget, maxRounds, onRoundComplete } = resolveLoopOptions(opts);
+  const signal = opts?.signal;
 
   const seenKeys = new Set<string>();
   let lastFindings: Finding[] = [];
@@ -121,12 +124,13 @@ export async function runRefinementLoop(
 
   for (let round = 1; round <= maxRounds; round++) {
     roundsCompleted = round;
+    signal?.throwIfAborted();
 
     console.log(
       `  #${spec.id} round ${String(round)}/${String(maxRounds)} (budget: ${String(budget)})`,
     );
 
-    const result = await executeRound(spec, sandbox, round, budget, lastFindings, strategy);
+    const result = await executeRound(spec, sandbox, round, budget, lastFindings, strategy, signal);
 
     const earlyExit = checkEarlyExit(spec, round, result, totalCommits);
     if (earlyExit !== null) {
@@ -138,7 +142,7 @@ export async function runRefinementLoop(
     if (result.findings === null) break;
     const findings: Finding[] = result.findings;
 
-    if (result.commits > 0 && (await runValidation(sandbox.worktreePath, spec))) {
+    if (result.commits > 0 && (await runValidation(sandbox.worktreePath, spec, signal))) {
       totalCommits += result.commits;
       status = "converged";
       break;
@@ -191,7 +195,8 @@ export async function runRefinementLoop(
 
   // Post-loop validation retry (if enabled)
   if (opts?.postLoopValidationRetry && totalCommits > 0 && status !== "converged") {
-    const validationPassed = await runValidation(sandbox.worktreePath, spec);
+    signal?.throwIfAborted();
+    const validationPassed = await runValidation(sandbox.worktreePath, spec, signal);
     if (validationPassed) {
       status = "converged";
     } else if (roundsCompleted < maxRounds) {
@@ -202,10 +207,11 @@ export async function runRefinementLoop(
         budget,
         lastFindings,
         strategy,
+        signal,
       );
       if (result.commits > 0) {
         totalCommits += result.commits;
-        if (await runValidation(sandbox.worktreePath, spec)) {
+        if (await runValidation(sandbox.worktreePath, spec, signal)) {
           status = "converged";
         }
       }
@@ -401,6 +407,7 @@ async function deduplicateFindings(
  * @param budget - Iteration budget for the implementer.
  * @param lastFindings - Findings from the previous round to feed to the implementer.
  * @param strategy - Strategy config for prompt/arg customization.
+ * @param signal - Abort signal for cooperative cancellation.
  * @returns The round result containing commits, findings, and the pre-round SHA.
  */
 async function executeRound(
@@ -410,6 +417,7 @@ async function executeRound(
   budget: number,
   lastFindings: Finding[],
   strategy: LoopStrategy,
+  signal?: AbortSignal,
 ): Promise<RoundResult> {
   // Capture SHA before implementer runs (for quality ratchet rollback)
   let beforeSha = "";
@@ -433,8 +441,10 @@ async function executeRound(
       name: `Implementer #${spec.id} R${String(round)}`,
       promptArgs: strategy.buildActorArgs(spec, lastFindings),
       promptFile: strategy.actorPromptFile,
+      signal,
     });
   } catch (err: unknown) {
+    if (signal?.aborted === true) throw err;
     const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
     console.error(`  #${spec.id} R${String(round)}: Implementer threw: ${msg}`);
     return { beforeSha, commits: 0, findings: null };
@@ -444,8 +454,9 @@ async function executeRound(
   const nonce = crypto.randomBytes(4).toString("hex");
   let findings: Finding[] | null;
   try {
-    findings = await runCritic(sandbox, spec, round, nonce, strategy);
+    findings = await runCritic(sandbox, spec, round, nonce, strategy, signal);
   } catch (err: unknown) {
+    if (signal?.aborted === true) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  #${spec.id} R${String(round)}: Critic threw: ${msg}`);
     findings = null;
@@ -567,6 +578,7 @@ function resolveLoopOptions(opts: RefinementLoopOptions | undefined): ResolvedLo
  * @param round - Current round number.
  * @param nonce - Unique nonce for parsing.
  * @param strategy - Strategy config for prompt/arg customization.
+ * @param signal - Abort signal for cooperative cancellation.
  * @returns Parsed findings or null if both attempts failed.
  */
 async function runCritic(
@@ -575,6 +587,7 @@ async function runCritic(
   round: number,
   nonce: string,
   strategy: LoopStrategy,
+  signal?: AbortSignal,
 ): Promise<Finding[] | null> {
   let critic = await sandbox.run({
     agent: sandcastle.opencode(AGENT_MODEL),
@@ -584,6 +597,7 @@ async function runCritic(
     name: `Critic #${spec.id} R${String(round)}`,
     promptArgs: strategy.buildCriticArgs(spec, nonce),
     promptFile: strategy.criticPromptFile,
+    signal,
   });
 
   let findings = parseFindings(critic.stdout, nonce);
@@ -598,6 +612,7 @@ async function runCritic(
       name: `Critic #${spec.id} R${String(round)} retry`,
       promptArgs: strategy.buildCriticArgs(spec, nonce),
       promptFile: strategy.criticPromptFile,
+      signal,
     });
     findings = parseFindings(critic.stdout, nonce);
   }
