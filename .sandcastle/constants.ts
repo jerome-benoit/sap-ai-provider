@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 /** Idle timeout in seconds for agent runs — prevents stalled agents from consuming task budget. */
 export const AGENT_IDLE_TIMEOUT_S = 300;
@@ -19,18 +19,36 @@ export const CONTEXT_HASH_RADIUS = 3;
 /** Docker image name for the sandbox. */
 export const DOCKER_IMAGE = "sandcastle-sandbox";
 
-/** Docker bind-mounts shared across all sandboxes (warm npm cache for faster installs). */
+/** Docker bind-mounts shared across all sandboxes (warm package cache for faster installs). */
 export const DOCKER_MOUNTS: readonly {
   hostPath: string;
   readonly: boolean;
   sandboxPath: string;
-}[] = [
-  {
-    hostPath: join(homedir(), ".npm"),
-    readonly: true,
-    sandboxPath: "/home/agent/.npm",
-  },
-];
+}[] = resolveDockerMounts();
+
+/**
+ * @returns Mount entries for npm cache, or empty if cache path is unavailable.
+ * @internal
+ */
+function resolveDockerMounts(): { hostPath: string; readonly: boolean; sandboxPath: string }[] {
+  const npmCache = resolveNpmCachePath();
+  if (npmCache && existsSync(npmCache)) {
+    return [{ hostPath: npmCache, readonly: true, sandboxPath: "/home/agent/.npm" }];
+  }
+  return [];
+}
+
+/**
+ * @returns The npm cache directory path, or undefined if npm is unavailable.
+ * @internal
+ */
+function resolveNpmCachePath(): string | undefined {
+  try {
+    return execFileSync("npm", ["config", "get", "cache"], { encoding: "utf-8" }).trim();
+  } catch {
+    return undefined;
+  }
+}
 
 /** Timeout in milliseconds for git operations. */
 export const GIT_TIMEOUT_MS = 30_000;
