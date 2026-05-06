@@ -138,7 +138,7 @@ export async function runRefinementLoop(
     if (result.findings === null) break;
     const findings: Finding[] = result.findings;
 
-    if (result.commits > 0 && (await runValidation(sandbox.worktreePath))) {
+    if (result.commits > 0 && (await runValidation(sandbox.worktreePath, spec))) {
       totalCommits += result.commits;
       status = "converged";
       break;
@@ -191,7 +191,7 @@ export async function runRefinementLoop(
 
   // Post-loop validation retry (if enabled)
   if (opts?.postLoopValidationRetry && totalCommits > 0 && status !== "converged") {
-    const validationPassed = await runValidation(sandbox.worktreePath);
+    const validationPassed = await runValidation(sandbox.worktreePath, spec);
     if (validationPassed) {
       status = "converged";
     } else if (roundsCompleted < maxRounds) {
@@ -205,7 +205,7 @@ export async function runRefinementLoop(
       );
       if (result.commits > 0) {
         totalCommits += result.commits;
-        if (await runValidation(sandbox.worktreePath)) {
+        if (await runValidation(sandbox.worktreePath, spec)) {
           status = "converged";
         }
       }
