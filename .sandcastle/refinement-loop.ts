@@ -195,7 +195,14 @@ export async function runRefinementLoop(
     if (validationPassed) {
       status = "converged";
     } else if (roundsCompleted < maxRounds) {
-      const result = await executeRound(spec, sandbox, roundsCompleted + 1, budget, lastFindings, strategy);
+      const result = await executeRound(
+        spec,
+        sandbox,
+        roundsCompleted + 1,
+        budget,
+        lastFindings,
+        strategy,
+      );
       if (result.commits > 0) {
         totalCommits += result.commits;
         if (await runValidation(sandbox.worktreePath)) {
@@ -332,7 +339,11 @@ async function checkQualityRatchet(
  * @param fileCache - Optional cache of file contents keyed by resolved path.
  * @returns Composite dedup key.
  */
-async function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, string>): Promise<string> {
+async function computeFindingKey(
+  f: Finding,
+  cwd: string,
+  fileCache?: Map<string, string>,
+): Promise<string> {
   if (!f.file || f.line == null) {
     const normalizedTitle = f.title
       .toLowerCase()
@@ -361,14 +372,14 @@ async function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string
  * @param cwd - Working directory for context hashing.
  * @returns Array of new, non-LOW-confidence findings.
  */
-async function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: string): Promise<Finding[]> {
+async function deduplicateFindings(
+  findings: Finding[],
+  seenKeys: Set<string>,
+  cwd: string,
+): Promise<Finding[]> {
   const fileCache = new Map<string, string>();
-  const keys = await Promise.all(
-    findings.map((f) => computeFindingKey(f, cwd, fileCache)),
-  );
-  const newFindings = findings.filter(
-    (f, i) => f.confidence !== "LOW" && !seenKeys.has(keys[i]!),
-  );
+  const keys = await Promise.all(findings.map((f) => computeFindingKey(f, cwd, fileCache)));
+  const newFindings = findings.filter((f, i) => f.confidence !== "LOW" && !seenKeys.has(keys[i]!));
   for (const f of newFindings) {
     const key = keys[findings.indexOf(f)]!;
     seenKeys.add(key);

@@ -1,12 +1,7 @@
 import type { StrategyConfig } from "../../types.js";
 
 import { GIT_TIMEOUT_MS } from "../../constants.js";
-import {
-  attemptRebase,
-  buildPrArgs,
-  pushBranch,
-  runValidation,
-} from "../../finalizer.js";
+import { attemptRebase, buildPrArgs, pushBranch, runValidation } from "../../finalizer.js";
 import { execFileAsync, toErrorMessage } from "../../utils.js";
 
 export const implementStrategy: StrategyConfig = {
@@ -47,7 +42,11 @@ export const implementStrategy: StrategyConfig = {
 
     let prCreated = false;
     try {
-      await execFileAsync("gh", prArgs, { cwd, maxBuffer: 8 * 1024 * 1024, timeout: GIT_TIMEOUT_MS });
+      await execFileAsync("gh", prArgs, {
+        cwd,
+        maxBuffer: 8 * 1024 * 1024,
+        timeout: GIT_TIMEOUT_MS,
+      });
       console.log(`  #${spec.id}: PR created${isDraft ? " (draft)" : ""}.`);
       prCreated = true;
     } catch (err: unknown) {
