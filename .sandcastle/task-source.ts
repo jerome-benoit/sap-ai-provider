@@ -106,11 +106,14 @@ export class GithubIssueSource implements TaskSource {
             ISSUES_JSON: JSON.stringify(actionableIssues, null, 2),
           },
           promptFile: "./.sandcastle/plan-prompt.md",
-          sandbox: docker({ imageName: this.dockerImage, mounts: [...DOCKER_MOUNTS] }),
+          sandbox: docker({
+            imageName: this.dockerImage,
+            mounts: [...DOCKER_MOUNTS],
+          }),
           signal: AbortSignal.timeout(TASK_TIMEOUT_MS),
         });
-      } catch {
-        console.error("Planner timed out or failed. Retrying.");
+      } catch (err: unknown) {
+        console.error(`Planner timed out or failed: ${toErrorMessage(err)}`);
         continue;
       }
 
@@ -169,7 +172,11 @@ export class GithubIssueSource implements TaskSource {
           "--label",
           this.label,
         ],
-        { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024, timeout: GIT_TIMEOUT_MS },
+        {
+          encoding: "utf-8",
+          maxBuffer: 8 * 1024 * 1024,
+          timeout: GIT_TIMEOUT_MS,
+        },
       );
       rawIssuesJson = stdout;
     } catch (err: unknown) {
@@ -211,7 +218,11 @@ export class GithubIssueSource implements TaskSource {
           "--limit",
           String(MAX_PRS_FETCH),
         ],
-        { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024, timeout: GIT_TIMEOUT_MS },
+        {
+          encoding: "utf-8",
+          maxBuffer: 8 * 1024 * 1024,
+          timeout: GIT_TIMEOUT_MS,
+        },
       );
       const prs = z.array(z.object({ headRefName: z.string() })).parse(JSON.parse(stdout));
       const issueNumbers = new Set<number>();
@@ -231,7 +242,12 @@ export class GithubIssueSource implements TaskSource {
 
   private validatePlan(
     planContent: string,
-    issuesJson: { body: string; labels: string[]; number: number; title: string }[],
+    issuesJson: {
+      body: string;
+      labels: string[];
+      number: number;
+      title: string;
+    }[],
   ): null | TaskSpec[] {
     try {
       const PlanSchema = z.object({ issues: z.array(z.unknown()) });
