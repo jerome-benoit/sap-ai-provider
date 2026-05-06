@@ -14,6 +14,21 @@ export const FindingSchema = z.object({
   title: z.string(),
 });
 
+/**
+ * Configuration for post-loop finalization (PR creation, push, etc.).
+ */
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type FinalizationConfig = {
+  /** Finalizes the task after the loop completes. Returns success indicator. */
+  finalize: (
+    spec: TaskSpec,
+    loopResult: LoopResult,
+    sandbox: SandboxInstance,
+  ) => Promise<{ success: boolean }>;
+  /** Determines if the finalization result counts as completed work. */
+  isWorkComplete: (finalizeResult: { success: boolean }) => boolean;
+};
+
 /** A single critic finding parsed from agent output. */
 export type Finding = z.infer<typeof FindingSchema>;
 
@@ -31,9 +46,6 @@ export interface LoopResult {
 
 /** Outcome status of the refinement loop. */
 export type LoopStatus = "converged" | "exhausted" | "failed" | "skipped";
-
-/** Type alias for a sandcastle sandbox instance. */
-export type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 
 /**
  * Configuration for the refinement loop strategy.
@@ -53,23 +65,10 @@ export type LoopStrategy = {
   shouldConverge?: (findings: Finding[], round: number, totalCommits: number) => boolean;
 };
 
-/**
- * Configuration for post-loop finalization (PR creation, push, etc.).
- */
-// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-export type FinalizationConfig = {
-  /** Finalizes the task after the loop completes. Returns success indicator. */
-  finalize: (
-    spec: TaskSpec,
-    loopResult: LoopResult,
-    sandbox: SandboxInstance,
-  ) => Promise<{ success: boolean }>;
-  /** Determines if the finalization result counts as completed work. */
-  isWorkComplete: (finalizeResult: { success: boolean }) => boolean;
-};
+/** Type alias for a sandcastle sandbox instance. */
+export type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 
 /** Combined strategy (backward compat alias). */
-// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
 export type StrategyConfig = FinalizationConfig & LoopStrategy;
 
 /** Specification for a task to be implemented. */

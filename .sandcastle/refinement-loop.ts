@@ -379,10 +379,16 @@ async function deduplicateFindings(
 ): Promise<Finding[]> {
   const fileCache = new Map<string, string>();
   const keys = await Promise.all(findings.map((f) => computeFindingKey(f, cwd, fileCache)));
-  const newFindings = findings.filter((f, i) => f.confidence !== "LOW" && !seenKeys.has(keys[i]!));
+  const newFindings = findings.filter((f, i) => {
+    const key = keys[i];
+    return key !== undefined && f.confidence !== "LOW" && !seenKeys.has(key);
+  });
   for (const f of newFindings) {
-    const key = keys[findings.indexOf(f)]!;
-    seenKeys.add(key);
+    const idx = findings.indexOf(f);
+    const key = keys[idx];
+    if (key !== undefined) {
+      seenKeys.add(key);
+    }
   }
   return newFindings;
 }

@@ -175,6 +175,7 @@ export class GithubIssueSource implements TaskSource {
     } catch (err: unknown) {
       throw new Error(
         `Failed to fetch issues: ${toErrorMessage(err)}. Ensure gh is installed and authenticated.`,
+        { cause: err },
       );
     }
 
@@ -184,6 +185,7 @@ export class GithubIssueSource implements TaskSource {
     } catch (err: unknown) {
       throw new Error(
         `Failed to parse issues JSON: ${toErrorMessage(err)}. Unexpected format from gh CLI.`,
+        { cause: err },
       );
     }
 
