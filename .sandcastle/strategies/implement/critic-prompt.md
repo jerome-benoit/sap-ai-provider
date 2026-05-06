@@ -6,7 +6,7 @@ Analyze the implementation on branch `{{BRANCH}}` and produce structured finding
 
 Run `git diff main...{{BRANCH}}` to see all changes. Examine the diff carefully. For each issue found, produce a structured finding.
 
-Read `AGENTS.md` and `CONTRIBUTING.md` for the project's coding standards.
+Read `AGENTS.md`, `CONTRIBUTING.md` and `.serena/memories/style_and_conventions`.
 
 ## Output Format
 

@@ -5,7 +5,7 @@ Read open GitHub issues and produce a parallelizable execution plan.
 ## Context
 
 This is a TypeScript library (`@jerome-benoit/sap-ai-provider`) — Node 20+, npm, Vitest, tsup.
-Read `AGENTS.md` for project conventions.
+Read `AGENTS.md` and `.serena/memories/project_overview`.
 
 ## Open Issues
 
