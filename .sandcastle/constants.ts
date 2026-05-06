@@ -26,8 +26,18 @@ export const GIT_TIMEOUT_MS = 30_000;
 /** Number of characters to retain from a SHA for display purposes. */
 export const HASH_PREFIX_LENGTH = 16;
 
+/**
+ * Flat iteration budget per round (intentionally constant, not decreasing).
+ * Evidence: ARCS (arXiv:2504.20434), SWE-Agent, AutoCodeRover all use flat budgets.
+ * Decreasing schedules penalize harder residual problems in later rounds.
+ */
+export const ITERATION_BUDGET_PER_ROUND = 50;
+
 /** Maximum number of characters captured from stderr before truncation. */
 export const MAX_STDERR_CHARS = 500;
+
+/** Maximum implement↔critic rounds before giving up. */
+export const MAX_CRITIC_ROUNDS = 5;
 
 /** Maximum number of characters allowed in a PR or commit title. */
 export const MAX_TITLE_LENGTH = 200;

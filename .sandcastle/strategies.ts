@@ -6,6 +6,8 @@ import {
   AGENT_IDLE_TIMEOUT_S,
   AGENT_MODEL,
   COMPLETION_SIGNAL,
+  ITERATION_BUDGET_PER_ROUND,
+  MAX_CRITIC_ROUNDS,
   VALIDATION_COMMAND,
   VALIDATION_TIMEOUT_MS,
 } from "./constants.js";
@@ -16,7 +18,6 @@ import {
   pushBranch,
   runValidation,
 } from "./finalizer.js";
-import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 import { execFileAsync, toErrorMessage } from "./utils.js";
 
 export const implementStrategy: StrategyConfig = {

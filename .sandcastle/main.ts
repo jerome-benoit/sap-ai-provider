@@ -2,11 +2,15 @@ import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 import { ConcurrencyPool } from "./concurrency-pool.js";
-import { DOCKER_MOUNTS, TASK_TIMEOUT_MS } from "./constants.js";
+import {
+  DOCKER_MOUNTS,
+  ITERATION_BUDGET_PER_ROUND,
+  MAX_CRITIC_ROUNDS,
+  TASK_TIMEOUT_MS,
+} from "./constants.js";
 import { runRefinementLoop } from "./refinement-loop.js";
 import { implementStrategy } from "./strategies.js";
 import { GithubIssueSource } from "./task-source.js";
-import { ITERATION_BUDGET_PER_ROUND, MAX_CRITIC_ROUNDS } from "./types.js";
 
 const BRANCH_PREFIX = "agent/issue";
 const ISSUE_LABEL = "sandcastle";
@@ -59,15 +63,10 @@ if (tasks.length === 0) {
               sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
             });
 
-            const loopResult = await runRefinementLoop(
-              spec,
-              sandbox,
-              {
-                iterationBudget: ITERATION_BUDGET_PER_ROUND,
-                maxRounds: MAX_CRITIC_ROUNDS,
-              },
-              implementStrategy,
-            );
+            const loopResult = await runRefinementLoop(spec, sandbox, implementStrategy, {
+              iterationBudget: ITERATION_BUDGET_PER_ROUND,
+              maxRounds: MAX_CRITIC_ROUNDS,
+            });
 
             let workSuccess = false;
             if (loopResult.totalCommits > 0) {
