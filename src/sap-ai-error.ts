@@ -782,11 +782,25 @@ function serializeAxiosResponseData(data: unknown, maxLength = 2000): string | u
  * @internal
  */
 function tryExtractSAPErrorFromMessage(message: string): unknown {
-  const jsonMatch = /\{[\s\S]*\}/.exec(message);
-  if (!jsonMatch) return null;
+  const startIdx = message.indexOf("{");
+  if (startIdx === -1) return null;
+
+  let depth = 0;
+  let endIdx = -1;
+  for (let i = startIdx; i < message.length; i++) {
+    if (message[i] === "{") depth++;
+    else if (message[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+  if (endIdx === -1) return null;
 
   try {
-    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    const parsed: unknown = JSON.parse(message.slice(startIdx, endIdx + 1));
 
     if (parsed && typeof parsed === "object" && "error" in parsed) {
       return parsed;

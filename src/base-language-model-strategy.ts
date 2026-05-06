@@ -41,6 +41,7 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
   readonly messages: TMessages;
   readonly modelParams: Record<string, unknown>;
   readonly providerName: string;
+  readonly resolvedState?: unknown;
   readonly sapOptions: Record<string, unknown> | undefined;
   readonly toolChoice: TToolChoice;
   readonly warnings: SharedV3Warning[];

@@ -5,6 +5,8 @@ import type {
   EmbeddingModelV3Result,
 } from "@ai-sdk/provider";
 
+import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
+
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
@@ -45,14 +47,14 @@ export abstract class BaseEmbeddingModelStrategy<
   ): Promise<EmbeddingModelV3Result> {
     const { abortSignal, values } = options;
 
-    const { embeddingOptions, providerName } = await prepareEmbeddingCall(
-      { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
-      options,
-    );
-
-    const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
-
     try {
+      const { embeddingOptions, providerName } = await prepareEmbeddingCall(
+        { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
+        options,
+      );
+
+      const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
+
       const client = this.createClient(config, settings, embeddingOptions);
 
       const response = await this.executeCall(client, values, embeddingType, abortSignal);
@@ -68,6 +70,9 @@ export abstract class BaseEmbeddingModelStrategy<
         version: VERSION,
       });
     } catch (error) {
+      if (error instanceof TooManyEmbeddingValuesForCallError) {
+        throw error;
+      }
       throw convertToAISDKError(error, {
         operation: "doEmbed",
         requestBody: { values: values.length },

@@ -46,24 +46,6 @@ import {
 } from "./strategy-utils.js";
 
 /**
- * Internal key for storing resolved configRef in sapOptions.
- * @internal
- */
-const RESOLVED_CONFIG_REF_KEY = "_resolvedConfigRef" as const;
-
-/**
- * Internal key for storing resolved promptTemplateRef in sapOptions.
- * @internal
- */
-const RESOLVED_PROMPT_TEMPLATE_REF_KEY = "_resolvedPromptTemplateRef" as const;
-
-/**
- * Internal key for storing resolved tools in sapOptions.
- * @internal
- */
-const RESOLVED_TOOLS_KEY = "_resolvedTools" as const;
-
-/**
  * Extended prompt templating interface for type-safe access.
  * @internal
  */
@@ -84,6 +66,16 @@ type OrchestrationClientInstance = InstanceType<typeof OrchestrationClient>;
  * @internal
  */
 type OrchestrationRequest = Record<string, unknown>;
+
+/**
+ * Typed resolved state for values computed in buildCommonParts and consumed in buildRequest/createClient.
+ * @internal
+ */
+interface OrchestrationResolvedState {
+  readonly configRef: OrchestrationConfigRef | undefined;
+  readonly promptTemplateRef: PromptTemplateRef | undefined;
+  readonly tools: ChatCompletionTool[] | undefined;
+}
 
 /**
  * SAP model parameters with orchestration-specific fields.
@@ -284,12 +276,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       messages,
       modelParams,
       providerName,
-      sapOptions: {
-        ...sapOptions,
-        [RESOLVED_CONFIG_REF_KEY]: configRef,
-        [RESOLVED_PROMPT_TEMPLATE_REF_KEY]: promptTemplateRef,
-        [RESOLVED_TOOLS_KEY]: tools,
-      },
+      resolvedState: {
+        configRef,
+        promptTemplateRef,
+        tools,
+      } satisfies OrchestrationResolvedState,
+      sapOptions,
       toolChoice,
       warnings,
     };
@@ -303,9 +295,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
     const warnings: SharedV3Warning[] = [];
 
-    const configRef = commonParts.sapOptions?.[RESOLVED_CONFIG_REF_KEY] as
-      | OrchestrationConfigRef
-      | undefined;
+    const { configRef } = commonParts.resolvedState as OrchestrationResolvedState;
 
     if (configRef) {
       return this.buildConfigRefRequest(settings, options, commonParts, configRef, warnings);
@@ -355,19 +345,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): OrchestrationClientInstance {
-    const configRef = commonParts.sapOptions?.[RESOLVED_CONFIG_REF_KEY] as
-      | OrchestrationConfigRef
-      | undefined;
+    const { configRef, promptTemplateRef, tools } =
+      commonParts.resolvedState as OrchestrationResolvedState;
 
     if (configRef) {
       return new this.ClientClass(configRef, config.deploymentConfig, config.destination);
     }
-
-    const promptTemplateRef = commonParts.sapOptions?.[RESOLVED_PROMPT_TEMPLATE_REF_KEY] as
-      | PromptTemplateRef
-      | undefined;
-
-    const tools = commonParts.sapOptions?.[RESOLVED_TOOLS_KEY] as ChatCompletionTool[] | undefined;
 
     const promptConfig = promptTemplateRef
       ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools)
@@ -676,7 +659,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
     warnings: SharedV3Warning[],
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
-    const tools = commonParts.sapOptions?.[RESOLVED_TOOLS_KEY] as ChatCompletionTool[] | undefined;
+    const { promptTemplateRef, tools } = commonParts.resolvedState as OrchestrationResolvedState;
 
     const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
       options.responseFormat,
@@ -687,10 +670,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     }
 
     const { toolChoice } = commonParts;
-
-    const promptTemplateRef = commonParts.sapOptions?.[RESOLVED_PROMPT_TEMPLATE_REF_KEY] as
-      | PromptTemplateRef
-      | undefined;
 
     const orchestrationConfig = this.buildOrchestrationModuleConfig(config, settings, {
       modelParams: commonParts.modelParams,
