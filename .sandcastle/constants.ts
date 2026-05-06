@@ -17,7 +17,7 @@ export const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 export const CONTEXT_HASH_RADIUS = 3;
 
 /** Docker image name for the sandbox. */
-export const DOCKER_IMAGE = "sandcastle-sap-ai";
+export const DOCKER_IMAGE = "sandcastle-sandbox";
 
 /** Docker bind-mounts shared across all sandboxes (warm npm cache for faster installs). */
 export const DOCKER_MOUNTS: readonly {

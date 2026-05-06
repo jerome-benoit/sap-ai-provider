@@ -40,7 +40,7 @@ jobs:
         env:
           OPENCODE_AUTH_CONTENT: ${{ secrets.OPENCODE_AUTH_CONTENT }}
 
-      - run: docker build -t sandcastle-sap-ai .sandcastle/
+      - run: docker build -t sandcastle-sandbox .sandcastle/
 
       - name: Create sandbox env
         run: |
