@@ -91,7 +91,7 @@ export const PLANNER_MODEL = "github-copilot/claude-opus-4.6";
 export const PUSH_TIMEOUT_MS = 60_000;
 
 /** Timeout in milliseconds for a single sandcastle task execution. */
-export const TASK_TIMEOUT_MS = 15 * 60 * 1000;
+export const TASK_TIMEOUT_MS = 50 * 60 * 1000;
 
 /** Full validation command run after each implementation round. */
 export const VALIDATION_COMMAND =
