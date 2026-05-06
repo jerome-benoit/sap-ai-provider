@@ -70,9 +70,14 @@ if (tasks.length === 0) {
             branch: spec.branch,
             copyToWorktree: ["node_modules"],
             hooks: {
-              sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
+              sandbox: {
+                onSandboxReady: [{ command: "npm install && npm run build" }],
+              },
             },
-            sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
+            sandbox: docker({
+              imageName: DOCKER_IMAGE,
+              mounts: [...DOCKER_MOUNTS],
+            }),
           });
 
           const loopResult = await runRefinementLoop(spec, sandbox, implementStrategy, {
@@ -107,10 +112,9 @@ if (tasks.length === 0) {
 
   for (const [i, outcome] of settled.entries()) {
     if (outcome.status === "rejected") {
-      const spec = tasks[i];
       const reason: unknown = outcome.reason;
       const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
-      console.error(`  ✗ #${spec?.id ?? String(i)} failed: ${msg}`);
+      console.error(`  ✗ #${tasks[i]?.id ?? String(i)} failed: ${msg}`);
     }
   }
 
