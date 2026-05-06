@@ -1,6 +1,6 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 
-import type { StrategyConfig } from "./types.js";
+import type { StrategyConfig } from "../../types.js";
 
 import {
   AGENT_IDLE_TIMEOUT_S,
@@ -10,18 +10,18 @@ import {
   MAX_CRITIC_ROUNDS,
   VALIDATION_COMMAND,
   VALIDATION_TIMEOUT_MS,
-} from "./constants.js";
+} from "../../constants.js";
 import {
   attemptRebase,
   buildPrArgs,
   extractStderr,
   pushBranch,
   runValidation,
-} from "./finalizer.js";
-import { execFileAsync, toErrorMessage } from "./utils.js";
+} from "../../finalizer.js";
+import { execFileAsync, toErrorMessage } from "../../utils.js";
 
 export const implementStrategy: StrategyConfig = {
-  actorPromptFile: "./.sandcastle/implement-prompt.md",
+  actorPromptFile: "./.sandcastle/strategies/implement/implement-prompt.md",
 
   buildActorArgs: (spec, findings) => ({
     BRANCH: spec.branch,
@@ -36,7 +36,7 @@ export const implementStrategy: StrategyConfig = {
     NONCE: nonce,
   }),
 
-  criticPromptFile: "./.sandcastle/critic-prompt.md",
+  criticPromptFile: "./.sandcastle/strategies/implement/critic-prompt.md",
 
   finalize: async (spec, loopResult, sandbox, cwd) => {
     let validationPassed = await runValidation(cwd, spec);
@@ -65,7 +65,7 @@ export const implementStrategy: StrategyConfig = {
             ISSUE_TITLE: spec.title,
             TASK_ID: spec.id,
           },
-          promptFile: "./.sandcastle/implement-prompt.md",
+          promptFile: "./.sandcastle/strategies/implement/implement-prompt.md",
         });
       } catch (retryErr: unknown) {
         const retryMsg = toErrorMessage(retryErr);

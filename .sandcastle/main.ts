@@ -9,7 +9,7 @@ import {
   TASK_TIMEOUT_MS,
 } from "./constants.js";
 import { runRefinementLoop } from "./refinement-loop.js";
-import { implementStrategy } from "./strategies.js";
+import { implementStrategy } from "./strategies/implement/strategy.js";
 import { GithubIssueSource } from "./task-source.js";
 
 const BRANCH_PREFIX = "agent/issue";
