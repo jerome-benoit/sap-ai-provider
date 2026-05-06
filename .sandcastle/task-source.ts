@@ -9,6 +9,8 @@ import {
   COMPLETION_SIGNAL,
   DOCKER_MOUNTS,
   GIT_TIMEOUT_MS,
+  MAX_ISSUES_FETCH,
+  MAX_PRS_FETCH,
   MAX_TITLE_LENGTH,
   PLANNER_MODEL,
   TASK_TIMEOUT_MS,
@@ -51,6 +53,7 @@ export class GithubIssueSource implements TaskSource {
   private readonly branchPattern: RegExp;
   private readonly branchPrefix: string;
   private readonly dockerImage: string;
+  private readonly escapedPrefix: string;
   private readonly label: string;
   private readonly maxRetries: number;
 
@@ -63,8 +66,8 @@ export class GithubIssueSource implements TaskSource {
     this.label = config.label;
     this.maxRetries = config.maxRetries ?? 5;
 
-    const escapedPrefix = this.branchPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    this.branchPattern = new RegExp(`^${escapedPrefix}-\\d+-[\\w-]+$`);
+    this.escapedPrefix = this.branchPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    this.branchPattern = new RegExp(`^${this.escapedPrefix}-\\d+-[\\w-]+$`);
   }
 
   /**
@@ -76,6 +79,14 @@ export class GithubIssueSource implements TaskSource {
 
     if (issuesJson.length === 0) {
       console.log("No issues with label '%s'. Exiting.", this.label);
+      return [];
+    }
+
+    const coveredIssues = await this.fetchIssuesWithOpenPRs();
+    const actionableIssues = issuesJson.filter((issue) => !coveredIssues.has(issue.number));
+
+    if (actionableIssues.length === 0) {
+      console.log("All sandcastle issues already have open PRs. Exiting.");
       return [];
     }
 
@@ -92,7 +103,7 @@ export class GithubIssueSource implements TaskSource {
           name: "Planner",
           promptArgs: {
             BRANCH_PREFIX: this.branchPrefix,
-            ISSUES_JSON: JSON.stringify(issuesJson, null, 2),
+            ISSUES_JSON: JSON.stringify(actionableIssues, null, 2),
           },
           promptFile: "./.sandcastle/plan-prompt.md",
           sandbox: docker({ imageName: this.dockerImage, mounts: [...DOCKER_MOUNTS] }),
@@ -111,7 +122,7 @@ export class GithubIssueSource implements TaskSource {
       }
 
       const planContent = planMatch[1] ?? "";
-      const tasks = this.validatePlan(planContent, issuesJson);
+      const tasks = this.validatePlan(planContent, actionableIssues);
       if (tasks === null) {
         continue;
       }
@@ -154,7 +165,7 @@ export class GithubIssueSource implements TaskSource {
           "--json",
           "number,title,labels,body",
           "--limit",
-          "50",
+          String(MAX_ISSUES_FETCH),
           "--label",
           this.label,
         ],
@@ -184,6 +195,38 @@ export class GithubIssueSource implements TaskSource {
       number: issue.number,
       title: sanitizeForPrompt(issue.title),
     }));
+  }
+
+  private async fetchIssuesWithOpenPRs(): Promise<Set<number>> {
+    try {
+      const { stdout } = await execFileAsync(
+        "gh",
+        [
+          "pr",
+          "list",
+          "--state",
+          "open",
+          "--json",
+          "headRefName",
+          "--limit",
+          String(MAX_PRS_FETCH),
+        ],
+        { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024, timeout: GIT_TIMEOUT_MS },
+      );
+      const prs = z.array(z.object({ headRefName: z.string() })).parse(JSON.parse(stdout));
+      const issueNumbers = new Set<number>();
+      const pattern = new RegExp(`^${this.escapedPrefix}-(\\d+)-`);
+      for (const pr of prs) {
+        const match = pattern.exec(pr.headRefName);
+        if (match) {
+          issueNumbers.add(Number(match[1]));
+        }
+      }
+      return issueNumbers;
+    } catch (err: unknown) {
+      console.warn(`Failed to check open PRs: ${toErrorMessage(err)}. Processing all issues.`);
+      return new Set();
+    }
   }
 
   private validatePlan(

@@ -33,6 +33,12 @@ export const HASH_PREFIX_LENGTH = 16;
  */
 export const ITERATION_BUDGET_PER_ROUND = 50;
 
+/** Maximum number of issues to fetch from GitHub. */
+export const MAX_ISSUES_FETCH = 50;
+
+/** Maximum number of PRs to fetch when checking for existing work. */
+export const MAX_PRS_FETCH = 200;
+
 /** Maximum number of characters captured from stderr before truncation. */
 export const MAX_STDERR_CHARS = 500;
 
