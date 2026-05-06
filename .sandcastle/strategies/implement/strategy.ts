@@ -35,7 +35,8 @@ export const implementStrategy: StrategyConfig = {
 
     const pushSucceeded = await pushBranch(cwd, spec, rebaseSucceeded);
     if (!pushSucceeded) {
-      console.warn(`  #${spec.id}: Push did not succeed; PR may reference unpushed commits.`);
+      console.error(`  #${spec.id}: Push failed; cannot create PR without remote branch.`);
+      return { success: false };
     }
 
     const { isDraft, prArgs } = buildPrArgs(spec, loopResult, validationPassed, rebaseSucceeded);

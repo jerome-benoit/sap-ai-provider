@@ -24,7 +24,13 @@ export const DOCKER_MOUNTS: readonly {
   hostPath: string;
   readonly: boolean;
   sandboxPath: string;
-}[] = [{ hostPath: join(homedir(), ".npm"), readonly: true, sandboxPath: "/home/agent/.npm" }];
+}[] = [
+  {
+    hostPath: join(homedir(), ".npm"),
+    readonly: true,
+    sandboxPath: "/home/agent/.npm",
+  },
+];
 
 /** Timeout in milliseconds for git operations. */
 export const GIT_TIMEOUT_MS = 30_000;
@@ -77,4 +83,4 @@ export const VALIDATION_COMMAND =
   "npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2";
 
 /** Timeout in milliseconds for the validation command. */
-export const VALIDATION_TIMEOUT_MS = 120_000;
+export const VALIDATION_TIMEOUT_MS = 300_000;
