@@ -165,10 +165,10 @@ export async function pushBranch(
 /**
  * Runs the full validation suite.
  * @param cwd - Working directory (worktree path).
- * @param spec - The task specification (used for logging).
+ * @param spec - Optional task specification (used for logging).
  * @returns `true` if validation passed, `false` otherwise.
  */
-export async function runValidation(cwd: string, spec: TaskSpec): Promise<boolean> {
+export async function runValidation(cwd: string, spec?: TaskSpec): Promise<boolean> {
   try {
     await execFileAsync("sh", ["-c", VALIDATION_COMMAND], {
       cwd,
@@ -177,8 +177,13 @@ export async function runValidation(cwd: string, spec: TaskSpec): Promise<boolea
     });
     return true;
   } catch (err: unknown) {
-    const stderr = extractStderr(err);
-    console.warn(`  #${spec.id}: Validation failed.${stderr ? `\n${stderr}` : ""}`);
+    if (err && typeof err === "object" && "killed" in err && (err as { killed: boolean }).killed) {
+      const label = spec ? `#${spec.id}` : "mid-loop";
+      console.warn(`  ${label}: Validation timed out after ${String(VALIDATION_TIMEOUT_MS)}ms.`);
+    } else if (spec) {
+      const stderr = extractStderr(err);
+      console.warn(`  #${spec.id}: Validation failed.${stderr ? `\n${stderr}` : ""}`);
+    }
     return false;
   }
 }

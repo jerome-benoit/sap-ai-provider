@@ -1,21 +1,23 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
+import type { TaskSpec } from "./types.js";
+
 import { ConcurrencyPool } from "./concurrency-pool.js";
 import {
+  BRANCH_PREFIX,
+  DOCKER_IMAGE,
   DOCKER_MOUNTS,
+  GRACE_TIMEOUT_MS,
+  ISSUE_LABEL,
   ITERATION_BUDGET_PER_ROUND,
   MAX_CRITIC_ROUNDS,
+  MAX_PARALLEL,
   TASK_TIMEOUT_MS,
 } from "./constants.js";
 import { runRefinementLoop } from "./refinement-loop.js";
 import { implementStrategy } from "./strategies/implement/strategy.js";
 import { GithubIssueSource } from "./task-source.js";
-
-const BRANCH_PREFIX = "agent/issue";
-const ISSUE_LABEL = "sandcastle";
-const MAX_PARALLEL = 3;
-const DOCKER_IMAGE = "sandcastle-sap-ai";
 
 /**
  * Races a promise against a timeout, rejecting with a descriptive error if the timeout fires first.
@@ -25,15 +27,18 @@ const DOCKER_IMAGE = "sandcastle-sap-ai";
  * @returns The resolved value of the promise if it completes before the timeout.
  */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    timer = setTimeout(() => {
       reject(new Error(`${label} timed out after ${String(ms)}ms`));
-    }, ms).unref();
+    }, ms);
+    timer.unref();
   });
-  timeoutPromise.catch(() => {
-    /* suppress unhandled rejection when task completes before timeout */
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
   });
-  return Promise.race([promise, timeoutPromise]);
 }
 
 const source = new GithubIssueSource({
@@ -42,52 +47,63 @@ const source = new GithubIssueSource({
   label: ISSUE_LABEL,
 });
 
-const tasks = await source.discover();
+let tasks: TaskSpec[];
+try {
+  tasks = await source.discover();
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exitCode = 1;
+  process.exit();
+}
 
 if (tasks.length === 0) {
   console.log("No tasks to process.");
 } else {
   const pool = new ConcurrencyPool(MAX_PARALLEL);
+  const inFlightTasks: Promise<unknown>[] = [];
 
   const settled = await Promise.allSettled(
     tasks.map((spec) =>
-      pool.run(() =>
-        withTimeout(
-          (async () => {
-            await using sandbox = await sandcastle.createSandbox({
-              branch: spec.branch,
-              copyToWorktree: ["node_modules"],
-              hooks: {
-                sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
-              },
-              sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
-            });
+      pool.run(() => {
+        const innerTask = (async () => {
+          await using sandbox = await sandcastle.createSandbox({
+            branch: spec.branch,
+            copyToWorktree: ["node_modules"],
+            hooks: {
+              sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
+            },
+            sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
+          });
 
-            const loopResult = await runRefinementLoop(spec, sandbox, implementStrategy, {
-              iterationBudget: ITERATION_BUDGET_PER_ROUND,
-              maxRounds: MAX_CRITIC_ROUNDS,
-            });
+          const loopResult = await runRefinementLoop(spec, sandbox, implementStrategy, {
+            iterationBudget: ITERATION_BUDGET_PER_ROUND,
+            maxRounds: MAX_CRITIC_ROUNDS,
+            postLoopValidationRetry: true,
+          });
 
-            let workSuccess = false;
-            if (loopResult.totalCommits > 0) {
-              const cwd = sandbox.worktreePath;
-              const finalizeResult = await implementStrategy.finalize(
-                spec,
-                loopResult,
-                sandbox,
-                cwd,
-              );
-              workSuccess = implementStrategy.isWorkComplete(finalizeResult);
-            }
+          let workSuccess = false;
+          if (loopResult.totalCommits > 0) {
+            const finalizeResult = await implementStrategy.finalize(
+              spec,
+              loopResult,
+              sandbox,
+            );
+            workSuccess = implementStrategy.isWorkComplete(finalizeResult);
+          }
 
-            return { spec, success: workSuccess };
-          })(),
-          TASK_TIMEOUT_MS,
-          `Task #${spec.id}`,
-        ),
-      ),
+          return { spec, success: workSuccess };
+        })();
+        inFlightTasks.push(innerTask);
+        return withTimeout(innerTask, TASK_TIMEOUT_MS, `Task #${spec.id}`);
+      }),
     ),
   );
+
+  // Grace period: wait for timed-out tasks to clean up their sandboxes
+  await Promise.race([
+    Promise.allSettled(inFlightTasks),
+    new Promise((resolve) => setTimeout(resolve, GRACE_TIMEOUT_MS).unref()),
+  ]);
 
   const workCompleted = settled.some(
     (outcome) => outcome.status === "fulfilled" && outcome.value.success,
@@ -108,5 +124,3 @@ if (tasks.length === 0) {
     process.exitCode = 1;
   }
 }
-
-process.exit(process.exitCode ?? 0);

@@ -173,20 +173,18 @@ export class GithubIssueSource implements TaskSource {
       );
       rawIssuesJson = stdout;
     } catch (err: unknown) {
-      console.error(
+      throw new Error(
         `Failed to fetch issues: ${toErrorMessage(err)}. Ensure gh is installed and authenticated.`,
       );
-      process.exit(1);
     }
 
     let rawIssues: z.infer<typeof RawIssuesSchema>;
     try {
       rawIssues = RawIssuesSchema.parse(JSON.parse(rawIssuesJson));
     } catch (err: unknown) {
-      console.error(
+      throw new Error(
         `Failed to parse issues JSON: ${toErrorMessage(err)}. Unexpected format from gh CLI.`,
       );
-      process.exit(1);
     }
 
     return rawIssues.map((issue) => ({
@@ -234,11 +232,13 @@ export class GithubIssueSource implements TaskSource {
     issuesJson: { body: string; labels: string[]; number: number; title: string }[],
   ): null | TaskSpec[] {
     try {
-      const parsed = JSON.parse(planContent) as { issues: unknown[] };
-      if (!Array.isArray(parsed.issues)) {
-        console.error("Planner output missing issues array. Retrying.");
+      const PlanSchema = z.object({ issues: z.array(z.unknown()) });
+      const parseResult = PlanSchema.safeParse(JSON.parse(planContent));
+      if (!parseResult.success) {
+        console.error("Planner output missing valid issues array. Retrying.");
         return null;
       }
+      const parsed = parseResult.data;
       const validated = parsed.issues.filter(
         (entry): entry is { branch: string; id: string; title: string } => {
           if (typeof entry !== "object" || entry === null) return false;

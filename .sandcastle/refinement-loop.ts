@@ -1,14 +1,14 @@
 import * as sandcastle from "@ai-hero/sandcastle";
 import crypto from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFile, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 
 import type {
   Finding,
   LoopResult,
   LoopStatus,
+  LoopStrategy,
   SandboxInstance,
-  StrategyConfig,
   TaskSpec,
 } from "./types.js";
 
@@ -20,9 +20,8 @@ import {
   HASH_PREFIX_LENGTH,
   ITERATION_BUDGET_PER_ROUND,
   MAX_CRITIC_ROUNDS,
-  VALIDATION_COMMAND,
-  VALIDATION_TIMEOUT_MS,
 } from "./constants.js";
+import { runValidation } from "./finalizer.js";
 import { parseFindingsSafe } from "./types.js";
 import { execFileAsync } from "./utils.js";
 
@@ -34,6 +33,8 @@ export interface RefinementLoopOptions {
   maxRounds?: number;
   /** Optional callback invoked after each round completes. */
   onRoundComplete?: (round: number, findings: Finding[]) => void;
+  /** When true, run one extra implementer attempt if post-loop validation fails. */
+  postLoopValidationRetry?: boolean;
 }
 
 /** Result of a convergence check. */
@@ -104,7 +105,7 @@ interface RoundResult {
 export async function runRefinementLoop(
   spec: TaskSpec,
   sandbox: SandboxInstance,
-  strategy: StrategyConfig,
+  strategy: LoopStrategy,
   opts?: RefinementLoopOptions,
 ): Promise<LoopResult> {
   const { budget, maxRounds, onRoundComplete } = resolveLoopOptions(opts);
@@ -137,14 +138,14 @@ export async function runRefinementLoop(
     if (result.findings === null) break;
     const findings: Finding[] = result.findings;
 
-    if (result.commits > 0 && (await runMidLoopValidation(sandbox.worktreePath))) {
+    if (result.commits > 0 && (await runValidation(sandbox.worktreePath))) {
       totalCommits += result.commits;
       status = "converged";
       break;
     }
 
     const cwd = sandbox.worktreePath;
-    const newFindings = deduplicateFindings(findings, seenKeys, cwd);
+    const newFindings = await deduplicateFindings(findings, seenKeys, cwd);
 
     console.log(
       `  #${spec.id}: ${String(findings.length)} findings, ${String(newFindings.length)} new`,
@@ -186,6 +187,22 @@ export async function runRefinementLoop(
     }
 
     lastFindings = newFindings;
+  }
+
+  // Post-loop validation retry (if enabled)
+  if (opts?.postLoopValidationRetry && totalCommits > 0 && status !== "converged") {
+    const validationPassed = await runValidation(sandbox.worktreePath);
+    if (validationPassed) {
+      status = "converged";
+    } else if (roundsCompleted < maxRounds) {
+      const result = await executeRound(spec, sandbox, roundsCompleted + 1, budget, lastFindings, strategy);
+      if (result.commits > 0) {
+        totalCommits += result.commits;
+        if (await runValidation(sandbox.worktreePath)) {
+          status = "converged";
+        }
+      }
+    }
   }
 
   if (shouldResetToBest(status, bestSha)) {
@@ -315,7 +332,7 @@ async function checkQualityRatchet(
  * @param fileCache - Optional cache of file contents keyed by resolved path.
  * @returns Composite dedup key.
  */
-function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, string>): string {
+async function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, string>): Promise<string> {
   if (!f.file || f.line == null) {
     const normalizedTitle = f.title
       .toLowerCase()
@@ -329,7 +346,7 @@ function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, stri
       .slice(0, HASH_PREFIX_LENGTH);
     return `${f.file || "global"}::${f.category}::${titleHash}`;
   }
-  const contextHash = hashContextLines(
+  const contextHash = await hashContextLines(
     { cwd, file: f.file, line: f.line },
     CONTEXT_HASH_RADIUS,
     fileCache,
@@ -344,13 +361,17 @@ function computeFindingKey(f: Finding, cwd: string, fileCache?: Map<string, stri
  * @param cwd - Working directory for context hashing.
  * @returns Array of new, non-LOW-confidence findings.
  */
-function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: string): Finding[] {
+async function deduplicateFindings(findings: Finding[], seenKeys: Set<string>, cwd: string): Promise<Finding[]> {
   const fileCache = new Map<string, string>();
+  const keys = await Promise.all(
+    findings.map((f) => computeFindingKey(f, cwd, fileCache)),
+  );
   const newFindings = findings.filter(
-    (f) => f.confidence !== "LOW" && !seenKeys.has(computeFindingKey(f, cwd, fileCache)),
+    (f, i) => f.confidence !== "LOW" && !seenKeys.has(keys[i]!),
   );
   for (const f of newFindings) {
-    seenKeys.add(computeFindingKey(f, cwd, fileCache));
+    const key = keys[findings.indexOf(f)]!;
+    seenKeys.add(key);
   }
   return newFindings;
 }
@@ -371,7 +392,7 @@ async function executeRound(
   round: number,
   budget: number,
   lastFindings: Finding[],
-  strategy: StrategyConfig,
+  strategy: LoopStrategy,
 ): Promise<RoundResult> {
   // Capture SHA before implementer runs (for quality ratchet rollback)
   let beforeSha = "";
@@ -423,15 +444,15 @@ async function executeRound(
  * @param fileCache - Optional cache of file contents keyed by resolved path.
  * @returns Truncated SHA-256 hex digest.
  */
-function hashContextLines(
+async function hashContextLines(
   input: HashInput,
   radius: number,
   fileCache?: Map<string, string>,
-): string {
+): Promise<string> {
   const { cwd, file, line } = input;
   try {
-    const fullPath = realpathSync(join(cwd, file));
-    if (!fullPath.startsWith(realpathSync(cwd) + sep)) {
+    const fullPath = await realpath(join(cwd, file));
+    if (!fullPath.startsWith((await realpath(cwd)) + sep)) {
       throw new Error("Path traversal");
     }
     let raw: string;
@@ -439,7 +460,7 @@ function hashContextLines(
     if (cached !== undefined) {
       raw = cached;
     } else {
-      raw = readFileSync(fullPath, "utf-8");
+      raw = await readFile(fullPath, "utf-8");
       if (fileCache) fileCache.set(fullPath, raw);
     }
     const lines = raw.split("\n");
@@ -499,6 +520,7 @@ async function resetToBestState(
   bestSha: string,
   currentCommits: number,
 ): Promise<number> {
+  if (!/^[0-9a-f]{40}$/.test(bestSha)) return currentCommits;
   try {
     await execFileAsync("git", ["reset", "--hard", bestSha], { cwd });
     const { stdout } = await execFileAsync("git", ["rev-list", "--count", "main..HEAD"], { cwd });
@@ -535,7 +557,7 @@ async function runCritic(
   spec: TaskSpec,
   round: number,
   nonce: string,
-  strategy: StrategyConfig,
+  strategy: LoopStrategy,
 ): Promise<Finding[] | null> {
   let critic = await sandbox.run({
     agent: sandcastle.opencode(AGENT_MODEL),
@@ -564,24 +586,6 @@ async function runCritic(
   }
 
   return findings;
-}
-
-/**
- * Runs the mid-loop validation command (ARCS pattern).
- * @param cwd - Working directory for the validation command.
- * @returns True if validation passed (deterministic convergence), false otherwise.
- */
-async function runMidLoopValidation(cwd: string): Promise<boolean> {
-  try {
-    await execFileAsync("sh", ["-c", VALIDATION_COMMAND], {
-      cwd,
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: VALIDATION_TIMEOUT_MS,
-    });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

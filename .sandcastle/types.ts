@@ -36,11 +36,11 @@ export type LoopStatus = "converged" | "exhausted" | "failed" | "skipped";
 export type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 
 /**
- * Configuration for a refinement loop strategy.
- * Defines prompts, argument builders, convergence, and finalization.
+ * Configuration for the refinement loop strategy.
+ * Defines prompts, argument builders, and optional convergence logic.
  */
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
-export type StrategyConfig = {
+export type LoopStrategy = {
   /** Path to the actor (implementer) prompt file. */
   actorPromptFile: string;
   /** Builds promptArgs for the actor run from task spec and previous findings. */
@@ -49,18 +49,28 @@ export type StrategyConfig = {
   buildCriticArgs: (spec: TaskSpec, nonce: string) => Record<string, string>;
   /** Path to the critic prompt file. */
   criticPromptFile: string;
+  /** Optional custom convergence check. When omitted, default loop logic applies. */
+  shouldConverge?: (findings: Finding[], round: number, totalCommits: number) => boolean;
+};
+
+/**
+ * Configuration for post-loop finalization (PR creation, push, etc.).
+ */
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type FinalizationConfig = {
   /** Finalizes the task after the loop completes. Returns success indicator. */
   finalize: (
     spec: TaskSpec,
     loopResult: LoopResult,
     sandbox: SandboxInstance,
-    cwd: string,
   ) => Promise<{ success: boolean }>;
   /** Determines if the finalization result counts as completed work. */
   isWorkComplete: (finalizeResult: { success: boolean }) => boolean;
-  /** Optional custom convergence check. When omitted, default loop logic applies. */
-  shouldConverge?: (findings: Finding[], round: number, totalCommits: number) => boolean;
 };
+
+/** Combined strategy (backward compat alias). */
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type StrategyConfig = FinalizationConfig & LoopStrategy;
 
 /** Specification for a task to be implemented. */
 export interface TaskSpec {
