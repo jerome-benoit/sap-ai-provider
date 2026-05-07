@@ -13,13 +13,14 @@ import type {
 } from "./types.js";
 
 import {
+  AGENT_ACTOR_MODEL,
+  AGENT_CRITIC_MODEL,
   AGENT_IDLE_TIMEOUT_S,
-  AGENT_MODEL,
+  AGENT_ITERATION_BUDGET,
+  AGENT_MAX_CRITIC_ROUNDS,
   COMPLETION_SIGNAL,
   CONTEXT_HASH_RADIUS,
   HASH_PREFIX_LENGTH,
-  ITERATION_BUDGET_PER_ROUND,
-  MAX_CRITIC_ROUNDS,
 } from "./constants.js";
 import { runValidation } from "./finalizer.js";
 import { parseFindingsSafe } from "./types.js";
@@ -434,7 +435,7 @@ async function executeRound(
   let implementerResult: Awaited<ReturnType<typeof sandbox.run>>;
   try {
     implementerResult = await sandbox.run({
-      agent: sandcastle.opencode(AGENT_MODEL),
+      agent: sandcastle.opencode(AGENT_ACTOR_MODEL),
       completionSignal: COMPLETION_SIGNAL,
       idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: budget,
@@ -565,8 +566,8 @@ async function resetToBestState(
  */
 function resolveLoopOptions(opts: RefinementLoopOptions | undefined): ResolvedLoopOptions {
   return {
-    budget: opts?.iterationBudget ?? ITERATION_BUDGET_PER_ROUND,
-    maxRounds: opts?.maxRounds ?? MAX_CRITIC_ROUNDS,
+    budget: opts?.iterationBudget ?? AGENT_ITERATION_BUDGET,
+    maxRounds: opts?.maxRounds ?? AGENT_MAX_CRITIC_ROUNDS,
     onRoundComplete: opts?.onRoundComplete ?? (() => undefined),
   };
 }
@@ -590,7 +591,7 @@ async function runCritic(
   signal?: AbortSignal,
 ): Promise<Finding[] | null> {
   let critic = await sandbox.run({
-    agent: sandcastle.opencode(AGENT_MODEL),
+    agent: sandcastle.opencode(AGENT_CRITIC_MODEL),
     completionSignal: COMPLETION_SIGNAL,
     idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
     maxIterations: 1,
@@ -605,7 +606,7 @@ async function runCritic(
   if (findings === null) {
     console.warn(`  #${spec.id}: Critic parse failed. Retrying.`);
     critic = await sandbox.run({
-      agent: sandcastle.opencode(AGENT_MODEL),
+      agent: sandcastle.opencode(AGENT_CRITIC_MODEL),
       completionSignal: COMPLETION_SIGNAL,
       idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: 1,

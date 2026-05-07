@@ -6,14 +6,14 @@ import type { TaskSpec } from "./types.js";
 
 import {
   AGENT_IDLE_TIMEOUT_S,
+  AGENT_PLANNER_MODEL,
+  AGENT_TASK_TIMEOUT_MS,
   COMPLETION_SIGNAL,
   DOCKER_MOUNTS,
   GIT_TIMEOUT_MS,
-  MAX_ISSUES_FETCH,
-  MAX_PRS_FETCH,
-  MAX_TITLE_LENGTH,
-  PLANNER_MODEL,
-  TASK_TIMEOUT_MS,
+  GITHUB_MAX_ISSUES_FETCH,
+  GITHUB_MAX_PRS_FETCH,
+  MAX_TITLE_CHARS,
 } from "./constants.js";
 import { execFileAsync, toErrorMessage } from "./utils.js";
 
@@ -96,7 +96,7 @@ export class GithubIssueSource implements TaskSource {
       let plan: Awaited<ReturnType<typeof sandcastle.run>>;
       try {
         plan = await sandcastle.run({
-          agent: sandcastle.opencode(PLANNER_MODEL),
+          agent: sandcastle.opencode(AGENT_PLANNER_MODEL),
           completionSignal: COMPLETION_SIGNAL,
           idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
           maxIterations: 1,
@@ -110,7 +110,7 @@ export class GithubIssueSource implements TaskSource {
             imageName: this.dockerImage,
             mounts: [...DOCKER_MOUNTS],
           }),
-          signal: AbortSignal.timeout(TASK_TIMEOUT_MS),
+          signal: AbortSignal.timeout(AGENT_TASK_TIMEOUT_MS),
         });
       } catch (err: unknown) {
         console.error(`Planner timed out or failed: ${toErrorMessage(err)}`);
@@ -168,7 +168,7 @@ export class GithubIssueSource implements TaskSource {
           "--json",
           "number,title,labels,body",
           "--limit",
-          String(MAX_ISSUES_FETCH),
+          String(GITHUB_MAX_ISSUES_FETCH),
           "--label",
           this.label,
         ],
@@ -216,7 +216,7 @@ export class GithubIssueSource implements TaskSource {
           "--json",
           "headRefName",
           "--limit",
-          String(MAX_PRS_FETCH),
+          String(GITHUB_MAX_PRS_FETCH),
         ],
         {
           encoding: "utf-8",
@@ -265,7 +265,7 @@ export class GithubIssueSource implements TaskSource {
           if (typeof item.branch !== "string" || !this.branchPattern.test(item.branch))
             return false;
           if (typeof item.title !== "string") return false;
-          if (item.title.length > MAX_TITLE_LENGTH) return false;
+          if (item.title.length > MAX_TITLE_CHARS) return false;
           // eslint-disable-next-line no-control-regex
           if (/[\x00-\x1f]/.test(item.title)) return false;
           return true;
