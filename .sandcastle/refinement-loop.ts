@@ -227,11 +227,21 @@ export async function runRefinementLoop(
     totalCommits = await resetToBestState(sandbox.worktreePath, bestSha, totalCommits, baseBranch);
   }
 
-  return { baseBranch, failureReason, lastFindings, roundHistory, roundsCompleted, status, totalCommits };
+  return {
+    baseBranch,
+    failureReason,
+    lastFindings,
+    roundHistory,
+    roundsCompleted,
+    status,
+    totalCommits,
+  };
 }
 
 /**
  * Builds a RoundSnapshot from a round result.
+ * @param result
+ * @param round
  */
 function buildRoundSnapshot(result: RoundResult, round: number): RoundSnapshot {
   return {
