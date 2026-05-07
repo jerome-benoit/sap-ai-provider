@@ -21,6 +21,8 @@ export const AGENT_TASK_TIMEOUT_MS = 50 * 60 * 1000;
 
 export const GIT_BRANCH_PREFIX = "agent/issue";
 
+export const GIT_BASE_BRANCH = "main";
+
 export const GIT_PUSH_TIMEOUT_MS = 60_000;
 
 export const GIT_TIMEOUT_MS = 30_000;
