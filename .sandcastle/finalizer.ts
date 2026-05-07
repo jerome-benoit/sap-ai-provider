@@ -16,6 +16,7 @@ import { execFileAsync, toErrorMessage } from "./utils.js";
  * Fetches origin/main and rebases the current branch onto it.
  * On failure, aborts the rebase cleanly.
  * @param cwd - Working directory (worktree path).
+ * @param baseBranch
  * @returns `true` if rebase succeeded, `false` otherwise.
  */
 export async function attemptRebase(cwd: string, baseBranch = GIT_BASE_BRANCH): Promise<boolean> {
@@ -45,6 +46,7 @@ export async function attemptRebase(cwd: string, baseBranch = GIT_BASE_BRANCH): 
  * @param loopResult - The result from the refinement loop.
  * @param validationPassed - Whether the validation suite passed.
  * @param rebaseSucceeded - Whether the rebase onto main succeeded.
+ * @param baseBranch
  * @returns Object with `isDraft` flag and `prArgs` string array.
  */
 export function buildPrArgs(
