@@ -5,6 +5,10 @@ import { attemptRebase, buildPrArgs, pushBranch } from "../../finalizer.js";
 import { execFileAsync, toErrorMessage } from "../../utils.js";
 import { runValidation } from "../../validation.js";
 
+/**
+ *
+ * @param spec
+ */
 function buildPlanContext(spec: TaskSpec): string {
   const parts: string[] = [];
   const includeHypothesis = spec.confidence === "high" || spec.confidence === undefined;
