@@ -1,6 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
+export type AgentProviderType = "opencode" | "pi";
+
+export const AGENT_PROVIDER = "opencode" as AgentProviderType;
+
 // ── Agent ────────────────────────────────────────────────────────────────────
 
 export const AGENT_ACTOR_EFFORT = "high";
@@ -68,6 +72,30 @@ function resolveNpmCachePath(): string | undefined {
     return undefined;
   }
 }
+
+export const SANDBOX_AUTH_HOOKS = {
+  sandbox: {
+    onSandboxReady: [
+      ...(AGENT_PROVIDER === "pi"
+        ? [
+            {
+              command:
+                "mkdir -p ~/.pi/agent && printf '%s' \"$PI_AUTH_CONTENT\" > ~/.pi/agent/auth.json",
+            },
+          ]
+        : []),
+    ],
+  },
+};
+
+export const SANDBOX_BUILD_HOOKS = {
+  sandbox: {
+    onSandboxReady: [
+      ...SANDBOX_AUTH_HOOKS.sandbox.onSandboxReady,
+      { command: "npm ci && npm run build" },
+    ],
+  },
+};
 
 // ── GitHub ───────────────────────────────────────────────────────────────────
 

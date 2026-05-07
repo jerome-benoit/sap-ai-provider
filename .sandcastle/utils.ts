@@ -1,5 +1,10 @@
+import type { AgentProvider } from "@ai-hero/sandcastle";
+
+import * as sandcastle from "@ai-hero/sandcastle";
 import { execFile } from "node:child_process";
 import util from "node:util";
+
+import { AGENT_PROVIDER } from "./constants.js";
 
 /** Async execFile — does not block the event loop. Same error shape as execFileSync. */
 export const execFileAsync = util.promisify(execFile);
@@ -11,4 +16,16 @@ export const execFileAsync = util.promisify(execFile);
  */
 export function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Returns a sandcastle agent provider for the given model, selected by AGENT_PROVIDER constant.
+ */
+export function agentProvider(model: string): AgentProvider {
+  switch (AGENT_PROVIDER) {
+    case "opencode":
+      return sandcastle.opencode(model);
+    case "pi":
+      return sandcastle.pi(model);
+  }
 }
