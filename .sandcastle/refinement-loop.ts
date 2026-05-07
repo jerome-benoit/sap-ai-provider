@@ -8,6 +8,7 @@ import type {
   LoopResult,
   LoopStatus,
   LoopStrategy,
+  RoundSnapshot,
   SandboxInstance,
   TaskSpec,
 } from "./types.js";
@@ -29,17 +30,15 @@ import { runValidation } from "./validation.js";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {
-  /** Base branch for diffing and rebasing. Defaults to GIT_BASE_BRANCH constant. */
+  /** Base branch for commit counting (default: 'main'). */
   baseBranch?: string;
   /** Budget of iterations per round (flat constant applied to every round). */
   iterationBudget?: number;
   /** Maximum number of implement↔critic rounds. */
   maxRounds?: number;
-  /** Optional callback invoked after each round completes. */
-  onRoundComplete?: (round: number, findings: Finding[]) => void;
-  /** When true, run one extra implementer attempt if post-loop validation fails. */
+  /** When true, run one extra actor attempt if post-loop validation fails. */
   postLoopValidationRetry?: boolean;
-  /** Optional abort signal for cooperative cancellation. */
+  /** Abort signal for cooperative cancellation (kills in-flight agent subprocesses). */
   signal?: AbortSignal;
 }
 
@@ -70,7 +69,7 @@ interface HashInput {
  * Groups the per-round identifiers needed for regression detection and rollback.
  */
 interface RatchetContext {
-  /** SHA of HEAD before the implementer ran (used for rollback). */
+  /** SHA of HEAD before the actor ran (used for rollback). */
   readonly beforeSha: string;
   /** Working directory for git operations. */
   readonly cwd: string;
@@ -82,21 +81,19 @@ interface RatchetContext {
 
 /** Resolved loop options with defaults applied. */
 interface ResolvedLoopOptions {
-  /** Base branch for diffing and rebasing. */
+  /** Base branch for commit counting. */
   baseBranch: string;
   /** Iteration budget per round. */
   budget: number;
   /** Maximum number of rounds. */
   maxRounds: number;
-  /** Optional round-complete callback (no-op if not provided). */
-  onRoundComplete: (round: number, findings: Finding[]) => void;
 }
 
 /** Result of a single implement↔critic round. */
 interface RoundResult {
-  /** SHA of HEAD before the implementer ran. */
+  /** SHA of HEAD before the actor ran. */
   beforeSha: string;
-  /** Number of commits made by the implementer. */
+  /** Number of commits made by the actor. */
   commits: number;
   /** Parsed findings from the critic, or null on critic failure. */
   findings: Finding[] | null;
@@ -116,12 +113,13 @@ export async function runRefinementLoop(
   strategy: LoopStrategy,
   opts?: RefinementLoopOptions,
 ): Promise<LoopResult> {
-  const { baseBranch, budget, maxRounds, onRoundComplete } = resolveLoopOptions(opts);
+  const { baseBranch, budget, maxRounds } = resolveLoopOptions(opts);
   const signal = opts?.signal;
   const validate = strategy.validate ?? ((cwd: string, s: TaskSpec) => runValidation(cwd, s));
   const ctx: LoopContext = { baseBranch, sandbox, signal, spec, strategy };
 
   const seenKeys = new Set<string>();
+  const roundHistory: RoundSnapshot[] = [];
   let failureReason: string | undefined;
   let lastFindings: Finding[] = [];
   let status: LoopStatus = "exhausted";
@@ -132,14 +130,16 @@ export async function runRefinementLoop(
   let bestFindingsCount = Infinity;
 
   for (let round = 1; round <= maxRounds; round++) {
-    roundsCompleted = round;
     signal?.throwIfAborted();
+    roundsCompleted = round;
 
     console.log(
       `  #${spec.id} round ${String(round)}/${String(maxRounds)} (budget: ${String(budget)})`,
     );
 
     const result = await executeRound(ctx, round, budget, lastFindings);
+
+    roundHistory.push(buildRoundSnapshot(result, round));
 
     const earlyExit = checkEarlyExit(spec, round, result, totalCommits);
     if (earlyExit !== null) {
@@ -187,7 +187,6 @@ export async function runRefinementLoop(
 
     totalCommits += result.commits;
     previousFindingsCount = nonLowFindings.length;
-    onRoundComplete(round, findings);
 
     if (strategy.shouldConverge?.(findings, round, totalCommits)) {
       lastFindings = findings;
@@ -209,14 +208,15 @@ export async function runRefinementLoop(
   // Post-loop validation retry (if enabled)
   if (opts?.postLoopValidationRetry && totalCommits > 0 && status !== "converged") {
     signal?.throwIfAborted();
-    const validationPassed = await runValidation(sandbox.worktreePath, spec, signal);
+    const validationPassed = await validate(sandbox.worktreePath, spec);
     if (validationPassed) {
       status = "converged";
     } else if (roundsCompleted < maxRounds) {
       const result = await executeRound(ctx, roundsCompleted + 1, budget, lastFindings);
+      roundHistory.push(buildRoundSnapshot(result, roundsCompleted + 1));
       if (result.commits > 0) {
         totalCommits += result.commits;
-        if (await runValidation(sandbox.worktreePath, spec, signal)) {
+        if (await validate(sandbox.worktreePath, spec)) {
           status = "converged";
         }
       }
@@ -227,7 +227,24 @@ export async function runRefinementLoop(
     totalCommits = await resetToBestState(sandbox.worktreePath, bestSha, totalCommits, baseBranch);
   }
 
-  return { baseBranch, failureReason, lastFindings, roundsCompleted, status, totalCommits };
+  return { baseBranch, failureReason, lastFindings, roundHistory, roundsCompleted, status, totalCommits };
+}
+
+/**
+ * Builds a RoundSnapshot from a round result.
+ */
+function buildRoundSnapshot(result: RoundResult, round: number): RoundSnapshot {
+  return {
+    commits: result.commits,
+    findings: result.findings ?? [],
+    round,
+    status:
+      result.findings === null
+        ? "critic_errored"
+        : result.findings.length > 0
+          ? "has_findings"
+          : "no_findings",
+  };
 }
 
 /**
@@ -575,7 +592,6 @@ function resolveLoopOptions(opts: RefinementLoopOptions | undefined): ResolvedLo
     baseBranch: opts?.baseBranch ?? GIT_BASE_BRANCH,
     budget: opts?.iterationBudget ?? AGENT_ITERATION_BUDGET,
     maxRounds: opts?.maxRounds ?? AGENT_MAX_CRITIC_ROUNDS,
-    onRoundComplete: opts?.onRoundComplete ?? (() => undefined),
   };
 }
 

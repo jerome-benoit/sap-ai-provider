@@ -43,13 +43,18 @@ export interface LoopContext {
 
 /** Result returned by the refinement loop. */
 export interface LoopResult {
-  /** Base branch used during the loop. */
+  /** Base branch used for this loop run. */
   baseBranch: string;
   /** Reason for non-converged termination, if applicable. */
   failureReason?: string;
   /** Outstanding findings from the last round. */
   lastFindings: Finding[];
-  /** Number of rounds completed. */
+  /**
+   * Complete findings history across all rounds.
+   * Authoritative source — `lastFindings` is kept for backward compatibility.
+   */
+  roundHistory: RoundSnapshot[];
+  /** Number of main-loop rounds completed (excludes post-loop validation retry). */
   roundsCompleted: number;
   /** Termination status. */
   status: LoopStatus;
@@ -84,6 +89,18 @@ export type LoopStrategy = {
   validate?: (cwd: string, spec: TaskSpec) => Promise<boolean>;
 };
 
+/** Snapshot of a single implement↔critic round. */
+export interface RoundSnapshot {
+  /** Number of commits the actor produced this round. */
+  commits: number;
+  /** Findings from the critic (empty array if critic errored). */
+  findings: Finding[];
+  /** 1-indexed round number. */
+  round: number;
+  /** Outcome of the critic phase for this round. */
+  status: "critic_errored" | "has_findings" | "no_findings";
+}
+
 /** Type alias for a sandcastle sandbox instance. */
 export type SandboxInstance = Awaited<ReturnType<typeof sandcastle.createSandbox>>;
 
@@ -95,8 +112,10 @@ export interface TaskSpec {
   branch: string;
   /** Task identifier (e.g. GitHub issue number as string). */
   id: string;
-  /** Label names associated with the task. */
+  /** Label names associated with the task (platform-specific, optional). */
   labels?: string[];
+  /** Raw planner agent output that produced this task selection. */
+  plannerOutput?: string;
   /** Task title. */
   title: string;
 }
