@@ -24,9 +24,9 @@ import {
   GIT_BASE_BRANCH,
   HASH_PREFIX_LENGTH,
 } from "./constants.js";
-import { runValidation } from "./validation.js";
 import { parseFindingsSafe } from "./types.js";
 import { execFileAsync } from "./utils.js";
+import { runValidation } from "./validation.js";
 
 /** Options for configuring the refinement loop. */
 export interface RefinementLoopOptions {

@@ -41,6 +41,9 @@ export const DOCKER_MOUNTS: readonly {
   sandboxPath: string;
 }[] = resolveDockerMounts();
 
+/**
+ *
+ */
 function resolveDockerMounts(): { hostPath: string; readonly: boolean; sandboxPath: string }[] {
   const npmCache = resolveNpmCachePath();
   if (npmCache && existsSync(npmCache)) {
@@ -49,6 +52,9 @@ function resolveDockerMounts(): { hostPath: string; readonly: boolean; sandboxPa
   return [];
 }
 
+/**
+ *
+ */
 function resolveNpmCachePath(): string | undefined {
   try {
     return execFileSync("npm", ["config", "get", "cache"], { encoding: "utf-8" }).trim();

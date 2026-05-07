@@ -38,6 +38,10 @@ export async function runValidation(
   }
 }
 
+/**
+ *
+ * @param err
+ */
 function extractStderr(err: unknown): string {
   return err instanceof Error && "stderr" in err
     ? String((err as { stderr: unknown }).stderr).slice(0, MAX_STDERR_CHARS)
