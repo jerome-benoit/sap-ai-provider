@@ -230,7 +230,6 @@ export async function runRefinementLoop(
   return {
     baseBranch,
     failureReason,
-    lastFindings,
     roundHistory,
     roundsCompleted,
     status,
