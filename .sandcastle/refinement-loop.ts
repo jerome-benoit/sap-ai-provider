@@ -238,9 +238,9 @@ export async function runRefinementLoop(
 }
 
 /**
- * Builds a RoundSnapshot from a round result.
- * @param result
- * @param round
+ * @param result - The round execution result.
+ * @param round - 1-indexed round number.
+ * @returns A snapshot for the round history.
  */
 function buildRoundSnapshot(result: RoundResult, round: number): RoundSnapshot {
   return {

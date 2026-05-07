@@ -11,7 +11,8 @@ export const execFileAsync = util.promisify(execFile);
 
 /**
  * Returns a sandcastle agent provider for the given model, selected by AGENT_PROVIDER constant.
- * @param model
+ * @param model - The model identifier (e.g., 'github-copilot/claude-sonnet-4.6').
+ * @returns The configured agent provider.
  */
 export function agentProvider(model: string): AgentProvider {
   switch (AGENT_PROVIDER) {

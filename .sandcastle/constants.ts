@@ -52,7 +52,7 @@ export const DOCKER_MOUNTS: readonly {
 }[] = resolveDockerMounts();
 
 /**
- *
+ * @returns Mount entries for npm cache, or empty if cache path is unavailable.
  */
 function resolveDockerMounts(): { hostPath: string; readonly: boolean; sandboxPath: string }[] {
   const npmCache = resolveNpmCachePath();
@@ -63,7 +63,7 @@ function resolveDockerMounts(): { hostPath: string; readonly: boolean; sandboxPa
 }
 
 /**
- *
+ * @returns The npm cache directory path, or undefined if npm is unavailable.
  */
 function resolveNpmCachePath(): string | undefined {
   try {

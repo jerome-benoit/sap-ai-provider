@@ -39,8 +39,9 @@ export async function runValidation(
 }
 
 /**
- *
- * @param err
+ * Extracts stderr from a caught error, truncated to 500 chars.
+ * @param err - The caught error value.
+ * @returns Stderr string or empty string if unavailable.
  */
 function extractStderr(err: unknown): string {
   return err instanceof Error && "stderr" in err
