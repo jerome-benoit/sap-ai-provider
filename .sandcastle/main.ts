@@ -52,9 +52,8 @@ if (tasks.length === 0) {
         try {
           await using sandbox = await sandcastle.createSandbox({
             branch: spec.branch,
-            copyToWorktree: ["node_modules"],
             hooks: {
-              sandbox: { onSandboxReady: [{ command: "npm install && npm run build" }] },
+              sandbox: { onSandboxReady: [{ command: "npm ci && npm run build" }] },
             },
             sandbox: docker({ imageName: DOCKER_IMAGE, mounts: [...DOCKER_MOUNTS] }),
           });
