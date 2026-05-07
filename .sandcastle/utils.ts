@@ -10,16 +10,8 @@ import { AGENT_PROVIDER } from "./constants.js";
 export const execFileAsync = util.promisify(execFile);
 
 /**
- * Converts an unknown thrown value to a human-readable error message.
- * @param err - The caught value (may be an `Error` or any other type).
- * @returns The `message` property if `err` is an `Error`, otherwise `String(err)`.
- */
-export function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-/**
  * Returns a sandcastle agent provider for the given model, selected by AGENT_PROVIDER constant.
+ * @param model
  */
 export function agentProvider(model: string): AgentProvider {
   switch (AGENT_PROVIDER) {
@@ -28,4 +20,13 @@ export function agentProvider(model: string): AgentProvider {
     case "pi":
       return sandcastle.pi(model);
   }
+}
+
+/**
+ * Converts an unknown thrown value to a human-readable error message.
+ * @param err - The caught value (may be an `Error` or any other type).
+ * @returns The `message` property if `err` is an `Error`, otherwise `String(err)`.
+ */
+export function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
