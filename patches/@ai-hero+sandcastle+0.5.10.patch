@@ -1,0 +1,30 @@
+diff --git a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts
+index 134d7cb..c661e93 100644
+--- a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts
++++ b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts
+@@ -48,6 +48,8 @@ export interface AgentProvider {
+ export declare const DEFAULT_MODEL = "claude-opus-4-6";
+ /** Options for the pi agent provider. */
+ export interface PiOptions {
++    /** Reasoning/thinking level for the agent. */
++    readonly thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+     /** Environment variables injected by this agent provider. */
+     readonly env?: Record<string, string>;
+ }
+diff --git a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js
+index 01b533c..f2a72b4 100644
+--- a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js
++++ b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js
+@@ -140,8 +140,11 @@ export const pi = (model, options) => ({
+     env: options?.env ?? {},
+     captureSessions: false,
+     buildPrintCommand({ prompt }) {
++        const thinkingFlag = options?.thinking
++            ? ` --thinking ${options.thinking}`
++            : "";
+         return {
+-            command: `pi -p --mode json --no-session --model ${shellEscape(model)}`,
++            command: `pi -p --mode json --no-session${thinkingFlag} --model ${shellEscape(model)}`,
+             stdin: prompt,
+         };
+     },
