@@ -14,7 +14,9 @@ import type {
 } from "./types.js";
 
 import {
+  AGENT_ACTOR_EFFORT,
   AGENT_ACTOR_MODEL,
+  AGENT_CRITIC_EFFORT,
   AGENT_CRITIC_MODEL,
   AGENT_IDLE_TIMEOUT_S,
   AGENT_ITERATION_BUDGET,
@@ -461,7 +463,10 @@ async function executeRound(
   let actorResult: Awaited<ReturnType<typeof sandbox.run>>;
   try {
     actorResult = await sandbox.run({
-      agent: agentProvider(strategy.actorModel ?? AGENT_ACTOR_MODEL),
+      agent: agentProvider(
+        strategy.actorModel ?? AGENT_ACTOR_MODEL,
+        strategy.actorEffort ?? AGENT_ACTOR_EFFORT,
+      ),
       completionSignal: COMPLETION_SIGNAL,
       idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: budget,
@@ -619,7 +624,10 @@ async function runCritic(
   const { baseBranch, sandbox, signal, spec, strategy } = ctx;
 
   let critic = await sandbox.run({
-    agent: agentProvider(strategy.criticModel ?? AGENT_CRITIC_MODEL),
+    agent: agentProvider(
+      strategy.criticModel ?? AGENT_CRITIC_MODEL,
+      strategy.criticEffort ?? AGENT_CRITIC_EFFORT,
+    ),
     completionSignal: COMPLETION_SIGNAL,
     idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
     maxIterations: 1,
@@ -634,7 +642,10 @@ async function runCritic(
   if (findings === null) {
     console.warn(`  #${spec.id}: Critic parse failed. Retrying.`);
     critic = await sandbox.run({
-      agent: agentProvider(strategy.criticModel ?? AGENT_CRITIC_MODEL),
+      agent: agentProvider(
+        strategy.criticModel ?? AGENT_CRITIC_MODEL,
+        strategy.criticEffort ?? AGENT_CRITIC_EFFORT,
+      ),
       completionSignal: COMPLETION_SIGNAL,
       idleTimeoutSeconds: AGENT_IDLE_TIMEOUT_S,
       maxIterations: 1,
