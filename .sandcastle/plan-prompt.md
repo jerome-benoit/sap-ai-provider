@@ -45,7 +45,7 @@ Read `AGENTS.md` and `.serena/memories/project_overview`.
   ```
 
 - Do not implement anything. Only produce the plan.
-- Acceptance criteria must be testable by reading code or running tests — no subjective assessments.
+- Acceptance criteria must be verifiable by static code inspection of the diff.
 - Root cause hypothesis should be specific (mention modules, patterns, or behaviors) — not a restatement of the issue title.
 
 ## Completion
