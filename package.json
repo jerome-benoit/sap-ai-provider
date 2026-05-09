@@ -79,7 +79,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.10",
-    "@ai-sdk/provider-utils": "^4.0.26",
+    "@ai-sdk/provider-utils": "^4.0.27",
     "@sap-ai-sdk/foundation-models": "^2.10.0",
     "@sap-ai-sdk/orchestration": "^2.10.0",
     "zod": "^4.4.3"
@@ -88,7 +88,7 @@
     "@ai-hero/sandcastle": "^0.5.10",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.6.2",
     "@vitest/coverage-v8": "^4.1.5",
     "dotenv": "^17.4.2",
     "eslint": "^10.3.0",
