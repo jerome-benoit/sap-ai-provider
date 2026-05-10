@@ -1,0 +1,44 @@
+// Zed project settings for sap-ai-provider
+//
+// TypeScript/JavaScript: Prettier → ESLint --fix
+// JSON, JSONC, Markdown, YAML: Prettier
+{
+  "format_on_save": "on",
+  "language_servers": ["!biome", "..."],
+
+  "languages": {
+    // ── TypeScript (covers .ts and .tsx) ──────────────────────
+    "TypeScript": {
+      "formatter": ["prettier", { "code_action": "source.fixAll.eslint" }]
+    },
+    // ── JavaScript (covers .js, .cjs, .mjs) ──────────────────
+    "JavaScript": {
+      "formatter": ["prettier", { "code_action": "source.fixAll.eslint" }]
+    },
+    // ── JSON / JSONC ──────────────────────────────────────────
+    "JSON": {
+      "formatter": "prettier"
+    },
+    "JSONC": {
+      "formatter": "prettier"
+    },
+    // ── Markdown ──────────────────────────────────────────────
+    "Markdown": {
+      "formatter": "prettier"
+    },
+    // ── YAML ──────────────────────────────────────────────────
+    "YAML": {
+      "formatter": "prettier"
+    }
+  },
+
+  "lsp": {
+    "eslint": {
+      "settings": {
+        "workingDirectory": {
+          "mode": "auto"
+        }
+      }
+    }
+  }
+}
