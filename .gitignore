@@ -55,3 +55,6 @@ coverage/
 
 # oh-my-opencode
 .sisyphus/
+
+# Lefthook local overrides
+lefthook-local.yml

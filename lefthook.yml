@@ -1,0 +1,39 @@
+min_version: 2.0.0
+assert_lefthook_installed: true
+
+pre-commit:
+  piped: true
+  skip:
+    - merge
+    - rebase
+  commands:
+    prettier:
+      priority: 1
+      glob: "*.{ts,mts,cts,js,mjs,cjs,json,md,css,yaml,yml}"
+      run: npx prettier --cache --write --ignore-unknown {staged_files}
+      stage_fixed: true
+      fail_text: "Prettier failed. Run: npm run prettier-fix"
+    markdownlint:
+      priority: 2
+      glob: "*.md"
+      run: npx markdownlint-cli2 --fix {staged_files}
+      stage_fixed: true
+      fail_text: "Markdown lint failed. Run: npm run lint:md:fix"
+    eslint:
+      priority: 3
+      glob: "*.{ts,mts,cts,js,mjs,cjs}"
+      run: npx eslint --fix --cache --no-warn-ignored {staged_files}
+      stage_fixed: true
+      fail_text: "ESLint found unfixable errors. Run: npm run lint-fix"
+
+pre-push:
+  piped: true
+  commands:
+    type-check:
+      priority: 1
+      run: npm run type-check
+      fail_text: "TypeScript type-check failed."
+    test:
+      priority: 2
+      run: npm run test
+      fail_text: "Tests failed."

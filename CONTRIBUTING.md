@@ -17,6 +17,7 @@ transparent as possible, whether it's:
   - [Initial Setup](#initial-setup)
   - [Development Workflow](#development-workflow)
   - [Pre-Commit Checklist](#pre-commit-checklist)
+  - [Git Hooks (Lefthook)](#git-hooks-lefthook)
 - [Pull Request Process](#pull-request-process)
   - [Versioning](#versioning)
 - [Coding Standards](#coding-standards)
@@ -148,7 +149,9 @@ Our development workflow follows these steps:
 
 ### Pre-Commit Checklist
 
-Before committing, ensure ALL of these pass:
+The git hooks (see below) automatically handle formatting and linting on commit,
+and type-check + tests on push. For a full validation before opening a PR
+(including build), run:
 
 ```bash
 npm run type-check && \
@@ -163,7 +166,38 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-This validation takes approximately 15 seconds and ensures CI will pass.
+This takes approximately 15 seconds and ensures CI will pass.
+
+### Git Hooks (Lefthook)
+
+This project uses [lefthook](https://github.com/evilmartians/lefthook) to enforce
+code quality automatically via git hooks. Hooks are installed automatically when you
+run `npm install` (via the `prepare` lifecycle script).
+
+**Pre-commit hook** (runs on every `git commit`):
+
+- **Prettier** — auto-formats staged files (`--write`)
+- **Markdownlint** — auto-fixes staged `.md` files (`--fix`)
+- **ESLint** — auto-fixes staged TS/JS files (`--fix`)
+- Fixed files are automatically re-staged into the commit
+- If an unfixable error is found, the commit is blocked
+
+**Pre-push hook** (runs on every `git push`):
+
+- **TypeScript type-check** — full project `tsc --noEmit`
+- **Tests** — full test suite via `vitest run`
+- If either fails, the push is blocked
+
+**Bypassing hooks** (use sparingly, e.g., WIP commits):
+
+```bash
+git commit --no-verify    # Skip pre-commit hook
+git push --no-verify      # Skip pre-push hook
+LEFTHOOK=0 git commit     # Disable lefthook entirely for one command
+```
+
+**Local overrides**: Create a `lefthook-local.yml` at the project root to override
+or extend hooks for your local environment. This file is gitignored.
 
 ## Pull Request Process
 
