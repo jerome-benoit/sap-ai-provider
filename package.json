@@ -89,8 +89,8 @@
     "@ai-hero/sandcastle": "^0.5.10",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.6.2",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@types/node": "^25.7.0",
+    "@vitest/coverage-v8": "^4.1.6",
     "dotenv": "^17.4.2",
     "eslint": "^10.3.0",
     "eslint-plugin-jsdoc": "^62.9.0",
@@ -105,8 +105,8 @@
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.2",
-    "vitest": "^4.1.5"
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^4.1.6"
   },
   "peerDependencies": {
     "ai": "^5.0.0 || ^6.0.0"
