@@ -25,7 +25,7 @@ export const AGENT_PLANNER_EFFORT = "medium" as const;
 
 export const AGENT_PLANNER_MODEL = "github-copilot/claude-sonnet-4.6";
 
-export const AGENT_TASK_TIMEOUT_MS = 50 * 60 * 1000;
+export const AGENT_TASK_TIMEOUT_MS = 10_800_000;
 
 export const COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 
