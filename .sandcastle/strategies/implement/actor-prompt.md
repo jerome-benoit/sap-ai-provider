@@ -1,65 +1,51 @@
-# Actor Agent: Implementer
+# Actor
 
-Implement issue **#{{TASK_ID}}** ("{{ISSUE_TITLE}}") on branch `{{BRANCH}}`.
+Implement issue **#{{ISSUE_NUMBER}}** ("{{ISSUE_TITLE}}") on branch `{{BRANCH}}`, or address review findings if present.
 
-## Issue Details
+## Inputs
+
+- `ISSUE_NUMBER` — GitHub issue number.
+- `ISSUE_TITLE` — issue title.
+- `BRANCH` — working branch, already checked out.
+- `ISSUE_BODY` — sanitised issue body.
+- `PLAN_CONTEXT` — optional planner analysis (hypothesis, acceptance criteria); empty when absent.
+- `FINDINGS` — optional JSON array of critic findings from the previous round; empty on the first round.
 
 {{ISSUE_BODY}}
 
 {{PLAN_CONTEXT}}
 
-## Review Findings
-
 {{FINDINGS}}
 
-## Exploration
+## Task
 
-Explore the repo to understand the architecture before coding. Pay attention to:
-
-- Files related to the issue
-- Test files touching relevant modules
-- Existing patterns in similar code
-
-Read `AGENTS.md`, `CONTRIBUTING.md`, `.serena/memories/style_and_conventions` and `.serena/memories/task_completion_checklist`.
-
-## Implementation
-
-1. If review findings are provided above, cross-validate each one against the code. Fix findings you agree with. Ignore findings that are incorrect or not applicable.
-
-2. If no findings are provided, implement the issue from scratch following existing patterns:
-   - Strict TypeScript, JSDoc on public APIs
-   - Co-located tests in `*.test.ts` files
-   - Zod for runtime validation
-
-3. Before every commit, run the full validation suite:
+1. Read `AGENTS.md`, `CONTRIBUTING.md`, `.serena/memories/style_and_conventions`, and `.serena/memories/task_completion_checklist`. Explore files surrounding the issue and similar patterns in the repo.
+2. If `FINDINGS` is non-empty, cross-validate each finding against the code; fix the ones you agree with, ignore the rest.
+3. Otherwise implement the issue end-to-end, including matching tests using Vitest in co-located `*.test.ts` files and Zod for runtime validation of external inputs.
+4. Before every commit, run the full quality-gate chain:
 
    ```bash
    npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
    ```
 
-4. Commit with conventional commits:
-   - `fix: <description>` — bug fix
-   - `feat: <description>` — new feature
-   - `refactor: <description>` — restructuring
-   - `chore: <description>` — tooling/config
-
-5. Push the branch:
+5. Commit one logical change at a time using Conventional Commits (`fix:`, `feat:`, `refactor:`, `chore:`).
+6. Push the branch:
 
    ```bash
    git push -u origin {{BRANCH}}
    ```
 
+## Output
+
+Commits on `{{BRANCH}}` pushed to `origin`. No structured stdout payload.
+
 ## Rules
 
-- One logical change per commit.
-- Tests must pass before pushing. Zero type errors, zero test failures.
-- Do not modify unrelated files.
-- Do not bump version numbers.
-- Push BEFORE signaling completion.
+- Strict TypeScript: no `any`, no `@ts-ignore`, no non-null `!`; use the existing Vercel AI SDK typed errors (`APICallError`, `LoadAPIKeyError`, `NoSuchModelError`, `UnsupportedFeatureError` from `@ai-sdk/provider`).
+- Do not modify unrelated files; do not bump version numbers.
+- Push before signaling completion; HEAD must have zero type errors and zero test failures.
 
-## Completion
-
-When validation passes and the branch is pushed, output:
+## Done
 
 ```text
 <promise>COMPLETE</promise>
