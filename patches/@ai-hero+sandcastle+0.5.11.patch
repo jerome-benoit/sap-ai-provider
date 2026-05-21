@@ -1,9 +1,9 @@
 diff --git a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts
-index 134d7cb..c661e93 100644
+index 6655e1b..a244b35 100644
 --- a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts
 +++ b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.d.ts
 @@ -48,6 +48,8 @@ export interface AgentProvider {
- export declare const DEFAULT_MODEL = "claude-opus-4-6";
+ export declare const DEFAULT_MODEL = "claude-opus-4-7";
  /** Options for the pi agent provider. */
  export interface PiOptions {
 +    /** Reasoning/thinking level for the agent. */
@@ -12,7 +12,7 @@ index 134d7cb..c661e93 100644
      readonly env?: Record<string, string>;
  }
 diff --git a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js
-index 01b533c..f2a72b4 100644
+index 3053443..605f9f0 100644
 --- a/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js
 +++ b/node_modules/@ai-hero/sandcastle/dist/AgentProvider.js
 @@ -140,8 +140,11 @@ export const pi = (model, options) => ({

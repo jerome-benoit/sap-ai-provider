@@ -54,6 +54,7 @@ coverage/
 .serena/
 
 # oh-my-opencode
+.omo/
 .sisyphus/
 
 # Lefthook local overrides

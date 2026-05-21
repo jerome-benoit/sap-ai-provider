@@ -86,7 +86,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "^0.5.10",
+    "@ai-hero/sandcastle": "^0.5.11",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
