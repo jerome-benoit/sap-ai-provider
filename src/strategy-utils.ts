@@ -6,6 +6,7 @@ import type {
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
   JSONArray,
+  JSONObject,
   LanguageModelV3CallOptions,
   LanguageModelV3Content,
   LanguageModelV3FinishReason,
@@ -47,6 +48,17 @@ export type AISDKToolChoice =
   | { type: "auto" }
   | { type: "none" }
   | { type: "required" };
+
+/**
+ * Anthropic prompt-cache breakdown surfaced via `providerMetadata['sap-ai'].cacheUsage`.
+ *
+ * Mirrors the per-TTL ephemeral bucket shape returned by the SAP AI SDK token usage
+ * payload (`prompt_tokens_details.cache_creation_token_details`).
+ * @internal
+ */
+export type AnthropicCacheUsage = NonNullable<
+  NonNullable<SDKTokenUsage["prompt_tokens_details"]>["cache_creation_token_details"]
+>;
 
 /**
  * @internal
@@ -266,6 +278,15 @@ export interface SDKStreamChunk {
   getFinishReason(): null | string | undefined;
 }
 
+export {
+  createInitialStreamState,
+  createStreamTransformer,
+  StreamIdGenerator,
+  type StreamState,
+  type StreamTransformerConfig,
+  type ToolCallInProgress,
+} from "./stream-transformer.js";
+
 /**
  * Token usage shape returned by SAP AI SDK responses.
  *
@@ -277,10 +298,14 @@ export interface SDKStreamChunk {
 export interface SDKTokenUsage {
   completion_tokens?: number;
   completion_tokens_details?: {
+    accepted_prediction_tokens?: number;
+    audio_tokens?: number;
     reasoning_tokens?: number;
+    rejected_prediction_tokens?: number;
   };
   prompt_tokens?: number;
   prompt_tokens_details?: {
+    audio_tokens?: number;
     cache_creation_token_details?: {
       ephemeral_1h_input_tokens?: number;
       ephemeral_5m_input_tokens?: number;
@@ -289,15 +314,6 @@ export interface SDKTokenUsage {
     cached_tokens?: number;
   };
 }
-
-export {
-  createInitialStreamState,
-  createStreamTransformer,
-  StreamIdGenerator,
-  type StreamState,
-  type StreamTransformerConfig,
-  type ToolCallInProgress,
-} from "./stream-transformer.js";
 
 /**
  * @internal
@@ -350,9 +366,7 @@ export function applyParameterOverrides(
  * @internal
  */
 export function buildAnthropicCacheMetadata(tokenUsage: null | SDKTokenUsage | undefined): {
-  cacheUsage?: NonNullable<
-    NonNullable<SDKTokenUsage["prompt_tokens_details"]>["cache_creation_token_details"]
-  >;
+  cacheUsage?: AnthropicCacheUsage;
 } {
   const details = tokenUsage?.prompt_tokens_details?.cache_creation_token_details;
   if (
@@ -441,7 +455,7 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
         finishReason: finishReasonRaw ?? "unknown",
         finishReasonMapped: finishReason,
         ...(intermediateFailures?.length
-          ? { intermediateFailures: intermediateFailures as JSONArray }
+          ? { intermediateFailures: sanitizeAsJSONArray(intermediateFailures) }
           : {}),
         ...(typeof responseHeaders?.["x-request-id"] === "string"
           ? { requestId: responseHeaders["x-request-id"] }
@@ -938,6 +952,14 @@ export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): Lan
   const reasoningTokens = tokenUsage?.completion_tokens_details?.reasoning_tokens;
   const promptTokens = tokenUsage?.prompt_tokens;
 
+  const promptDetails = tokenUsage?.prompt_tokens_details;
+  const completionDetails = tokenUsage?.completion_tokens_details;
+  const hasUnmappedFields =
+    promptDetails?.audio_tokens != null ||
+    completionDetails?.audio_tokens != null ||
+    completionDetails?.accepted_prediction_tokens != null ||
+    completionDetails?.rejected_prediction_tokens != null;
+
   return {
     inputTokens: {
       cacheRead: cachedTokens,
@@ -953,6 +975,7 @@ export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): Lan
           : tokenUsage?.completion_tokens,
       total: tokenUsage?.completion_tokens,
     },
+    ...(hasUnmappedFields && tokenUsage ? { raw: sanitizeAsJSONObject(tokenUsage) } : {}),
   };
 }
 
@@ -1035,4 +1058,40 @@ export async function prepareEmbeddingCall(
   }
 
   return { embeddingOptions: sapOptions, providerName };
+}
+
+/**
+ * Coerces an array into a JSON-conformant payload suitable for `providerMetadata` values.
+ *
+ * Non-serialisable entries (functions, symbols, `undefined`) are dropped or replaced
+ * by `null` per `JSON.stringify` defaults. Returns an empty array when the entire
+ * payload cannot be serialised (e.g. circular references).
+ * @param value - Candidate array.
+ * @returns JSON-safe array.
+ * @internal
+ */
+export function sanitizeAsJSONArray(value: readonly unknown[]): JSONArray {
+  try {
+    return JSON.parse(JSON.stringify(value)) as JSONArray;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Coerces an object into a JSON-conformant payload suitable for `providerMetadata` or
+ * `LanguageModelV3Usage.raw`.
+ *
+ * Non-serialisable values are dropped per `JSON.stringify` defaults. Returns an empty
+ * object when the entire payload cannot be serialised.
+ * @param value - Candidate object.
+ * @returns JSON-safe object.
+ * @internal
+ */
+export function sanitizeAsJSONObject(value: object): JSONObject {
+  try {
+    return JSON.parse(JSON.stringify(value)) as JSONObject;
+  } catch {
+    return {};
+  }
 }

@@ -859,9 +859,13 @@ describe("SAPAILanguageModel", () => {
    * @param overrides.usage - Token usage information.
    * @param overrides.usage.completion_tokens - Completion token count.
    * @param overrides.usage.completion_tokens_details - Completion token details.
+   * @param overrides.usage.completion_tokens_details.accepted_prediction_tokens - Predicted-output tokens accepted by the model.
+   * @param overrides.usage.completion_tokens_details.audio_tokens - Audio tokens emitted in the completion.
    * @param overrides.usage.completion_tokens_details.reasoning_tokens - Reasoning token count.
+   * @param overrides.usage.completion_tokens_details.rejected_prediction_tokens - Predicted-output tokens rejected by the model.
    * @param overrides.usage.prompt_tokens - Prompt token count.
    * @param overrides.usage.prompt_tokens_details - Prompt token details.
+   * @param overrides.usage.prompt_tokens_details.audio_tokens - Audio tokens supplied in the prompt.
    * @param overrides.usage.prompt_tokens_details.cache_creation_token_details - Anthropic per-TTL cache creation breakdown.
    * @param overrides.usage.prompt_tokens_details.cache_creation_token_details.ephemeral_1h_input_tokens - Tokens written to the 1h cache.
    * @param overrides.usage.prompt_tokens_details.cache_creation_token_details.ephemeral_5m_input_tokens - Tokens written to the 5m cache.
@@ -886,10 +890,14 @@ describe("SAPAILanguageModel", () => {
       usage?: {
         completion_tokens: number;
         completion_tokens_details?: {
+          accepted_prediction_tokens?: number;
+          audio_tokens?: number;
           reasoning_tokens?: number;
+          rejected_prediction_tokens?: number;
         };
         prompt_tokens: number;
         prompt_tokens_details?: {
+          audio_tokens?: number;
           cache_creation_token_details?: {
             ephemeral_1h_input_tokens?: number;
             ephemeral_5m_input_tokens?: number;
@@ -3507,6 +3515,50 @@ describe("SAPAILanguageModel", () => {
           noCache: 0,
           total: 10,
         });
+      });
+
+      it("should populate usage.raw when 2.11 token fields are present", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 10,
+              completion_tokens_details: {
+                accepted_prediction_tokens: 4,
+                audio_tokens: 2,
+                rejected_prediction_tokens: 1,
+              },
+              prompt_tokens: 20,
+              prompt_tokens_details: { audio_tokens: 3 },
+              total_tokens: 30,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.raw).toEqual({
+          completion_tokens: 10,
+          completion_tokens_details: {
+            accepted_prediction_tokens: 4,
+            audio_tokens: 2,
+            rejected_prediction_tokens: 1,
+          },
+          prompt_tokens: 20,
+          prompt_tokens_details: { audio_tokens: 3 },
+          total_tokens: 30,
+        });
+      });
+
+      it("should omit usage.raw when no 2.11 token fields are present", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage).not.toHaveProperty("raw");
       });
     },
   );

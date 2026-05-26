@@ -3,7 +3,6 @@
  * into Vercel AI SDK LanguageModelV3StreamPart events.
  */
 import type {
-  JSONArray,
   LanguageModelV3CallOptions,
   LanguageModelV3FinishReason,
   LanguageModelV3StreamPart,
@@ -25,6 +24,7 @@ import {
   createAISDKRequestBodySummary,
   mapFinishReason,
   mapTokenUsage,
+  sanitizeAsJSONArray,
 } from "./strategy-utils.js";
 
 /**
@@ -242,7 +242,7 @@ export function createStreamTransformer(
               finishReason: streamState.finishReason.raw,
               ...(streamIntermediateFailures?.length
                 ? {
-                    intermediateFailures: streamIntermediateFailures as JSONArray,
+                    intermediateFailures: sanitizeAsJSONArray(streamIntermediateFailures),
                   }
                 : {}),
               ...(typeof responseHeaders?.["x-request-id"] === "string"

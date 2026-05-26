@@ -5,7 +5,13 @@ import type { LanguageModelV3FunctionTool, SharedV3Warning } from "@ai-sdk/provi
 import { describe, expect, it } from "vitest";
 
 import { parseSAPPartProviderOptions } from "./sap-ai-provider-options.js";
-import { convertToolsToSAPFormat, mapFinishReason, type SAPTool } from "./strategy-utils.js";
+import {
+  convertToolsToSAPFormat,
+  mapFinishReason,
+  sanitizeAsJSONArray,
+  sanitizeAsJSONObject,
+  type SAPTool,
+} from "./strategy-utils.js";
 
 interface ChatCompletionTool extends SAPTool<unknown> {
   function: { description?: string; name: string; parameters: unknown };
@@ -82,5 +88,40 @@ describe("mapFinishReason", () => {
     ["GUARDRAIL_INTERVENED", "content-filter"],
   ])("should map %s to %s", (raw, unified) => {
     expect(mapFinishReason(raw)).toEqual({ raw, unified });
+  });
+});
+
+describe("sanitizeAsJSONArray", () => {
+  it("should pass plain JSON-safe arrays through unchanged", () => {
+    expect(sanitizeAsJSONArray([1, "two", { three: 3 }])).toEqual([1, "two", { three: 3 }]);
+  });
+
+  it("should drop function entries via JSON.stringify defaults", () => {
+    const sanitized = sanitizeAsJSONArray([{ ok: 1 }, Math.random]);
+    expect(sanitized).toHaveLength(2);
+    expect(sanitized[0]).toEqual({ ok: 1 });
+    expect(sanitized[1]).toBeNull();
+  });
+
+  it("should return an empty array on circular references", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(sanitizeAsJSONArray([circular])).toEqual([]);
+  });
+});
+
+describe("sanitizeAsJSONObject", () => {
+  it("should pass plain JSON-safe objects through unchanged", () => {
+    expect(sanitizeAsJSONObject({ a: 1, b: { c: "two" } })).toEqual({ a: 1, b: { c: "two" } });
+  });
+
+  it("should drop function-valued properties", () => {
+    expect(sanitizeAsJSONObject({ a: 1, fn: Math.random })).toEqual({ a: 1 });
+  });
+
+  it("should return an empty object on circular references", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(sanitizeAsJSONObject(circular)).toEqual({});
   });
 });
