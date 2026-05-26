@@ -12,6 +12,7 @@ import type {
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type {
   OrchestrationModelSettings,
   PromptTemplateRef,
@@ -456,11 +457,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     return ORCHESTRATION_PARAM_MAPPINGS;
   }
 
-  protected override getPartProviderOptionsParser():
-    | ((
-        providerOptions: unknown,
-      ) => undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } })
-    | undefined {
+  protected override getPartProviderOptionsParser(): ParsePartProviderOptions | undefined {
     return parseSAPPartProviderOptions;
   }
 

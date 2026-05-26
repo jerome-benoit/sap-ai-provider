@@ -13,6 +13,8 @@ import {
 } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
 
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
+
 /**
  * Options for converting Vercel AI SDK prompts to SAP AI SDK messages.
  * @see {@link convertToSAPMessages}
@@ -35,9 +37,7 @@ export interface ConvertToSAPMessagesOptions {
    * do not honour part-level directives (Foundation Models) leave this undefined.
    * @default undefined
    */
-  readonly parsePartProviderOptions?: (
-    providerOptions: unknown,
-  ) => undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } };
+  readonly parsePartProviderOptions?: ParsePartProviderOptions;
 }
 
 /**
@@ -104,6 +104,7 @@ interface UserContentItem {
  * @param options - Conversion options.
  * @param options.escapeTemplatePlaceholders - Whether to escape Jinja2 template delimiters (default: true).
  * @param options.includeReasoning - Whether to include assistant reasoning parts (default: false).
+ * @param options.parsePartProviderOptions - Optional callback to read per-part `providerOptions['sap-ai']`. Strategies opt in to honour part-level directives such as Anthropic `cacheControl`.
  * @returns SAP AI SDK ChatMessage array ready for orchestration requests.
  * @throws {UnsupportedFunctionalityError} When encountering unsupported content types or file formats.
  * @throws {InvalidPromptError} When encountering unsupported message roles.

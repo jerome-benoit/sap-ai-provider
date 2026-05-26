@@ -132,6 +132,15 @@ export const sapAIPartProviderOptionsSchema = z.object({
   cacheControl: cacheControlSchema.optional(),
 });
 
+/**
+ * Callback that consumes per-message-part `providerOptions` and returns the
+ * `sap-ai` slice (e.g. `cacheControl`) when present and valid.
+ * @internal
+ */
+export type ParsePartProviderOptions = (
+  providerOptions: unknown,
+) => SAPAIPartProviderOptions | undefined;
+
 /** @internal */
 export type SAPAIPartProviderOptions = z.infer<typeof sapAIPartProviderOptionsSchema>;
 
@@ -142,6 +151,7 @@ export type SAPAIPartProviderOptions = z.infer<typeof sapAIPartProviderOptionsSc
  * dropped silently because the converter has no warnings sink.
  * @param providerOptions - Part-level providerOptions bag.
  * @returns Validated per-part options, or undefined.
+ * @internal
  */
 export function parseSAPPartProviderOptions(
   providerOptions: unknown,

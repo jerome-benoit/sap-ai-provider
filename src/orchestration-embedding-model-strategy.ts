@@ -11,8 +11,13 @@ import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
-import { normalizeHeaders } from "./sap-ai-error.js";
-import { type EmbeddingProviderOptions, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
+import {
+  type EmbeddingProviderOptions,
+  extractResponseMetadata,
+  hasKeys,
+  normalizeEmbedding,
+  type ResponseMetadata,
+} from "./strategy-utils.js";
 
 /** @internal */
 type OrchestrationEmbeddingClientClass = typeof OrchestrationEmbeddingClient;
@@ -79,24 +84,10 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
     return sortedEmbeddings.map((data) => normalizeEmbedding(data.embedding));
   }
 
-  protected override extractRequestId(
+  protected override extractResponseMetadata(
     response: OrchestrationEmbeddingResponse,
-  ): string | undefined {
-    const fn = (response as { getRequestId?: () => string | undefined }).getRequestId;
-    if (typeof fn !== "function") {
-      return undefined;
-    }
-    return fn.call(response);
-  }
-
-  protected override extractResponseHeaders(
-    response: OrchestrationEmbeddingResponse,
-  ): Record<string, string> | undefined {
-    try {
-      return normalizeHeaders(response.response.headers);
-    } catch {
-      return undefined;
-    }
+  ): ResponseMetadata {
+    return extractResponseMetadata(response, "response");
   }
 
   protected extractTokenCount(response: OrchestrationEmbeddingResponse): number {

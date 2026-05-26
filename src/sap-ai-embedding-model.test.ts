@@ -500,6 +500,38 @@ describe("SAPAIEmbeddingModel", () => {
       expect(result.embeddings).toEqual([[0.1, 0.2]]);
       expect(result.usage?.tokens).toBe(1);
     });
+
+    it("should not crash when SDK rawResponse/response accessor throws", async () => {
+      const baseFM = {
+        _data: {
+          data: [{ embedding: [0.1, 0.2], index: 0 }],
+          usage: { prompt_tokens: 1, total_tokens: 1 },
+        },
+        getRequestId: () => "throwing-rid",
+      };
+      const baseOrch = {
+        getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+        getRequestId: () => "throwing-rid",
+        getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+      };
+      const headersField = api === "foundation-models" ? "rawResponse" : "response";
+      const probe = api === "foundation-models" ? { ...baseFM } : { ...baseOrch };
+      Object.defineProperty(probe, headersField, {
+        get(): { headers: Record<string, string> } {
+          throw new Error("rawResponse not available");
+        },
+      });
+      await setEmbedResponseForApi(api, probe);
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.embeddings).toEqual([[0.1, 0.2]]);
+      expect(result.response?.headers).toBeUndefined();
+      expect(
+        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
+      ).toBe("throwing-rid");
+    });
   });
 
   describe.each<APIType>(["orchestration", "foundation-models"])(

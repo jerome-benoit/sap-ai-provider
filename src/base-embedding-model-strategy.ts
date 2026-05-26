@@ -17,6 +17,7 @@ import {
   type EmbeddingProviderOptions,
   type EmbeddingType,
   prepareEmbeddingCall,
+  type ResponseMetadata,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
@@ -61,8 +62,8 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
-      const responseId = this.extractRequestId(response);
-      const responseHeaders = this.extractResponseHeaders(response);
+      const { headers: responseHeaders, requestId: responseId } =
+        this.extractResponseMetadata(response);
 
       return buildEmbeddingResult({
         embeddings,
@@ -124,30 +125,18 @@ export abstract class BaseEmbeddingModelStrategy<
   protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
 
   /**
-   * Extracts the server-provided request id from the SDK response.
+   * Extracts response metadata (request id and HTTP headers) from the SDK response.
    *
-   * Default returns `undefined`. Subclasses override when the SDK exposes
-   * `getRequestId()`.
+   * Default returns both fields as `undefined`. Subclasses override to lift the
+   * underlying `HttpResponse` via `extractResponseMetadata` from `strategy-utils`,
+   * passing the SDK-specific field name (`rawResponse` for foundation-models,
+   * `response` for orchestration).
    * @param _response - SDK response.
-   * @returns Server-provided request id, or undefined.
+   * @returns Combined `{ headers, requestId }` metadata.
    * @internal
    */
-  protected extractRequestId(_response: TResponse): string | undefined {
-    return undefined;
-  }
-
-  /**
-   * Extracts response headers from the SDK response, normalised to lower-case keys.
-   *
-   * Default returns `undefined`. Subclasses override to lift the underlying
-   * `HttpResponse.headers` (the SDKs disagree on the field name — `rawResponse`
-   * for foundation-models, `response` for orchestration).
-   * @param _response - SDK response.
-   * @returns Normalised header bag, or undefined.
-   * @internal
-   */
-  protected extractResponseHeaders(_response: TResponse): Record<string, string> | undefined {
-    return undefined;
+  protected extractResponseMetadata(_response: TResponse): ResponseMetadata {
+    return { headers: undefined, requestId: undefined };
   }
 
   /**

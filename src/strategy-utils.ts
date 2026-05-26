@@ -23,6 +23,7 @@ import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
 import { deepMerge } from "./deep-merge.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
 import { validateModelParamsWithWarnings } from "./sap-ai-provider-options.js";
 
@@ -163,6 +164,16 @@ export interface ParamMapping {
 }
 
 /**
+ * Response metadata extracted from an SDK response: server-provided request id
+ * and normalised HTTP headers.
+ * @internal
+ */
+export interface ResponseMetadata {
+  readonly headers: Record<string, string> | undefined;
+  readonly requestId: string | undefined;
+}
+
+/**
  * @internal
  */
 export type SAPResponseFormat =
@@ -276,14 +287,6 @@ export interface SDKTokenUsage {
   };
 }
 
-/**
- * @internal
- */
-export interface SDKToolCall {
-  function: { arguments: string; name: string };
-  id: string;
-}
-
 export {
   createInitialStreamState,
   createStreamTransformer,
@@ -292,6 +295,14 @@ export {
   type StreamTransformerConfig,
   type ToolCallInProgress,
 } from "./stream-transformer.js";
+
+/**
+ * @internal
+ */
+export interface SDKToolCall {
+  function: { arguments: string; name: string };
+  id: string;
+}
 
 /**
  * Applies parameter overrides from AI SDK options and modelParams.
@@ -716,6 +727,46 @@ export function extractResponseContent(response: SDKResponse): LanguageModelV3Co
   }
 
   return content;
+}
+
+/**
+ * Extracts request id and headers from an SDK response.
+ *
+ * Tolerates SDKs that omit `getRequestId`, expose it as a non-function, or
+ * expose `headers` via a throwing accessor (the deprecated 0-arg foundation-models
+ * stream constructor). The `field` parameter selects between `rawResponse`
+ * (foundation-models) and `response` (orchestration).
+ * @param response - SDK response object.
+ * @param field - Property containing the underlying HttpResponse wrapper.
+ * @returns Combined `{ requestId, headers }` with both fields defensively gathered.
+ * @internal
+ */
+export function extractResponseMetadata(
+  response: unknown,
+  field: "rawResponse" | "response",
+): ResponseMetadata {
+  let requestId: string | undefined;
+  const fn = (response as null | { getRequestId?: unknown })?.getRequestId;
+  if (typeof fn === "function") {
+    try {
+      const value = (fn as () => string | undefined).call(response);
+      requestId = typeof value === "string" && value.length > 0 ? value : undefined;
+    } catch {
+      requestId = undefined;
+    }
+  }
+
+  let headers: Record<string, string> | undefined;
+  try {
+    const wrapper = (response as null | Record<string, unknown>)?.[field] as
+      | undefined
+      | { headers?: unknown };
+    headers = wrapper ? normalizeHeaders(wrapper.headers) : undefined;
+  } catch {
+    headers = undefined;
+  }
+
+  return { headers, requestId };
 }
 
 /**

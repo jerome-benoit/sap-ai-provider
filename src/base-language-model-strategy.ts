@@ -9,6 +9,7 @@ import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
@@ -357,11 +358,7 @@ export abstract class BaseLanguageModelStrategy<
    * @returns Parser callback, or undefined to disable per-part plumbing.
    * @internal
    */
-  protected getPartProviderOptionsParser():
-    | ((
-        providerOptions: unknown,
-      ) => undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } })
-    | undefined {
+  protected getPartProviderOptionsParser(): ParsePartProviderOptions | undefined {
     return undefined;
   }
 

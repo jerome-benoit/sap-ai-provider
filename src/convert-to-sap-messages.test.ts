@@ -13,6 +13,7 @@ import {
   escapeOrchestrationPlaceholders,
   unescapeOrchestrationPlaceholders,
 } from "./convert-to-sap-messages";
+import { parseSAPPartProviderOptions } from "./sap-ai-provider-options.js";
 
 const createUserPrompt = (text: string): LanguageModelV3Prompt => [
   { content: [{ text, type: "text" }], role: "user" },
@@ -1236,15 +1237,7 @@ describe("convertToSAPMessages", () => {
   });
 
   describe("cache_control plumbing", () => {
-    const parsePartProviderOptions = (
-      providerOptions: unknown,
-    ): undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } } => {
-      if (!providerOptions || typeof providerOptions !== "object") return undefined;
-      const block = (providerOptions as Record<string, unknown>)["sap-ai"];
-      return block as
-        | undefined
-        | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } };
-    };
+    const parsePartProviderOptions = parseSAPPartProviderOptions;
 
     it("attaches cache_control to a user text part when cacheControl is set", () => {
       const prompt: LanguageModelV3Prompt = [
