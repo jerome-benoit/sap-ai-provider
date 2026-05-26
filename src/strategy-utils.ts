@@ -267,6 +267,11 @@ export interface SDKTokenUsage {
   };
   prompt_tokens?: number;
   prompt_tokens_details?: {
+    cache_creation_token_details?: {
+      ephemeral_1h_input_tokens?: number;
+      ephemeral_5m_input_tokens?: number;
+    };
+    cache_creation_tokens?: number;
     cached_tokens?: number;
   };
 }
@@ -388,12 +393,18 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
   }
 
   const intermediateFailures = response.getIntermediateFailures?.();
+  const cacheCreationTokenDetails = tokenUsage?.prompt_tokens_details?.cache_creation_token_details;
 
   return {
     content,
     finishReason,
     providerMetadata: {
       [providerName]: {
+        ...(cacheCreationTokenDetails &&
+        (cacheCreationTokenDetails.ephemeral_5m_input_tokens != null ||
+          cacheCreationTokenDetails.ephemeral_1h_input_tokens != null)
+          ? { cacheUsage: cacheCreationTokenDetails }
+          : {}),
         finishReason: finishReasonRaw ?? "unknown",
         finishReasonMapped: finishReason,
         ...(intermediateFailures?.length
@@ -810,12 +821,13 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
  */
 export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): LanguageModelV3Usage {
   const cachedTokens = tokenUsage?.prompt_tokens_details?.cached_tokens;
+  const cacheWriteTokens = tokenUsage?.prompt_tokens_details?.cache_creation_tokens;
   const reasoningTokens = tokenUsage?.completion_tokens_details?.reasoning_tokens;
 
   return {
     inputTokens: {
       cacheRead: cachedTokens,
-      cacheWrite: undefined,
+      cacheWrite: cacheWriteTokens,
       noCache:
         cachedTokens != null
           ? (tokenUsage?.prompt_tokens ?? 0) - cachedTokens

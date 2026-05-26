@@ -1234,4 +1234,126 @@ describe("convertToSAPMessages", () => {
       });
     });
   });
+
+  describe("cache_control plumbing", () => {
+    const parsePartProviderOptions = (
+      providerOptions: unknown,
+    ): undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } } => {
+      if (!providerOptions || typeof providerOptions !== "object") return undefined;
+      const block = (providerOptions as Record<string, unknown>)["sap-ai"];
+      return block as
+        | undefined
+        | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } };
+    };
+
+    it("attaches cache_control to a user text part when cacheControl is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "Cache me",
+              type: "text",
+            },
+            { text: "Don't cache me", type: "text" },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as {
+        content: { cache_control?: unknown; text: string; type: string }[];
+      };
+      expect(userMsg.content[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
+      expect(userMsg.content[1]?.cache_control).toBeUndefined();
+    });
+
+    it("attaches cache_control to a user image_url part", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              data: "base64data",
+              mediaType: "image/png",
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } } },
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: { cache_control?: unknown; type: string }[] };
+      expect(userMsg.content[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("does not collapse a single-text user message to string form when cache_control is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { type: "ephemeral" } } },
+              text: "with cache",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: unknown };
+      expect(Array.isArray(userMsg.content)).toBe(true);
+    });
+
+    it("collapses a single-text user message to string form when cache_control is absent", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ text: "no cache", type: "text" }],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: unknown };
+      expect(typeof userMsg.content).toBe("string");
+      expect(userMsg.content).toBe("no cache");
+    });
+
+    it("ignores cacheControl scoped to another provider key", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: {
+                anthropic: { cacheControl: { ttl: "5m", type: "ephemeral" } },
+              },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: unknown };
+      expect(typeof userMsg.content).toBe("string");
+    });
+
+    it("never attaches cache_control when no parsePartProviderOptions callback is supplied", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const userMsg = result[0] as { content: unknown };
+      expect(typeof userMsg.content).toBe("string");
+    });
+  });
 });

@@ -30,6 +30,7 @@ import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   getProviderName,
   orchestrationConfigRefSchema,
+  parseSAPPartProviderOptions,
   sapAILanguageModelProviderOptions,
 } from "./sap-ai-provider-options.js";
 import {
@@ -256,6 +257,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
+      parsePartProviderOptions: this.getPartProviderOptionsParser(),
     });
 
     // In configRef mode, modelParams from settings/options are ignored (server-side config)
@@ -452,6 +454,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   protected getParamMappings(): readonly ParamMapping[] {
     return ORCHESTRATION_PARAM_MAPPINGS;
+  }
+
+  protected override getPartProviderOptionsParser():
+    | ((
+        providerOptions: unknown,
+      ) => undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } })
+    | undefined {
+    return parseSAPPartProviderOptions;
   }
 
   protected getUrl(): string {

@@ -213,6 +213,7 @@ export abstract class BaseLanguageModelStrategy<
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
+      parsePartProviderOptions: this.getPartProviderOptionsParser(),
     });
 
     const { modelParams, warnings: paramWarnings } = buildModelParams({
@@ -346,6 +347,23 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected abstract getParamMappings(): readonly ParamMapping[];
+
+  /**
+   * Returns a parser for per-message-part `providerOptions['sap-ai']`.
+   *
+   * Default returns `undefined`. Strategies that honour part-level directives
+   * (e.g. orchestration `cache_control` for Anthropic) override to return the
+   * `parseSAPPartProviderOptions` parser.
+   * @returns Parser callback, or undefined to disable per-part plumbing.
+   * @internal
+   */
+  protected getPartProviderOptionsParser():
+    | ((
+        providerOptions: unknown,
+      ) => undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } })
+    | undefined {
+    return undefined;
+  }
 
   /**
    * Returns the URL identifier for this API (used in error messages).

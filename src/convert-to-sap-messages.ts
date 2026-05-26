@@ -29,6 +29,15 @@ export interface ConvertToSAPMessagesOptions {
    * @default false
    */
   readonly includeReasoning?: boolean;
+  /**
+   * Optional callback that reads per-part `providerOptions['sap-ai']` (e.g. Anthropic
+   * `cacheControl`) and forwards the result onto the SAP message item. Strategies that
+   * do not honour part-level directives (Foundation Models) leave this undefined.
+   * @default undefined
+   */
+  readonly parsePartProviderOptions?: (
+    providerOptions: unknown,
+  ) => undefined | { readonly cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" } };
 }
 
 /**
@@ -71,6 +80,7 @@ const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%
  * @internal
  */
 interface UserContentItem {
+  readonly cache_control?: { ttl?: "1h" | "5m"; type: "ephemeral" };
   readonly file?: {
     readonly file_data: string;
     readonly filename?: string;
@@ -193,6 +203,8 @@ export function convertToSAPMessages(
         const contentParts: UserContentItem[] = [];
 
         for (const part of message.content) {
+          const partOpts = options.parsePartProviderOptions?.(part.providerOptions);
+          const cacheControl = partOpts?.cacheControl;
           switch (part.type) {
             case "file": {
               const fileDataUrl = buildDataUrl(part);
@@ -213,6 +225,7 @@ export function convertToSAPMessages(
                 }
 
                 contentParts.push({
+                  ...(cacheControl ? { cache_control: cacheControl } : {}),
                   image_url: {
                     url: fileDataUrl,
                   },
@@ -220,6 +233,7 @@ export function convertToSAPMessages(
                 });
               } else {
                 contentParts.push({
+                  ...(cacheControl ? { cache_control: cacheControl } : {}),
                   file: {
                     file_data: fileDataUrl,
                     ...(part.filename ? { filename: part.filename } : {}),
@@ -231,6 +245,7 @@ export function convertToSAPMessages(
             }
             case "text": {
               contentParts.push({
+                ...(cacheControl ? { cache_control: cacheControl } : {}),
                 text: maybeEscape(part.text),
                 type: "text",
               });
@@ -246,7 +261,9 @@ export function convertToSAPMessages(
 
         const firstPart = contentParts[0];
         const userMessage: UserChatMessage =
-          contentParts.length === 1 && firstPart?.type === "text"
+          contentParts.length === 1 &&
+          firstPart?.type === "text" &&
+          firstPart.cache_control === undefined
             ? {
                 content: firstPart.text ?? "",
                 role: "user",

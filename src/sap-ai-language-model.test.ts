@@ -862,6 +862,10 @@ describe("SAPAILanguageModel", () => {
    * @param overrides.usage.completion_tokens_details.reasoning_tokens - Reasoning token count.
    * @param overrides.usage.prompt_tokens - Prompt token count.
    * @param overrides.usage.prompt_tokens_details - Prompt token details.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_token_details - Anthropic per-TTL cache creation breakdown.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_token_details.ephemeral_1h_input_tokens - Tokens written to the 1h cache.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_token_details.ephemeral_5m_input_tokens - Tokens written to the 5m cache.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_tokens - Tokens written to the prompt cache.
    * @param overrides.usage.prompt_tokens_details.cached_tokens - Cached token count.
    * @param overrides.usage.total_tokens - Total token count.
    * @returns A mock chat response object.
@@ -886,6 +890,11 @@ describe("SAPAILanguageModel", () => {
         };
         prompt_tokens: number;
         prompt_tokens_details?: {
+          cache_creation_token_details?: {
+            ephemeral_1h_input_tokens?: number;
+            ephemeral_5m_input_tokens?: number;
+          };
+          cache_creation_tokens?: number;
           cached_tokens?: number;
         };
         total_tokens: number;
@@ -3313,6 +3322,71 @@ describe("SAPAILanguageModel", () => {
 
         expect(result.usage.inputTokens.cacheRead).toBeUndefined();
         expect(result.usage.outputTokens.reasoning).toBeUndefined();
+      });
+
+      it("should map cache_creation_tokens to inputTokens.cacheWrite", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 80, cached_tokens: 20 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.usage.inputTokens.cacheWrite).toBe(80);
+        expect(result.usage.inputTokens.cacheRead).toBe(20);
+      });
+
+      it("should surface cache_creation_token_details in providerMetadata.cacheUsage", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: {
+                cache_creation_token_details: {
+                  ephemeral_1h_input_tokens: 20,
+                  ephemeral_5m_input_tokens: 80,
+                },
+                cache_creation_tokens: 100,
+              },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.providerMetadata?.["sap-ai"]).toMatchObject({
+          cacheUsage: {
+            ephemeral_1h_input_tokens: 20,
+            ephemeral_5m_input_tokens: 80,
+          },
+        });
+      });
+
+      it("should omit cacheUsage when cache_creation_token_details is absent", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
       });
     },
   );

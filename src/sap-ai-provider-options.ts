@@ -110,6 +110,53 @@ export function validateModelParamsWithWarnings(
 /** @internal */
 export const sapAIApiTypeSchema = z.enum(["orchestration", "foundation-models"]);
 
+/**
+ * Anthropic prompt-caching directive accepted on V3 message-parts via
+ * `providerOptions['sap-ai'].cacheControl`.
+ * @internal
+ */
+export const cacheControlSchema = z.object({
+  ttl: z.enum(["5m", "1h"]).optional(),
+  type: z.literal("ephemeral"),
+});
+
+/** @internal */
+export type CacheControl = z.infer<typeof cacheControlSchema>;
+
+/**
+ * Per-message-part SAP AI provider options read from
+ * `LanguageModelV3*Part.providerOptions['sap-ai']`.
+ * @internal
+ */
+export const sapAIPartProviderOptionsSchema = z.object({
+  cacheControl: cacheControlSchema.optional(),
+});
+
+/** @internal */
+export type SAPAIPartProviderOptions = z.infer<typeof sapAIPartProviderOptionsSchema>;
+
+/**
+ * Parses per-part `providerOptions['sap-ai']`.
+ *
+ * Returns `undefined` when the block is absent or invalid; invalid blocks are
+ * dropped silently because the converter has no warnings sink.
+ * @param providerOptions - Part-level providerOptions bag.
+ * @returns Validated per-part options, or undefined.
+ */
+export function parseSAPPartProviderOptions(
+  providerOptions: unknown,
+): SAPAIPartProviderOptions | undefined {
+  if (!providerOptions || typeof providerOptions !== "object") {
+    return undefined;
+  }
+  const block = (providerOptions as Record<string, unknown>)[SAP_AI_PROVIDER_NAME];
+  if (block === undefined) {
+    return undefined;
+  }
+  const parsed = sapAIPartProviderOptionsSchema.safeParse(block);
+  return parsed.success ? parsed.data : undefined;
+}
+
 /** @internal */
 export const promptTemplateScopeSchema = z.enum(["tenant", "resource_group"]);
 
