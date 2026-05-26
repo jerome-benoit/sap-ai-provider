@@ -20,7 +20,12 @@ import type {
   SDKTokenUsage,
 } from "./strategy-utils.js";
 
-import { createAISDKRequestBodySummary, mapFinishReason, mapTokenUsage } from "./strategy-utils.js";
+import {
+  buildAnthropicCacheMetadata,
+  createAISDKRequestBodySummary,
+  mapFinishReason,
+  mapTokenUsage,
+} from "./strategy-utils.js";
 
 /**
  * @internal
@@ -233,6 +238,7 @@ export function createStreamTransformer(
           finishReason: streamState.finishReason,
           providerMetadata: {
             [providerName]: {
+              ...buildAnthropicCacheMetadata(finalUsage),
               finishReason: streamState.finishReason.raw,
               ...(streamIntermediateFailures?.length
                 ? {

@@ -965,6 +965,14 @@ describe("SAPAILanguageModel", () => {
         | {
             completion_tokens: number;
             prompt_tokens: number;
+            prompt_tokens_details?: {
+              cache_creation_token_details?: {
+                ephemeral_1h_input_tokens?: number;
+                ephemeral_5m_input_tokens?: number;
+              };
+              cache_creation_tokens?: number;
+              cached_tokens?: number;
+            };
             total_tokens: number;
           };
     } = {},
@@ -3387,6 +3395,96 @@ describe("SAPAILanguageModel", () => {
         const result = await model.doGenerate({ prompt: createPrompt("Hello") });
 
         expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
+      });
+    },
+  );
+
+  describe.each<APIType>(["orchestration", "foundation-models"])(
+    "doStream token usage details (%s API)",
+    (api) => {
+      beforeEach(async () => {
+        await resetMockStateForApi(api);
+      });
+
+      it("should map cache_creation_tokens to inputTokens.cacheWrite on the finish event", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 80, cached_tokens: 20 },
+              total_tokens: 105,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        expect(finishPart).toBeDefined();
+        if (finishPart?.type === "finish") {
+          expect(finishPart.usage.inputTokens.cacheWrite).toBe(80);
+          expect(finishPart.usage.inputTokens.cacheRead).toBe(20);
+        }
+      });
+
+      it("should surface cache_creation_token_details in stream finish providerMetadata.cacheUsage", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: {
+                cache_creation_token_details: {
+                  ephemeral_1h_input_tokens: 20,
+                  ephemeral_5m_input_tokens: 80,
+                },
+                cache_creation_tokens: 100,
+              },
+              total_tokens: 105,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        expect(finishPart).toBeDefined();
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            cacheUsage: {
+              ephemeral_1h_input_tokens: 20,
+              ephemeral_5m_input_tokens: 80,
+            },
+          });
+        }
+      });
+
+      it("should omit cacheUsage on stream finish when ephemeral details are absent", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
+        }
       });
     },
   );

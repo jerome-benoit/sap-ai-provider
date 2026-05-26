@@ -327,6 +327,30 @@ export function applyParameterOverrides(
 }
 
 /**
+ * Builds the Anthropic prompt-caching slice of `providerMetadata[provider]`.
+ *
+ * Returns `{ cacheUsage }` when at least one ephemeral TTL bucket is populated;
+ * otherwise an empty object so the spread is a no-op.
+ * @param tokenUsage - Raw token usage from the SAP SDK response.
+ * @returns Spread-ready provider-metadata fragment.
+ * @internal
+ */
+export function buildAnthropicCacheMetadata(tokenUsage: null | SDKTokenUsage | undefined): {
+  cacheUsage?: NonNullable<
+    NonNullable<SDKTokenUsage["prompt_tokens_details"]>["cache_creation_token_details"]
+  >;
+} {
+  const details = tokenUsage?.prompt_tokens_details?.cache_creation_token_details;
+  if (
+    !details ||
+    (details.ephemeral_5m_input_tokens == null && details.ephemeral_1h_input_tokens == null)
+  ) {
+    return {};
+  }
+  return { cacheUsage: details };
+}
+
+/**
  * Builds an EmbeddingModelV3Result from embedding data.
  * @param config - Configuration with embeddings and metadata.
  * @returns Complete embedding result for AI SDK.
@@ -393,18 +417,13 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
   }
 
   const intermediateFailures = response.getIntermediateFailures?.();
-  const cacheCreationTokenDetails = tokenUsage?.prompt_tokens_details?.cache_creation_token_details;
 
   return {
     content,
     finishReason,
     providerMetadata: {
       [providerName]: {
-        ...(cacheCreationTokenDetails &&
-        (cacheCreationTokenDetails.ephemeral_5m_input_tokens != null ||
-          cacheCreationTokenDetails.ephemeral_1h_input_tokens != null)
-          ? { cacheUsage: cacheCreationTokenDetails }
-          : {}),
+        ...buildAnthropicCacheMetadata(tokenUsage),
         finishReason: finishReasonRaw ?? "unknown",
         finishReasonMapped: finishReason,
         ...(intermediateFailures?.length
