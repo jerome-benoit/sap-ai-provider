@@ -3471,6 +3471,33 @@ describe("SAPAILanguageModel", () => {
 
         expect(result.usage.inputTokens.noCache).toBe(result.usage.inputTokens.total);
       });
+
+      it("should clamp noCache to 0 when cacheRead+cacheWrite exceed prompt_tokens", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 1,
+              prompt_tokens: 10,
+              prompt_tokens_details: { cache_creation_tokens: 8, cached_tokens: 5 },
+              total_tokens: 11,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens).toEqual({
+          cacheRead: 5,
+          cacheWrite: 8,
+          noCache: 0,
+          total: 10,
+        });
+      });
     },
   );
 

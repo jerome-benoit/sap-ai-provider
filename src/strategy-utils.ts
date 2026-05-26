@@ -574,6 +574,33 @@ export function buildSAPToolParameters(schema: Record<string, unknown>): SAPTool
 }
 
 /**
+ * Computes the non-cached prompt tokens from a prompt-token total and its cache slices.
+ *
+ * Returns `undefined` when the total is unknown. Returns the total unchanged when no
+ * cache breakdown is reported. Otherwise subtracts both cache buckets and clamps the
+ * result at zero to defend against inconsistent SDK token counts where
+ * `cached + cacheWrite > prompt`.
+ * @param promptTokens - Total prompt tokens reported by the SDK.
+ * @param cachedTokens - Tokens served from the prompt cache.
+ * @param cacheWriteTokens - Tokens written to the prompt cache.
+ * @returns The non-cached prompt token count, or `undefined` when unknown.
+ * @internal
+ */
+export function computeNoCache(
+  promptTokens: number | undefined,
+  cachedTokens: number | undefined,
+  cacheWriteTokens: number | undefined,
+): number | undefined {
+  if (promptTokens == null) {
+    return undefined;
+  }
+  if (cachedTokens == null && cacheWriteTokens == null) {
+    return promptTokens;
+  }
+  return Math.max(0, promptTokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0));
+}
+
+/**
  * Converts AI SDK response format to SAP-compatible format.
  * @param optionsResponseFormat - The AI SDK response format from call options.
  * @param settingsResponseFormat - The fallback response format from settings.
@@ -913,12 +940,7 @@ export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): Lan
     inputTokens: {
       cacheRead: cachedTokens,
       cacheWrite: cacheWriteTokens,
-      noCache:
-        promptTokens == null
-          ? undefined
-          : cachedTokens == null && cacheWriteTokens == null
-            ? promptTokens
-            : promptTokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
+      noCache: computeNoCache(promptTokens, cachedTokens, cacheWriteTokens),
       total: promptTokens,
     },
     outputTokens: {
