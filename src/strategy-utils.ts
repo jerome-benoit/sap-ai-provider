@@ -903,6 +903,7 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
 
   switch (reason.toLowerCase()) {
     case "content_filter":
+    case "guardrail_intervened":
       return { raw, unified: "content-filter" };
     case "end_turn":
     case "eos":
@@ -914,6 +915,7 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
     case "function_call":
     case "tool_call":
     case "tool_calls":
+    case "tool_use":
       return { raw, unified: "tool-calls" };
     case "length":
     case "max_tokens":

@@ -5,7 +5,7 @@ import type { LanguageModelV3FunctionTool, SharedV3Warning } from "@ai-sdk/provi
 import { describe, expect, it } from "vitest";
 
 import { parseSAPPartProviderOptions } from "./sap-ai-provider-options.js";
-import { convertToolsToSAPFormat, type SAPTool } from "./strategy-utils.js";
+import { convertToolsToSAPFormat, mapFinishReason, type SAPTool } from "./strategy-utils.js";
 
 interface ChatCompletionTool extends SAPTool<unknown> {
   function: { description?: string; name: string; parameters: unknown };
@@ -71,5 +71,16 @@ describe("convertToolsToSAPFormat", () => {
 
     expect(result.tools?.[0]).not.toHaveProperty("cache_control");
     expect(sink).toHaveLength(0);
+  });
+});
+
+describe("mapFinishReason", () => {
+  it.each<[string, "content-filter" | "stop" | "tool-calls"]>([
+    ["tool_use", "tool-calls"],
+    ["TOOL_USE", "tool-calls"],
+    ["guardrail_intervened", "content-filter"],
+    ["GUARDRAIL_INTERVENED", "content-filter"],
+  ])("should map %s to %s", (raw, unified) => {
+    expect(mapFinishReason(raw)).toEqual({ raw, unified });
   });
 });

@@ -2140,6 +2140,16 @@ describe("SAPAILanguageModel", () => {
         input: "function_call",
       },
       {
+        description: "tool_use as tool-calls",
+        expected: "tool-calls",
+        input: "tool_use",
+      },
+      {
+        description: "guardrail_intervened as content-filter",
+        expected: "content-filter",
+        input: "guardrail_intervened",
+      },
+      {
         description: "unknown reason as other",
         expected: "other",
         input: "some_new_unknown_reason",
