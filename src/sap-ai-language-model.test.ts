@@ -4879,6 +4879,31 @@ describe("SAPAILanguageModel", () => {
           id: "provider-override-id",
         });
       });
+
+      it("should preserve full multi-role conversation in messagesHistory alongside placeholderValues", async () => {
+        const model = createOrchModel("gpt-4o", {
+          placeholderValues: { topic: "math" },
+          promptTemplateRef: { id: "tpl-multi-role" },
+        });
+
+        const prompt: LanguageModelV3Prompt = [
+          { content: "You are a helpful assistant.", role: "system" },
+          { content: [{ text: "Hello", type: "text" }], role: "user" },
+          { content: [{ text: "How can I help?", type: "text" }], role: "assistant" },
+          { content: [{ text: "Explain SAP AI Core.", type: "text" }], role: "user" },
+        ];
+
+        const result = await model.doGenerate({ prompt });
+
+        expectRequestBodyHasMessagesHistory(result);
+
+        const body = result.request?.body as Record<string, unknown>;
+        const history = body.messagesHistory as { role: string }[];
+        expect(history).toHaveLength(4);
+        expect(history.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
+        expect(body).toHaveProperty("placeholderValues");
+        expect(body.placeholderValues).toEqual({ topic: "math" });
+      });
     });
 
     describe("orchestrationConfigRef", () => {
