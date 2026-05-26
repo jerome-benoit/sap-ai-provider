@@ -81,12 +81,12 @@
   "dependencies": {
     "@ai-sdk/provider": "^3.0.10",
     "@ai-sdk/provider-utils": "^4.0.27",
-    "@sap-ai-sdk/foundation-models": "^2.10.0",
-    "@sap-ai-sdk/orchestration": "^2.10.0",
+    "@sap-ai-sdk/foundation-models": "^2.11.0",
+    "@sap-ai-sdk/orchestration": "^2.11.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "^0.5.11",
+    "@ai-hero/sandcastle": "^0.6.0",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
@@ -105,7 +105,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.4",
+    "typescript-eslint": "^8.60.0",
     "vitest": "^4.1.7"
   },
   "peerDependencies": {
