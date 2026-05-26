@@ -224,6 +224,42 @@ describe("SAPAILanguageModelV2", () => {
       }
     });
 
+    it("should preserve response-metadata id through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockInternalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: "v3-to-v2-stream-id",
+            modelId: "gpt-4o",
+            timestamp: new Date(),
+            type: "response-metadata",
+          });
+          controller.enqueue({
+            finishReason: { raw: "stop", unified: "stop" },
+            type: "finish",
+            usage: { inputTokens: { total: 5 }, outputTokens: { total: 5 } },
+          });
+          controller.close();
+        },
+      });
+
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doStream = mockDoStream;
+
+      const result = await model.doStream({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      const parts = await readAllParts(result.stream);
+      const meta = parts.find((p) => p.type === "response-metadata");
+
+      expect(meta).toBeDefined();
+      expect((meta as { id?: string }).id).toBe("v3-to-v2-stream-id");
+    });
+
     it("should propagate errors from internal doGenerate", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
