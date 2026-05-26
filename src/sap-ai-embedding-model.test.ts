@@ -29,6 +29,8 @@ interface FMEmbeddingResponse {
     data: { embedding: number[] | string; index: number }[];
     usage: { prompt_tokens: number; total_tokens: number };
   };
+  getRequestId?: () => string | undefined;
+  rawResponse?: { headers: Record<string, unknown> };
 }
 
 interface OrchestrationConstructorCall {
@@ -45,7 +47,9 @@ interface OrchestrationEmbedCall {
 }
 interface OrchestrationEmbeddingResponse {
   getEmbeddings: () => { embedding: number[] | string; index: number; object: string }[];
+  getRequestId?: () => string | undefined;
   getTokenUsage: () => { prompt_tokens: number; total_tokens: number };
+  response?: { headers: Record<string, unknown> };
 }
 
 vi.mock("@sap-ai-sdk/orchestration", () => {
@@ -68,14 +72,20 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
           if (MockOrchestrationEmbeddingClient.embedResponse) {
             const response = MockOrchestrationEmbeddingClient.embedResponse;
             MockOrchestrationEmbeddingClient.embedResponse = undefined;
-            return Promise.resolve(response);
+            return Promise.resolve({
+              getRequestId: () => undefined,
+              response: { headers: {} },
+              ...response,
+            });
           }
           return Promise.resolve({
             getEmbeddings: () => [
               { embedding: [0.1, 0.2, 0.3], index: 0, object: "embedding" },
               { embedding: [0.4, 0.5, 0.6], index: 1, object: "embedding" },
             ],
+            getRequestId: () => "test-orch-embed-request-id",
             getTokenUsage: () => ({ prompt_tokens: 8, total_tokens: 8 }),
+            response: { headers: { "x-request-id": "test-orch-embed-request-id" } },
           });
         },
       );
@@ -121,7 +131,11 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
           if (MockAzureOpenAiEmbeddingClient.embedResponse) {
             const response = MockAzureOpenAiEmbeddingClient.embedResponse;
             MockAzureOpenAiEmbeddingClient.embedResponse = undefined;
-            return Promise.resolve(response);
+            return Promise.resolve({
+              getRequestId: () => undefined,
+              rawResponse: { headers: {} },
+              ...response,
+            });
           }
           return Promise.resolve({
             _data: {
@@ -131,6 +145,8 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
               ],
               usage: { prompt_tokens: 8, total_tokens: 8 },
             },
+            getRequestId: () => "test-fm-embed-request-id",
+            rawResponse: { headers: { "x-request-id": "test-fm-embed-request-id" } },
           });
         },
       );
@@ -378,8 +394,13 @@ describe("SAPAIEmbeddingModel", () => {
       expect(result.usage?.tokens).toBe(8);
       expect(result.warnings).toEqual([]);
       expect(result.providerMetadata).toEqual({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        "sap-ai": { model: "text-embedding-ada-002", version: expect.any(String) },
+        "sap-ai": {
+          model: "text-embedding-ada-002",
+          requestId:
+            api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id",
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          version: expect.any(String),
+        },
       });
     });
 
@@ -409,6 +430,75 @@ describe("SAPAIEmbeddingModel", () => {
 
       const lastCall = await getLastEmbedCallForApi(api);
       expect(lastCall?.requestConfig).toBeUndefined();
+    });
+
+    it("should surface SDK getRequestId() in providerMetadata['sap-ai'].requestId", async () => {
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      const expected =
+        api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id";
+      expect(
+        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
+      ).toBe(expected);
+    });
+
+    it("should surface SDK response headers in result.response.headers", async () => {
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      const expected =
+        api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id";
+      expect(result.response?.headers?.["x-request-id"]).toBe(expected);
+    });
+
+    it("should omit requestId when SDK getRequestId() returns undefined", async () => {
+      await setEmbedResponseForApi(
+        api,
+        api === "foundation-models"
+          ? {
+              _data: {
+                data: [{ embedding: [0.1, 0.2], index: 0 }],
+                usage: { prompt_tokens: 1, total_tokens: 1 },
+              },
+              getRequestId: () => undefined,
+              rawResponse: { headers: {} },
+            }
+          : {
+              getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+              getRequestId: () => undefined,
+              getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+              response: { headers: {} },
+            },
+      );
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("requestId");
+    });
+
+    it("should not crash when SDK lacks getRequestId or response headers entirely", async () => {
+      await setEmbedResponseForApi(
+        api,
+        api === "foundation-models"
+          ? {
+              _data: {
+                data: [{ embedding: [0.1, 0.2], index: 0 }],
+                usage: { prompt_tokens: 1, total_tokens: 1 },
+              },
+            }
+          : {
+              getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+              getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+            },
+      );
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.embeddings).toEqual([[0.1, 0.2]]);
+      expect(result.usage?.tokens).toBe(1);
     });
   });
 

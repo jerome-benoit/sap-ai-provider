@@ -11,6 +11,7 @@ import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 import type { EmbeddingProviderOptions } from "./strategy-utils.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
 
 /**
@@ -73,6 +74,24 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     const embeddingData = response._data.data;
     const sortedEmbeddings = embeddingData.slice().sort((a, b) => a.index - b.index);
     return sortedEmbeddings.map((item) => normalizeEmbedding(item.embedding as number[]));
+  }
+
+  protected override extractRequestId(response: AzureOpenAiEmbeddingResponse): string | undefined {
+    const fn = (response as { getRequestId?: () => string | undefined }).getRequestId;
+    if (typeof fn !== "function") {
+      return undefined;
+    }
+    return fn.call(response);
+  }
+
+  protected override extractResponseHeaders(
+    response: AzureOpenAiEmbeddingResponse,
+  ): Record<string, string> | undefined {
+    try {
+      return normalizeHeaders(response.rawResponse.headers);
+    } catch {
+      return undefined;
+    }
   }
 
   protected extractTokenCount(response: AzureOpenAiEmbeddingResponse): number {

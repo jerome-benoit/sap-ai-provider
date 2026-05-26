@@ -112,6 +112,8 @@ export interface EmbeddingResultConfig {
   readonly embeddings: EmbeddingModelV3Embedding[];
   readonly modelId: string;
   readonly providerName: string;
+  readonly responseHeaders?: Record<string, string>;
+  readonly responseId?: string;
   readonly totalTokens: number;
   readonly version: string;
 }
@@ -326,11 +328,13 @@ export function applyParameterOverrides(
  * @internal
  */
 export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingModelV3Result {
-  const { embeddings, modelId, providerName, totalTokens, version } = config;
+  const { embeddings, modelId, providerName, responseHeaders, responseId, totalTokens, version } =
+    config;
 
   const providerMetadata: SharedV3ProviderMetadata = {
     [providerName]: {
       model: modelId,
+      ...(responseId ? { requestId: responseId } : {}),
       version,
     },
   };
@@ -338,6 +342,7 @@ export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingMo
   return {
     embeddings,
     providerMetadata,
+    ...(responseHeaders ? { response: { headers: responseHeaders } } : {}),
     usage: { tokens: totalTokens },
     warnings: [],
   };

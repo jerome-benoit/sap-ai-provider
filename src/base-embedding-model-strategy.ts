@@ -61,11 +61,15 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
+      const responseId = this.extractRequestId(response);
+      const responseHeaders = this.extractResponseHeaders(response);
 
       return buildEmbeddingResult({
         embeddings,
         modelId: config.modelId,
         providerName,
+        responseHeaders,
+        responseId,
         totalTokens,
         version: VERSION,
       });
@@ -118,6 +122,33 @@ export abstract class BaseEmbeddingModelStrategy<
    * @internal
    */
   protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
+
+  /**
+   * Extracts the server-provided request id from the SDK response.
+   *
+   * Default returns `undefined`. Subclasses override when the SDK exposes
+   * `getRequestId()`.
+   * @param _response - SDK response.
+   * @returns Server-provided request id, or undefined.
+   * @internal
+   */
+  protected extractRequestId(_response: TResponse): string | undefined {
+    return undefined;
+  }
+
+  /**
+   * Extracts response headers from the SDK response, normalised to lower-case keys.
+   *
+   * Default returns `undefined`. Subclasses override to lift the underlying
+   * `HttpResponse.headers` (the SDKs disagree on the field name — `rawResponse`
+   * for foundation-models, `response` for orchestration).
+   * @param _response - SDK response.
+   * @returns Normalised header bag, or undefined.
+   * @internal
+   */
+  protected extractResponseHeaders(_response: TResponse): Record<string, string> | undefined {
+    return undefined;
+  }
 
   /**
    * Extracts total token count from the SDK response.
