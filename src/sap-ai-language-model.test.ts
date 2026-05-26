@@ -5941,7 +5941,7 @@ describe("SAPAILanguageModel", () => {
       await resetMockStateForApi("foundation-models");
     });
 
-    it("orchestration: forwards tool providerOptions['sap-ai'].cacheControl onto ChatCompletionTool.cache_control", async () => {
+    it("should forward tool providerOptions['sap-ai'].cacheControl onto ChatCompletionTool.cache_control (orchestration)", async () => {
       const model = createOrchModel("anthropic--claude-4.5-sonnet");
       await model.doGenerate({
         prompt: createPrompt("Hi"),
@@ -5963,7 +5963,72 @@ describe("SAPAILanguageModel", () => {
       expect(request.tools?.[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
     });
 
-    it("orchestration: omits cache_control when providerOptions['sap-ai'] is absent", async () => {
+    it("should forward 1h TTL onto ChatCompletionTool.cache_control (orchestration)", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("should attach cache_control only to tools with cacheControl directive in a multi-tool array (orchestration)", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "cached",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "cached",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+          {
+            description: "uncached",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "uncached",
+            type: "function",
+          },
+          {
+            description: "long-cached",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "long-cached",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const tools = (
+        orch.lastRequest as {
+          tools?: { cache_control?: unknown; function: { name: string } }[];
+        }
+      ).tools;
+      expect(tools?.[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
+      expect(tools?.[1]).not.toHaveProperty("cache_control");
+      expect(tools?.[2]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("should omit cache_control when providerOptions['sap-ai'] is absent (orchestration)", async () => {
       const model = createOrchModel("gpt-4o");
       await model.doGenerate({
         prompt: createPrompt("Hi"),
@@ -5982,9 +6047,9 @@ describe("SAPAILanguageModel", () => {
       expect(request.tools?.[0]).not.toHaveProperty("cache_control");
     });
 
-    it("orchestration: silently drops invalid tool cacheControl block", async () => {
+    it("should silently drop invalid tool cacheControl block and surface a parser warning (orchestration)", async () => {
       const model = createOrchModel("anthropic--claude-4.5-sonnet");
-      await model.doGenerate({
+      const result = await model.doGenerate({
         prompt: createPrompt("Hi"),
         tools: [
           {
@@ -6002,9 +6067,14 @@ describe("SAPAILanguageModel", () => {
       const orch = await getMockOrchClient();
       const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
       expect(request.tools?.[0]).not.toHaveProperty("cache_control");
+      expect(result.warnings.length).toBeGreaterThan(0);
+      const cacheWarning = result.warnings.find((w) =>
+        ((w as { message?: string }).message ?? "").includes("cacheControl"),
+      );
+      expect(cacheWarning).toMatchObject({ type: "other" });
     });
 
-    it("foundation-models: ignores tool providerOptions['sap-ai'].cacheControl (no plumbing)", async () => {
+    it("should ignore tool providerOptions['sap-ai'].cacheControl with foundation-models API (no plumbing)", async () => {
       const model = createFMModel("gpt-4.1");
       await model.doGenerate({
         prompt: createPrompt("Hi"),

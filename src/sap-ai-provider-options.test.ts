@@ -819,6 +819,7 @@ describe("parseSAPPartProviderOptions", () => {
   });
 
   it.each([
+    { input: { cacheControl: {} }, label: "empty cacheControl" },
     { input: { cacheControl: { type: "permanent" } }, label: "wrong literal type" },
     { input: { cacheControl: { ttl: "10m", type: "ephemeral" } }, label: "unsupported ttl" },
     { input: { cacheControl: 42 }, label: "non-object cacheControl" },
