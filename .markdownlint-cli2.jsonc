@@ -32,14 +32,5 @@
       "style": "asterisk",
     },
   },
-  "ignores": [
-    "node_modules",
-    "dist",
-    "coverage",
-    ".opencode",
-    ".serena",
-    ".omo",
-    ".sisyphus",
-    ".github",
-  ],
+  "ignores": ["node_modules", "dist", "coverage", ".opencode", ".serena", ".omo", ".sisyphus", ".github"],
 }
