@@ -847,4 +847,4 @@ for details.
 
 ## License
 
-Apache License 2.0 - see [LICENSE](./LICENSE.md) for details.
+Apache License 2.0 - see [LICENSE](./LICENSE) for details.
