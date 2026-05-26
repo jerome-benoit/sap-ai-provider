@@ -322,7 +322,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       if (MockAzureOpenAiChatClient.chatCompletionResponse) {
         const response = MockAzureOpenAiChatClient.chatCompletionResponse;
         MockAzureOpenAiChatClient.chatCompletionResponse = undefined;
-        return Promise.resolve(response);
+        return Promise.resolve({ getRequestId: () => undefined, ...response });
       }
 
       const messages = (request as { messages?: unknown[] }).messages;
@@ -343,6 +343,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
         _data: { id: "chatcmpl-fm-test-123" },
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
+        getRequestId: () => "test-request-id",
         getTokenUsage: () => ({
           completion_tokens: 5,
           prompt_tokens: 10,
@@ -417,14 +418,19 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       const errorToThrow = MockAzureOpenAiChatClient.streamError;
 
       return Promise.resolve({
-        // Real AzureOpenAiChatCompletionStreamResponse has no _data or rawResponse.
         getFinishReason: () => lastFinishReason,
+        getRequestId: () => "test-stream-request-id",
         getTokenUsage: () =>
           lastTokenUsage ?? {
             completion_tokens: 5,
             prompt_tokens: 10,
             total_tokens: 15,
           },
+        rawResponse: {
+          headers: {
+            "x-request-id": "test-stream-request-id",
+          },
+        },
         stream: {
           *[Symbol.asyncIterator]() {
             for (const chunk of chunks) {
@@ -1724,15 +1730,10 @@ describe("SAPAILanguageModel", () => {
 
       const result = await model.doStream({ prompt });
 
-      if (api === "orchestration") {
-        expect(result.response?.headers).toBeDefined();
-        expect(result.response?.headers).toMatchObject({
-          "x-request-id": "test-stream-request-id",
-        });
-      } else {
-        // Foundation Models stream response has no rawResponse
-        expect(result.response?.headers).toBeUndefined();
-      }
+      expect(result.response?.headers).toBeDefined();
+      expect(result.response?.headers).toMatchObject({
+        "x-request-id": "test-stream-request-id",
+      });
     });
 
     it("should not mutate stream-start warnings when warnings occur during stream", async () => {
@@ -1839,7 +1840,11 @@ describe("SAPAILanguageModel", () => {
         modelId: "gpt-4o",
         type: "response-metadata",
       });
-      expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
+      if (api === "orchestration") {
+        expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
+      } else {
+        expect((responseMetadata as { id: string }).id).toBe("test-stream-request-id");
+      }
       expect(parts.some((p) => p.type === "text-delta")).toBe(true);
       expect(parts.some((p) => p.type === "finish")).toBe(true);
 
@@ -1849,13 +1854,13 @@ describe("SAPAILanguageModel", () => {
         expect(finishPart.finishReason).toEqual({ raw: "stop", unified: "stop" });
         const metadata = finishPart.providerMetadata?.["sap-ai"] as Record<string, unknown>;
         expect(metadata.finishReason).toBe("stop");
-        if (api === "orchestration") {
-          expect(metadata.requestId).toBe("test-stream-request-id");
-        } else {
-          expect(metadata.requestId).toBeUndefined();
-        }
+        expect(metadata.requestId).toBe("test-stream-request-id");
         expect(typeof metadata.responseId).toBe("string");
-        expect(metadata.responseId as string).toMatch(uuidRegex);
+        if (api === "orchestration") {
+          expect(metadata.responseId as string).toMatch(uuidRegex);
+        } else {
+          expect(metadata.responseId).toBe("test-stream-request-id");
+        }
         expect(metadata.version).toBeDefined();
       }
     });
@@ -1886,11 +1891,7 @@ describe("SAPAILanguageModel", () => {
           | Record<string, unknown>
           | undefined;
         expect(metadata).toBeDefined();
-        if (api === "orchestration") {
-          expect(metadata?.requestId).toBe("test-stream-request-id");
-        } else {
-          expect(metadata?.requestId).toBeUndefined();
-        }
+        expect(metadata?.requestId).toBe("test-stream-request-id");
       }
     });
 
@@ -1911,15 +1912,11 @@ describe("SAPAILanguageModel", () => {
 
       const MockClient = await getMockClientForApi(api);
       if (MockClient.setStreamResponseOverride) {
-        // Matches real SDK stream shapes:
-        // - Orchestration: _data is {}, getRequestId() returns undefined
-        // - Foundation-models: no _data, no rawResponse
         MockClient.setStreamResponseOverride({
-          ...(api === "orchestration"
-            ? { getRequestId: () => undefined, rawResponse: { headers: {} } }
-            : {}),
           getFinishReason: () => "stop",
+          getRequestId: () => undefined,
           getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 2, total_tokens: 3 }),
+          rawResponse: { headers: {} },
           stream: {
             *[Symbol.asyncIterator]() {
               for (const c of chunks) yield c;
@@ -2981,6 +2978,69 @@ describe("SAPAILanguageModel", () => {
 
         await expect(model.doStream({ prompt })).rejects.toThrow("Stream setup failed");
       });
+    });
+  });
+
+  describe("Foundation Models response id fallbacks (foundation-models API)", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("foundation-models");
+    });
+
+    it("should fall back to response.getRequestId() when _data.id is absent on doGenerate", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "fm-canonical-req-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "fm-canonical-req-id" } },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBe("fm-canonical-req-id");
+    });
+
+    it("should keep streaming alive when rawResponse access throws", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setStreamResponseOverride) {
+        throw new Error("mock missing setStreamResponseOverride");
+      }
+      MockClient.setStreamResponseOverride({
+        getFinishReason: () => "stop",
+        getRequestId: () => "fm-no-headers-req-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        get rawResponse(): { headers: Record<string, string> } {
+          throw new Error("rawResponse not available (deprecated constructor)");
+        },
+        stream: {
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async *[Symbol.asyncIterator]() {
+            yield {
+              getDeltaContent: () => "ok",
+              getDeltaToolCalls: () => undefined,
+              getFinishReason: () => "stop",
+              getTokenUsage: () => undefined,
+            };
+          },
+        },
+      });
+
+      const model = createFMModel();
+      const result = await model.doStream({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.headers).toBeUndefined();
+
+      const parts = await readAllStreamParts(result.stream);
+      const responseMetadata = parts.find((p) => p.type === "response-metadata");
+      expect(responseMetadata).toBeDefined();
+      expect((responseMetadata as { id: string }).id).toBe("fm-no-headers-req-id");
     });
   });
 

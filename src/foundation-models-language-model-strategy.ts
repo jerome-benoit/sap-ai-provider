@@ -119,12 +119,8 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<SDKResponse> {
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
-    const headers = normalizeHeaders(response.rawResponse.headers);
-
-    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
-    // Falls back to the x-request-id header if not available.
     const completionId =
-      (response as { _data?: { id?: string } })._data?.id ?? headers?.["x-request-id"];
+      (response as { _data?: { id?: string } })._data?.id ?? response.getRequestId();
 
     return {
       getContent: () => response.getContent(),
@@ -145,11 +141,19 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
-    // AzureOpenAiChatCompletionStreamResponse exposes neither rawResponse nor _data.
-    // Response headers and completion ID are unavailable — base strategy falls back to UUID.
+    // `rawResponse` is unavailable when the stream was built via the deprecated 0-arg constructor.
+    let responseHeaders: Record<string, string> | undefined;
+    try {
+      responseHeaders = normalizeHeaders(streamResponse.rawResponse.headers);
+    } catch {
+      responseHeaders = undefined;
+    }
+
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      responseHeaders,
+      responseId: streamResponse.getRequestId(),
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }
