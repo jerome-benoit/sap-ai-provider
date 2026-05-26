@@ -832,4 +832,34 @@ describe("parseSAPPartProviderOptions", () => {
     circular.self = circular;
     expect(() => parseSAPPartProviderOptions(circular)).not.toThrow();
   });
+
+  it("pushes one warning per Zod issue when invalid block is provided", () => {
+    const warnings: SharedV3Warning[] = [];
+    const result = parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+
+    expect(result).toBeUndefined();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ type: "other" });
+    const message = (warnings[0] as { message?: string }).message ?? "";
+    expect(message).toMatch(/cacheControl/);
+    expect(message).toMatch(/dropped/);
+  });
+
+  it("does not push warnings when block is absent", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions({ anthropic: { cacheControl: {} } }, warnings);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("does not push warnings when block is valid", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+      warnings,
+    );
+    expect(warnings).toHaveLength(0);
+  });
 });

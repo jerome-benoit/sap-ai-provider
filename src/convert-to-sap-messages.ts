@@ -9,6 +9,7 @@ import type {
 import {
   InvalidPromptError,
   LanguageModelV3Prompt,
+  type SharedV3Warning,
   UnsupportedFunctionalityError,
 } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
@@ -38,6 +39,13 @@ export interface ConvertToSAPMessagesOptions {
    * @default undefined
    */
   readonly parsePartProviderOptions?: ParsePartProviderOptions;
+  /**
+   * Optional sink for validation warnings raised by `parsePartProviderOptions`.
+   * Each invalid `cacheControl` directive (or other future per-part option)
+   * surfaces here so the strategy layer can forward the warning to the AI SDK
+   * call result rather than dropping it silently.
+   */
+  readonly warnings?: SharedV3Warning[];
 }
 
 /**
@@ -105,6 +113,7 @@ interface UserContentItem {
  * @param options.escapeTemplatePlaceholders - Whether to escape Jinja2 template delimiters (default: true).
  * @param options.includeReasoning - Whether to include assistant reasoning parts (default: false).
  * @param options.parsePartProviderOptions - Optional callback to read per-part `providerOptions['sap-ai']`. Strategies opt in to honour part-level directives such as Anthropic `cacheControl`.
+ * @param options.warnings - Optional sink the parser pushes Zod validation issues into.
  * @returns SAP AI SDK ChatMessage array ready for orchestration requests.
  * @throws {UnsupportedFunctionalityError} When encountering unsupported content types or file formats.
  * @throws {InvalidPromptError} When encountering unsupported message roles.
@@ -204,7 +213,10 @@ export function convertToSAPMessages(
         const contentParts: UserContentItem[] = [];
 
         for (const part of message.content) {
-          const partOpts = options.parsePartProviderOptions?.(part.providerOptions);
+          const partOpts = options.parsePartProviderOptions?.(
+            part.providerOptions,
+            options.warnings,
+          );
           const cacheControl = partOpts?.cacheControl;
           switch (part.type) {
             case "file": {

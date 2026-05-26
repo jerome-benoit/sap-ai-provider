@@ -2,7 +2,7 @@
  * Tests conversion from Vercel AI SDK prompt format to SAP AI SDK ChatMessage format.
  * @see convertToSAPMessages
  */
-import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
+import type { LanguageModelV3Prompt, SharedV3Warning } from "@ai-sdk/provider";
 
 import { InvalidPromptError } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
@@ -1347,6 +1347,48 @@ describe("convertToSAPMessages", () => {
       const result = convertToSAPMessages(prompt);
       const userMsg = result[0] as { content: unknown };
       expect(typeof userMsg.content).toBe("string");
+    });
+
+    it("surfaces parser warnings into the warnings sink when an invalid cacheControl block is provided", () => {
+      const warnings: SharedV3Warning[] = [];
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+      const userMsg = result[0] as { content: unknown };
+
+      expect(typeof userMsg.content).toBe("string");
+      expect(warnings.length).toBeGreaterThan(0);
+      expect(warnings[0]).toMatchObject({ type: "other" });
+      expect((warnings[0] as { message?: string }).message ?? "").toMatch(/cacheControl/);
+    });
+
+    it("does not push warnings when cacheControl is valid", () => {
+      const warnings: SharedV3Warning[] = [];
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+
+      expect(warnings).toHaveLength(0);
     });
   });
 });

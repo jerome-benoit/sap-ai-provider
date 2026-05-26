@@ -259,6 +259,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
       parsePartProviderOptions: this.getPartProviderOptionsParser(),
+      warnings,
     });
 
     // In configRef mode, modelParams from settings/options are ignored (server-side config)
@@ -855,6 +856,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       const result = convertToolsToSAPFormat<ChatCompletionTool>(
         optionsTools,
         parseSAPPartProviderOptions,
+        warnings,
       );
       warnings.push(...result.warnings);
       return result.tools;

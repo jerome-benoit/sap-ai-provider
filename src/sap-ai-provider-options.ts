@@ -135,10 +135,15 @@ export const sapAIPartProviderOptionsSchema = z.object({
 /**
  * Callback that consumes per-message-part `providerOptions` and returns the
  * `sap-ai` slice (e.g. `cacheControl`) when present and valid.
+ *
+ * Optional `warnings` sink receives one entry per Zod issue when the block
+ * fails validation; invalid blocks are still dropped silently from the parsed
+ * result so the converter can keep producing a request.
  * @internal
  */
 export type ParsePartProviderOptions = (
   providerOptions: unknown,
+  warnings?: SharedV3Warning[],
 ) => SAPAIPartProviderOptions | undefined;
 
 /** @internal */
@@ -147,14 +152,17 @@ export type SAPAIPartProviderOptions = z.infer<typeof sapAIPartProviderOptionsSc
 /**
  * Parses per-part `providerOptions['sap-ai']`.
  *
- * Returns `undefined` when the block is absent or invalid; invalid blocks are
- * dropped silently because the converter has no warnings sink.
+ * Returns `undefined` when the block is absent or invalid. When `warnings` is
+ * provided, Zod validation issues are surfaced as `SharedV3Warning` entries so
+ * the strategy layer can forward them to the AI SDK call result.
  * @param providerOptions - Part-level providerOptions bag.
+ * @param warnings - Optional sink for Zod validation issues.
  * @returns Validated per-part options, or undefined.
  * @internal
  */
 export function parseSAPPartProviderOptions(
   providerOptions: unknown,
+  warnings?: SharedV3Warning[],
 ): SAPAIPartProviderOptions | undefined {
   if (!providerOptions || typeof providerOptions !== "object") {
     return undefined;
@@ -164,7 +172,19 @@ export function parseSAPPartProviderOptions(
     return undefined;
   }
   const parsed = sapAIPartProviderOptionsSchema.safeParse(block);
-  return parsed.success ? parsed.data : undefined;
+  if (parsed.success) {
+    return parsed.data;
+  }
+  if (warnings) {
+    for (const issue of parsed.error.issues) {
+      const path = issue.path.join(".");
+      warnings.push({
+        message: `providerOptions['sap-ai']${path ? `.${path}` : ""} is invalid: ${issue.message}. The directive was dropped.`,
+        type: "other",
+      });
+    }
+  }
+  return undefined;
 }
 
 /** @internal */

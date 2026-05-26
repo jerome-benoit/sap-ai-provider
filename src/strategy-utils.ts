@@ -618,12 +618,14 @@ export function convertResponseFormat(
  * Converts AI SDK tools to SAP-compatible tool format.
  * @param tools - The AI SDK tools to convert.
  * @param parsePartProviderOptions - Optional callback that reads per-tool `providerOptions['sap-ai']` (e.g. Anthropic `cacheControl`) and forwards the directive onto the SAP tool envelope. Foundation Models leaves this undefined.
+ * @param parserWarnings - Optional sink that receives Zod validation issues raised by the parser.
  * @returns The converted tools and any warnings.
  * @internal
  */
 export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
   tools: AISDKTool[] | undefined,
   parsePartProviderOptions?: ParsePartProviderOptions,
+  parserWarnings?: SharedV3Warning[],
 ): ConvertedToolsResult<T> {
   const warnings: SharedV3Warning[] = [];
 
@@ -640,7 +642,10 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
           warnings.push(warning);
         }
 
-        const cacheControl = parsePartProviderOptions?.(functionTool.providerOptions)?.cacheControl;
+        const cacheControl = parsePartProviderOptions?.(
+          functionTool.providerOptions,
+          parserWarnings,
+        )?.cacheControl;
 
         return {
           ...(cacheControl ? { cache_control: cacheControl } : {}),

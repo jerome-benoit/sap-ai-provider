@@ -215,6 +215,7 @@ export abstract class BaseLanguageModelStrategy<
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
       parsePartProviderOptions: this.getPartProviderOptionsParser(),
+      warnings,
     });
 
     const { modelParams, warnings: paramWarnings } = buildModelParams({
