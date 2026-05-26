@@ -5934,4 +5934,96 @@ describe("SAPAILanguageModel", () => {
       expect(constructorCall?.modelDeployment).not.toHaveProperty("deploymentId");
     });
   });
+
+  describe("tool cache_control plumbing", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("orchestration");
+      await resetMockStateForApi("foundation-models");
+    });
+
+    it("orchestration: forwards tool providerOptions['sap-ai'].cacheControl onto ChatCompletionTool.cache_control", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
+    });
+
+    it("orchestration: omits cache_control when providerOptions['sap-ai'] is absent", async () => {
+      const model = createOrchModel("gpt-4o");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]).not.toHaveProperty("cache_control");
+    });
+
+    it("orchestration: silently drops invalid tool cacheControl block", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { type: "wrong-type" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]).not.toHaveProperty("cache_control");
+    });
+
+    it("foundation-models: ignores tool providerOptions['sap-ai'].cacheControl (no plumbing)", async () => {
+      const model = createFMModel("gpt-4.1");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const fm = await getMockClientForApi("foundation-models");
+      const request = fm.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]).not.toHaveProperty("cache_control");
+    });
+  });
 });

@@ -22,6 +22,8 @@ import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
+
 import { deepMerge } from "./deep-merge.js";
 import { normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
@@ -193,6 +195,7 @@ export type SAPResponseFormat =
  * @internal
  */
 export interface SAPTool<P = SAPToolParameters> {
+  cache_control?: { ttl?: "1h" | "5m"; type: "ephemeral" };
   function: {
     description?: string;
     name: string;
@@ -614,11 +617,13 @@ export function convertResponseFormat(
 /**
  * Converts AI SDK tools to SAP-compatible tool format.
  * @param tools - The AI SDK tools to convert.
+ * @param parsePartProviderOptions - Optional callback that reads per-tool `providerOptions['sap-ai']` (e.g. Anthropic `cacheControl`) and forwards the directive onto the SAP tool envelope. Foundation Models leaves this undefined.
  * @returns The converted tools and any warnings.
  * @internal
  */
 export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
   tools: AISDKTool[] | undefined,
+  parsePartProviderOptions?: ParsePartProviderOptions,
 ): ConvertedToolsResult<T> {
   const warnings: SharedV3Warning[] = [];
 
@@ -629,12 +634,16 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
   const convertedTools = tools
     .map((tool): null | T => {
       if (tool.type === "function") {
-        const { parameters, warning } = extractToolParameters(tool as LanguageModelV3FunctionTool);
+        const functionTool = tool as LanguageModelV3FunctionTool;
+        const { parameters, warning } = extractToolParameters(functionTool);
         if (warning) {
           warnings.push(warning);
         }
 
+        const cacheControl = parsePartProviderOptions?.(functionTool.providerOptions)?.cacheControl;
+
         return {
+          ...(cacheControl ? { cache_control: cacheControl } : {}),
           function: {
             name: tool.name,
             parameters,
