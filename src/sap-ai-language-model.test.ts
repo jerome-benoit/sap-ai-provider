@@ -3024,6 +3024,27 @@ describe("SAPAILanguageModel", () => {
       expect(result.response?.id).toBe("fm-canonical-req-id");
     });
 
+    it("should leave response.id undefined when both _data.id and getRequestId() are absent", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: {} },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBeUndefined();
+    });
+
     it("should keep streaming alive when rawResponse access throws", async () => {
       const MockClient = await getMockClientForApi("foundation-models");
       if (!MockClient.setStreamResponseOverride) {
@@ -3395,6 +3416,60 @@ describe("SAPAILanguageModel", () => {
         const result = await model.doGenerate({ prompt: createPrompt("Hello") });
 
         expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
+      });
+
+      it("should subtract both cacheRead and cacheWrite from noCache", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 30, cached_tokens: 50 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens.cacheRead).toBe(50);
+        expect(result.usage.inputTokens.cacheWrite).toBe(30);
+        expect(result.usage.inputTokens.noCache).toBe(20);
+        expect(result.usage.inputTokens.total).toBe(100);
+      });
+
+      it("should subtract only cacheWrite from noCache when cached is absent", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 40 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens.noCache).toBe(60);
+      });
+
+      it("should leave noCache equal to prompt_tokens when no cache breakdown is reported", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens.noCache).toBe(result.usage.inputTokens.total);
       });
     },
   );

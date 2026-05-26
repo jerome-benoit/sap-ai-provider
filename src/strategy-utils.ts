@@ -893,16 +893,19 @@ export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): Lan
   const cachedTokens = tokenUsage?.prompt_tokens_details?.cached_tokens;
   const cacheWriteTokens = tokenUsage?.prompt_tokens_details?.cache_creation_tokens;
   const reasoningTokens = tokenUsage?.completion_tokens_details?.reasoning_tokens;
+  const promptTokens = tokenUsage?.prompt_tokens;
 
   return {
     inputTokens: {
       cacheRead: cachedTokens,
       cacheWrite: cacheWriteTokens,
       noCache:
-        cachedTokens != null
-          ? (tokenUsage?.prompt_tokens ?? 0) - cachedTokens
-          : tokenUsage?.prompt_tokens,
-      total: tokenUsage?.prompt_tokens,
+        promptTokens == null
+          ? undefined
+          : cachedTokens == null && cacheWriteTokens == null
+            ? promptTokens
+            : promptTokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0),
+      total: promptTokens,
     },
     outputTokens: {
       reasoning: reasoningTokens,

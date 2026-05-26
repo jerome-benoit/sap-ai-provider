@@ -10,6 +10,7 @@ import {
   getProviderName,
   modelParamsSchema,
   orchestrationConfigRefSchema,
+  parseSAPPartProviderOptions,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
   type SAPAIEmbeddingProviderOptions,
@@ -792,5 +793,43 @@ describe("validateEmbeddingModelParamsSettings", () => {
       dimensions: 1536,
       normalize: true,
     });
+  });
+});
+
+describe("parseSAPPartProviderOptions", () => {
+  it("returns parsed options when cacheControl is valid", () => {
+    expect(
+      parseSAPPartProviderOptions({
+        "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
+      }),
+    ).toEqual({ cacheControl: { ttl: "5m", type: "ephemeral" } });
+  });
+
+  it("returns undefined when sap-ai block is absent", () => {
+    expect(parseSAPPartProviderOptions({ anthropic: { cacheControl: {} } })).toBeUndefined();
+    expect(parseSAPPartProviderOptions({})).toBeUndefined();
+  });
+
+  it("returns undefined for primitives, arrays, null, and undefined", () => {
+    expect(parseSAPPartProviderOptions(null)).toBeUndefined();
+    expect(parseSAPPartProviderOptions(undefined)).toBeUndefined();
+    expect(parseSAPPartProviderOptions("string")).toBeUndefined();
+    expect(parseSAPPartProviderOptions(42)).toBeUndefined();
+    expect(parseSAPPartProviderOptions([{ "sap-ai": {} }])).toBeUndefined();
+  });
+
+  it.each([
+    { input: { cacheControl: { type: "permanent" } }, label: "wrong literal type" },
+    { input: { cacheControl: { ttl: "10m", type: "ephemeral" } }, label: "unsupported ttl" },
+    { input: { cacheControl: 42 }, label: "non-object cacheControl" },
+    { input: { cacheControl: "string" }, label: "string cacheControl" },
+  ])("silently drops invalid cacheControl ($label)", ({ input }) => {
+    expect(parseSAPPartProviderOptions({ "sap-ai": input })).toBeUndefined();
+  });
+
+  it("does not throw on circular input", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => parseSAPPartProviderOptions(circular)).not.toThrow();
   });
 });

@@ -532,6 +532,54 @@ describe("SAPAIEmbeddingModel", () => {
         (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
       ).toBe("throwing-rid");
     });
+
+    it.each([
+      {
+        description: "normalize array header values",
+        expected: { "x-multi": "a; b", "x-request-id": "rid" },
+        headers: { "x-multi": ["a", "b"], "x-request-id": "rid" },
+      },
+      {
+        description: "convert numeric header values to strings",
+        expected: { "content-length": "512", "x-retry-after": "30" },
+        headers: { "content-length": 512, "x-retry-after": 30 },
+      },
+      {
+        description: "skip unsupported header value types",
+        expected: { "x-valid": "keep" },
+        headers: { "x-object": { nested: 1 }, "x-valid": "keep" },
+      },
+      {
+        description: "filter non-string values from array headers",
+        expected: { "x-mixed": "a; b" },
+        headers: { "x-mixed": ["a", 5, null, "b"] },
+      },
+    ])("should $description in doEmbed response", async ({ expected, headers }) => {
+      const headerBag = headers as Record<string, unknown>;
+      await setEmbedResponseForApi(
+        api,
+        api === "foundation-models"
+          ? {
+              _data: {
+                data: [{ embedding: [0.1], index: 0 }],
+                usage: { prompt_tokens: 1, total_tokens: 1 },
+              },
+              getRequestId: () => undefined,
+              rawResponse: { headers: headerBag },
+            }
+          : {
+              getEmbeddings: () => [{ embedding: [0.1], index: 0, object: "embedding" }],
+              getRequestId: () => undefined,
+              getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+              response: { headers: headerBag },
+            },
+      );
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.response?.headers).toEqual(expected);
+    });
   });
 
   describe.each<APIType>(["orchestration", "foundation-models"])(
