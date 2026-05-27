@@ -133,6 +133,11 @@ export function convertToSAPMessages(
     switch (message.role) {
       case "assistant": {
         let text = "";
+        const textParts: {
+          cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" };
+          text: string;
+        }[] = [];
+        let anyCacheControl = false;
         const toolCalls: {
           function: { arguments: string; name: string };
           id: string;
@@ -143,15 +148,37 @@ export function convertToSAPMessages(
           switch (part.type) {
             case "reasoning": {
               if (includeReasoning && part.text) {
-                text += `<think>${maybeEscape(part.text)}</think>`;
+                const escaped = `<think>${maybeEscape(part.text)}</think>`;
+                text += escaped;
+                textParts.push({ text: escaped });
               }
               break;
             }
             case "text": {
-              text += maybeEscape(part.text);
+              const partOpts = options.parsePartProviderOptions?.(
+                part.providerOptions,
+                options.warnings,
+              );
+              const cacheControl = partOpts?.cacheControl;
+              const escaped = maybeEscape(part.text);
+              text += escaped;
+              textParts.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
+              if (cacheControl) anyCacheControl = true;
               break;
             }
             case "tool-call": {
+              const partOpts = options.parsePartProviderOptions?.(
+                part.providerOptions,
+                options.warnings,
+              );
+              if (partOpts?.cacheControl && options.warnings) {
+                options.warnings.push({
+                  details:
+                    "SAP orchestration does not expose cache_control on assistant tool calls.",
+                  feature: "cacheControl on assistant tool-call",
+                  type: "unsupported",
+                });
+              }
               // Normalize tool call input to JSON string (Vercel AI SDK provides strings or objects)
               let argumentsJson: string;
               if (typeof part.input === "string") {
@@ -176,7 +203,13 @@ export function convertToSAPMessages(
 
         if (text || toolCalls.length > 0) {
           const assistantMessage: AssistantChatMessage = {
-            content: text,
+            content: anyCacheControl
+              ? textParts.map((p) =>
+                  p.cacheControl
+                    ? { cache_control: p.cacheControl, text: p.text, type: "text" as const }
+                    : { text: p.text, type: "text" as const },
+                )
+              : text,
             role: "assistant",
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           };
@@ -186,8 +219,16 @@ export function convertToSAPMessages(
       }
 
       case "system": {
+        const partOpts = options.parsePartProviderOptions?.(
+          message.providerOptions,
+          options.warnings,
+        );
+        const cacheControl = partOpts?.cacheControl;
+        const text = maybeEscape(message.content);
         const systemMessage: SystemChatMessage = {
-          content: maybeEscape(message.content),
+          content: cacheControl
+            ? [{ cache_control: cacheControl, text, type: "text" as const }]
+            : text,
           role: "system",
         };
         messages.push(systemMessage);
@@ -197,9 +238,17 @@ export function convertToSAPMessages(
       case "tool": {
         for (const part of message.content) {
           if (part.type === "tool-result") {
+            const partOpts = options.parsePartProviderOptions?.(
+              part.providerOptions,
+              options.warnings,
+            );
+            const cacheControl = partOpts?.cacheControl;
             const serializedOutput = safeJsonStringify(part.output);
+            const escaped = maybeEscape(serializedOutput);
             const toolMessage: ToolChatMessage = {
-              content: maybeEscape(serializedOutput),
+              content: cacheControl
+                ? [{ cache_control: cacheControl, text: escaped, type: "text" as const }]
+                : escaped,
               role: "tool",
               tool_call_id: part.toolCallId,
             };
