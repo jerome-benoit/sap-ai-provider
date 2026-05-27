@@ -845,8 +845,9 @@ describe("parseSAPPartProviderOptions", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
     const message = (warnings[0] as { message?: string }).message ?? "";
-    expect(message).toMatch(/cacheControl/);
-    expect(message).toMatch(/dropped/);
+    expect(message).toMatch(
+      /^providerOptions\['sap-ai'\]\.cacheControl\.ttl is invalid: [^]+\. The directive was dropped\.$/,
+    );
   });
 
   it("should not push warnings when block is absent", () => {
