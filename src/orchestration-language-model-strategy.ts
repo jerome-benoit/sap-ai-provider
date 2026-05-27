@@ -255,10 +255,13 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     const configRef = this.resolveConfigRef(sapOptions, settings);
     const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
+    const usingServerResolvedMasking = configRef !== undefined;
 
     const warnings: SharedV3Warning[] = [];
 
-    validateMaskingProvidersDeprecation(settings, warnings);
+    if (!usingServerResolvedMasking) {
+      validateMaskingProvidersDeprecation(settings, warnings);
+    }
 
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),

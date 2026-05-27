@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseSAPPartProviderOptions } from "./sap-ai-provider-options.js";
 import {
+  buildAnthropicCacheMetadata,
   computeNoCache,
   convertToolsToSAPFormat,
   extractCompletionId,
@@ -104,6 +105,43 @@ describe("mapFinishReason", () => {
     ["GUARDRAIL_INTERVENED", "content-filter"],
   ])("should map %s to %s", (raw, unified) => {
     expect(mapFinishReason(raw)).toEqual({ raw, unified });
+  });
+});
+
+describe("buildAnthropicCacheMetadata", () => {
+  it("should return an empty fragment when token usage is null or undefined", () => {
+    expect(buildAnthropicCacheMetadata(null)).toEqual({});
+    expect(buildAnthropicCacheMetadata(undefined)).toEqual({});
+  });
+
+  it("should return an empty fragment when both ephemeral counts are zero", () => {
+    expect(
+      buildAnthropicCacheMetadata({
+        prompt_tokens: 100,
+        prompt_tokens_details: {
+          cache_creation_token_details: {
+            ephemeral_1h_input_tokens: 0,
+            ephemeral_5m_input_tokens: 0,
+          },
+        },
+      }),
+    ).toEqual({});
+  });
+
+  it("should expose cacheUsage when at least one ephemeral bucket is populated", () => {
+    expect(
+      buildAnthropicCacheMetadata({
+        prompt_tokens: 100,
+        prompt_tokens_details: {
+          cache_creation_token_details: {
+            ephemeral_1h_input_tokens: 0,
+            ephemeral_5m_input_tokens: 12,
+          },
+        },
+      }),
+    ).toEqual({
+      cacheUsage: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 12 },
+    });
   });
 });
 

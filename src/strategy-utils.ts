@@ -387,7 +387,8 @@ export function buildAnthropicCacheMetadata(tokenUsage: null | SDKTokenUsage | u
   const details = tokenUsage?.prompt_tokens_details?.cache_creation_token_details;
   if (
     !details ||
-    (details.ephemeral_5m_input_tokens == null && details.ephemeral_1h_input_tokens == null)
+    ((details.ephemeral_5m_input_tokens ?? 0) === 0 &&
+      (details.ephemeral_1h_input_tokens ?? 0) === 0)
   ) {
     return {};
   }

@@ -1484,6 +1484,26 @@ describe("convertToSAPMessages", () => {
       expect(assistantMsg.content).toBe("first second");
     });
 
+    it("should drop empty-text assistant parts even when cacheControl is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "",
+              type: "text",
+            },
+            { text: "kept", type: "text" },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const assistantMsg = result[0] as { content: unknown };
+      expect(typeof assistantMsg.content).toBe("string");
+      expect(assistantMsg.content).toBe("kept");
+    });
+
     it("should surface an unsupported warning when cacheControl is set on an assistant tool-call", () => {
       const warnings: SharedV3Warning[] = [];
       const prompt: LanguageModelV3Prompt = [

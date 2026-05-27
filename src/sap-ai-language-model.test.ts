@@ -3926,6 +3926,28 @@ describe("SAPAILanguageModel", () => {
         expect((deprecation as { message?: string }).message ?? "").toMatch(/2027-03-20/);
       });
 
+      it("should not warn about deprecated masking_providers when orchestrationConfigRef is set", async () => {
+        const model = createOrchModel("gpt-4o", {
+          masking: {
+            masking_providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+          orchestrationConfigRef: { id: "server-resolved" },
+        });
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toBeUndefined();
+      });
+
       it("should include filtering module in orchestration config", async () => {
         const filtering = {
           input: {

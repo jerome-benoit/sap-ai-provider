@@ -155,12 +155,13 @@ export function convertToSAPMessages(
               break;
             }
             case "text": {
+              const escaped = maybeEscape(part.text);
+              if (!escaped) break;
               const partOpts = options.parsePartProviderOptions?.(
                 part.providerOptions,
                 options.warnings,
               );
               const cacheControl = partOpts?.cacheControl;
-              const escaped = maybeEscape(part.text);
               text += escaped;
               textParts.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
               if (cacheControl) anyCacheControl = true;
