@@ -88,7 +88,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
 
     const request: AzureOpenAiChatCompletionParameters = {
       messages: commonParts.messages as AzureOpenAiChatCompletionParameters["messages"],
-      ...commonParts.modelParams,
+      ...(commonParts.modelParams as Partial<AzureOpenAiChatCompletionParameters>),
       ...(toolsResult.tools?.length ? { tools: toolsResult.tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
