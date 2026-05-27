@@ -797,7 +797,7 @@ describe("validateEmbeddingModelParamsSettings", () => {
 });
 
 describe("parseSAPPartProviderOptions", () => {
-  it("returns parsed options when cacheControl is valid", () => {
+  it("should return parsed options when cacheControl is valid", () => {
     expect(
       parseSAPPartProviderOptions({
         "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
@@ -805,12 +805,12 @@ describe("parseSAPPartProviderOptions", () => {
     ).toEqual({ cacheControl: { ttl: "5m", type: "ephemeral" } });
   });
 
-  it("returns undefined when sap-ai block is absent", () => {
+  it("should return undefined when sap-ai block is absent", () => {
     expect(parseSAPPartProviderOptions({ anthropic: { cacheControl: {} } })).toBeUndefined();
     expect(parseSAPPartProviderOptions({})).toBeUndefined();
   });
 
-  it("returns undefined for primitives, arrays, null, and undefined", () => {
+  it("should return undefined for primitives, arrays, null, and undefined", () => {
     expect(parseSAPPartProviderOptions(null)).toBeUndefined();
     expect(parseSAPPartProviderOptions(undefined)).toBeUndefined();
     expect(parseSAPPartProviderOptions("string")).toBeUndefined();
@@ -828,13 +828,13 @@ describe("parseSAPPartProviderOptions", () => {
     expect(parseSAPPartProviderOptions({ "sap-ai": input })).toBeUndefined();
   });
 
-  it("does not throw on circular input", () => {
+  it("should not throw on circular input", () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
     expect(() => parseSAPPartProviderOptions(circular)).not.toThrow();
   });
 
-  it("pushes one warning per Zod issue when invalid block is provided", () => {
+  it("should push one warning per Zod issue when invalid block is provided", () => {
     const warnings: SharedV3Warning[] = [];
     const result = parseSAPPartProviderOptions(
       { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
@@ -849,13 +849,13 @@ describe("parseSAPPartProviderOptions", () => {
     expect(message).toMatch(/dropped/);
   });
 
-  it("does not push warnings when block is absent", () => {
+  it("should not push warnings when block is absent", () => {
     const warnings: SharedV3Warning[] = [];
     parseSAPPartProviderOptions({ anthropic: { cacheControl: {} } }, warnings);
     expect(warnings).toHaveLength(0);
   });
 
-  it("does not push warnings when block is valid", () => {
+  it("should not push warnings when block is valid", () => {
     const warnings: SharedV3Warning[] = [];
     parseSAPPartProviderOptions(
       { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
@@ -864,7 +864,7 @@ describe("parseSAPPartProviderOptions", () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it("dedupes warnings across repeated invocations sharing the same sink", () => {
+  it("should dedupe warnings across repeated invocations sharing the same sink", () => {
     const warnings: SharedV3Warning[] = [];
     parseSAPPartProviderOptions(
       { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
@@ -881,7 +881,7 @@ describe("parseSAPPartProviderOptions", () => {
     expect(warnings).toHaveLength(1);
   });
 
-  it("keeps distinct warnings when issues differ across invocations", () => {
+  it("should keep distinct warnings when issues differ across invocations", () => {
     const warnings: SharedV3Warning[] = [];
     parseSAPPartProviderOptions(
       { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
