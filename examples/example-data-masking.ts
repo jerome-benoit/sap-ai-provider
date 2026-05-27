@@ -56,7 +56,7 @@ async function dataMaskingExample() {
     const provider = createSAPAIProvider({
       defaultSettings: {
         masking: {
-          masking_providers: [dpiMaskingConfig],
+          providers: [dpiMaskingConfig],
         },
       },
     });
