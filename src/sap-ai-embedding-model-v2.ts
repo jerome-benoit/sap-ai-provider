@@ -10,7 +10,6 @@
 import type {
   EmbeddingModelV2,
   EmbeddingModelV3CallOptions as InternalCallOptions,
-  SharedV3ProviderMetadata as InternalProviderMetadata,
   SharedV2Headers,
   SharedV2ProviderMetadata,
   SharedV2ProviderOptions,
@@ -20,7 +19,7 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 
 import type { SAPAIApiType, SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
-import { convertWarningsToV2 } from "./sap-ai-adapters-v3-to-v2.js";
+import { convertProviderMetadataToV2, convertWarningsToV2 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 
 /** @internal */
@@ -135,7 +134,7 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
     // Return result in V2 format
     return {
       embeddings: result.embeddings,
-      providerMetadata: castProviderMetadataToV2(result.providerMetadata),
+      providerMetadata: convertProviderMetadataToV2(result.providerMetadata),
       response: result.response
         ? {
             body: result.response.body,
@@ -145,17 +144,4 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
       usage: result.usage,
     };
   }
-}
-
-/**
- * Casts internal provider metadata to V2 format.
- * @param metadata - Internal provider metadata.
- * @returns V2 provider metadata.
- * @internal
- */
-function castProviderMetadataToV2(
-  metadata: InternalProviderMetadata | undefined,
-): SharedV2ProviderMetadata | undefined {
-  // Safe cast - SAP implementation uses conditional spreads to avoid undefined values
-  return metadata as SharedV2ProviderMetadata | undefined;
 }
