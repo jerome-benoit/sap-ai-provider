@@ -14,7 +14,7 @@ import {
 } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
 
-import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
+import type { CacheControl, ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 
 /**
  * Options for converting Vercel AI SDK prompts to SAP AI SDK messages.
@@ -72,6 +72,20 @@ function safeJsonStringify(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/**
+ *
+ * @param text
+ * @param cacheControl
+ */
+function wrapAsTextContent(
+  text: string,
+  cacheControl: CacheControl | undefined,
+): { cache_control?: CacheControl; text: string; type: "text" } {
+  return cacheControl
+    ? { cache_control: cacheControl, text, type: "text" }
+    : { text, type: "text" };
 }
 
 /**
@@ -210,11 +224,7 @@ export function convertToSAPMessages(
         if (text || toolCalls.length > 0) {
           const assistantMessage: AssistantChatMessage = {
             content: anyCacheControl
-              ? textParts.map((p) =>
-                  p.cacheControl
-                    ? { cache_control: p.cacheControl, text: p.text, type: "text" as const }
-                    : { text: p.text, type: "text" as const },
-                )
+              ? textParts.map((p) => wrapAsTextContent(p.text, p.cacheControl))
               : text,
             role: "assistant",
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -232,9 +242,7 @@ export function convertToSAPMessages(
         const cacheControl = partOpts?.cacheControl;
         const text = maybeEscape(message.content);
         const systemMessage: SystemChatMessage = {
-          content: cacheControl
-            ? [{ cache_control: cacheControl, text, type: "text" as const }]
-            : text,
+          content: cacheControl ? [wrapAsTextContent(text, cacheControl)] : text,
           role: "system",
         };
         messages.push(systemMessage);
@@ -252,9 +260,7 @@ export function convertToSAPMessages(
             const serializedOutput = safeJsonStringify(part.output);
             const escaped = maybeEscape(serializedOutput);
             const toolMessage: ToolChatMessage = {
-              content: cacheControl
-                ? [{ cache_control: cacheControl, text: escaped, type: "text" as const }]
-                : escaped,
+              content: cacheControl ? [wrapAsTextContent(escaped, cacheControl)] : escaped,
               role: "tool",
               tool_call_id: part.toolCallId,
             };
