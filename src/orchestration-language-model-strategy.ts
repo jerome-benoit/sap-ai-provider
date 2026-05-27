@@ -38,6 +38,7 @@ import {
   buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
+  extractCompletionId,
   hasKeys,
   mapToolChoice,
   type ParamMapping,
@@ -391,11 +392,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       abortSignal ? { signal: abortSignal } : undefined,
     );
 
-    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
-    // Falls back to the pipeline request ID if not available.
-    const completionId =
-      (response as { _data?: { final_result?: { id?: string } } })._data?.final_result?.id ??
-      response.getRequestId();
+    const completionId = extractCompletionId(response, ["final_result", "id"]);
 
     return {
       getCitations: () =>
@@ -423,10 +420,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
-    // _data starts as {} and is populated during stream consumption;
-    // final_result.id is undefined before the stream is consumed.
-    const streamCompletionId = (streamResponse as { _data?: { final_result?: { id?: string } } })
-      ._data?.final_result?.id;
+    const streamCompletionId = extractCompletionId(streamResponse, ["final_result", "id"]);
 
     return {
       getCitations: () =>

@@ -753,6 +753,46 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
 }
 
 /**
+ * Resolves the SDK completion identifier from an internal `_data` payload, falling back to
+ * the pipeline request id reported by `getRequestId()` when the path is not present.
+ *
+ * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
+ * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
+ * @param response._data - Internal SDK payload that holds the completion id under `dataPath`.
+ * @param response.getRequestId - Function returning the SAP AI Core pipeline request id.
+ * @param dataPath - Dotted property path traversed under `_data` (e.g. `["final_result","id"]`).
+ * @returns The first non-empty completion id found along the path, or `undefined`.
+ * @internal
+ */
+export function extractCompletionId(
+  response: { _data?: unknown; getRequestId?: () => string | undefined },
+  dataPath: readonly string[],
+): string | undefined {
+  let cursor: unknown = response._data;
+  for (const key of dataPath) {
+    if (cursor !== null && typeof cursor === "object" && key in cursor) {
+      cursor = (cursor as Record<string, unknown>)[key];
+    } else {
+      cursor = undefined;
+      break;
+    }
+  }
+  if (typeof cursor === "string" && cursor.length > 0) {
+    return cursor;
+  }
+  const fn = response.getRequestId;
+  if (typeof fn !== "function") {
+    return undefined;
+  }
+  try {
+    const rid = fn.call(response);
+    return typeof rid === "string" && rid.length > 0 ? rid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Extracts content (text and tool calls) from SDK response.
  * @param response - SDK response object.
  * @returns Content array for LanguageModelV3GenerateResult.
@@ -811,15 +851,16 @@ export function extractResponseMetadata(
     }
   }
 
-  let headers: Record<string, string> | undefined;
+  let rawHeaders: unknown;
   try {
     const wrapper = (response as null | Record<string, unknown>)?.[field] as
       | undefined
       | { headers?: unknown };
-    headers = wrapper ? normalizeHeaders(wrapper.headers) : undefined;
+    rawHeaders = wrapper?.headers;
   } catch {
-    headers = undefined;
+    rawHeaders = undefined;
   }
+  const headers = rawHeaders === undefined ? undefined : normalizeHeaders(rawHeaders);
 
   return { headers, requestId };
 }

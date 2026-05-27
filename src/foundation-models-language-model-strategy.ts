@@ -20,6 +20,7 @@ import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
+  extractCompletionId,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -119,8 +120,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<SDKResponse> {
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
-    const completionId =
-      (response as { _data?: { id?: string } })._data?.id ?? response.getRequestId();
+    const completionId = extractCompletionId(response, ["id"]);
 
     return {
       getContent: () => response.getContent(),
