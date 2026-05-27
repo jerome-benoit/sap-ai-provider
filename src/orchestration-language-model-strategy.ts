@@ -847,11 +847,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     }
 
     if (optionsTools && optionsTools.length > 0) {
-      const result = convertToolsToSAPFormat<ChatCompletionTool>(
-        optionsTools,
-        parseSAPPartProviderOptions,
+      const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools, {
+        parser: parseSAPPartProviderOptions,
         warnings,
-      );
+      });
       warnings.push(...result.warnings);
       return result.tools;
     }

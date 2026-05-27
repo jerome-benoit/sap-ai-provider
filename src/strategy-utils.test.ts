@@ -40,7 +40,9 @@ describe("convertToolsToSAPFormat", () => {
         providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
       }),
     ];
-    const result = convertToolsToSAPFormat<ChatCompletionTool>(tools, parseSAPPartProviderOptions);
+    const result = convertToolsToSAPFormat<ChatCompletionTool>(tools, {
+      parser: parseSAPPartProviderOptions,
+    });
 
     const cached = result.tools?.[0] as { cache_control?: unknown };
     expect(cached.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
@@ -53,11 +55,10 @@ describe("convertToolsToSAPFormat", () => {
         providerOptions: { "sap-ai": { cacheControl: { type: "wrong-type" } } },
       }),
     ];
-    const result = convertToolsToSAPFormat<ChatCompletionTool>(
-      tools,
-      parseSAPPartProviderOptions,
-      sink,
-    );
+    const result = convertToolsToSAPFormat<ChatCompletionTool>(tools, {
+      parser: parseSAPPartProviderOptions,
+      warnings: sink,
+    });
 
     const tool = result.tools?.[0] as { cache_control?: unknown };
     expect(tool).not.toHaveProperty("cache_control");
@@ -73,7 +74,7 @@ describe("convertToolsToSAPFormat", () => {
         providerOptions: { "sap-ai": { cacheControl: { type: "wrong-type" } } },
       }),
     ];
-    const result = convertToolsToSAPFormat<ChatCompletionTool>(tools, undefined, sink);
+    const result = convertToolsToSAPFormat<ChatCompletionTool>(tools, { warnings: sink });
 
     expect(result.tools?.[0]).not.toHaveProperty("cache_control");
     expect(sink).toHaveLength(0);

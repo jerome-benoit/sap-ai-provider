@@ -112,6 +112,18 @@ export interface ConvertedToolsResult<T> {
 }
 
 /**
+ * Optional plumbing accepted by `convertToolsToSAPFormat`.
+ *
+ * Strategies that honour per-tool `providerOptions['sap-ai']` (e.g. orchestration
+ * Anthropic `cacheControl`) supply a `parser`; Foundation Models omits it.
+ * @internal
+ */
+export interface ConvertToolsOptions {
+  readonly parser?: ParsePartProviderOptions;
+  readonly warnings?: SharedV3Warning[];
+}
+
+/**
  * Parsed embedding provider options from AI SDK call.
  * @internal
  */
@@ -268,6 +280,15 @@ export interface SDKResponse {
   responseId?: string;
 }
 
+export {
+  createInitialStreamState,
+  createStreamTransformer,
+  StreamIdGenerator,
+  type StreamState,
+  type StreamTransformerConfig,
+  type ToolCallInProgress,
+} from "./stream-transformer.js";
+
 /**
  * @internal
  */
@@ -277,15 +298,6 @@ export interface SDKStreamChunk {
   getDeltaToolCalls(): null | SDKDeltaToolCall[] | undefined;
   getFinishReason(): null | string | undefined;
 }
-
-export {
-  createInitialStreamState,
-  createStreamTransformer,
-  StreamIdGenerator,
-  type StreamState,
-  type StreamTransformerConfig,
-  type ToolCallInProgress,
-} from "./stream-transformer.js";
 
 /**
  * Token usage shape returned by SAP AI SDK responses.
@@ -658,16 +670,19 @@ export function convertResponseFormat(
 /**
  * Converts AI SDK tools to SAP-compatible tool format.
  * @param tools - The AI SDK tools to convert.
- * @param parsePartProviderOptions - Optional callback that reads per-tool `providerOptions['sap-ai']` (e.g. Anthropic `cacheControl`) and forwards the directive onto the SAP tool envelope. Foundation Models leaves this undefined.
- * @param parserWarnings - Optional sink that receives Zod validation issues raised by the parser.
+ * @param options - Optional parser and warnings sink. The parser reads per-tool
+ * `providerOptions['sap-ai']` and forwards Anthropic `cacheControl` onto the SAP envelope;
+ * the sink receives Zod validation issues raised by the parser.
+ * @param options.parser - Reads per-tool `providerOptions['sap-ai']` and returns parsed directives (or `undefined`).
+ * @param options.warnings - Sink that collects Zod validation issues raised while parsing per-tool options.
  * @returns The converted tools and any warnings.
  * @internal
  */
 export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
   tools: AISDKTool[] | undefined,
-  parsePartProviderOptions?: ParsePartProviderOptions,
-  parserWarnings?: SharedV3Warning[],
+  options: ConvertToolsOptions = {},
 ): ConvertedToolsResult<T> {
+  const { parser, warnings: parserWarnings } = options;
   const warnings: SharedV3Warning[] = [];
 
   if (!tools || tools.length === 0) {
@@ -683,10 +698,7 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
           warnings.push(warning);
         }
 
-        const cacheControl = parsePartProviderOptions?.(
-          functionTool.providerOptions,
-          parserWarnings,
-        )?.cacheControl;
+        const cacheControl = parser?.(functionTool.providerOptions, parserWarnings)?.cacheControl;
 
         return {
           ...(cacheControl ? { cache_control: cacheControl } : {}),
