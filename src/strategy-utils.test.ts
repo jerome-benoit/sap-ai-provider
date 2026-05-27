@@ -124,6 +124,10 @@ describe("sanitizeAsJSONArray", () => {
     circular.self = circular;
     expect(sanitizeAsJSONArray([circular])).toEqual([]);
   });
+
+  it("should coerce bigint entries to decimal strings rather than dropping the payload", () => {
+    expect(sanitizeAsJSONArray([1, 2n, "x"])).toEqual([1, "2", "x"]);
+  });
 });
 
 describe("sanitizeAsJSONObject", () => {
@@ -139,6 +143,18 @@ describe("sanitizeAsJSONObject", () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
     expect(sanitizeAsJSONObject(circular)).toEqual({});
+  });
+
+  it("should coerce bigint values to decimal strings rather than dropping the payload", () => {
+    expect(sanitizeAsJSONObject({ a: 1, b: 9007199254740993n })).toEqual({
+      a: 1,
+      b: "9007199254740993",
+    });
+  });
+
+  it("should serialize Date values to ISO strings via JSON.stringify default", () => {
+    const date = new Date("2026-01-02T03:04:05.000Z");
+    expect(sanitizeAsJSONObject({ at: date })).toEqual({ at: "2026-01-02T03:04:05.000Z" });
   });
 });
 

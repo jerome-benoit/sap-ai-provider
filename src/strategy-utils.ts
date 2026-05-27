@@ -1113,19 +1113,23 @@ export async function prepareEmbeddingCall(
   return { embeddingOptions: sapOptions, providerName };
 }
 
+const jsonReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === "bigint" ? value.toString() : value;
+
 /**
  * Coerces an array into a JSON-conformant payload suitable for `providerMetadata` values.
  *
  * Non-serialisable entries (functions, symbols, `undefined`) are dropped or replaced
- * by `null` per `JSON.stringify` defaults. Returns an empty array when the entire
- * payload cannot be serialised (e.g. circular references).
+ * by `null` per `JSON.stringify` defaults. Bigint values become decimal strings.
+ * Returns an empty array when the entire payload cannot be serialised (e.g. circular
+ * references).
  * @param value - Candidate array.
  * @returns JSON-safe array.
  * @internal
  */
 export function sanitizeAsJSONArray(value: readonly unknown[]): JSONArray {
   try {
-    return JSON.parse(JSON.stringify(value)) as JSONArray;
+    return JSON.parse(JSON.stringify(value, jsonReplacer)) as JSONArray;
   } catch {
     return [];
   }
@@ -1135,15 +1139,16 @@ export function sanitizeAsJSONArray(value: readonly unknown[]): JSONArray {
  * Coerces an object into a JSON-conformant payload suitable for `providerMetadata` or
  * `LanguageModelV3Usage.raw`.
  *
- * Non-serialisable values are dropped per `JSON.stringify` defaults. Returns an empty
- * object when the entire payload cannot be serialised.
+ * Non-serialisable values are dropped per `JSON.stringify` defaults. Bigint values
+ * become decimal strings. Returns an empty object when the entire payload cannot be
+ * serialised.
  * @param value - Candidate object.
  * @returns JSON-safe object.
  * @internal
  */
 export function sanitizeAsJSONObject(value: object): JSONObject {
   try {
-    return JSON.parse(JSON.stringify(value)) as JSONObject;
+    return JSON.parse(JSON.stringify(value, jsonReplacer)) as JSONObject;
   } catch {
     return {};
   }
