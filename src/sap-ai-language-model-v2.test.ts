@@ -291,47 +291,81 @@ describe("SAPAILanguageModelV2", () => {
       const parts = await readAllParts(result.stream);
       const finish = parts.find((p) => p.type === "finish");
 
-      expect((finish as { providerMetadata?: unknown }).providerMetadata).toEqual({
+      if (finish?.type !== "finish") {
+        throw new Error("expected a finish part");
+      }
+      expect(finish.providerMetadata).toEqual({
         "sap-ai": {
           cacheUsage: { ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 },
         },
       });
     });
 
-    it("should preserve stream-start warnings through the V3→V2 facade", async () => {
-      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
-
-      const mockInternalStream = new ReadableStream({
-        start(controller) {
-          controller.enqueue({
-            type: "stream-start",
-            warnings: [{ message: "deprecated knob", type: "other" }],
-          });
-          controller.enqueue({
-            finishReason: { raw: "stop", unified: "stop" },
-            type: "finish",
-            usage: { inputTokens: { total: 5 }, outputTokens: { total: 5 } },
-          });
-          controller.close();
+    it.each<{
+      description: string;
+      expectedV2: { message: string; type: "other" };
+      v3Warning: { details?: string; feature?: string; message?: string; type: string };
+    }>([
+      {
+        description: "other-type warning forwards verbatim",
+        expectedV2: { message: "deprecated knob", type: "other" },
+        v3Warning: { message: "deprecated knob", type: "other" },
+      },
+      {
+        description: "unsupported warning rewrites to 'Unsupported feature: …'",
+        expectedV2: { message: "Unsupported feature: cacheControl on tool", type: "other" },
+        v3Warning: { feature: "cacheControl on tool", type: "unsupported" },
+      },
+      {
+        description: "compatibility warning rewrites to 'Compatibility mode: …'",
+        expectedV2: {
+          message: "Compatibility mode: legacy responses. switching is recommended",
+          type: "other",
         },
-      });
+        v3Warning: {
+          details: "switching is recommended",
+          feature: "legacy responses",
+          type: "compatibility",
+        },
+      },
+    ])(
+      "should preserve stream-start $description through the V3→V2 facade",
+      async ({ expectedV2, v3Warning }) => {
+        const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
-      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+        const mockInternalStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue({
+              type: "stream-start",
+              warnings: [v3Warning],
+            });
+            controller.enqueue({
+              finishReason: { raw: "stop", unified: "stop" },
+              type: "finish",
+              usage: { inputTokens: { total: 5 }, outputTokens: { total: 5 } },
+            });
+            controller.close();
+          },
+        });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).internalModel.doStream = mockDoStream;
+        const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
 
-      const result = await model.doStream({
-        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
-      });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        (model as any).internalModel.doStream = mockDoStream;
 
-      const parts = await readAllParts(result.stream);
-      const start = parts.find((p) => p.type === "stream-start");
+        const result = await model.doStream({
+          prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+        });
 
-      expect((start as { warnings?: unknown }).warnings).toEqual([
-        { message: "deprecated knob", type: "other" },
-      ]);
-    });
+        const parts = await readAllParts(result.stream);
+        const start = parts.find((p) => p.type === "stream-start");
+
+        if (start?.type !== "stream-start") {
+          throw new Error("expected a stream-start part");
+        }
+        expect(start.warnings).toEqual([expectedV2]);
+      },
+    );
 
     it("should propagate errors from internal doGenerate", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
