@@ -1050,14 +1050,14 @@ describe("SAPAILanguageModel", () => {
       });
 
       describe("model capabilities", () => {
-        const expectedCapabilities = {
-          supportsImageUrls: true,
-          supportsMultipleCompletions: true,
-          supportsParallelToolCalls: true,
-          supportsStreaming: true,
-          supportsStructuredOutputs: true,
-          supportsToolCalls: true,
-        };
+        const v3RemovedFlags = [
+          "supportsImageUrls",
+          "supportsMultipleCompletions",
+          "supportsParallelToolCalls",
+          "supportsStreaming",
+          "supportsStructuredOutputs",
+          "supportsToolCalls",
+        ] as const;
 
         it.each([
           "any-model",
@@ -1067,10 +1067,15 @@ describe("SAPAILanguageModel", () => {
           "amazon--nova-pro",
           "mistralai--mistral-large-instruct",
           "unknown-future-model",
-        ])("should have consistent capabilities for model %s", (modelId) => {
-          const model = createModelForApi(api, modelId);
-          expect(model).toMatchObject(expectedCapabilities);
-        });
+        ])(
+          "should not expose V2-style supports* booleans on model %s (V3 spec uses supportedUrls)",
+          (modelId) => {
+            const model = createModelForApi(api, modelId);
+            for (const flag of v3RemovedFlags) {
+              expect(Object.prototype.hasOwnProperty.call(model, flag)).toBe(false);
+            }
+          },
+        );
       });
     },
   );

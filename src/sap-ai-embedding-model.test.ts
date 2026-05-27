@@ -387,6 +387,9 @@ describe("SAPAIEmbeddingModel", () => {
         values: ["Hello", "World"],
       });
 
+      const expectedRequestId =
+        api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id";
+
       expect(result.embeddings).toEqual([
         [0.1, 0.2, 0.3],
         [0.4, 0.5, 0.6],
@@ -396,12 +399,12 @@ describe("SAPAIEmbeddingModel", () => {
       expect(result.providerMetadata).toEqual({
         "sap-ai": {
           model: "text-embedding-ada-002",
-          requestId:
-            api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id",
+          requestId: expectedRequestId,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           version: expect.any(String),
         },
       });
+      expect(result.response?.headers?.["x-request-id"]).toBe(expectedRequestId);
     });
 
     it("should throw TooManyEmbeddingValuesForCallError when exceeding limit", async () => {
@@ -430,26 +433,6 @@ describe("SAPAIEmbeddingModel", () => {
 
       const lastCall = await getLastEmbedCallForApi(api);
       expect(lastCall?.requestConfig).toBeUndefined();
-    });
-
-    it("should surface SDK getRequestId() in providerMetadata['sap-ai'].requestId", async () => {
-      const model = createModelForApi(api);
-      const result = await model.doEmbed({ values: ["a"] });
-
-      const expected =
-        api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id";
-      expect(
-        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
-      ).toBe(expected);
-    });
-
-    it("should surface SDK response headers in result.response.headers", async () => {
-      const model = createModelForApi(api);
-      const result = await model.doEmbed({ values: ["a"] });
-
-      const expected =
-        api === "foundation-models" ? "test-fm-embed-request-id" : "test-orch-embed-request-id";
-      expect(result.response?.headers?.["x-request-id"]).toBe(expected);
     });
 
     it("should omit requestId when SDK getRequestId() returns undefined", async () => {
