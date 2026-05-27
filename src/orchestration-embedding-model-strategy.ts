@@ -3,6 +3,7 @@ import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
 import type {
   EmbeddingModelConfig,
   EmbeddingModuleConfig,
+  MaskingModule,
   OrchestrationEmbeddingClient,
   OrchestrationEmbeddingResponse,
 } from "@sap-ai-sdk/orchestration";
@@ -58,7 +59,9 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
 
     const moduleConfig: EmbeddingModuleConfig = {
       embeddings: embeddingConfig,
-      ...(settings.masking && hasKeys(settings.masking) ? { masking: settings.masking } : {}),
+      ...(settings.masking && hasKeys(settings.masking)
+        ? { masking: settings.masking as MaskingModule }
+        : {}),
     };
 
     return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
