@@ -1585,7 +1585,8 @@ describe("convertToSAPMessages", () => {
       convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
 
       expect(warnings).toContainEqual({
-        details: "SAP orchestration does not expose cache_control on assistant tool calls.",
+        details:
+          "SAP orchestration does not expose cache_control on the assistant tool-call envelope.",
         feature: "cacheControl on assistant tool-call",
         type: "unsupported",
       });

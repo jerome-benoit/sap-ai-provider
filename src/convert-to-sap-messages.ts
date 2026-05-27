@@ -192,7 +192,7 @@ export function convertToSAPMessages(
                 ) {
                   options.warnings.push({
                     details:
-                      "SAP orchestration does not expose cache_control on assistant tool calls.",
+                      "SAP orchestration does not expose cache_control on the assistant tool-call envelope.",
                     feature,
                     type: "unsupported",
                   });
