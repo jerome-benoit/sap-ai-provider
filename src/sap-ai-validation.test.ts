@@ -14,9 +14,9 @@ import type {
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error";
 import {
   getEffectiveEscapeTemplatePlaceholders,
-  pushDeprecatedMaskingProvidersWarning,
   resolveApi,
   validateApiInput,
+  validateMaskingProvidersDeprecation,
   validateSettings,
 } from "./sap-ai-validation";
 
@@ -880,14 +880,14 @@ describe("getEffectiveEscapeTemplatePlaceholders", () => {
   });
 });
 
-describe("pushDeprecatedMaskingProvidersWarning", () => {
+describe("validateMaskingProvidersDeprecation", () => {
   it("should push a deprecation warning when only masking_providers is set", () => {
     const warnings: SharedV3Warning[] = [];
     const settings = {
       masking: { masking_providers: [] },
     } as unknown as OrchestrationModelSettings;
 
-    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+    validateMaskingProvidersDeprecation(settings, warnings);
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
@@ -903,7 +903,7 @@ describe("pushDeprecatedMaskingProvidersWarning", () => {
       masking: { providers: [] },
     } as unknown as OrchestrationModelSettings;
 
-    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+    validateMaskingProvidersDeprecation(settings, warnings);
 
     expect(warnings).toHaveLength(0);
   });
@@ -914,7 +914,7 @@ describe("pushDeprecatedMaskingProvidersWarning", () => {
       masking: { masking_providers: [], providers: [] },
     } as unknown as OrchestrationModelSettings;
 
-    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+    validateMaskingProvidersDeprecation(settings, warnings);
 
     expect(warnings).toHaveLength(0);
   });
@@ -925,7 +925,7 @@ describe("pushDeprecatedMaskingProvidersWarning", () => {
       masking: { masking_providers: [{ a: 1 }], providers: undefined },
     } as unknown as OrchestrationModelSettings;
 
-    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+    validateMaskingProvidersDeprecation(settings, warnings);
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
@@ -934,13 +934,13 @@ describe("pushDeprecatedMaskingProvidersWarning", () => {
 
   it("should not push a warning when masking is absent", () => {
     const warnings: SharedV3Warning[] = [];
-    pushDeprecatedMaskingProvidersWarning({}, warnings);
+    validateMaskingProvidersDeprecation({}, warnings);
     expect(warnings).toHaveLength(0);
   });
 
   it("should tolerate undefined settings", () => {
     const warnings: SharedV3Warning[] = [];
-    pushDeprecatedMaskingProvidersWarning(undefined, warnings);
+    validateMaskingProvidersDeprecation(undefined, warnings);
     expect(warnings).toHaveLength(0);
   });
 });

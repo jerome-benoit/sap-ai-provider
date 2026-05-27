@@ -339,38 +339,6 @@ export function mergeSettingsWithApi<T extends { api?: string }>(
 }
 
 /**
- * Pushes a SharedV3Warning when orchestration `masking` is configured with the deprecated
- * `masking_providers` shape and no `providers` block.
- *
- * The SAP AI SDK orchestration schema 2.11 marks `masking_providers` as deprecated with a
- * removal target of 2027-03-20. Callers that opt into the deprecated shape silently lose
- * the masking module on that date; surfacing the warning preserves a migration path.
- * @param modelSettings - Resolved model settings (orchestration variant carries the masking module).
- * @param warnings - Sink that collects the deprecation warning when it applies.
- * @internal
- */
-export function pushDeprecatedMaskingProvidersWarning(
-  modelSettings: SAPAISettings | undefined,
-  warnings: SharedV3Warning[],
-): void {
-  const masking = (modelSettings as OrchestrationModelSettings | undefined)?.masking;
-  if (!masking) {
-    return;
-  }
-  const maskingRecord = masking as unknown as Record<string, unknown>;
-  const hasDeprecated = maskingRecord.masking_providers !== undefined;
-  const hasPreferred = maskingRecord.providers !== undefined;
-  if (hasDeprecated && !hasPreferred) {
-    warnings.push({
-      message:
-        "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
-        "Migrate to settings.masking.providers.",
-      type: "other",
-    });
-  }
-}
-
-/**
  * Resolves the effective API type using the full precedence chain.
  * @param providerApi - Provider-level API type.
  * @param modelApi - Model-level API type.
@@ -397,6 +365,38 @@ export function validateApiInput(api: unknown): void {
       `Invalid API type: ${JSON.stringify(api)}. ` +
         `Valid values are: ${VALID_API_TYPES.map((t) => `"${t}"`).join(", ")}`,
     );
+  }
+}
+
+/**
+ * Pushes a SharedV3Warning when orchestration `masking` is configured with the deprecated
+ * `masking_providers` shape and no `providers` block.
+ *
+ * The SAP AI SDK orchestration schema 2.11 marks `masking_providers` as deprecated with a
+ * removal target of 2027-03-20. Callers that opt into the deprecated shape silently lose
+ * the masking module on that date; surfacing the warning preserves a migration path.
+ * @param modelSettings - Resolved model settings (orchestration variant carries the masking module).
+ * @param warnings - Sink that collects the deprecation warning when it applies.
+ * @internal
+ */
+export function validateMaskingProvidersDeprecation(
+  modelSettings: SAPAISettings | undefined,
+  warnings: SharedV3Warning[],
+): void {
+  const masking = (modelSettings as OrchestrationModelSettings | undefined)?.masking;
+  if (!masking) {
+    return;
+  }
+  const maskingRecord = masking as unknown as Record<string, unknown>;
+  const hasDeprecated = maskingRecord.masking_providers !== undefined;
+  const hasPreferred = maskingRecord.providers !== undefined;
+  if (hasDeprecated && !hasPreferred) {
+    warnings.push({
+      message:
+        "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+        "Migrate to settings.masking.providers.",
+      type: "other",
+    });
   }
 }
 

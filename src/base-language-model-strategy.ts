@@ -16,7 +16,6 @@ import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sa
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
-import { pushDeprecatedMaskingProvidersWarning } from "./sap-ai-validation.js";
 import {
   buildGenerateResult,
   buildModelParams,
@@ -211,8 +210,6 @@ export abstract class BaseLanguageModelStrategy<
     });
 
     const warnings: SharedV3Warning[] = [];
-
-    pushDeprecatedMaskingProvidersWarning(settings, warnings);
 
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),

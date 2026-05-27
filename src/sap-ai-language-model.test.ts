@@ -3860,17 +3860,6 @@ describe("SAPAILanguageModel", () => {
         expect((deprecation as { message?: string }).message ?? "").toMatch(/2027-03-20/);
       });
 
-      it("should not warn when masking is absent", async () => {
-        const model = createOrchModel("gpt-4o", {});
-
-        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
-
-        const deprecation = result.warnings.find((w) =>
-          ((w as { message?: string }).message ?? "").includes("masking_providers"),
-        );
-        expect(deprecation).toBeUndefined();
-      });
-
       it("should include filtering module in orchestration config", async () => {
         const filtering = {
           input: {
