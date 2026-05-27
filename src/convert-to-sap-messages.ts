@@ -143,6 +143,11 @@ export function convertToSAPMessages(
   const maybeEscape = (text: string): string =>
     escapeTemplatePlaceholders ? escapeOrchestrationPlaceholders(text) : text;
 
+  const parser = options.parsePartProviderOptions;
+  const parsePart = parser
+    ? (providerOptions: unknown) => parser(providerOptions, options.warnings)
+    : () => undefined;
+
   for (const message of prompt) {
     switch (message.role) {
       case "assistant": {
@@ -171,10 +176,7 @@ export function convertToSAPMessages(
             case "text": {
               const escaped = maybeEscape(part.text);
               if (!escaped) break;
-              const partOpts = options.parsePartProviderOptions?.(
-                part.providerOptions,
-                options.warnings,
-              );
+              const partOpts = parsePart(part.providerOptions);
               const cacheControl = partOpts?.cacheControl;
               text += escaped;
               textParts.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
@@ -182,10 +184,7 @@ export function convertToSAPMessages(
               break;
             }
             case "tool-call": {
-              const partOpts = options.parsePartProviderOptions?.(
-                part.providerOptions,
-                options.warnings,
-              );
+              const partOpts = parsePart(part.providerOptions);
               if (partOpts?.cacheControl && options.warnings) {
                 const feature = "cacheControl on assistant tool-call";
                 if (
@@ -235,10 +234,7 @@ export function convertToSAPMessages(
       }
 
       case "system": {
-        const partOpts = options.parsePartProviderOptions?.(
-          message.providerOptions,
-          options.warnings,
-        );
+        const partOpts = parsePart(message.providerOptions);
         const cacheControl = partOpts?.cacheControl;
         const text = maybeEscape(message.content);
         const systemMessage: SystemChatMessage = {
@@ -252,10 +248,7 @@ export function convertToSAPMessages(
       case "tool": {
         for (const part of message.content) {
           if (part.type === "tool-result") {
-            const partOpts = options.parsePartProviderOptions?.(
-              part.providerOptions,
-              options.warnings,
-            );
+            const partOpts = parsePart(part.providerOptions);
             const cacheControl = partOpts?.cacheControl;
             const serializedOutput = safeJsonStringify(part.output);
             const escaped = maybeEscape(serializedOutput);
@@ -274,10 +267,7 @@ export function convertToSAPMessages(
         const contentParts: UserContentItem[] = [];
 
         for (const part of message.content) {
-          const partOpts = options.parsePartProviderOptions?.(
-            part.providerOptions,
-            options.warnings,
-          );
+          const partOpts = parsePart(part.providerOptions);
           const cacheControl = partOpts?.cacheControl;
           switch (part.type) {
             case "file": {
