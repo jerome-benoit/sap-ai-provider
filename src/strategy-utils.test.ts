@@ -81,6 +81,19 @@ describe("convertToolsToSAPFormat", () => {
     expect(result.tools?.[0]).not.toHaveProperty("cache_control");
     expect(sink).toHaveLength(0);
   });
+
+  it("should accept an empty options object identically to omitted options", () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      buildFunctionTool({
+        providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+      }),
+    ];
+    const omitted = convertToolsToSAPFormat<ChatCompletionTool>(tools);
+    const empty = convertToolsToSAPFormat<ChatCompletionTool>(tools, {});
+
+    expect(empty).toEqual(omitted);
+    expect((empty.tools?.[0] as { cache_control?: unknown }).cache_control).toBeUndefined();
+  });
 });
 
 describe("mapFinishReason", () => {

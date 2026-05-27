@@ -3565,6 +3565,33 @@ describe("SAPAILanguageModel", () => {
 
         expect(result.usage).not.toHaveProperty("raw");
       });
+
+      it("should populate usage.raw when audio_tokens is present with a zero value", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              completion_tokens_details: { audio_tokens: 0 },
+              prompt_tokens: 3,
+              total_tokens: 8,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.raw).toEqual({
+          completion_tokens: 5,
+          completion_tokens_details: { audio_tokens: 0 },
+          prompt_tokens: 3,
+          total_tokens: 8,
+        });
+      });
     },
   );
 
