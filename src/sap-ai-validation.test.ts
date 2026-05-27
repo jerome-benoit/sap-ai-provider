@@ -919,6 +919,19 @@ describe("pushDeprecatedMaskingProvidersWarning", () => {
     expect(warnings).toHaveLength(0);
   });
 
+  it("should push a warning when providers is set to undefined alongside masking_providers", () => {
+    const warnings: SharedV3Warning[] = [];
+    const settings = {
+      masking: { masking_providers: [{ a: 1 }], providers: undefined },
+    } as unknown as OrchestrationModelSettings;
+
+    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ type: "other" });
+    expect((warnings[0] as { message?: string }).message ?? "").toMatch(/2027-03-20/);
+  });
+
   it("should not push a warning when masking is absent", () => {
     const warnings: SharedV3Warning[] = [];
     pushDeprecatedMaskingProvidersWarning({}, warnings);

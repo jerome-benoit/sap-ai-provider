@@ -357,8 +357,9 @@ export function pushDeprecatedMaskingProvidersWarning(
   if (!masking) {
     return;
   }
-  const hasDeprecated = "masking_providers" in masking;
-  const hasPreferred = "providers" in masking;
+  const maskingRecord = masking as unknown as Record<string, unknown>;
+  const hasDeprecated = maskingRecord.masking_providers !== undefined;
+  const hasPreferred = maskingRecord.providers !== undefined;
   if (hasDeprecated && !hasPreferred) {
     warnings.push({
       message:
