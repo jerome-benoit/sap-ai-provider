@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import { parseSAPPartProviderOptions } from "./sap-ai-provider-options.js";
 import {
+  computeNoCache,
   convertToolsToSAPFormat,
+  extractCompletionId,
   mapFinishReason,
   sanitizeAsJSONArray,
   sanitizeAsJSONObject,
@@ -29,12 +31,12 @@ const buildFunctionTool = (
 });
 
 describe("convertToolsToSAPFormat", () => {
-  it("returns no tools and no warnings for an empty list", () => {
+  it("should return no tools and no warnings for an empty list", () => {
     const result = convertToolsToSAPFormat<ChatCompletionTool>([]);
     expect(result).toEqual({ tools: undefined, warnings: [] });
   });
 
-  it("forwards a valid cacheControl directive onto the SAP tool envelope", () => {
+  it("should forward a valid cacheControl directive onto the SAP tool envelope", () => {
     const tools: LanguageModelV3FunctionTool[] = [
       buildFunctionTool({
         providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
@@ -48,7 +50,7 @@ describe("convertToolsToSAPFormat", () => {
     expect(cached.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
   });
 
-  it("pushes a parser warning into the sink when an invalid cacheControl block is provided", () => {
+  it("should push a parser warning into the sink when an invalid cacheControl block is provided", () => {
     const sink: SharedV3Warning[] = [];
     const tools: LanguageModelV3FunctionTool[] = [
       buildFunctionTool({
@@ -67,7 +69,7 @@ describe("convertToolsToSAPFormat", () => {
     expect((sink[0] as { message?: string }).message ?? "").toMatch(/cacheControl/);
   });
 
-  it("does not push warnings when no parser is supplied (Foundation Models path)", () => {
+  it("should not push warnings when no parser is supplied (Foundation Models path)", () => {
     const sink: SharedV3Warning[] = [];
     const tools: LanguageModelV3FunctionTool[] = [
       buildFunctionTool({
@@ -124,5 +126,69 @@ describe("sanitizeAsJSONObject", () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
     expect(sanitizeAsJSONObject(circular)).toEqual({});
+  });
+});
+
+describe("extractCompletionId", () => {
+  it.each<
+    [string, { _data?: unknown; getRequestId?: unknown }, readonly string[], string | undefined]
+  >([
+    ["resolve a single-segment path", { _data: { id: "x1" } }, ["id"], "x1"],
+    [
+      "walk a dotted nested path",
+      { _data: { final_result: { id: "x2" } } },
+      ["final_result", "id"],
+      "x2",
+    ],
+    [
+      "fall back to getRequestId when path missing",
+      { _data: {}, getRequestId: () => "rid" },
+      ["id"],
+      "rid",
+    ],
+    [
+      "return undefined when both sources are absent",
+      { _data: {}, getRequestId: () => undefined },
+      ["id"],
+      undefined,
+    ],
+    ["tolerate non-function getRequestId", { _data: {}, getRequestId: 42 }, ["id"], undefined],
+    [
+      "tolerate throwing getRequestId",
+      {
+        _data: {},
+        getRequestId: () => {
+          throw new Error("nope");
+        },
+      },
+      ["id"],
+      undefined,
+    ],
+  ])("should %s", (_label, response, path, expected) => {
+    expect(
+      extractCompletionId(
+        response as { _data?: unknown; getRequestId?: () => string | undefined },
+        path,
+      ),
+    ).toBe(expected);
+  });
+});
+
+describe("computeNoCache", () => {
+  it.each<[string, number | undefined, number | undefined, number | undefined, number | undefined]>(
+    [
+      ["return undefined when promptTokens is unknown", undefined, 5, 3, undefined],
+      [
+        "return promptTokens unchanged when no cache breakdown is reported",
+        100,
+        undefined,
+        undefined,
+        100,
+      ],
+      ["subtract both cache buckets from promptTokens", 100, 30, 20, 50],
+      ["clamp the result at zero on overflow", 10, 8, 5, 0],
+    ],
+  )("should %s", (_label, prompt, cached, cacheWrite, expected) => {
+    expect(computeNoCache(prompt, cached, cacheWrite)).toBe(expected);
   });
 });
