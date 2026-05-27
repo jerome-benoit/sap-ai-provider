@@ -27,7 +27,6 @@ import {
 } from "./base-language-model-strategy.js";
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { deepMerge } from "./deep-merge.js";
-import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   getProviderName,
   orchestrationConfigRefSchema,
@@ -39,8 +38,6 @@ import {
   buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
-  extractCompletionId,
-  extractResponseMetadata,
   hasKeys,
   mapToolChoice,
   type ParamMapping,
@@ -399,8 +396,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       abortSignal ? { signal: abortSignal } : undefined,
     );
 
-    const completionId = extractCompletionId(response, ["final_result", "id"]);
-    const { requestId } = extractResponseMetadata(response, "rawResponse");
+    const { requestId, responseId } = this.extractMetadata(response);
 
     return {
       getCitations: () =>
@@ -416,7 +412,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
       requestId,
-      responseId: completionId,
+      responseId,
     };
   }
 
@@ -429,8 +425,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
-    const streamCompletionId = extractCompletionId(streamResponse, ["final_result", "id"]);
-    const { requestId } = extractResponseMetadata(streamResponse, "rawResponse");
+    const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
     return {
       getCitations: () =>
@@ -442,10 +437,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         ).getIntermediateFailures?.(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,
-      responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
-      responseId: streamCompletionId,
+      responseHeaders,
+      responseId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
+  }
+
+  protected getCompletionIdPath(): readonly string[] {
+    return ["final_result", "id"];
   }
 
   protected getEscapeTemplatePlaceholders(

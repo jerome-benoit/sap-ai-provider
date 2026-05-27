@@ -21,6 +21,8 @@ import {
   buildModelParams,
   createAISDKRequestBodySummary,
   createStreamTransformer,
+  extractCompletionId,
+  extractResponseMetadata,
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
@@ -315,6 +317,35 @@ export abstract class BaseLanguageModelStrategy<
     abortSignal: AbortSignal | undefined,
     settings: TSettings,
   ): Promise<StreamCallResponse>;
+
+  /**
+   * Resolves request id, completion id, and normalised headers from an SDK
+   * response in one place. Used by `executeApiCall` and `executeStreamCall`
+   * overrides so each call site goes through the same extraction pipeline.
+   * @param response - Raw SDK response or stream response.
+   * @returns Combined metadata fragment.
+   * @internal
+   */
+  protected extractMetadata(response: unknown): {
+    requestId?: string;
+    responseHeaders?: Record<string, string>;
+    responseId?: string;
+  } {
+    const responseId = extractCompletionId(
+      response as { _data?: unknown; getRequestId?: () => string | undefined },
+      this.getCompletionIdPath(),
+    );
+    const { headers, requestId } = extractResponseMetadata(response, "rawResponse");
+    return { requestId, responseHeaders: headers, responseId };
+  }
+
+  /**
+   * Returns the API-specific dotted path used to read the completion id off
+   * the SDK response's internal `_data` payload.
+   * @returns Path traversed under `_data` (e.g. `["final_result","id"]`, `["id"]`).
+   * @internal
+   */
+  protected abstract getCompletionIdPath(): readonly string[];
 
   /**
    * Returns whether to escape template placeholders for this API.

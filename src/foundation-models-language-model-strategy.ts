@@ -19,8 +19,6 @@ import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
-  extractCompletionId,
-  extractResponseMetadata,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -120,8 +118,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<SDKResponse> {
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
-    const completionId = extractCompletionId(response, ["id"]);
-    const { requestId } = extractResponseMetadata(response, "rawResponse");
+    const { requestId, responseId } = this.extractMetadata(response);
 
     return {
       getContent: () => response.getContent(),
@@ -131,7 +128,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
       requestId,
-      responseId: completionId,
+      responseId,
     };
   }
 
@@ -143,20 +140,20 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
-    const { headers: responseHeaders, requestId } = extractResponseMetadata(
-      streamResponse,
-      "rawResponse",
-    );
-    const streamCompletionId = extractCompletionId(streamResponse, ["id"]);
+    const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,
       responseHeaders,
-      responseId: streamCompletionId,
+      responseId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
+  }
+
+  protected getCompletionIdPath(): readonly string[] {
+    return ["id"];
   }
 
   protected getParamMappings(): readonly ParamMapping[] {
