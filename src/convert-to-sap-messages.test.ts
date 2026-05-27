@@ -1504,6 +1504,67 @@ describe("convertToSAPMessages", () => {
       expect(assistantMsg.content).toBe("kept");
     });
 
+    it("should emit a single Zod warning when N parts share the same invalid cacheControl", () => {
+      const warnings: SharedV3Warning[] = [];
+      const invalid = { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } };
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { providerOptions: invalid, text: "a", type: "text" },
+            { providerOptions: invalid, text: "b", type: "text" },
+            { providerOptions: invalid, text: "c", type: "text" },
+          ],
+          role: "user",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+      const cacheControlIssues = warnings.filter((w) =>
+        ((w as { message?: string }).message ?? "").includes("cacheControl"),
+      );
+      expect(cacheControlIssues).toHaveLength(1);
+    });
+
+    it("should emit a single unsupported warning when N tool-call parts carry cacheControl", () => {
+      const warnings: SharedV3Warning[] = [];
+      const cacheOpts = {
+        "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" as const } },
+      };
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: "calling", type: "text" },
+            {
+              input: { q: "a" },
+              providerOptions: cacheOpts,
+              toolCallId: "c1",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+            {
+              input: { q: "b" },
+              providerOptions: cacheOpts,
+              toolCallId: "c2",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+            {
+              input: { q: "c" },
+              providerOptions: cacheOpts,
+              toolCallId: "c3",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+      const toolCallWarnings = warnings.filter((w) =>
+        ((w as { feature?: string }).feature ?? "").includes("tool-call"),
+      );
+      expect(toolCallWarnings).toHaveLength(1);
+    });
+
     it("should surface an unsupported warning when cacheControl is set on an assistant tool-call", () => {
       const warnings: SharedV3Warning[] = [];
       const prompt: LanguageModelV3Prompt = [

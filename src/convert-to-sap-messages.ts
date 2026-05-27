@@ -173,12 +173,17 @@ export function convertToSAPMessages(
                 options.warnings,
               );
               if (partOpts?.cacheControl && options.warnings) {
-                options.warnings.push({
-                  details:
-                    "SAP orchestration does not expose cache_control on assistant tool calls.",
-                  feature: "cacheControl on assistant tool-call",
-                  type: "unsupported",
-                });
+                const feature = "cacheControl on assistant tool-call";
+                if (
+                  !options.warnings.some((w) => (w as { feature?: string }).feature === feature)
+                ) {
+                  options.warnings.push({
+                    details:
+                      "SAP orchestration does not expose cache_control on assistant tool calls.",
+                    feature,
+                    type: "unsupported",
+                  });
+                }
               }
               // Normalize tool call input to JSON string (Vercel AI SDK provides strings or objects)
               let argumentsJson: string;

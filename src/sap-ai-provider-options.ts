@@ -178,10 +178,10 @@ export function parseSAPPartProviderOptions(
   if (warnings) {
     for (const issue of parsed.error.issues) {
       const path = issue.path.join(".");
-      warnings.push({
-        message: `providerOptions['sap-ai']${path ? `.${path}` : ""} is invalid: ${issue.message}. The directive was dropped.`,
-        type: "other",
-      });
+      const message = `providerOptions['sap-ai']${path ? `.${path}` : ""} is invalid: ${issue.message}. The directive was dropped.`;
+      if (!warnings.some((w) => (w as { message?: string }).message === message)) {
+        warnings.push({ message, type: "other" });
+      }
     }
   }
   return undefined;

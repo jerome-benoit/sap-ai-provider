@@ -863,4 +863,31 @@ describe("parseSAPPartProviderOptions", () => {
     );
     expect(warnings).toHaveLength(0);
   });
+
+  it("dedupes warnings across repeated invocations sharing the same sink", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("keeps distinct warnings when issues differ across invocations", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    parseSAPPartProviderOptions({ "sap-ai": { cacheControl: { type: "permanent" } } }, warnings);
+    expect(warnings).toHaveLength(2);
+  });
 });
