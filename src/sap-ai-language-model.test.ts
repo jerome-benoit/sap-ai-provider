@@ -3650,6 +3650,115 @@ describe("SAPAILanguageModel", () => {
           expect(finishPart.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
         }
       });
+
+      it("should expose finishReasonMapped on stream finish providerMetadata", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            finishReason: "stop",
+            finishReasonMapped: { raw: "stop", unified: "stop" },
+          });
+        }
+      });
+
+      it("should fall back to finishReason='unknown' on stream finish when raw is null", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: null,
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            finishReason: "unknown",
+            finishReasonMapped: { raw: undefined, unified: "other" },
+          });
+        }
+      });
+
+      it("should subtract both cacheRead and cacheWrite from noCache on stream finish", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 1,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 30, cached_tokens: 50 },
+              total_tokens: 101,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.usage.inputTokens).toEqual({
+            cacheRead: 50,
+            cacheWrite: 30,
+            noCache: 20,
+            total: 100,
+          });
+        }
+      });
+
+      it("should surface cacheUsage on stream finish when only ephemeral_1h is reported", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 1,
+              prompt_tokens: 50,
+              prompt_tokens_details: {
+                cache_creation_token_details: { ephemeral_1h_input_tokens: 50 },
+                cache_creation_tokens: 50,
+              },
+              total_tokens: 51,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            cacheUsage: { ephemeral_1h_input_tokens: 50 },
+          });
+          expect(
+            (
+              finishPart.providerMetadata?.["sap-ai"]?.cacheUsage as
+                | undefined
+                | { ephemeral_5m_input_tokens?: number }
+            )?.ephemeral_5m_input_tokens,
+          ).toBeUndefined();
+        }
+      });
     },
   );
 

@@ -239,7 +239,8 @@ export function createStreamTransformer(
           providerMetadata: {
             [providerName]: {
               ...buildAnthropicCacheMetadata(finalUsage),
-              finishReason: streamState.finishReason.raw,
+              finishReason: streamState.finishReason.raw ?? "unknown",
+              finishReasonMapped: streamState.finishReason,
               ...(streamIntermediateFailures?.length
                 ? {
                     intermediateFailures: sanitizeAsJSONArray(streamIntermediateFailures),
