@@ -372,10 +372,11 @@ export function applyParameterOverrides(
 }
 
 /**
- * Builds the Anthropic prompt-caching slice of `providerMetadata[provider]`.
+ * Returns the Anthropic prompt-caching slice of `providerMetadata[provider]` as a
+ * spread-ready fragment.
  *
  * Returns `{ cacheUsage }` when at least one ephemeral TTL bucket is populated;
- * otherwise an empty object so the spread is a no-op.
+ * otherwise `{}` so callers can `...` it unconditionally.
  * @param tokenUsage - Raw token usage from the SAP SDK response.
  * @returns Spread-ready provider-metadata fragment.
  * @internal
@@ -778,6 +779,9 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
  * the pipeline request id reported by `getRequestId()` when the path is not present.
  *
  * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
+ * Today only two strategies call this: orchestration with `["final_result","id"]` and
+ * Foundation Models with `["id"]`. Add per-strategy extractors instead of widening the
+ * path-array if a third caller emerges with a different payload shape.
  * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
  * @param response._data - Internal SDK payload that holds the completion id under `dataPath`.
  * @param response.getRequestId - Function returning the SAP AI Core pipeline request id.
@@ -1009,6 +1013,12 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
 
 /**
  * Maps SAP AI SDK token usage to Vercel AI SDK LanguageModelV3Usage.
+ *
+ * `usage.raw` mirrors the full SDK token-usage envelope. It is populated only when at
+ * least one un-typed field is present (`prompt_tokens_details.audio_tokens`,
+ * `completion_tokens_details.audio_tokens`, `accepted_prediction_tokens`, or
+ * `rejected_prediction_tokens`); otherwise `raw` is omitted and consumers rely on the
+ * typed `inputTokens` / `outputTokens` breakdown.
  * @param tokenUsage - Raw token usage from the SAP SDK response.
  * @returns Mapped usage with input/output token breakdowns.
  * @internal

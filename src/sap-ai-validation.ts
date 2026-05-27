@@ -369,12 +369,8 @@ export function validateApiInput(api: unknown): void {
 }
 
 /**
- * Pushes a SharedV3Warning when orchestration `masking` is configured with the deprecated
- * `masking_providers` shape and no `providers` block.
- *
- * The SAP AI SDK orchestration schema 2.11 marks `masking_providers` as deprecated with a
- * removal target of 2027-03-20. Callers that opt into the deprecated shape silently lose
- * the masking module on that date; surfacing the warning preserves a migration path.
+ * Pushes a deprecation warning when `settings.masking` carries `masking_providers`
+ * without a `providers` block.
  * @param modelSettings - Resolved model settings (orchestration variant carries the masking module).
  * @param warnings - Sink that collects the deprecation warning when it applies.
  * @internal
