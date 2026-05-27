@@ -3806,6 +3806,39 @@ describe("SAPAILanguageModel", () => {
         expect(request.masking).toEqual(masking);
       });
 
+      it("should warn when masking is configured with the deprecated masking_providers shape", async () => {
+        const model = createOrchModel("gpt-4o", {
+          masking: {
+            masking_providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+        });
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toMatchObject({ type: "other" });
+        expect((deprecation as { message?: string }).message ?? "").toMatch(/2027-03-20/);
+      });
+
+      it("should not warn when masking is absent", async () => {
+        const model = createOrchModel("gpt-4o", {});
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toBeUndefined();
+      });
+
       it("should include filtering module in orchestration config", async () => {
         const filtering = {
           input: {

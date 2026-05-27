@@ -34,6 +34,7 @@ import {
   parseSAPPartProviderOptions,
   sapAILanguageModelProviderOptions,
 } from "./sap-ai-provider-options.js";
+import { pushDeprecatedMaskingProvidersWarning } from "./sap-ai-validation.js";
 import {
   buildModelParams,
   convertResponseFormat,
@@ -255,6 +256,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
 
     const warnings: SharedV3Warning[] = [];
+
+    pushDeprecatedMaskingProvidersWarning(settings, warnings);
 
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),

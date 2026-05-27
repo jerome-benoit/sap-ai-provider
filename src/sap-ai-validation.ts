@@ -1,4 +1,6 @@
 /** Validation and resolution functions for SAP AI API-specific features. */
+import type { SharedV3Warning } from "@ai-sdk/provider";
+
 import type {
   FoundationModelsModelSettings,
   OrchestrationModelSettings,
@@ -334,6 +336,37 @@ export function mergeSettingsWithApi<T extends { api?: string }>(
     ...deepMerge(defaultSettings, callSettings as Record<string, unknown>),
     api: callSettings.api ?? (defaultSettings?.api as string | undefined) ?? fallbackApi,
   } as T;
+}
+
+/**
+ * Pushes a SharedV3Warning when orchestration `masking` is configured with the deprecated
+ * `masking_providers` shape and no `providers` block.
+ *
+ * The SAP AI SDK orchestration schema 2.11 marks `masking_providers` as deprecated with a
+ * removal target of 2027-03-20. Callers that opt into the deprecated shape silently lose
+ * the masking module on that date; surfacing the warning preserves a migration path.
+ * @param modelSettings - Resolved model settings (orchestration variant carries the masking module).
+ * @param warnings - Sink that collects the deprecation warning when it applies.
+ * @internal
+ */
+export function pushDeprecatedMaskingProvidersWarning(
+  modelSettings: SAPAISettings | undefined,
+  warnings: SharedV3Warning[],
+): void {
+  const masking = (modelSettings as OrchestrationModelSettings | undefined)?.masking;
+  if (!masking) {
+    return;
+  }
+  const hasDeprecated = "masking_providers" in masking;
+  const hasPreferred = "providers" in masking;
+  if (hasDeprecated && !hasPreferred) {
+    warnings.push({
+      message:
+        "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+        "Migrate to settings.masking.providers.",
+      type: "other",
+    });
+  }
 }
 
 /**

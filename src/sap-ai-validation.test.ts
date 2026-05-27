@@ -1,13 +1,20 @@
+import type { SharedV3Warning } from "@ai-sdk/provider";
+
 /**
  * Tests for SAP AI API validation functions.
  */
 import { describe, expect, it } from "vitest";
 
-import type { SAPAIEmbeddingSettings, SAPAIModelSettings } from "./sap-ai-settings";
+import type {
+  OrchestrationModelSettings,
+  SAPAIEmbeddingSettings,
+  SAPAIModelSettings,
+} from "./sap-ai-settings";
 
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error";
 import {
   getEffectiveEscapeTemplatePlaceholders,
+  pushDeprecatedMaskingProvidersWarning,
   resolveApi,
   validateApiInput,
   validateSettings,
@@ -870,5 +877,57 @@ describe("getEffectiveEscapeTemplatePlaceholders", () => {
         getEffectiveEscapeTemplatePlaceholders("orchestration", mockSettings({}), undefined),
       ).toBe(true);
     });
+  });
+});
+
+describe("pushDeprecatedMaskingProvidersWarning", () => {
+  it("should push a deprecation warning when only masking_providers is set", () => {
+    const warnings: SharedV3Warning[] = [];
+    const settings = {
+      masking: { masking_providers: [] },
+    } as unknown as OrchestrationModelSettings;
+
+    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ type: "other" });
+    const message = (warnings[0] as { message?: string }).message ?? "";
+    expect(message).toMatch(/masking_providers/);
+    expect(message).toMatch(/deprecated/);
+    expect(message).toMatch(/2027-03-20/);
+  });
+
+  it("should not push a warning when providers is set (preferred shape)", () => {
+    const warnings: SharedV3Warning[] = [];
+    const settings = {
+      masking: { providers: [] },
+    } as unknown as OrchestrationModelSettings;
+
+    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("should not push a warning when both shapes are set (preferred shape wins)", () => {
+    const warnings: SharedV3Warning[] = [];
+    const settings = {
+      masking: { masking_providers: [], providers: [] },
+    } as unknown as OrchestrationModelSettings;
+
+    pushDeprecatedMaskingProvidersWarning(settings, warnings);
+
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("should not push a warning when masking is absent", () => {
+    const warnings: SharedV3Warning[] = [];
+    pushDeprecatedMaskingProvidersWarning({}, warnings);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("should tolerate undefined settings", () => {
+    const warnings: SharedV3Warning[] = [];
+    pushDeprecatedMaskingProvidersWarning(undefined, warnings);
+    expect(warnings).toHaveLength(0);
   });
 });
