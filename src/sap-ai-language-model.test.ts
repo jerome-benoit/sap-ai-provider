@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SAPAILanguageModel } from "./sap-ai-language-model";
 import { clearStrategyCaches } from "./sap-ai-strategy.js";
+import { computeNoCache } from "./strategy-utils.js";
 
 vi.mock("@sap-ai-sdk/orchestration", () => {
   class MockOrchestrationClient {
@@ -3631,7 +3632,7 @@ describe("SAPAILanguageModel", () => {
         expect(result.usage.inputTokens).toEqual({
           cacheRead: 5,
           cacheWrite: 8,
-          noCache: 0,
+          noCache: computeNoCache(10, 5, 8),
           total: 10,
         });
       });
