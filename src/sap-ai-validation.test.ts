@@ -881,6 +881,10 @@ describe("getEffectiveEscapeTemplatePlaceholders", () => {
 });
 
 describe("validateMaskingProvidersDeprecation", () => {
+  const expectedMessage =
+    "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+    "Migrate to settings.masking.providers.";
+
   it("should push a deprecation warning when only masking_providers is set", () => {
     const warnings: SharedV3Warning[] = [];
     const settings = {
@@ -891,10 +895,7 @@ describe("validateMaskingProvidersDeprecation", () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
-    const message = (warnings[0] as { message?: string }).message ?? "";
-    expect(message).toMatch(/masking_providers/);
-    expect(message).toMatch(/deprecated/);
-    expect(message).toMatch(/2027-03-20/);
+    expect((warnings[0] as { message?: string }).message).toBe(expectedMessage);
   });
 
   it("should not push a warning when providers is set (preferred shape)", () => {
@@ -929,7 +930,7 @@ describe("validateMaskingProvidersDeprecation", () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
-    expect((warnings[0] as { message?: string }).message ?? "").toMatch(/2027-03-20/);
+    expect((warnings[0] as { message?: string }).message).toBe(expectedMessage);
   });
 
   it("should not push a warning when masking is absent", () => {

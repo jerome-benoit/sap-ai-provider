@@ -3971,7 +3971,10 @@ describe("SAPAILanguageModel", () => {
           ((w as { message?: string }).message ?? "").includes("masking_providers"),
         );
         expect(deprecation).toMatchObject({ type: "other" });
-        expect((deprecation as { message?: string }).message ?? "").toMatch(/2027-03-20/);
+        expect((deprecation as { message?: string }).message).toBe(
+          "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+            "Migrate to settings.masking.providers.",
+        );
       });
 
       it("should not warn about deprecated masking_providers when orchestrationConfigRef is set", async () => {
