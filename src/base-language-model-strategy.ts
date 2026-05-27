@@ -216,6 +216,14 @@ export abstract class BaseLanguageModelStrategy<
 
     const warnings: SharedV3Warning[] = [];
 
+    const resolvedState = this.resolveAdditionalState(
+      config,
+      settings,
+      sapOptions,
+      options,
+      warnings,
+    );
+
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
@@ -237,6 +245,7 @@ export abstract class BaseLanguageModelStrategy<
       messages,
       modelParams,
       providerName,
+      resolvedState,
       sapOptions,
       toolChoice,
       warnings,
@@ -403,4 +412,27 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   protected abstract getUrl(): string;
+
+  /**
+   * Resolves API-specific extra state shared between doGenerate and doStream
+   * (e.g. orchestration `configRef` / `promptTemplateRef` / `tools`). Override
+   * to add API-specific deprecation checks or pre-resolve auxiliary inputs.
+   * Pushed warnings flow into the shared sink.
+   * @param _config - Strategy configuration.
+   * @param _settings - Model settings.
+   * @param _sapOptions - Parsed provider options, or `undefined`.
+   * @param _options - AI SDK call options.
+   * @param _warnings - Shared warnings sink for the current call.
+   * @returns Strategy-specific resolved state, or `undefined` (default).
+   * @internal
+   */
+  protected resolveAdditionalState(
+    _config: LanguageModelStrategyConfig,
+    _settings: TSettings,
+    _sapOptions: Record<string, unknown> | undefined,
+    _options: LanguageModelV3CallOptions,
+    _warnings: SharedV3Warning[],
+  ): unknown {
+    return undefined;
+  }
 }

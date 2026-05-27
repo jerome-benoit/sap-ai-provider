@@ -10,8 +10,6 @@ import type {
   OrchestrationModuleConfigList,
 } from "@sap-ai-sdk/orchestration";
 
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
-
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type {
   OrchestrationModelSettings,
@@ -25,21 +23,16 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
-import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { deepMerge } from "./deep-merge.js";
 import {
-  getProviderName,
   orchestrationConfigRefSchema,
   parseSAPPartProviderOptions,
-  sapAILanguageModelProviderOptions,
 } from "./sap-ai-provider-options.js";
 import { validateMaskingProvidersDeprecation } from "./sap-ai-validation.js";
 import {
-  buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
   hasKeys,
-  mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
   type SDKCitation,
@@ -226,76 +219,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     this.ClientClass = ClientClass;
   }
 
-  /**
-   * Builds common parts with orchestration-specific configRef resolution.
-   *
-   * Resolves configRef once and stores it in sapOptions for use by
-   * createClient and buildRequest, avoiding duplicate resolution.
-   * @param config - Strategy configuration.
-   * @param settings - Model settings.
-   * @param options - AI SDK call options.
-   * @returns Common build result with resolved configRef in sapOptions.
-   * @internal
-   */
-  protected override async buildCommonParts(
-    config: LanguageModelStrategyConfig,
-    settings: OrchestrationModelSettings,
-    options: LanguageModelV3CallOptions,
-  ): Promise<CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>> {
-    const providerName = getProviderName(config.provider);
-
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
-    const configRef = this.resolveConfigRef(sapOptions, settings);
-    const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
-    const usingServerResolvedMasking = configRef !== undefined;
-
-    const warnings: SharedV3Warning[] = [];
-
-    if (!usingServerResolvedMasking) {
-      validateMaskingProvidersDeprecation(settings, warnings);
-    }
-
-    const messages = convertToSAPMessages(options.prompt, {
-      escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
-      includeReasoning: this.getIncludeReasoning(sapOptions, settings),
-      parsePartProviderOptions: this.getPartProviderOptionsParser(),
-      warnings,
-    });
-
-    // In configRef mode, modelParams from settings/options are ignored (server-side config)
-    // But we still build them to generate warnings for ignored settings
-    const { modelParams, warnings: paramWarnings } = buildModelParams({
-      options,
-      paramMappings: this.getParamMappings(),
-      providerModelParams: sapOptions?.modelParams,
-      settingsModelParams: settings.modelParams,
-    });
-    warnings.push(...paramWarnings);
-
-    const toolChoice = mapToolChoice(options.toolChoice);
-
-    const tools = this.resolveTools(settings, options, warnings);
-
-    return {
-      messages,
-      modelParams,
-      providerName,
-      resolvedState: {
-        configRef,
-        promptTemplateRef,
-        tools,
-      } satisfies OrchestrationResolvedState,
-      sapOptions,
-      toolChoice,
-      warnings,
-    };
-  }
-
   protected buildRequest(
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
@@ -468,6 +391,38 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   protected getUrl(): string {
     return "sap-ai:orchestration";
+  }
+
+  /**
+   * Resolves orchestration-specific extra state: `configRef`, `promptTemplateRef`,
+   * and `tools`. Pushes the masking-providers deprecation warning when masking
+   * is locally configured (skipped under `configRef` because the server-side
+   * configuration overrides it).
+   * @param _config - Strategy configuration (unused).
+   * @param settings - Model settings.
+   * @param sapOptions - Parsed provider options.
+   * @param options - AI SDK call options.
+   * @param warnings - Shared warnings sink.
+   * @returns Resolved orchestration state.
+   * @internal
+   */
+  protected override resolveAdditionalState(
+    _config: LanguageModelStrategyConfig,
+    settings: OrchestrationModelSettings,
+    sapOptions: Record<string, unknown> | undefined,
+    options: LanguageModelV3CallOptions,
+    warnings: SharedV3Warning[],
+  ): OrchestrationResolvedState {
+    const configRef = this.resolveConfigRef(sapOptions, settings);
+    const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
+
+    if (configRef === undefined) {
+      validateMaskingProvidersDeprecation(settings, warnings);
+    }
+
+    const tools = this.resolveTools(settings, options, warnings);
+
+    return { configRef, promptTemplateRef, tools };
   }
 
   /**
