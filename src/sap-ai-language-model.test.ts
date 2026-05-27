@@ -3171,6 +3171,54 @@ describe("SAPAILanguageModel", () => {
     });
   });
 
+  describe("Orchestration response id priority (orchestration API)", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("orchestration");
+    });
+
+    it("should prefer _data.final_result.id over getRequestId() on doGenerate", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: { final_result: { id: "orch-data-id" } },
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "orch-pipeline-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "orch-pipeline-id" } },
+      });
+
+      const model = createOrchModel("gpt-4o");
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBe("orch-data-id");
+    });
+
+    it("should fall back to getRequestId() when _data.final_result.id is absent on doGenerate", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "orch-pipeline-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "orch-pipeline-id" } },
+      });
+
+      const model = createOrchModel("gpt-4o");
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBe("orch-pipeline-id");
+    });
+  });
+
   describe("doGenerate citations and intermediateFailures (orchestration API)", () => {
     beforeEach(async () => {
       await resetMockStateForApi("orchestration");
