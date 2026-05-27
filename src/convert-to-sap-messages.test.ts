@@ -1239,7 +1239,7 @@ describe("convertToSAPMessages", () => {
   describe("cache_control plumbing", () => {
     const parsePartProviderOptions = parseSAPPartProviderOptions;
 
-    it("attaches cache_control to a user text part when cacheControl is set", () => {
+    it("should attach cache_control to a user text part when cacheControl is set", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1261,7 +1261,7 @@ describe("convertToSAPMessages", () => {
       expect(userMsg.content[1]?.cache_control).toBeUndefined();
     });
 
-    it("attaches cache_control to a user image_url part", () => {
+    it("should attach cache_control to a user image_url part", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1280,7 +1280,7 @@ describe("convertToSAPMessages", () => {
       expect(userMsg.content[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
     });
 
-    it("does not collapse a single-text user message to string form when cache_control is set", () => {
+    it("should not collapse a single-text user message to string form when cache_control is set", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1298,7 +1298,7 @@ describe("convertToSAPMessages", () => {
       expect(Array.isArray(userMsg.content)).toBe(true);
     });
 
-    it("collapses a single-text user message to string form when cache_control is absent", () => {
+    it("should collapse a single-text user message to string form when cache_control is absent", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [{ text: "no cache", type: "text" }],
@@ -1311,7 +1311,7 @@ describe("convertToSAPMessages", () => {
       expect(userMsg.content).toBe("no cache");
     });
 
-    it("ignores cacheControl scoped to another provider key", () => {
+    it("should ignore cacheControl scoped to another provider key", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1331,7 +1331,7 @@ describe("convertToSAPMessages", () => {
       expect(typeof userMsg.content).toBe("string");
     });
 
-    it("never attaches cache_control when no parsePartProviderOptions callback is supplied", () => {
+    it("should never attach cache_control when no parsePartProviderOptions callback is supplied", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1349,7 +1349,7 @@ describe("convertToSAPMessages", () => {
       expect(typeof userMsg.content).toBe("string");
     });
 
-    it("surfaces parser warnings into the warnings sink when an invalid cacheControl block is provided", () => {
+    it("should surface parser warnings into the warnings sink when an invalid cacheControl block is provided", () => {
       const warnings: SharedV3Warning[] = [];
       const prompt: LanguageModelV3Prompt = [
         {
@@ -1372,7 +1372,7 @@ describe("convertToSAPMessages", () => {
       expect((warnings[0] as { message?: string }).message ?? "").toMatch(/cacheControl/);
     });
 
-    it("does not push warnings when cacheControl is valid", () => {
+    it("should not push warnings when cacheControl is valid", () => {
       const warnings: SharedV3Warning[] = [];
       const prompt: LanguageModelV3Prompt = [
         {
@@ -1391,7 +1391,7 @@ describe("convertToSAPMessages", () => {
       expect(warnings).toHaveLength(0);
     });
 
-    it("attaches cache_control to a system message via message-level providerOptions", () => {
+    it("should attach cache_control to a system message via message-level providerOptions", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: "You are helpful.",
@@ -1411,7 +1411,7 @@ describe("convertToSAPMessages", () => {
       });
     });
 
-    it("keeps system message content as a string when no cacheControl is set", () => {
+    it("should keep system message content as a string when no cacheControl is set", () => {
       const prompt: LanguageModelV3Prompt = [{ content: "no cache", role: "system" }];
       const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
       const systemMsg = result[0] as { content: unknown };
@@ -1419,7 +1419,7 @@ describe("convertToSAPMessages", () => {
       expect(systemMsg.content).toBe("no cache");
     });
 
-    it("attaches cache_control to an assistant text part", () => {
+    it("should attach cache_control to an assistant text part", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1444,7 +1444,7 @@ describe("convertToSAPMessages", () => {
       });
     });
 
-    it("preserves order across cached and uncached assistant text parts", () => {
+    it("should preserve order across cached and uncached assistant text parts", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1468,7 +1468,7 @@ describe("convertToSAPMessages", () => {
       ]);
     });
 
-    it("keeps assistant content as a string when no part declares cacheControl", () => {
+    it("should keep assistant content as a string when no part declares cacheControl", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1484,7 +1484,7 @@ describe("convertToSAPMessages", () => {
       expect(assistantMsg.content).toBe("first second");
     });
 
-    it("surfaces an unsupported warning when cacheControl is set on an assistant tool-call", () => {
+    it("should surface an unsupported warning when cacheControl is set on an assistant tool-call", () => {
       const warnings: SharedV3Warning[] = [];
       const prompt: LanguageModelV3Prompt = [
         {
@@ -1509,7 +1509,7 @@ describe("convertToSAPMessages", () => {
       expect(cacheToolWarning).toMatchObject({ type: "unsupported" });
     });
 
-    it("attaches cache_control to a tool-result message", () => {
+    it("should attach cache_control to a tool-result message", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
@@ -1530,7 +1530,7 @@ describe("convertToSAPMessages", () => {
       expect(toolMsg.content[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
     });
 
-    it("keeps tool-result content as a string when no cacheControl is set", () => {
+    it("should keep tool-result content as a string when no cacheControl is set", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
