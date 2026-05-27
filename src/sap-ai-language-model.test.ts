@@ -3068,6 +3068,72 @@ describe("SAPAILanguageModel", () => {
       expect(result.response?.id).toBeUndefined();
     });
 
+    it("should source providerMetadata.requestId from getRequestId() in preference to the x-request-id header", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: { id: "completion-1" },
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "sdk-pipeline-rid",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "http-header-rid" } },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      const meta = result.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+      expect(meta.requestId).toBe("sdk-pipeline-rid");
+      expect(result.response?.headers?.["x-request-id"]).toBe("http-header-rid");
+    });
+
+    it("should fall back to x-request-id header for providerMetadata.requestId when getRequestId() is undefined", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "http-only-rid" } },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      const meta = result.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+      expect(meta.requestId).toBe("http-only-rid");
+    });
+
+    it("should omit providerMetadata.requestId when both getRequestId() and the x-request-id header are absent", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: {} },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("requestId");
+    });
+
     it("should keep streaming alive when rawResponse access throws", async () => {
       const MockClient = await getMockClientForApi("foundation-models");
       if (!MockClient.setStreamResponseOverride) {

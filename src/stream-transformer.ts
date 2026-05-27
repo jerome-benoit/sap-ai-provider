@@ -50,7 +50,8 @@ export interface StreamTransformerConfig {
   readonly modelId: string;
   readonly options: LanguageModelV3CallOptions;
   readonly providerName: string;
-  readonly responseHeaders?: Record<string, string>;
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  readonly requestId?: string;
   readonly responseId: string;
   readonly sdkStream: AsyncIterable<SDKStreamChunk>;
   readonly streamResponseGetCitations?: () => SDKCitation[] | undefined;
@@ -145,7 +146,7 @@ export function createStreamTransformer(
     modelId,
     options,
     providerName,
-    responseHeaders,
+    requestId,
     responseId,
     sdkStream,
     streamResponseGetCitations,
@@ -246,9 +247,7 @@ export function createStreamTransformer(
                     intermediateFailures: sanitizeAsJSONArray(streamIntermediateFailures),
                   }
                 : {}),
-              ...(typeof responseHeaders?.["x-request-id"] === "string"
-                ? { requestId: responseHeaders["x-request-id"] }
-                : {}),
+              ...(requestId ? { requestId } : {}),
               responseId,
               version,
             },

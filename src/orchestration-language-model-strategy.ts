@@ -40,6 +40,7 @@ import {
   convertResponseFormat,
   convertToolsToSAPFormat,
   extractCompletionId,
+  extractResponseMetadata,
   hasKeys,
   mapToolChoice,
   type ParamMapping,
@@ -396,6 +397,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     );
 
     const completionId = extractCompletionId(response, ["final_result", "id"]);
+    const { requestId } = extractResponseMetadata(response, "rawResponse");
 
     return {
       getCitations: () =>
@@ -410,6 +412,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
+      requestId,
       responseId: completionId,
     };
   }
@@ -424,6 +427,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
     const streamCompletionId = extractCompletionId(streamResponse, ["final_result", "id"]);
+    const { requestId } = extractResponseMetadata(streamResponse, "rawResponse");
 
     return {
       getCitations: () =>
@@ -434,6 +438,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
           streamResponse as { getIntermediateFailures?: () => undefined | unknown[] }
         ).getIntermediateFailures?.(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      requestId,
       responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
       responseId: streamCompletionId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,

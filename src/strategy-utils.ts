@@ -173,6 +173,7 @@ export interface GenerateResultConfig {
   readonly modelId: string;
   readonly providerName: string;
   readonly requestBody: unknown;
+  readonly requestId?: string;
   readonly response: SDKResponse;
   readonly responseHeaders: Record<string, string> | undefined;
   readonly version: string;
@@ -277,6 +278,8 @@ export interface SDKResponse {
   getTokenUsage(): SDKTokenUsage | undefined;
   getToolCalls(): null | SDKToolCall[] | undefined;
   rawResponse: { headers: Headers | Record<string, string> };
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  requestId?: string;
   responseId?: string;
 }
 
@@ -424,8 +427,16 @@ export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingMo
  * @internal
  */
 export function buildGenerateResult(config: GenerateResultConfig): LanguageModelV3GenerateResult {
-  const { modelId, providerName, requestBody, response, responseHeaders, version, warnings } =
-    config;
+  const {
+    modelId,
+    providerName,
+    requestBody,
+    requestId,
+    response,
+    responseHeaders,
+    version,
+    warnings,
+  } = config;
 
   const content = extractResponseContent(response);
 
@@ -469,9 +480,7 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
         ...(intermediateFailures?.length
           ? { intermediateFailures: sanitizeAsJSONArray(intermediateFailures) }
           : {}),
-        ...(typeof responseHeaders?.["x-request-id"] === "string"
-          ? { requestId: responseHeaders["x-request-id"] }
-          : {}),
+        ...(requestId ? { requestId } : {}),
         version,
       },
     },
@@ -837,12 +846,13 @@ export function extractResponseContent(response: SDKResponse): LanguageModelV3Co
 }
 
 /**
- * Extracts request id and headers from an SDK response.
+ * Extracts the request id and normalised headers from an SDK response.
  *
- * Tolerates SDKs that omit `getRequestId`, expose it as a non-function, or
- * expose `headers` via a throwing accessor (the deprecated 0-arg foundation-models
- * stream constructor). The `field` parameter selects between `rawResponse`
- * (foundation-models) and `response` (orchestration).
+ * Resolves `requestId` from `getRequestId()` first; when absent, falls back to the
+ * `x-request-id` header so HTTP-only correlation surfaces remain observable.
+ * Tolerates SDKs that omit `getRequestId`, expose it as a non-function, or raise
+ * from the `headers` accessor. `field` selects the underlying HttpResponse wrapper
+ * (`rawResponse` for foundation-models, `response` for orchestration).
  * @param response - SDK response object.
  * @param field - Property containing the underlying HttpResponse wrapper.
  * @returns Combined `{ requestId, headers }` with both fields defensively gathered.
@@ -873,6 +883,10 @@ export function extractResponseMetadata(
     rawHeaders = undefined;
   }
   const headers = rawHeaders === undefined ? undefined : normalizeHeaders(rawHeaders);
+
+  if (requestId === undefined && typeof headers?.["x-request-id"] === "string") {
+    requestId = headers["x-request-id"];
+  }
 
   return { headers, requestId };
 }

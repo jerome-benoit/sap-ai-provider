@@ -15,12 +15,12 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
-import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
   extractCompletionId,
+  extractResponseMetadata,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -121,6 +121,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
     const completionId = extractCompletionId(response, ["id"]);
+    const { requestId } = extractResponseMetadata(response, "rawResponse");
 
     return {
       getContent: () => response.getContent(),
@@ -129,6 +130,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
+      requestId,
       responseId: completionId,
     };
   }
@@ -141,19 +143,18 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
-    // `rawResponse` is unavailable when the stream was built via the deprecated 0-arg constructor.
-    let responseHeaders: Record<string, string> | undefined;
-    try {
-      responseHeaders = normalizeHeaders(streamResponse.rawResponse.headers);
-    } catch {
-      responseHeaders = undefined;
-    }
+    const { headers: responseHeaders, requestId } = extractResponseMetadata(
+      streamResponse,
+      "rawResponse",
+    );
+    const streamCompletionId = extractCompletionId(streamResponse, ["id"]);
 
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      requestId,
       responseHeaders,
-      responseId: streamResponse.getRequestId(),
+      responseId: streamCompletionId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }

@@ -57,6 +57,8 @@ export interface StreamCallResponse {
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
   readonly getTokenUsage: () => null | SDKTokenUsage | undefined;
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  readonly requestId?: string;
   readonly responseHeaders?: Record<string, string>;
   /** Server-provided completion ID extracted from _data, if available. */
   readonly responseId?: string;
@@ -114,6 +116,7 @@ export abstract class BaseLanguageModelStrategy<
         modelId: config.modelId,
         providerName: commonParts.providerName,
         requestBody: request,
+        requestId: response.requestId,
         response,
         responseHeaders: normalizeHeaders(response.rawResponse.headers),
         version: VERSION,
@@ -158,7 +161,7 @@ export abstract class BaseLanguageModelStrategy<
         modelId: config.modelId,
         options,
         providerName: commonParts.providerName,
-        responseHeaders: streamResponse.responseHeaders,
+        requestId: streamResponse.requestId,
         responseId,
         sdkStream: streamResponse.stream,
         streamResponseGetCitations: streamResponse.getCitations,
