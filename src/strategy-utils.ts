@@ -779,7 +779,7 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
  * the pipeline request id reported by `getRequestId()` when the path is not present.
  *
  * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
- * Today only two strategies call this: orchestration with `["final_result","id"]` and
+ * Two strategies currently call this: orchestration with `["final_result","id"]` and
  * Foundation Models with `["id"]`. Add per-strategy extractors instead of widening the
  * path-array if a third caller emerges with a different payload shape.
  * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
