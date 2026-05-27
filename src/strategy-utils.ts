@@ -173,6 +173,7 @@ export interface GenerateResultConfig {
   readonly modelId: string;
   readonly providerName: string;
   readonly requestBody: unknown;
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
   readonly requestId?: string;
   readonly response: SDKResponse;
   readonly responseHeaders: Record<string, string> | undefined;
@@ -681,11 +682,9 @@ export function convertResponseFormat(
 /**
  * Converts AI SDK tools to SAP-compatible tool format.
  * @param tools - The AI SDK tools to convert.
- * @param options - Optional parser and warnings sink. The parser reads per-tool
- * `providerOptions['sap-ai']` and forwards Anthropic `cacheControl` onto the SAP envelope;
- * the sink receives Zod validation issues raised by the parser.
- * @param options.parser - Reads per-tool `providerOptions['sap-ai']` and returns parsed directives (or `undefined`).
- * @param options.warnings - Sink that collects Zod validation issues raised while parsing per-tool options.
+ * @param options.parser - Reads per-tool `providerOptions['sap-ai']` and returns parsed directives, or `undefined` when none apply.
+ * @param options.warnings - Sink for Zod validation issues raised while parsing.
+ * @param options
  * @returns The converted tools and any warnings.
  * @internal
  */
@@ -780,9 +779,9 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
  * the pipeline request id reported by `getRequestId()` when the path is not present.
  *
  * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
- * Two strategies currently call this: orchestration with `["final_result","id"]` and
- * Foundation Models with `["id"]`. Add per-strategy extractors instead of widening the
- * path-array if a third caller emerges with a different payload shape.
+ * Two callers: orchestration passes `["final_result","id"]`, Foundation Models passes `["id"]`.
+ * Add a per-strategy extractor instead of widening the path array if a third caller needs
+ * a different payload shape.
  * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
  * @param response._data - Internal SDK payload that holds the completion id under `dataPath`.
  * @param response.getRequestId - Function returning the SAP AI Core pipeline request id.
@@ -854,10 +853,9 @@ export function extractResponseContent(response: SDKResponse): LanguageModelV3Co
  * Extracts the request id and normalised headers from an SDK response.
  *
  * Resolves `requestId` from `getRequestId()` first; when absent, falls back to the
- * `x-request-id` header so HTTP-only correlation surfaces remain observable.
- * Tolerates SDKs that omit `getRequestId`, expose it as a non-function, or raise
- * from the `headers` accessor. `field` selects the underlying HttpResponse wrapper
- * (`rawResponse` for foundation-models, `response` for orchestration).
+ * `x-request-id` header. Tolerates SDKs that omit `getRequestId`, expose it as a
+ * non-function, or raise from the `headers` accessor. `field` selects the underlying
+ * HttpResponse wrapper (`rawResponse` for foundation-models, `response` for orchestration).
  * @param response - SDK response object.
  * @param field - Property containing the underlying HttpResponse wrapper.
  * @returns Combined `{ requestId, headers }` with both fields defensively gathered.

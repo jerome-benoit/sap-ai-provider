@@ -133,12 +133,9 @@ export const sapAIPartProviderOptionsSchema = z.object({
 });
 
 /**
- * Callback that consumes per-message-part `providerOptions` and returns the
- * `sap-ai` slice (e.g. `cacheControl`) when present and valid.
- *
- * Optional `warnings` sink receives one entry per Zod issue when the block
- * fails validation; invalid blocks are still dropped silently from the parsed
- * result so the converter can keep producing a request.
+ * Callback that reads per-message-part `providerOptions` and returns the validated
+ * `sap-ai` slice (e.g. `cacheControl`), or `undefined` when absent or invalid.
+ * Optional `warnings` sink receives one entry per Zod issue.
  * @internal
  */
 export type ParsePartProviderOptions = (
