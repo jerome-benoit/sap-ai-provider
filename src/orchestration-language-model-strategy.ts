@@ -3,7 +3,6 @@ import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provid
 import type {
   ChatCompletionTool,
   ChatMessage,
-  LlmModelParams,
   OrchestrationClient,
   OrchestrationConfigRef,
   OrchestrationModuleConfig,
@@ -71,17 +70,6 @@ interface OrchestrationResolvedState {
   readonly promptTemplateRef: PromptTemplateRef | undefined;
   readonly tools: ChatCompletionTool[] | undefined;
 }
-
-/**
- * SAP model parameters with orchestration-specific fields.
- * @internal
- */
-type SAPModelParams = LlmModelParams & {
-  parallel_tool_calls?: boolean;
-  seed?: number;
-  stop?: string[];
-  top_k?: number;
-};
 
 /**
  * Builds the template_ref object from a PromptTemplateRef.
@@ -495,7 +483,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
     params: {
-      readonly modelParams: SAPModelParams;
+      readonly modelParams: Record<string, unknown>;
       readonly promptTemplateRef?: PromptTemplateRef;
       readonly responseFormat?: unknown;
       readonly toolChoice?: SAPToolChoice;
