@@ -153,6 +153,28 @@ describe("normalizeHeaders", () => {
       expect(normalizeHeaders(input)).toBeUndefined();
     });
   });
+
+  describe("case-insensitive keys", () => {
+    it("should lower-case all header keys", () => {
+      expect(
+        normalizeHeaders({
+          "Content-Type": "application/json",
+          "X-Request-Id": "rid",
+          "x-Trace": "t",
+        }),
+      ).toEqual({
+        "content-type": "application/json",
+        "x-request-id": "rid",
+        "x-trace": "t",
+      });
+    });
+
+    it("should resolve mixed-case duplicates with last-write-wins", () => {
+      expect(normalizeHeaders({ "X-Request-Id": "old", "x-request-id": "new" })).toEqual({
+        "x-request-id": "new",
+      });
+    });
+  });
 });
 
 describe("convertSAPErrorToAPICallError", () => {

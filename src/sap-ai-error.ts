@@ -439,13 +439,14 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
 
   const record = headers as Record<string, unknown>;
   const entries = Object.entries(record).flatMap(([key, value]) => {
-    if (typeof value === "string") return [[key, value]];
+    const k = key.toLowerCase();
+    if (typeof value === "string") return [[k, value]];
     if (Array.isArray(value)) {
       const strings = value.filter((item): item is string => typeof item === "string").join("; ");
-      return strings.length > 0 ? [[key, strings]] : [];
+      return strings.length > 0 ? [[k, strings]] : [];
     }
     if (typeof value === "number" || typeof value === "boolean") {
-      return [[key, String(value)]];
+      return [[k, String(value)]];
     }
     return [];
   });
