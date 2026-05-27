@@ -1584,10 +1584,11 @@ describe("convertToSAPMessages", () => {
       ];
       convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
 
-      const cacheToolWarning = warnings.find((w) =>
-        ((w as { feature?: string }).feature ?? "").includes("tool-call"),
-      );
-      expect(cacheToolWarning).toMatchObject({ type: "unsupported" });
+      expect(warnings).toContainEqual({
+        details: "SAP orchestration does not expose cache_control on assistant tool calls.",
+        feature: "cacheControl on assistant tool-call",
+        type: "unsupported",
+      });
     });
 
     it("should attach cache_control to a tool-result message", () => {
