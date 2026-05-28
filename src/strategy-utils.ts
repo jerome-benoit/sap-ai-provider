@@ -139,8 +139,8 @@ export interface EmbeddingResultConfig {
   readonly embeddings: EmbeddingModelV3Embedding[];
   readonly modelId: string;
   readonly providerName: string;
+  readonly requestId?: string;
   readonly responseHeaders?: Record<string, string>;
-  readonly responseId?: string;
   readonly totalTokens: number;
   readonly version: string;
 }
@@ -403,13 +403,13 @@ export function buildAnthropicCacheMetadata(tokenUsage: null | SDKTokenUsage | u
  * @internal
  */
 export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingModelV3Result {
-  const { embeddings, modelId, providerName, responseHeaders, responseId, totalTokens, version } =
+  const { embeddings, modelId, providerName, requestId, responseHeaders, totalTokens, version } =
     config;
 
   const providerMetadata: SharedV3ProviderMetadata = {
     [providerName]: {
       model: modelId,
-      ...(responseId ? { requestId: responseId } : {}),
+      ...(requestId ? { requestId } : {}),
       version,
     },
   };

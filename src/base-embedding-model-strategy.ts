@@ -62,15 +62,14 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
-      const { headers: responseHeaders, requestId: responseId } =
-        this.extractResponseMetadata(response);
+      const { headers: responseHeaders, requestId } = this.extractResponseMetadata(response);
 
       return buildEmbeddingResult({
         embeddings,
         modelId: config.modelId,
         providerName,
+        requestId,
         responseHeaders,
-        responseId,
         totalTokens,
         version: VERSION,
       });
