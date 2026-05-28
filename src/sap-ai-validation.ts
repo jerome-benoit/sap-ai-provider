@@ -371,19 +371,19 @@ export function validateApiInput(api: unknown): void {
 /**
  * Pushes a deprecation warning when `settings.masking` carries `masking_providers`
  * without a `providers` block.
- * @param modelSettings - Resolved model settings (orchestration variant carries the masking module).
+ * @param modelSettings - Resolved model settings (LM or embedding) that may carry a `masking` module.
  * @param warnings - Sink that collects the deprecation warning when it applies.
  * @internal
  */
 export function validateMaskingProvidersDeprecation(
-  modelSettings: SAPAISettings | undefined,
+  modelSettings: undefined | { masking?: unknown },
   warnings: SharedV3Warning[],
 ): void {
-  const masking = (modelSettings as OrchestrationModelSettings | undefined)?.masking;
-  if (!masking) {
+  const masking = modelSettings?.masking;
+  if (!masking || typeof masking !== "object") {
     return;
   }
-  const maskingRecord = masking as unknown as Record<string, unknown>;
+  const maskingRecord = masking as Record<string, unknown>;
   const hasDeprecated = maskingRecord.masking_providers !== undefined;
   const hasPreferred = maskingRecord.providers !== undefined;
   if (hasDeprecated && !hasPreferred) {

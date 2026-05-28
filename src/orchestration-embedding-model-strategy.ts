@@ -1,5 +1,5 @@
 /** Orchestration embedding model strategy using `@sap-ai-sdk/orchestration`. */
-import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
+import type { EmbeddingModelV3Embedding, SharedV3Warning } from "@ai-sdk/provider";
 import type {
   EmbeddingModelConfig,
   EmbeddingModuleConfig,
@@ -12,6 +12,7 @@ import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
+import { validateMaskingProvidersDeprecation } from "./sap-ai-validation.js";
 import {
   type EmbeddingProviderOptions,
   extractResponseMetadata,
@@ -100,5 +101,12 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
 
   protected getUrl(): string {
     return "sap-ai:orchestration/embeddings";
+  }
+
+  protected override resolveWarnings(
+    settings: SAPAIEmbeddingSettings,
+    warnings: SharedV3Warning[],
+  ): void {
+    validateMaskingProvidersDeprecation(settings, warnings);
   }
 }

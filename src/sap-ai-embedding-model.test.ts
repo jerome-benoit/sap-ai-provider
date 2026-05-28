@@ -815,6 +815,52 @@ describe("SAPAIEmbeddingModel", () => {
         );
       });
 
+      it("should surface masking_providers deprecation warning on embedding orch path", async () => {
+        const model = createModelForApi("orchestration", "text-embedding-ada-002", {
+          masking: {
+            masking_providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+        });
+
+        const result = await model.doEmbed({ values: ["x"] });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toMatchObject({ type: "other" });
+        expect((deprecation as { message?: string }).message).toBe(
+          "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+            "Migrate to settings.masking.providers.",
+        );
+      });
+
+      it("should not surface deprecation on embedding orch path when providers shape is used", async () => {
+        const model = createModelForApi("orchestration", "text-embedding-ada-002", {
+          masking: {
+            providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+        });
+
+        const result = await model.doEmbed({ values: ["x"] });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toBeUndefined();
+      });
+
       it("should omit masking when empty object", async () => {
         const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
         const model = createModelForApi("orchestration", "text-embedding-ada-002", {
