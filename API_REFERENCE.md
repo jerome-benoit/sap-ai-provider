@@ -1572,7 +1572,8 @@ const result = await generateText({
 });
 
 const cacheUsage = result.providerMetadata?.["sap-ai"]?.cacheUsage;
-// e.g. { ephemeral_5m_input_tokens: 1234 } — keys present only when non-zero
+// e.g. { ephemeral_5m_input_tokens: 1234, ephemeral_1h_input_tokens: 0 }
+// `cacheUsage` is omitted only when all buckets are zero; individual zero keys are preserved.
 ```
 
 ---
@@ -2395,8 +2396,8 @@ SAP-specific fields under the provider name key (default: `"sap-ai"`).
 | Field                  | Type                  | Description                                                                                                |
 | ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `cacheUsage`           | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
-| `finishReason`         | `string \| undefined` | Raw finish reason from the SDK                                                                             |
-| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`)                                                                  |
+| `finishReason`         | `string`              | Raw finish reason from the SDK; defaults to `"unknown"` when the SDK omits it                              |
+| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`); `raw` preserves the unmodified SDK value (or `undefined`)       |
 | `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
 | `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
 | `version`              | `string`              | Provider package version                                                                                   |
@@ -2406,8 +2407,8 @@ SAP-specific fields under the provider name key (default: `"sap-ai"`).
 | Field                  | Type                  | Description                                                                                                |
 | ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `cacheUsage`           | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
-| `finishReason`         | `string \| undefined` | Raw finish reason from the SDK                                                                             |
-| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`)                                                                  |
+| `finishReason`         | `string`              | Raw finish reason from the SDK; defaults to `"unknown"` when the SDK omits it                              |
+| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`); `raw` preserves the unmodified SDK value (or `undefined`)       |
 | `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
 | `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
 | `responseId`           | `string`              | Server completion ID or client-generated UUID                                                              |
