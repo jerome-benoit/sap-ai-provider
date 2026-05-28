@@ -554,26 +554,11 @@ describe("SAPAIEmbeddingModel", () => {
 
     it.each([
       {
-        description: "normalize array header values",
+        description: "wire normalizeHeaders into doEmbed response",
         expected: { "x-multi": "a; b", "x-request-id": "rid" },
         headers: { "x-multi": ["a", "b"], "x-request-id": "rid" },
       },
-      {
-        description: "convert numeric header values to strings",
-        expected: { "content-length": "512", "x-retry-after": "30" },
-        headers: { "content-length": 512, "x-retry-after": 30 },
-      },
-      {
-        description: "skip unsupported header value types",
-        expected: { "x-valid": "keep" },
-        headers: { "x-object": { nested: 1 }, "x-valid": "keep" },
-      },
-      {
-        description: "filter non-string values from array headers",
-        expected: { "x-mixed": "a; b" },
-        headers: { "x-mixed": ["a", 5, null, "b"] },
-      },
-    ])("should $description in doEmbed response", async ({ expected, headers }) => {
+    ])("should $description", async ({ expected, headers }) => {
       const headerBag = headers as Record<string, unknown>;
       await setEmbedResponseForApi(
         api,

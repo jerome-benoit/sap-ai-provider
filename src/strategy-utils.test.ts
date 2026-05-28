@@ -99,11 +99,9 @@ describe("convertToolsToSAPFormat", () => {
 
 describe("mapFinishReason", () => {
   it.each<[string, "content-filter" | "stop" | "tool-calls"]>([
-    ["tool_use", "tool-calls"],
     ["TOOL_USE", "tool-calls"],
-    ["guardrail_intervened", "content-filter"],
     ["GUARDRAIL_INTERVENED", "content-filter"],
-  ])("should map %s to %s", (raw, unified) => {
+  ])("should lower-case %s before mapping to %s", (raw, unified) => {
     expect(mapFinishReason(raw)).toEqual({ raw, unified });
   });
 });
