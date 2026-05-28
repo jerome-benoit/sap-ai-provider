@@ -218,7 +218,7 @@ describe("convertUsageToV2", () => {
     });
   });
 
-  it("should drop usage.raw silently at the V3\u2192V2 boundary", () => {
+  it("should drop usage.raw silently at the V3→V2 boundary", () => {
     const internalUsage = {
       inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
       outputTokens: { reasoning: undefined, text: 20, total: 20 },

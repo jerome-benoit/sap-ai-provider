@@ -63,7 +63,7 @@ describe("SAPAIEmbeddingModelV2", () => {
       expect(result.response?.body).toEqual({ data: "test" });
     });
 
-    it("should preserve providerMetadata['sap-ai'].requestId across the V3→V2 cast", async () => {
+    it("should preserve providerMetadata['sap-ai'].requestId through the V3→V2 facade", async () => {
       const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
       const mockDoEmbed = vi.fn().mockResolvedValue({

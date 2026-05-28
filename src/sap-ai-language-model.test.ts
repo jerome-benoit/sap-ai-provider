@@ -3644,7 +3644,7 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should populate usage.raw when 2.11 token fields are present", async () => {
+      it("should populate usage.raw when extended token detail fields are present", async () => {
         const MockClient = await getMockClientForApi(api);
         if (!MockClient.setChatCompletionResponse) {
           throw new Error("mock missing setChatCompletionResponse");
@@ -3681,7 +3681,7 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should omit usage.raw when no 2.11 token fields are present", async () => {
+      it("should omit usage.raw when no extended token detail fields are present", async () => {
         const model = createModelForApi(api);
         const result = await model.doGenerate({ prompt: createPrompt("Hi") });
 

@@ -399,7 +399,7 @@ describe("SAPAILanguageModelV2", () => {
       ).rejects.toThrow("Internal streaming failed");
     });
 
-    it("should preserve masking deprecation warning through the V3\u2192V2 facade", async () => {
+    it("should preserve masking deprecation warning through the V3→V2 facade", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
       const expectedMessage =
         "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
@@ -422,7 +422,7 @@ describe("SAPAILanguageModelV2", () => {
       expect(result.warnings).toEqual([{ message: expectedMessage, type: "other" }]);
     });
 
-    it("should forward tool-level cacheControl through the V2 facade", async () => {
+    it("should forward tool-level cacheControl through the V3→V2 facade", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
       const mockDoGenerate = vi.fn().mockResolvedValue({
@@ -452,7 +452,7 @@ describe("SAPAILanguageModelV2", () => {
       expect(mockDoGenerate).toHaveBeenCalledWith(expect.objectContaining({ tools }));
     });
 
-    it("should preserve providerMetadata['sap-ai'].requestId across the V3\u2192V2 cast", async () => {
+    it("should preserve providerMetadata['sap-ai'].requestId through the V3→V2 facade", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
       const mockDoGenerate = vi.fn().mockResolvedValue({

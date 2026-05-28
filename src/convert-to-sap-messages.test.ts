@@ -1504,7 +1504,7 @@ describe("convertToSAPMessages", () => {
       expect(assistantMsg.content).toBe("kept");
     });
 
-    it("should emit a single Zod warning when N parts share the same invalid cacheControl", () => {
+    it("should emit a single Zod warning when multiple parts share the same invalid cacheControl", () => {
       const warnings: SharedV3Warning[] = [];
       const invalid = { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } };
       const prompt: LanguageModelV3Prompt = [
@@ -1524,7 +1524,7 @@ describe("convertToSAPMessages", () => {
       expect(cacheControlIssues).toHaveLength(1);
     });
 
-    it("should emit a single unsupported warning when N tool-call parts carry cacheControl", () => {
+    it("should emit a single unsupported warning when multiple tool-call parts carry cacheControl", () => {
       const warnings: SharedV3Warning[] = [];
       const cacheOpts = {
         "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" as const } },
