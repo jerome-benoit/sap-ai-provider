@@ -973,8 +973,15 @@ describe("SAPAILanguageModel", () => {
         | undefined
         | {
             completion_tokens: number;
+            completion_tokens_details?: {
+              accepted_prediction_tokens?: number;
+              audio_tokens?: number;
+              reasoning_tokens?: number;
+              rejected_prediction_tokens?: number;
+            };
             prompt_tokens: number;
             prompt_tokens_details?: {
+              audio_tokens?: number;
               cache_creation_token_details?: {
                 ephemeral_1h_input_tokens?: number;
                 ephemeral_5m_input_tokens?: number;
@@ -3775,6 +3782,46 @@ describe("SAPAILanguageModel", () => {
               ephemeral_1h_input_tokens: 20,
               ephemeral_5m_input_tokens: 80,
             },
+          });
+        }
+      });
+
+      it("should preserve usage.raw on stream finish when un-typed token fields are present", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 10,
+              completion_tokens_details: {
+                accepted_prediction_tokens: 4,
+                audio_tokens: 2,
+                rejected_prediction_tokens: 1,
+              },
+              prompt_tokens: 20,
+              prompt_tokens_details: { audio_tokens: 3 },
+              total_tokens: 30,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        expect(finishPart).toBeDefined();
+        if (finishPart?.type === "finish") {
+          expect(finishPart.usage.raw).toEqual({
+            completion_tokens: 10,
+            completion_tokens_details: {
+              accepted_prediction_tokens: 4,
+              audio_tokens: 2,
+              rejected_prediction_tokens: 1,
+            },
+            prompt_tokens: 20,
+            prompt_tokens_details: { audio_tokens: 3 },
+            total_tokens: 30,
           });
         }
       });

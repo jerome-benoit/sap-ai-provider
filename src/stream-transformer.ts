@@ -215,9 +215,7 @@ export function createStreamTransformer(
 
         const finalUsage = streamResponseGetTokenUsage();
         if (finalUsage) {
-          const mapped = mapTokenUsage(finalUsage);
-          streamState.usage.inputTokens = mapped.inputTokens;
-          streamState.usage.outputTokens = mapped.outputTokens;
+          streamState.usage = mapTokenUsage(finalUsage);
         }
 
         const streamCitations = streamResponseGetCitations?.();
