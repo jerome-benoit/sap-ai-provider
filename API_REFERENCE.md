@@ -866,12 +866,12 @@ Configuration options for embedding models.
 
 **Embedding response metadata (`doEmbed` result):**
 
-| Field                                  | Type                     | Description                                                                                             |
-| -------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `response.headers`                     | `Record<string, string>` | Lower-cased response headers from the SDK call                                                          |
-| `providerMetadata['sap-ai'].model`     | `string`                 | Embedding model id                                                                                      |
-| `providerMetadata['sap-ai'].requestId` | `string \| undefined`    | SAP-pipeline correlation id (`getRequestId()` preferred, lower-cased `x-request-id` header as fallback) |
-| `providerMetadata['sap-ai'].version`   | `string`                 | Provider package version                                                                                |
+| Field                                  | Type                     | Description                                                                                 |
+| -------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------- |
+| `response.headers`                     | `Record<string, string>` | Response headers (keys lower-cased)                                                         |
+| `providerMetadata['sap-ai'].model`     | `string`                 | Embedding model id                                                                          |
+| `providerMetadata['sap-ai'].requestId` | `string \| undefined`    | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header) |
+| `providerMetadata['sap-ai'].version`   | `string`                 | Provider package version                                                                    |
 
 **EmbeddingType Values:**
 
@@ -1521,17 +1521,16 @@ const result = await generateText({
 
 ### Per-message-part Provider Options (Anthropic prompt caching)
 
-Anthropic prompt caching is opted into per message part (or per tool definition)
-through `providerOptions['sap-ai'].cacheControl`. The orchestration API forwards
-the directive as `cache_control` on the SAP envelope; Foundation Models drops it
-silently because the `cache_control` field is orchestration-only.
+Per-part directive (`providerOptions['sap-ai'].cacheControl`) requesting
+Anthropic ephemeral prompt caching. Honored only by the orchestration API
+(forwarded as `cache_control`); Foundation Models ignores it.
 
 **Input shape:**
 
 ```typescript
 type CacheControl = {
   type: "ephemeral";
-  ttl?: "5m" | "1h"; // SAP-supported TTL buckets; other values are dropped with a warning
+  ttl?: "5m" | "1h"; // invalid values drop the whole `cacheControl` block (warning emitted)
 };
 ```
 
@@ -1546,10 +1545,9 @@ type CacheControl = {
 | tool-result message | `prompt[i].content[j].providerOptions['sap-ai'].cacheControl` |
 | tool definition     | `tool.providerOptions['sap-ai'].cacheControl`                 |
 
-Setting `cacheControl` on an assistant `tool-call` part raises a single
-`unsupported` warning (the SAP envelope does not expose `cache_control` on tool
-calls). Invalid blocks are silently dropped and surface a `type: "other"` warning
-that names the offending path.
+`cacheControl` on an assistant `tool-call` part is unsupported and emits a
+single `unsupported` warning (deduplicated by feature key). Invalid blocks are
+dropped and surface a `type: "other"` warning naming the offending path.
 
 **Example:**
 
@@ -1574,7 +1572,7 @@ const result = await generateText({
 });
 
 const cacheUsage = result.providerMetadata?.["sap-ai"]?.cacheUsage;
-// { ephemeral_5m_input_tokens: 1234, ephemeral_1h_input_tokens: 0 }
+// e.g. { ephemeral_5m_input_tokens: 1234 } — keys present only when non-zero
 ```
 
 ---
@@ -2382,8 +2380,7 @@ for await (const part of stream) {
 
 > **Note:** Streaming response IDs (`response-metadata.id`) are extracted from
 > the server's completion response when available. `providerMetadata.requestId`
-> resolves to the SAP-pipeline correlation id (`getRequestId()` preferred, lower-cased
-> `x-request-id` header as fallback) — see
+> exposes the SAP request correlation id — see
 > [Provider Metadata](#provider-metadata-in-responses).
 
 ---
@@ -2401,7 +2398,7 @@ SAP-specific fields under the provider name key (default: `"sap-ai"`).
 | `finishReason`         | `string \| undefined` | Raw finish reason from the SDK                                                                             |
 | `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`)                                                                  |
 | `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
-| `requestId`            | `string \| undefined` | SAP-pipeline correlation id (`getRequestId()` preferred, lower-cased `x-request-id` header as fallback)    |
+| `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
 | `version`              | `string`              | Provider package version                                                                                   |
 
 **`doStream` — `finish` event `providerMetadata[providerName]`:**
@@ -2412,7 +2409,7 @@ SAP-specific fields under the provider name key (default: `"sap-ai"`).
 | `finishReason`         | `string \| undefined` | Raw finish reason from the SDK                                                                             |
 | `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`)                                                                  |
 | `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
-| `requestId`            | `string \| undefined` | SAP-pipeline correlation id (`getRequestId()` preferred, lower-cased `x-request-id` header as fallback)    |
+| `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
 | `responseId`           | `string`              | Server completion ID or client-generated UUID                                                              |
 | `version`              | `string`              | Provider package version                                                                                   |
 
