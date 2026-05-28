@@ -174,6 +174,21 @@ describe("normalizeHeaders", () => {
         "x-request-id": "new",
       });
     });
+
+    it("should handle Web Headers instances by iterating via forEach", () => {
+      const headers = new Headers({
+        "Content-Length": "512",
+        "X-Request-Id": "rid-123",
+      });
+      expect(normalizeHeaders(headers)).toEqual({
+        "content-length": "512",
+        "x-request-id": "rid-123",
+      });
+    });
+
+    it("should return undefined for an empty Headers instance", () => {
+      expect(normalizeHeaders(new Headers())).toBeUndefined();
+    });
   });
 });
 

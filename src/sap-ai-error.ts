@@ -437,6 +437,14 @@ export function convertToAISDKError(
 export function normalizeHeaders(headers: unknown): Record<string, string> | undefined {
   if (!headers || typeof headers !== "object") return undefined;
 
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key.toLowerCase()] = value;
+    });
+    return Object.keys(out).length === 0 ? undefined : out;
+  }
+
   const record = headers as Record<string, unknown>;
   const entries = Object.entries(record).flatMap(([key, value]) => {
     const k = key.toLowerCase();
