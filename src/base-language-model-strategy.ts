@@ -328,9 +328,7 @@ export abstract class BaseLanguageModelStrategy<
   ): Promise<StreamCallResponse>;
 
   /**
-   * Resolves request id, completion id, and normalised headers from an SDK
-   * response in one place. Used by `executeApiCall` and `executeStreamCall`
-   * overrides so each call site goes through the same extraction pipeline.
+   * Resolves request id, completion id, and normalised headers from an SDK response.
    * @param response - Raw SDK response or stream response.
    * @returns Combined metadata fragment.
    * @internal
@@ -396,9 +394,8 @@ export abstract class BaseLanguageModelStrategy<
   /**
    * Returns a parser for per-message-part `providerOptions['sap-ai']`.
    *
-   * Default returns `undefined`. Strategies that honour part-level directives
-   * (e.g. orchestration `cache_control` for Anthropic) override to return the
-   * `parseSAPPartProviderOptions` parser.
+   * Default returns `undefined`; strategies honouring part-level directives
+   * (e.g. Anthropic `cacheControl` on orchestration) override to return a parser.
    * @returns Parser callback, or undefined to disable per-part plumbing.
    * @internal
    */

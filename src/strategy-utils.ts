@@ -788,9 +788,6 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
  * the pipeline request id reported by `getRequestId()` when the path is not present.
  *
  * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
- * Two callers: orchestration passes `["final_result","id"]`, Foundation Models passes `["id"]`.
- * Add a per-strategy extractor instead of widening the path array if a third caller needs
- * a different payload shape.
  * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
  * @param response._data - Internal SDK payload that holds the completion id under `dataPath`.
  * @param response.getRequestId - Function returning the SAP AI Core pipeline request id.
@@ -1022,11 +1019,8 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
 /**
  * Maps SAP AI SDK token usage to Vercel AI SDK LanguageModelV3Usage.
  *
- * `usage.raw` mirrors the full SDK token-usage envelope. It is populated only when at
- * least one un-typed field is present (`prompt_tokens_details.audio_tokens`,
- * `completion_tokens_details.audio_tokens`, `accepted_prediction_tokens`, or
- * `rejected_prediction_tokens`); otherwise `raw` is omitted and consumers rely on the
- * typed `inputTokens` / `outputTokens` breakdown.
+ * `usage.raw` is populated only when the SDK reports fields not represented in
+ * `inputTokens` / `outputTokens` (audio or prediction-token buckets); otherwise omitted.
  * @param tokenUsage - Raw token usage from the SAP SDK response.
  * @returns Mapped usage with input/output token breakdowns.
  * @internal

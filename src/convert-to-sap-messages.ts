@@ -75,9 +75,10 @@ function safeJsonStringify(value: unknown): string {
 }
 
 /**
+ * Wraps a text payload as a SAP `TextContent` block, attaching `cache_control` when set.
  * @param text - Pre-escaped text payload.
  * @param cacheControl - Optional Anthropic prompt-cache directive.
- * @returns SAP `TextContent` block, with `cache_control` attached when the directive is set.
+ * @returns SAP `TextContent` block.
  */
 function wrapAsTextContent(
   text: string,

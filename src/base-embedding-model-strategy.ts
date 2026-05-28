@@ -131,10 +131,7 @@ export abstract class BaseEmbeddingModelStrategy<
   /**
    * Extracts response metadata (request id and HTTP headers) from the SDK response.
    *
-   * Default returns both fields as `undefined`. Subclasses override to lift the
-   * underlying `HttpResponse` via `extractResponseMetadata` from `strategy-utils`,
-   * passing the SDK-specific field name (`rawResponse` for foundation-models,
-   * `response` for orchestration).
+   * Default returns both fields as `undefined`; subclasses override to extract from the SDK response.
    * @param _response - SDK response.
    * @returns Combined `{ headers, requestId }` metadata.
    * @internal
