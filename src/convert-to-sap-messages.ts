@@ -79,6 +79,11 @@ function safeJsonStringify(value: unknown): string {
  * @param text
  * @param cacheControl
  */
+/**
+ * @param text - Pre-escaped text payload.
+ * @param cacheControl - Optional Anthropic prompt-cache directive.
+ * @returns SAP `TextContent` block, with `cache_control` attached when the directive is set.
+ */
 function wrapAsTextContent(
   text: string,
   cacheControl: CacheControl | undefined,

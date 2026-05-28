@@ -67,6 +67,7 @@ consistently:
   - [`DpiConfig`](#dpiconfig)
 - [Provider Options](#provider-options)
   - [`SAP_AI_PROVIDER_NAME`](#sap-ai-provider-name-constant)
+  - [Per-message-part Provider Options (Anthropic prompt caching)](#per-message-part-provider-options-anthropic-prompt-caching)
   - [`sapAILanguageModelProviderOptions`](#sapailanguagemodelprovideroptions)
   - [`sapAIEmbeddingProviderOptions`](#sapaiembeddingprovideroptions)
   - [`SAPAILanguageModelProviderOptions` (Type)](#sapailanguagemodelprovideroptions-type)

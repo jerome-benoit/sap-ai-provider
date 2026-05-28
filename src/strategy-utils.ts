@@ -682,9 +682,9 @@ export function convertResponseFormat(
 /**
  * Converts AI SDK tools to SAP-compatible tool format.
  * @param tools - The AI SDK tools to convert.
+ * @param options - Optional per-tool parsing config.
  * @param options.parser - Reads per-tool `providerOptions['sap-ai']` and returns parsed directives, or `undefined` when none apply.
  * @param options.warnings - Sink for Zod validation issues raised while parsing.
- * @param options
  * @returns The converted tools and any warnings.
  * @internal
  */
