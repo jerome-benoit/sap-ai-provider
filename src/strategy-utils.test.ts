@@ -190,6 +190,12 @@ describe("sanitizeAsJSONObject", () => {
     });
   });
 
+  it("should coerce nested bigint values recursively", () => {
+    expect(sanitizeAsJSONObject({ outer: { inner: [1n, { deep: -9007199254740993n }] } })).toEqual({
+      outer: { inner: ["1", { deep: "-9007199254740993" }] },
+    });
+  });
+
   it("should serialize Date values to ISO strings via JSON.stringify default", () => {
     const date = new Date("2026-01-02T03:04:05.000Z");
     expect(sanitizeAsJSONObject({ at: date })).toEqual({ at: "2026-01-02T03:04:05.000Z" });

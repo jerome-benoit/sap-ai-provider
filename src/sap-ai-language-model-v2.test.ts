@@ -475,5 +475,74 @@ describe("SAPAILanguageModelV2", () => {
         (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
       ).toBe("v3-to-v2-req-id");
     });
+
+    it("should preserve providerMetadata['sap-ai'].requestId on stream finish through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockInternalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            finishReason: { raw: "stop", unified: "stop" },
+            providerMetadata: { "sap-ai": { requestId: "v3-to-v2-stream-req-id" } },
+            type: "finish",
+            usage: { inputTokens: { total: 10 }, outputTokens: { total: 5 } },
+          });
+          controller.close();
+        },
+      });
+
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doStream = mockDoStream;
+
+      const result = await model.doStream({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      const parts = await readAllParts(result.stream);
+      const finish = parts.find((p) => p.type === "finish");
+      expect(
+        (finish as undefined | { providerMetadata?: { "sap-ai"?: { requestId?: string } } })
+          ?.providerMetadata?.["sap-ai"]?.requestId,
+      ).toBe("v3-to-v2-stream-req-id");
+    });
+
+    it("should preserve providerMetadata.cacheUsage on doGenerate through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockDoGenerate = vi.fn().mockResolvedValue({
+        content: [{ text: "Test", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        providerMetadata: {
+          "sap-ai": {
+            cacheUsage: { ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 },
+          },
+        },
+        response: { id: "v2-resp-id" },
+        usage: { inputTokens: { total: 100 }, outputTokens: { total: 5 } },
+        warnings: [],
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doGenerate = mockDoGenerate;
+
+      const result = await model.doGenerate({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      expect(
+        (
+          result.providerMetadata?.["sap-ai"] as
+            | undefined
+            | {
+                cacheUsage?: {
+                  ephemeral_1h_input_tokens?: number;
+                  ephemeral_5m_input_tokens?: number;
+                };
+              }
+        )?.cacheUsage,
+      ).toEqual({ ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 });
+    });
   });
 });

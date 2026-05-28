@@ -3029,7 +3029,7 @@ describe("SAPAILanguageModel", () => {
     });
   });
 
-  describe("Foundation Models response id fallbacks (foundation-models API)", () => {
+  describe("Foundation Models response id and rawResponse resilience (foundation-models API)", () => {
     beforeEach(async () => {
       await resetMockStateForApi("foundation-models");
     });
