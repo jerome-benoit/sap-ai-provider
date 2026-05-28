@@ -110,6 +110,80 @@ export function validateModelParamsWithWarnings(
 /** @internal */
 export const sapAIApiTypeSchema = z.enum(["orchestration", "foundation-models"]);
 
+/**
+ * Anthropic prompt-caching directive accepted on V3 message-parts via
+ * `providerOptions['sap-ai'].cacheControl`.
+ * @internal
+ */
+export const cacheControlSchema = z.object({
+  ttl: z.enum(["5m", "1h"]).optional(),
+  type: z.literal("ephemeral"),
+});
+
+/** @internal */
+export type CacheControl = z.infer<typeof cacheControlSchema>;
+
+/**
+ * Per-message-part SAP AI provider options read from
+ * `LanguageModelV3*Part.providerOptions['sap-ai']`.
+ * @internal
+ */
+export const sapAIPartProviderOptionsSchema = z.object({
+  cacheControl: cacheControlSchema.optional(),
+});
+
+/**
+ * Callback that reads per-message-part `providerOptions` and returns the validated
+ * `sap-ai` slice (e.g. `cacheControl`), or `undefined` when absent or invalid.
+ * Optional `warnings` sink receives one entry per Zod issue.
+ * @internal
+ */
+export type ParsePartProviderOptions = (
+  providerOptions: unknown,
+  warnings?: SharedV3Warning[],
+) => SAPAIPartProviderOptions | undefined;
+
+/** @internal */
+export type SAPAIPartProviderOptions = z.infer<typeof sapAIPartProviderOptionsSchema>;
+
+/**
+ * Parses per-part `providerOptions['sap-ai']`.
+ *
+ * Returns `undefined` when the block is absent or invalid. When `warnings` is
+ * provided, Zod validation issues are surfaced as `SharedV3Warning` entries so
+ * the strategy layer can forward them to the AI SDK call result.
+ * @param providerOptions - Part-level providerOptions bag.
+ * @param warnings - Optional sink for Zod validation issues.
+ * @returns Validated per-part options, or undefined.
+ * @internal
+ */
+export function parseSAPPartProviderOptions(
+  providerOptions: unknown,
+  warnings?: SharedV3Warning[],
+): SAPAIPartProviderOptions | undefined {
+  if (!providerOptions || typeof providerOptions !== "object") {
+    return undefined;
+  }
+  const block = (providerOptions as Record<string, unknown>)[SAP_AI_PROVIDER_NAME];
+  if (block === undefined) {
+    return undefined;
+  }
+  const parsed = sapAIPartProviderOptionsSchema.safeParse(block);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  if (warnings) {
+    for (const issue of parsed.error.issues) {
+      const path = issue.path.join(".");
+      const message = `providerOptions['sap-ai']${path ? `.${path}` : ""} is invalid: ${issue.message}. The directive was dropped.`;
+      if (!warnings.some((w) => (w as { message?: string }).message === message)) {
+        warnings.push({ message, type: "other" });
+      }
+    }
+  }
+  return undefined;
+}
+
 /** @internal */
 export const promptTemplateScopeSchema = z.enum(["tenant", "resource_group"]);
 

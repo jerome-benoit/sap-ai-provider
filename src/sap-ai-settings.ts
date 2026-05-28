@@ -131,7 +131,7 @@ export interface OrchestrationModelSettings {
   readonly grounding?: GroundingModule;
   /** @default false */
   readonly includeReasoning?: boolean;
-  readonly masking?: MaskingModule;
+  readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
   /**
@@ -218,7 +218,7 @@ export type SAPAIDefaultSettingsConfig =
 export interface SAPAIEmbeddingSettings {
   readonly api?: SAPAIApiType;
   /** Orchestration API only. */
-  readonly masking?: MaskingModule;
+  readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };
   /** @default 2048 */
   readonly maxEmbeddingsPerCall?: number;
   readonly modelParams?: FoundationModelsEmbeddingParams | Record<string, unknown>;
@@ -290,7 +290,7 @@ export interface SAPAISettings {
   /** @default false */
   readonly includeReasoning?: boolean;
   /** Orchestration API only. */
-  readonly masking?: MaskingModule;
+  readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };
   readonly modelParams?: CommonModelParams;
   readonly modelVersion?: string;
   /** Orchestration API only. */

@@ -78,12 +78,6 @@ interface SAPAILanguageModelConfig {
 export class SAPAILanguageModel implements LanguageModelV3 {
   readonly modelId: SAPAIModelId;
   readonly specificationVersion = "v3";
-  readonly supportsImageUrls: boolean = true;
-  readonly supportsMultipleCompletions: boolean = true;
-  readonly supportsParallelToolCalls: boolean = true;
-  readonly supportsStreaming: boolean = true;
-  readonly supportsStructuredOutputs: boolean = true;
-  readonly supportsToolCalls: boolean = true;
 
   get provider(): string {
     return this.config.provider;

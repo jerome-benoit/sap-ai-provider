@@ -6,6 +6,7 @@ import type {
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
   JSONArray,
+  JSONObject,
   LanguageModelV3CallOptions,
   LanguageModelV3Content,
   LanguageModelV3FinishReason,
@@ -22,7 +23,10 @@ import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
+
 import { deepMerge } from "./deep-merge.js";
+import { normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
 import { validateModelParamsWithWarnings } from "./sap-ai-provider-options.js";
 
@@ -44,6 +48,17 @@ export type AISDKToolChoice =
   | { type: "auto" }
   | { type: "none" }
   | { type: "required" };
+
+/**
+ * Anthropic prompt-cache breakdown surfaced via `providerMetadata['sap-ai'].cacheUsage`.
+ *
+ * Mirrors the per-TTL ephemeral bucket shape returned by the SAP AI SDK token usage
+ * payload (`prompt_tokens_details.cache_creation_token_details`).
+ * @internal
+ */
+export type AnthropicCacheUsage = NonNullable<
+  NonNullable<SDKTokenUsage["prompt_tokens_details"]>["cache_creation_token_details"]
+>;
 
 /**
  * @internal
@@ -97,6 +112,18 @@ export interface ConvertedToolsResult<T> {
 }
 
 /**
+ * Optional plumbing accepted by `convertToolsToSAPFormat`.
+ *
+ * Strategies that honour per-tool `providerOptions['sap-ai']` (e.g. orchestration
+ * Anthropic `cacheControl`) supply a `parser`; Foundation Models omits it.
+ * @internal
+ */
+export interface ConvertToolsOptions {
+  readonly parser?: ParsePartProviderOptions;
+  readonly warnings?: SharedV3Warning[];
+}
+
+/**
  * Parsed embedding provider options from AI SDK call.
  * @internal
  */
@@ -112,8 +139,11 @@ export interface EmbeddingResultConfig {
   readonly embeddings: EmbeddingModelV3Embedding[];
   readonly modelId: string;
   readonly providerName: string;
+  readonly requestId?: string;
+  readonly responseHeaders?: Record<string, string>;
   readonly totalTokens: number;
   readonly version: string;
+  readonly warnings?: readonly SharedV3Warning[];
 }
 
 /**
@@ -144,6 +174,8 @@ export interface GenerateResultConfig {
   readonly modelId: string;
   readonly providerName: string;
   readonly requestBody: unknown;
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  readonly requestId?: string;
   readonly response: SDKResponse;
   readonly responseHeaders: Record<string, string> | undefined;
   readonly version: string;
@@ -158,6 +190,16 @@ export interface ParamMapping {
   readonly camelCaseKey?: string;
   readonly optionKey?: string;
   readonly outputKey: string;
+}
+
+/**
+ * Response metadata extracted from an SDK response: server-provided request id
+ * and normalised HTTP headers.
+ * @internal
+ */
+export interface ResponseMetadata {
+  readonly headers: Record<string, string> | undefined;
+  readonly requestId: string | undefined;
 }
 
 /**
@@ -180,6 +222,7 @@ export type SAPResponseFormat =
  * @internal
  */
 export interface SAPTool<P = SAPToolParameters> {
+  cache_control?: { ttl?: "1h" | "5m"; type: "ephemeral" };
   function: {
     description?: string;
     name: string;
@@ -237,8 +280,19 @@ export interface SDKResponse {
   getTokenUsage(): SDKTokenUsage | undefined;
   getToolCalls(): null | SDKToolCall[] | undefined;
   rawResponse: { headers: Headers | Record<string, string> };
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  requestId?: string;
   responseId?: string;
 }
+
+export {
+  createInitialStreamState,
+  createStreamTransformer,
+  StreamIdGenerator,
+  type StreamState,
+  type StreamTransformerConfig,
+  type ToolCallInProgress,
+} from "./stream-transformer.js";
 
 /**
  * @internal
@@ -261,10 +315,19 @@ export interface SDKStreamChunk {
 export interface SDKTokenUsage {
   completion_tokens?: number;
   completion_tokens_details?: {
+    accepted_prediction_tokens?: number;
+    audio_tokens?: number;
     reasoning_tokens?: number;
+    rejected_prediction_tokens?: number;
   };
   prompt_tokens?: number;
   prompt_tokens_details?: {
+    audio_tokens?: number;
+    cache_creation_token_details?: {
+      ephemeral_1h_input_tokens?: number;
+      ephemeral_5m_input_tokens?: number;
+    };
+    cache_creation_tokens?: number;
     cached_tokens?: number;
   };
 }
@@ -276,15 +339,6 @@ export interface SDKToolCall {
   function: { arguments: string; name: string };
   id: string;
 }
-
-export {
-  createInitialStreamState,
-  createStreamTransformer,
-  StreamIdGenerator,
-  type StreamState,
-  type StreamTransformerConfig,
-  type ToolCallInProgress,
-} from "./stream-transformer.js";
 
 /**
  * Applies parameter overrides from AI SDK options and modelParams.
@@ -320,17 +374,51 @@ export function applyParameterOverrides(
 }
 
 /**
+ * Returns the Anthropic prompt-caching slice of `providerMetadata[provider]` as a
+ * spread-ready fragment.
+ *
+ * Returns `{ cacheUsage }` when at least one ephemeral TTL bucket is populated;
+ * otherwise `{}` so callers can `...` it unconditionally.
+ * @param tokenUsage - Raw token usage from the SAP SDK response.
+ * @returns Spread-ready provider-metadata fragment.
+ * @internal
+ */
+export function buildAnthropicCacheMetadata(tokenUsage: null | SDKTokenUsage | undefined): {
+  cacheUsage?: AnthropicCacheUsage;
+} {
+  const details = tokenUsage?.prompt_tokens_details?.cache_creation_token_details;
+  if (
+    !details ||
+    ((details.ephemeral_5m_input_tokens ?? 0) === 0 &&
+      (details.ephemeral_1h_input_tokens ?? 0) === 0)
+  ) {
+    return {};
+  }
+  return { cacheUsage: details };
+}
+
+/**
  * Builds an EmbeddingModelV3Result from embedding data.
  * @param config - Configuration with embeddings and metadata.
  * @returns Complete embedding result for AI SDK.
  * @internal
  */
 export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingModelV3Result {
-  const { embeddings, modelId, providerName, totalTokens, version } = config;
+  const {
+    embeddings,
+    modelId,
+    providerName,
+    requestId,
+    responseHeaders,
+    totalTokens,
+    version,
+    warnings,
+  } = config;
 
   const providerMetadata: SharedV3ProviderMetadata = {
     [providerName]: {
       model: modelId,
+      ...(requestId ? { requestId } : {}),
       version,
     },
   };
@@ -338,8 +426,9 @@ export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingMo
   return {
     embeddings,
     providerMetadata,
+    ...(responseHeaders ? { response: { headers: responseHeaders } } : {}),
     usage: { tokens: totalTokens },
-    warnings: [],
+    warnings: warnings ? [...warnings] : [],
   };
 }
 
@@ -350,8 +439,16 @@ export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingMo
  * @internal
  */
 export function buildGenerateResult(config: GenerateResultConfig): LanguageModelV3GenerateResult {
-  const { modelId, providerName, requestBody, response, responseHeaders, version, warnings } =
-    config;
+  const {
+    modelId,
+    providerName,
+    requestBody,
+    requestId,
+    response,
+    responseHeaders,
+    version,
+    warnings,
+  } = config;
 
   const content = extractResponseContent(response);
 
@@ -389,14 +486,13 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     finishReason,
     providerMetadata: {
       [providerName]: {
+        ...buildAnthropicCacheMetadata(tokenUsage),
         finishReason: finishReasonRaw ?? "unknown",
         finishReasonMapped: finishReason,
         ...(intermediateFailures?.length
-          ? { intermediateFailures: intermediateFailures as JSONArray }
+          ? { intermediateFailures: sanitizeAsJSONArray(intermediateFailures) }
           : {}),
-        ...(typeof responseHeaders?.["x-request-id"] === "string"
-          ? { requestId: responseHeaders["x-request-id"] }
-          : {}),
+        ...(requestId ? { requestId } : {}),
         version,
       },
     },
@@ -525,6 +621,33 @@ export function buildSAPToolParameters(schema: Record<string, unknown>): SAPTool
 }
 
 /**
+ * Computes the non-cached prompt tokens from a prompt-token total and its cache slices.
+ *
+ * Returns `undefined` when the total is unknown. Returns the total unchanged when no
+ * cache breakdown is reported. Otherwise subtracts both cache buckets and clamps the
+ * result at zero to defend against inconsistent SDK token counts where
+ * `cached + cacheWrite > prompt`.
+ * @param promptTokens - Total prompt tokens reported by the SDK.
+ * @param cachedTokens - Tokens served from the prompt cache.
+ * @param cacheWriteTokens - Tokens written to the prompt cache.
+ * @returns The non-cached prompt token count, or `undefined` when unknown.
+ * @internal
+ */
+export function computeNoCache(
+  promptTokens: number | undefined,
+  cachedTokens: number | undefined,
+  cacheWriteTokens: number | undefined,
+): number | undefined {
+  if (promptTokens == null) {
+    return undefined;
+  }
+  if (cachedTokens == null && cacheWriteTokens == null) {
+    return promptTokens;
+  }
+  return Math.max(0, promptTokens - (cachedTokens ?? 0) - (cacheWriteTokens ?? 0));
+}
+
+/**
  * Converts AI SDK response format to SAP-compatible format.
  * @param optionsResponseFormat - The AI SDK response format from call options.
  * @param settingsResponseFormat - The fallback response format from settings.
@@ -568,12 +691,17 @@ export function convertResponseFormat(
 /**
  * Converts AI SDK tools to SAP-compatible tool format.
  * @param tools - The AI SDK tools to convert.
+ * @param options - Optional per-tool parsing config.
+ * @param options.parser - Reads per-tool `providerOptions['sap-ai']` and returns parsed directives, or `undefined` when none apply.
+ * @param options.warnings - Sink for Zod validation issues raised while parsing.
  * @returns The converted tools and any warnings.
  * @internal
  */
 export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
   tools: AISDKTool[] | undefined,
+  options: ConvertToolsOptions = {},
 ): ConvertedToolsResult<T> {
+  const { parser, warnings: parserWarnings } = options;
   const warnings: SharedV3Warning[] = [];
 
   if (!tools || tools.length === 0) {
@@ -583,12 +711,16 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
   const convertedTools = tools
     .map((tool): null | T => {
       if (tool.type === "function") {
-        const { parameters, warning } = extractToolParameters(tool as LanguageModelV3FunctionTool);
+        const functionTool = tool as LanguageModelV3FunctionTool;
+        const { parameters, warning } = extractToolParameters(functionTool);
         if (warning) {
           warnings.push(warning);
         }
 
+        const cacheControl = parser?.(functionTool.providerOptions, parserWarnings)?.cacheControl;
+
         return {
+          ...(cacheControl ? { cache_control: cacheControl } : {}),
           function: {
             name: tool.name,
             parameters,
@@ -652,6 +784,46 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
 }
 
 /**
+ * Resolves the SDK completion identifier from an internal `_data` payload, falling back to
+ * the pipeline request id reported by `getRequestId()` when the path is not present.
+ *
+ * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
+ * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
+ * @param response._data - Internal SDK payload that holds the completion id under `dataPath`.
+ * @param response.getRequestId - Function returning the SAP AI Core pipeline request id.
+ * @param dataPath - Dotted property path traversed under `_data` (e.g. `["final_result","id"]`).
+ * @returns The first non-empty completion id found along the path, or `undefined`.
+ * @internal
+ */
+export function extractCompletionId(
+  response: { _data?: unknown; getRequestId?: () => string | undefined },
+  dataPath: readonly string[],
+): string | undefined {
+  let cursor: unknown = response._data;
+  for (const key of dataPath) {
+    if (cursor !== null && typeof cursor === "object" && key in cursor) {
+      cursor = (cursor as Record<string, unknown>)[key];
+    } else {
+      cursor = undefined;
+      break;
+    }
+  }
+  if (typeof cursor === "string" && cursor.length > 0) {
+    return cursor;
+  }
+  const fn = response.getRequestId;
+  if (typeof fn !== "function") {
+    return undefined;
+  }
+  try {
+    const rid = fn.call(response);
+    return typeof rid === "string" && rid.length > 0 ? rid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Extracts content (text and tool calls) from SDK response.
  * @param response - SDK response object.
  * @returns Content array for LanguageModelV3GenerateResult.
@@ -681,6 +853,51 @@ export function extractResponseContent(response: SDKResponse): LanguageModelV3Co
   }
 
   return content;
+}
+
+/**
+ * Extracts the request id and normalised headers from an SDK response.
+ *
+ * Resolves `requestId` from `getRequestId()` first; when absent, falls back to the
+ * `x-request-id` header. Tolerates SDKs that omit `getRequestId`, expose it as a
+ * non-function, or raise from the `headers` accessor. `field` selects the underlying
+ * HttpResponse wrapper (`rawResponse` for foundation-models, `response` for orchestration).
+ * @param response - SDK response object.
+ * @param field - Property containing the underlying HttpResponse wrapper.
+ * @returns Combined `{ requestId, headers }` with both fields defensively gathered.
+ * @internal
+ */
+export function extractResponseMetadata(
+  response: unknown,
+  field: "rawResponse" | "response",
+): ResponseMetadata {
+  let requestId: string | undefined;
+  const fn = (response as null | { getRequestId?: unknown })?.getRequestId;
+  if (typeof fn === "function") {
+    try {
+      const value = (fn as () => string | undefined).call(response);
+      requestId = typeof value === "string" && value.length > 0 ? value : undefined;
+    } catch {
+      requestId = undefined;
+    }
+  }
+
+  let rawHeaders: unknown;
+  try {
+    const wrapper = (response as null | Record<string, unknown>)?.[field] as
+      | undefined
+      | { headers?: unknown };
+    rawHeaders = wrapper?.headers;
+  } catch {
+    rawHeaders = undefined;
+  }
+  const headers = rawHeaders === undefined ? undefined : normalizeHeaders(rawHeaders);
+
+  if (requestId === undefined && typeof headers?.["x-request-id"] === "string") {
+    requestId = headers["x-request-id"];
+  }
+
+  return { headers, requestId };
 }
 
 /**
@@ -776,6 +993,7 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
 
   switch (reason.toLowerCase()) {
     case "content_filter":
+    case "guardrail_intervened":
       return { raw, unified: "content-filter" };
     case "end_turn":
     case "eos":
@@ -787,6 +1005,7 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
     case "function_call":
     case "tool_call":
     case "tool_calls":
+    case "tool_use":
       return { raw, unified: "tool-calls" };
     case "length":
     case "max_tokens":
@@ -799,23 +1018,33 @@ export function mapFinishReason(reason: null | string | undefined): LanguageMode
 
 /**
  * Maps SAP AI SDK token usage to Vercel AI SDK LanguageModelV3Usage.
+ *
+ * `usage.raw` is populated only when the SDK reports fields not represented in
+ * `inputTokens` / `outputTokens` (audio or prediction-token buckets); otherwise omitted.
  * @param tokenUsage - Raw token usage from the SAP SDK response.
  * @returns Mapped usage with input/output token breakdowns.
  * @internal
  */
 export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): LanguageModelV3Usage {
   const cachedTokens = tokenUsage?.prompt_tokens_details?.cached_tokens;
+  const cacheWriteTokens = tokenUsage?.prompt_tokens_details?.cache_creation_tokens;
   const reasoningTokens = tokenUsage?.completion_tokens_details?.reasoning_tokens;
+  const promptTokens = tokenUsage?.prompt_tokens;
+
+  const promptDetails = tokenUsage?.prompt_tokens_details;
+  const completionDetails = tokenUsage?.completion_tokens_details;
+  const hasUnmappedFields =
+    promptDetails?.audio_tokens != null ||
+    completionDetails?.audio_tokens != null ||
+    completionDetails?.accepted_prediction_tokens != null ||
+    completionDetails?.rejected_prediction_tokens != null;
 
   return {
     inputTokens: {
       cacheRead: cachedTokens,
-      cacheWrite: undefined,
-      noCache:
-        cachedTokens != null
-          ? (tokenUsage?.prompt_tokens ?? 0) - cachedTokens
-          : tokenUsage?.prompt_tokens,
-      total: tokenUsage?.prompt_tokens,
+      cacheWrite: cacheWriteTokens,
+      noCache: computeNoCache(promptTokens, cachedTokens, cacheWriteTokens),
+      total: promptTokens,
     },
     outputTokens: {
       reasoning: reasoningTokens,
@@ -825,6 +1054,7 @@ export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): Lan
           : tokenUsage?.completion_tokens,
       total: tokenUsage?.completion_tokens,
     },
+    ...(hasUnmappedFields && tokenUsage ? { raw: sanitizeAsJSONObject(tokenUsage) } : {}),
   };
 }
 
@@ -907,4 +1137,45 @@ export async function prepareEmbeddingCall(
   }
 
   return { embeddingOptions: sapOptions, providerName };
+}
+
+const jsonReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === "bigint" ? value.toString() : value;
+
+/**
+ * Coerces an array into a JSON-conformant payload suitable for `providerMetadata` values.
+ *
+ * Non-serialisable entries (functions, symbols, `undefined`) are dropped or replaced
+ * by `null` per `JSON.stringify` defaults. Bigint values become decimal strings.
+ * Returns an empty array when the entire payload cannot be serialised (e.g. circular
+ * references).
+ * @param value - Candidate array.
+ * @returns JSON-safe array.
+ * @internal
+ */
+export function sanitizeAsJSONArray(value: readonly unknown[]): JSONArray {
+  try {
+    return JSON.parse(JSON.stringify(value, jsonReplacer)) as JSONArray;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Coerces an object into a JSON-conformant payload suitable for `providerMetadata` or
+ * `LanguageModelV3Usage.raw`.
+ *
+ * Non-serialisable values are dropped per `JSON.stringify` defaults. Bigint values
+ * become decimal strings. Returns an empty object when the entire payload cannot be
+ * serialised.
+ * @param value - Candidate object.
+ * @returns JSON-safe object.
+ * @internal
+ */
+export function sanitizeAsJSONObject(value: object): JSONObject {
+  try {
+    return JSON.parse(JSON.stringify(value, jsonReplacer)) as JSONObject;
+  } catch {
+    return {};
+  }
 }

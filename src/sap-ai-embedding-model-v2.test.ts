@@ -63,6 +63,34 @@ describe("SAPAIEmbeddingModelV2", () => {
       expect(result.response?.body).toEqual({ data: "test" });
     });
 
+    it("should preserve providerMetadata['sap-ai'].requestId through the V3→V2 facade", async () => {
+      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
+
+      const mockDoEmbed = vi.fn().mockResolvedValue({
+        embeddings: [[0.1, 0.2]],
+        providerMetadata: {
+          "sap-ai": {
+            model: "text-embedding-ada-002",
+            requestId: "v3-to-v2-req-id",
+            version: "test",
+          },
+        },
+        response: { headers: { "x-request-id": "v3-to-v2-req-id" } },
+        usage: { tokens: 1 },
+        warnings: [],
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doEmbed = mockDoEmbed;
+
+      const result = await model.doEmbed({ values: ["Test"] });
+
+      expect(
+        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
+      ).toBe("v3-to-v2-req-id");
+      expect(result.response?.headers?.["x-request-id"]).toBe("v3-to-v2-req-id");
+    });
+
     it("should forward all options to internal model (abortSignal, headers, providerOptions)", async () => {
       const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
@@ -140,44 +168,46 @@ describe("SAPAIEmbeddingModelV2", () => {
       },
     ])("should log $description to console", async ({ expectedMessage, warnings }) => {
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(vi.fn());
+      try {
+        const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
-      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
+        const mockDoEmbed = vi.fn().mockResolvedValue({
+          embeddings: [[0.1, 0.2, 0.3]],
+          usage: { tokens: 5 },
+          warnings,
+        });
 
-      const mockDoEmbed = vi.fn().mockResolvedValue({
-        embeddings: [[0.1, 0.2, 0.3]],
-        usage: { tokens: 5 },
-        warnings,
-      });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        (model as any).internalModel.doEmbed = mockDoEmbed;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).internalModel.doEmbed = mockDoEmbed;
+        await model.doEmbed({ values: ["Test"] });
 
-      await model.doEmbed({ values: ["Test"] });
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(expectedMessage);
-
-      consoleWarnSpy.mockRestore();
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expectedMessage);
+      } finally {
+        consoleWarnSpy.mockRestore();
+      }
     });
 
     it("should not log when warnings array is empty", async () => {
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(vi.fn());
+      try {
+        const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
 
-      const model = new SAPAIEmbeddingModelV2("text-embedding-ada-002", {}, defaultConfig);
+        const mockDoEmbed = vi.fn().mockResolvedValue({
+          embeddings: [[0.1, 0.2, 0.3]],
+          usage: { tokens: 5 },
+          warnings: [],
+        });
 
-      const mockDoEmbed = vi.fn().mockResolvedValue({
-        embeddings: [[0.1, 0.2, 0.3]],
-        usage: { tokens: 5 },
-        warnings: [],
-      });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        (model as any).internalModel.doEmbed = mockDoEmbed;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      (model as any).internalModel.doEmbed = mockDoEmbed;
+        await model.doEmbed({ values: ["Test"] });
 
-      await model.doEmbed({ values: ["Test"] });
-
-      expect(consoleWarnSpy).not.toHaveBeenCalled();
-
-      consoleWarnSpy.mockRestore();
+        expect(consoleWarnSpy).not.toHaveBeenCalled();
+      } finally {
+        consoleWarnSpy.mockRestore();
+      }
     });
   });
 });

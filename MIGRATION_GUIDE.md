@@ -793,7 +793,7 @@ messages including request IDs and error locations for debugging.
 | `buildDocumentGroundingConfig()`        | Document grounding      | `buildDocumentGroundingConfig({ filters: [...], placeholders: {...} })`           |
 | `buildTranslationConfig()`              | Translation module      | `buildTranslationConfig("input", { sourceLanguage: "de", targetLanguage: "en" })` |
 | `SAPAISettings.responseFormat`          | Structured outputs      | `{ type: "json_schema", json_schema: {...} }`                                     |
-| `SAPAISettings.masking`                 | Masking configuration   | `{ masking_providers: [...] }`                                                    |
+| `SAPAISettings.masking`                 | Masking configuration   | `{ providers: [...] }`                                                            |
 | `SAPAISettings.filtering`               | Content filtering       | `{ input: { filters: [...] } }`                                                   |
 | `SAPAIProviderSettings.defaultSettings` | Provider defaults       | `{ defaultSettings: { modelParams: {...} } }`                                     |
 

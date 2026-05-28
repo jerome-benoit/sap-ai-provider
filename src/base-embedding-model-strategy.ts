@@ -3,6 +3,7 @@ import type {
   EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
+  SharedV3Warning,
 } from "@ai-sdk/provider";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
@@ -17,6 +18,7 @@ import {
   type EmbeddingProviderOptions,
   type EmbeddingType,
   prepareEmbeddingCall,
+  type ResponseMetadata,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
@@ -55,19 +57,26 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
 
+      const warnings: SharedV3Warning[] = [];
+      this.resolveWarnings(settings, warnings);
+
       const client = this.createClient(config, settings, embeddingOptions);
 
       const response = await this.executeCall(client, values, embeddingType, abortSignal);
 
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
+      const { headers: responseHeaders, requestId } = this.extractResponseMetadata(response);
 
       return buildEmbeddingResult({
         embeddings,
         modelId: config.modelId,
         providerName,
+        requestId,
+        responseHeaders,
         totalTokens,
         version: VERSION,
+        warnings,
       });
     } catch (error) {
       if (error instanceof TooManyEmbeddingValuesForCallError) {
@@ -120,6 +129,18 @@ export abstract class BaseEmbeddingModelStrategy<
   protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
 
   /**
+   * Extracts response metadata (request id and HTTP headers) from the SDK response.
+   *
+   * Default returns both fields as `undefined`; subclasses override to extract from the SDK response.
+   * @param _response - SDK response.
+   * @returns Combined `{ headers, requestId }` metadata.
+   * @internal
+   */
+  protected extractResponseMetadata(_response: TResponse): ResponseMetadata {
+    return { headers: undefined, requestId: undefined };
+  }
+
+  /**
    * Extracts total token count from the SDK response.
    * @param response - SDK response containing usage data.
    * @returns Total token count used for the embedding request.
@@ -142,5 +163,17 @@ export abstract class BaseEmbeddingModelStrategy<
       (settings.modelParams as Record<string, unknown> | undefined) ?? {},
       embeddingOptions?.modelParams ?? {},
     );
+  }
+
+  /**
+   * Pushes API-specific deprecation or migration warnings into the shared
+   * sink. Default no-op; subclasses override to surface settings-level
+   * warnings (e.g. orchestration's masking_providers deprecation).
+   * @param _settings - Embedding model settings.
+   * @param _warnings - Shared warnings sink for the current call.
+   * @internal
+   */
+  protected resolveWarnings(_settings: SAPAIEmbeddingSettings, _warnings: SharedV3Warning[]): void {
+    return;
   }
 }

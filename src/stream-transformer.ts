@@ -3,7 +3,6 @@
  * into Vercel AI SDK LanguageModelV3StreamPart events.
  */
 import type {
-  JSONArray,
   LanguageModelV3CallOptions,
   LanguageModelV3FinishReason,
   LanguageModelV3StreamPart,
@@ -20,7 +19,13 @@ import type {
   SDKTokenUsage,
 } from "./strategy-utils.js";
 
-import { createAISDKRequestBodySummary, mapFinishReason, mapTokenUsage } from "./strategy-utils.js";
+import {
+  buildAnthropicCacheMetadata,
+  createAISDKRequestBodySummary,
+  mapFinishReason,
+  mapTokenUsage,
+  sanitizeAsJSONArray,
+} from "./strategy-utils.js";
 
 /**
  * @internal
@@ -45,7 +50,8 @@ export interface StreamTransformerConfig {
   readonly modelId: string;
   readonly options: LanguageModelV3CallOptions;
   readonly providerName: string;
-  readonly responseHeaders?: Record<string, string>;
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  readonly requestId?: string;
   readonly responseId: string;
   readonly sdkStream: AsyncIterable<SDKStreamChunk>;
   readonly streamResponseGetCitations?: () => SDKCitation[] | undefined;
@@ -140,7 +146,7 @@ export function createStreamTransformer(
     modelId,
     options,
     providerName,
-    responseHeaders,
+    requestId,
     responseId,
     sdkStream,
     streamResponseGetCitations,
@@ -209,9 +215,7 @@ export function createStreamTransformer(
 
         const finalUsage = streamResponseGetTokenUsage();
         if (finalUsage) {
-          const mapped = mapTokenUsage(finalUsage);
-          streamState.usage.inputTokens = mapped.inputTokens;
-          streamState.usage.outputTokens = mapped.outputTokens;
+          streamState.usage = mapTokenUsage(finalUsage);
         }
 
         const streamCitations = streamResponseGetCitations?.();
@@ -233,15 +237,15 @@ export function createStreamTransformer(
           finishReason: streamState.finishReason,
           providerMetadata: {
             [providerName]: {
-              finishReason: streamState.finishReason.raw,
+              ...buildAnthropicCacheMetadata(finalUsage),
+              finishReason: streamState.finishReason.raw ?? "unknown",
+              finishReasonMapped: streamState.finishReason,
               ...(streamIntermediateFailures?.length
                 ? {
-                    intermediateFailures: streamIntermediateFailures as JSONArray,
+                    intermediateFailures: sanitizeAsJSONArray(streamIntermediateFailures),
                   }
                 : {}),
-              ...(typeof responseHeaders?.["x-request-id"] === "string"
-                ? { requestId: responseHeaders["x-request-id"] }
-                : {}),
+              ...(requestId ? { requestId } : {}),
               responseId,
               version,
             },

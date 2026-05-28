@@ -9,9 +9,12 @@ import type {
 import {
   InvalidPromptError,
   LanguageModelV3Prompt,
+  type SharedV3Warning,
   UnsupportedFunctionalityError,
 } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
+
+import type { CacheControl, ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 
 /**
  * Options for converting Vercel AI SDK prompts to SAP AI SDK messages.
@@ -29,6 +32,20 @@ export interface ConvertToSAPMessagesOptions {
    * @default false
    */
   readonly includeReasoning?: boolean;
+  /**
+   * Optional callback that reads per-part `providerOptions['sap-ai']` (e.g. Anthropic
+   * `cacheControl`) and forwards the result onto the SAP message item. Strategies that
+   * do not honour part-level directives (Foundation Models) leave this undefined.
+   * @default undefined
+   */
+  readonly parsePartProviderOptions?: ParsePartProviderOptions;
+  /**
+   * Optional sink for validation warnings raised by `parsePartProviderOptions`.
+   * Each invalid `cacheControl` directive (or other future per-part option)
+   * surfaces here so the strategy layer can forward the warning to the AI SDK
+   * call result rather than dropping it silently.
+   */
+  readonly warnings?: SharedV3Warning[];
 }
 
 /**
@@ -58,6 +75,21 @@ function safeJsonStringify(value: unknown): string {
 }
 
 /**
+ * Wraps a text payload as a SAP `TextContent` block, attaching `cache_control` when set.
+ * @param text - Pre-escaped text payload.
+ * @param cacheControl - Optional Anthropic prompt-cache directive.
+ * @returns SAP `TextContent` block.
+ */
+function wrapAsTextContent(
+  text: string,
+  cacheControl: CacheControl | undefined,
+): { cache_control?: CacheControl; text: string; type: "text" } {
+  return cacheControl
+    ? { cache_control: cacheControl, text, type: "text" }
+    : { text, type: "text" };
+}
+
+/**
  * @internal
  */
 const JINJA2_DELIMITERS_PATTERN = /\{(?=[{%#])/g;
@@ -71,6 +103,7 @@ const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%
  * @internal
  */
 interface UserContentItem {
+  readonly cache_control?: { ttl?: "1h" | "5m"; type: "ephemeral" };
   readonly file?: {
     readonly file_data: string;
     readonly filename?: string;
@@ -94,6 +127,8 @@ interface UserContentItem {
  * @param options - Conversion options.
  * @param options.escapeTemplatePlaceholders - Whether to escape Jinja2 template delimiters (default: true).
  * @param options.includeReasoning - Whether to include assistant reasoning parts (default: false).
+ * @param options.parsePartProviderOptions - Optional callback to read per-part `providerOptions['sap-ai']`. Strategies opt in to honour part-level directives such as Anthropic `cacheControl`.
+ * @param options.warnings - Optional sink the parser pushes Zod validation issues into.
  * @returns SAP AI SDK ChatMessage array ready for orchestration requests.
  * @throws {UnsupportedFunctionalityError} When encountering unsupported content types or file formats.
  * @throws {InvalidPromptError} When encountering unsupported message roles.
@@ -109,10 +144,20 @@ export function convertToSAPMessages(
   const maybeEscape = (text: string): string =>
     escapeTemplatePlaceholders ? escapeOrchestrationPlaceholders(text) : text;
 
+  const parser = options.parsePartProviderOptions;
+  const parsePart = parser
+    ? (providerOptions: unknown) => parser(providerOptions, options.warnings)
+    : () => undefined;
+
   for (const message of prompt) {
     switch (message.role) {
       case "assistant": {
         let text = "";
+        const textParts: {
+          cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" };
+          text: string;
+        }[] = [];
+        let anyCacheControl = false;
         const toolCalls: {
           function: { arguments: string; name: string };
           id: string;
@@ -123,15 +168,37 @@ export function convertToSAPMessages(
           switch (part.type) {
             case "reasoning": {
               if (includeReasoning && part.text) {
-                text += `<think>${maybeEscape(part.text)}</think>`;
+                const escaped = `<think>${maybeEscape(part.text)}</think>`;
+                text += escaped;
+                textParts.push({ text: escaped });
               }
               break;
             }
             case "text": {
-              text += maybeEscape(part.text);
+              const escaped = maybeEscape(part.text);
+              if (!escaped) break;
+              const partOpts = parsePart(part.providerOptions);
+              const cacheControl = partOpts?.cacheControl;
+              text += escaped;
+              textParts.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
+              if (cacheControl) anyCacheControl = true;
               break;
             }
             case "tool-call": {
+              const partOpts = parsePart(part.providerOptions);
+              if (partOpts?.cacheControl && options.warnings) {
+                const feature = "cacheControl on assistant tool-call";
+                if (
+                  !options.warnings.some((w) => (w as { feature?: string }).feature === feature)
+                ) {
+                  options.warnings.push({
+                    details:
+                      "SAP orchestration does not expose cache_control on the assistant tool-call envelope.",
+                    feature,
+                    type: "unsupported",
+                  });
+                }
+              }
               // Normalize tool call input to JSON string (Vercel AI SDK provides strings or objects)
               let argumentsJson: string;
               if (typeof part.input === "string") {
@@ -156,7 +223,9 @@ export function convertToSAPMessages(
 
         if (text || toolCalls.length > 0) {
           const assistantMessage: AssistantChatMessage = {
-            content: text,
+            content: anyCacheControl
+              ? textParts.map((p) => wrapAsTextContent(p.text, p.cacheControl))
+              : text,
             role: "assistant",
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           };
@@ -166,8 +235,11 @@ export function convertToSAPMessages(
       }
 
       case "system": {
+        const partOpts = parsePart(message.providerOptions);
+        const cacheControl = partOpts?.cacheControl;
+        const text = maybeEscape(message.content);
         const systemMessage: SystemChatMessage = {
-          content: maybeEscape(message.content),
+          content: cacheControl ? [wrapAsTextContent(text, cacheControl)] : text,
           role: "system",
         };
         messages.push(systemMessage);
@@ -177,9 +249,12 @@ export function convertToSAPMessages(
       case "tool": {
         for (const part of message.content) {
           if (part.type === "tool-result") {
+            const partOpts = parsePart(part.providerOptions);
+            const cacheControl = partOpts?.cacheControl;
             const serializedOutput = safeJsonStringify(part.output);
+            const escaped = maybeEscape(serializedOutput);
             const toolMessage: ToolChatMessage = {
-              content: maybeEscape(serializedOutput),
+              content: cacheControl ? [wrapAsTextContent(escaped, cacheControl)] : escaped,
               role: "tool",
               tool_call_id: part.toolCallId,
             };
@@ -193,6 +268,8 @@ export function convertToSAPMessages(
         const contentParts: UserContentItem[] = [];
 
         for (const part of message.content) {
+          const partOpts = parsePart(part.providerOptions);
+          const cacheControl = partOpts?.cacheControl;
           switch (part.type) {
             case "file": {
               const fileDataUrl = buildDataUrl(part);
@@ -213,6 +290,7 @@ export function convertToSAPMessages(
                 }
 
                 contentParts.push({
+                  ...(cacheControl ? { cache_control: cacheControl } : {}),
                   image_url: {
                     url: fileDataUrl,
                   },
@@ -220,6 +298,7 @@ export function convertToSAPMessages(
                 });
               } else {
                 contentParts.push({
+                  ...(cacheControl ? { cache_control: cacheControl } : {}),
                   file: {
                     file_data: fileDataUrl,
                     ...(part.filename ? { filename: part.filename } : {}),
@@ -231,6 +310,7 @@ export function convertToSAPMessages(
             }
             case "text": {
               contentParts.push({
+                ...(cacheControl ? { cache_control: cacheControl } : {}),
                 text: maybeEscape(part.text),
                 type: "text",
               });
@@ -246,7 +326,9 @@ export function convertToSAPMessages(
 
         const firstPart = contentParts[0];
         const userMessage: UserChatMessage =
-          contentParts.length === 1 && firstPart?.type === "text"
+          contentParts.length === 1 &&
+          firstPart?.type === "text" &&
+          firstPart.cache_control === undefined
             ? {
                 content: firstPart.text ?? "",
                 role: "user",

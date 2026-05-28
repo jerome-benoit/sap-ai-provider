@@ -3,15 +3,13 @@ import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provid
 import type {
   ChatCompletionTool,
   ChatMessage,
-  LlmModelParams,
   OrchestrationClient,
   OrchestrationConfigRef,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
 } from "@sap-ai-sdk/orchestration";
 
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
-
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type {
   OrchestrationModelSettings,
   PromptTemplateRef,
@@ -24,20 +22,16 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
-import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { deepMerge } from "./deep-merge.js";
-import { normalizeHeaders } from "./sap-ai-error.js";
 import {
-  getProviderName,
   orchestrationConfigRefSchema,
-  sapAILanguageModelProviderOptions,
+  parseSAPPartProviderOptions,
 } from "./sap-ai-provider-options.js";
+import { validateMaskingProvidersDeprecation } from "./sap-ai-validation.js";
 import {
-  buildModelParams,
   convertResponseFormat,
   convertToolsToSAPFormat,
   hasKeys,
-  mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
   type SDKCitation,
@@ -76,17 +70,6 @@ interface OrchestrationResolvedState {
   readonly promptTemplateRef: PromptTemplateRef | undefined;
   readonly tools: ChatCompletionTool[] | undefined;
 }
-
-/**
- * SAP model parameters with orchestration-specific fields.
- * @internal
- */
-type SAPModelParams = LlmModelParams & {
-  parallel_tool_calls?: boolean;
-  seed?: number;
-  stop?: string[];
-  top_k?: number;
-};
 
 /**
  * Builds the template_ref object from a PromptTemplateRef.
@@ -224,69 +207,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     this.ClientClass = ClientClass;
   }
 
-  /**
-   * Builds common parts with orchestration-specific configRef resolution.
-   *
-   * Resolves configRef once and stores it in sapOptions for use by
-   * createClient and buildRequest, avoiding duplicate resolution.
-   * @param config - Strategy configuration.
-   * @param settings - Model settings.
-   * @param options - AI SDK call options.
-   * @returns Common build result with resolved configRef in sapOptions.
-   * @internal
-   */
-  protected override async buildCommonParts(
-    config: LanguageModelStrategyConfig,
-    settings: OrchestrationModelSettings,
-    options: LanguageModelV3CallOptions,
-  ): Promise<CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>> {
-    const providerName = getProviderName(config.provider);
-
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
-    const configRef = this.resolveConfigRef(sapOptions, settings);
-    const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
-
-    const warnings: SharedV3Warning[] = [];
-
-    const messages = convertToSAPMessages(options.prompt, {
-      escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
-      includeReasoning: this.getIncludeReasoning(sapOptions, settings),
-    });
-
-    // In configRef mode, modelParams from settings/options are ignored (server-side config)
-    // But we still build them to generate warnings for ignored settings
-    const { modelParams, warnings: paramWarnings } = buildModelParams({
-      options,
-      paramMappings: this.getParamMappings(),
-      providerModelParams: sapOptions?.modelParams,
-      settingsModelParams: settings.modelParams,
-    });
-    warnings.push(...paramWarnings);
-
-    const toolChoice = mapToolChoice(options.toolChoice);
-
-    const tools = this.resolveTools(settings, options, warnings);
-
-    return {
-      messages,
-      modelParams,
-      providerName,
-      resolvedState: {
-        configRef,
-        promptTemplateRef,
-        tools,
-      } satisfies OrchestrationResolvedState,
-      sapOptions,
-      toolChoice,
-      warnings,
-    };
-  }
-
   protected buildRequest(
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
@@ -387,11 +307,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       abortSignal ? { signal: abortSignal } : undefined,
     );
 
-    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
-    // Falls back to the pipeline request ID if not available.
-    const completionId =
-      (response as { _data?: { final_result?: { id?: string } } })._data?.final_result?.id ??
-      response.getRequestId();
+    const { requestId, responseId } = this.extractMetadata(response);
 
     return {
       getCitations: () =>
@@ -406,7 +322,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
-      responseId: completionId,
+      requestId,
+      responseId,
     };
   }
 
@@ -419,10 +336,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
 
-    // _data starts as {} and is populated during stream consumption;
-    // final_result.id is undefined before the stream is consumed.
-    const streamCompletionId = (streamResponse as { _data?: { final_result?: { id?: string } } })
-      ._data?.final_result?.id;
+    const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
     return {
       getCitations: () =>
@@ -433,10 +347,15 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
           streamResponse as { getIntermediateFailures?: () => undefined | unknown[] }
         ).getIntermediateFailures?.(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
-      responseHeaders: normalizeHeaders(streamResponse.rawResponse.headers),
-      responseId: streamCompletionId,
+      requestId,
+      responseHeaders,
+      responseId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
+  }
+
+  protected getCompletionIdPath(): readonly string[] {
+    return ["final_result", "id"];
   }
 
   protected getEscapeTemplatePlaceholders(
@@ -454,8 +373,44 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     return ORCHESTRATION_PARAM_MAPPINGS;
   }
 
+  protected override getPartProviderOptionsParser(): ParsePartProviderOptions | undefined {
+    return parseSAPPartProviderOptions;
+  }
+
   protected getUrl(): string {
     return "sap-ai:orchestration";
+  }
+
+  /**
+   * Resolves orchestration-specific extra state: `configRef`, `promptTemplateRef`,
+   * and `tools`. Pushes the masking-providers deprecation warning when masking
+   * is locally configured (skipped under `configRef` because the server-side
+   * configuration overrides it).
+   * @param _config - Strategy configuration (unused).
+   * @param settings - Model settings.
+   * @param sapOptions - Parsed provider options.
+   * @param options - AI SDK call options.
+   * @param warnings - Shared warnings sink.
+   * @returns Resolved orchestration state.
+   * @internal
+   */
+  protected override resolveAdditionalState(
+    _config: LanguageModelStrategyConfig,
+    settings: OrchestrationModelSettings,
+    sapOptions: Record<string, unknown> | undefined,
+    options: LanguageModelV3CallOptions,
+    warnings: SharedV3Warning[],
+  ): OrchestrationResolvedState {
+    const configRef = this.resolveConfigRef(sapOptions, settings);
+    const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
+
+    if (configRef === undefined) {
+      validateMaskingProvidersDeprecation(settings, warnings);
+    }
+
+    const tools = this.resolveTools(settings, options, warnings);
+
+    return { configRef, promptTemplateRef, tools };
   }
 
   /**
@@ -528,7 +483,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
     params: {
-      readonly modelParams: SAPModelParams;
+      readonly modelParams: Record<string, unknown>;
       readonly promptTemplateRef?: PromptTemplateRef;
       readonly responseFormat?: unknown;
       readonly toolChoice?: SAPToolChoice;
@@ -845,7 +800,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     }
 
     if (optionsTools && optionsTools.length > 0) {
-      const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools);
+      const result = convertToolsToSAPFormat<ChatCompletionTool>(optionsTools, {
+        parser: parseSAPPartProviderOptions,
+        warnings,
+      });
       warnings.push(...result.warnings);
       return result.tools;
     }

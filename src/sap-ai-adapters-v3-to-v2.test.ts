@@ -217,6 +217,28 @@ describe("convertUsageToV2", () => {
       totalTokens: 18000,
     });
   });
+
+  it("should drop usage.raw silently at the V3→V2 boundary", () => {
+    const internalUsage = {
+      inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
+      outputTokens: { reasoning: undefined, text: 20, total: 20 },
+      raw: {
+        accepted_prediction_tokens: 1,
+        prompt_tokens_details: { audio_tokens: 5 },
+      },
+    } as InternalUsage & { raw: Record<string, unknown> };
+
+    const v2Usage = convertUsageToV2(internalUsage);
+
+    expect(v2Usage).not.toHaveProperty("raw");
+    expect(v2Usage).toEqual({
+      cachedInputTokens: undefined,
+      inputTokens: 10,
+      outputTokens: 20,
+      reasoningTokens: undefined,
+      totalTokens: 30,
+    });
+  });
 });
 
 describe("convertWarningToV2", () => {

@@ -437,15 +437,24 @@ export function convertToAISDKError(
 export function normalizeHeaders(headers: unknown): Record<string, string> | undefined {
   if (!headers || typeof headers !== "object") return undefined;
 
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key.toLowerCase()] = value;
+    });
+    return Object.keys(out).length === 0 ? undefined : out;
+  }
+
   const record = headers as Record<string, unknown>;
   const entries = Object.entries(record).flatMap(([key, value]) => {
-    if (typeof value === "string") return [[key, value]];
+    const k = key.toLowerCase();
+    if (typeof value === "string") return [[k, value]];
     if (Array.isArray(value)) {
       const strings = value.filter((item): item is string => typeof item === "string").join("; ");
-      return strings.length > 0 ? [[key, strings]] : [];
+      return strings.length > 0 ? [[k, strings]] : [];
     }
     if (typeof value === "number" || typeof value === "boolean") {
-      return [[key, String(value)]];
+      return [[k, String(value)]];
     }
     return [];
   });

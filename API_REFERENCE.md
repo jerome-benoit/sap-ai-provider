@@ -67,6 +67,7 @@ consistently:
   - [`DpiConfig`](#dpiconfig)
 - [Provider Options](#provider-options)
   - [`SAP_AI_PROVIDER_NAME`](#sap-ai-provider-name-constant)
+  - [Per-message-part Provider Options (Anthropic prompt caching)](#per-message-part-provider-options-anthropic-prompt-caching)
   - [`sapAILanguageModelProviderOptions`](#sapailanguagemodelprovideroptions)
   - [`sapAIEmbeddingProviderOptions`](#sapaiembeddingprovideroptions)
   - [`SAPAILanguageModelProviderOptions` (Type)](#sapailanguagemodelprovideroptions-type)
@@ -863,6 +864,15 @@ Configuration options for embedding models.
 | `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                                 |
 | `masking`              | `MaskingModule`        | -                 | Data masking configuration (DPI) - Orchestration API only |
 
+**Embedding response metadata (`doEmbed` result):**
+
+| Field                                  | Type                     | Description                                                                                 |
+| -------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------- |
+| `response.headers`                     | `Record<string, string>` | Response headers (keys lower-cased)                                                         |
+| `providerMetadata['sap-ai'].model`     | `string`                 | Embedding model id                                                                          |
+| `providerMetadata['sap-ai'].requestId` | `string \| undefined`    | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header) |
+| `providerMetadata['sap-ai'].version`   | `string`                 | Provider package version                                                                    |
+
 **EmbeddingType Values:**
 
 - `'document'` - For embedding documents (storage/indexing)
@@ -1505,6 +1515,65 @@ const result = await generateText({
     },
   },
 });
+```
+
+---
+
+### Per-message-part Provider Options (Anthropic prompt caching)
+
+Per-part directive (`providerOptions['sap-ai'].cacheControl`) requesting
+Anthropic ephemeral prompt caching. Honored only by the orchestration API
+(forwarded as `cache_control`); Foundation Models ignores it.
+
+**Input shape:**
+
+```typescript
+type CacheControl = {
+  type: "ephemeral";
+  ttl?: "5m" | "1h"; // invalid values drop the whole `cacheControl` block (warning emitted)
+};
+```
+
+**Supported parts (orchestration API):**
+
+| Surface             | Carrier                                                       |
+| ------------------- | ------------------------------------------------------------- |
+| user text part      | `prompt[i].content[j].providerOptions['sap-ai'].cacheControl` |
+| user file part      | `prompt[i].content[j].providerOptions['sap-ai'].cacheControl` |
+| system message      | `prompt[i].providerOptions['sap-ai'].cacheControl`            |
+| assistant text part | `prompt[i].content[j].providerOptions['sap-ai'].cacheControl` |
+| tool-result message | `prompt[i].content[j].providerOptions['sap-ai'].cacheControl` |
+| tool definition     | `tool.providerOptions['sap-ai'].cacheControl`                 |
+
+`cacheControl` on an assistant `tool-call` part is unsupported and emits a
+single `unsupported` warning (deduplicated by feature key). Invalid blocks are
+dropped and surface a `type: "other"` warning naming the offending path.
+
+**Example:**
+
+```typescript
+const result = await generateText({
+  model: provider("anthropic--claude-4.5-sonnet"),
+  prompt: [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Long shared context...",
+          providerOptions: {
+            "sap-ai": { cacheControl: { type: "ephemeral", ttl: "5m" } },
+          },
+        },
+        { type: "text", text: "Question that varies per call" },
+      ],
+    },
+  ],
+});
+
+const cacheUsage = result.providerMetadata?.["sap-ai"]?.cacheUsage;
+// e.g. { ephemeral_5m_input_tokens: 1234, ephemeral_1h_input_tokens: 0 }
+// `cacheUsage` is omitted only when all buckets are zero; individual zero keys are preserved.
 ```
 
 ---
@@ -2182,18 +2251,12 @@ Implementation of Vercel AI SDK's `LanguageModelV3` interface.
 
 **Properties:**
 
-| Property                      | Type                       | Description                                         |
-| ----------------------------- | -------------------------- | --------------------------------------------------- |
-| `specificationVersion`        | `'v3'`                     | API specification version (readonly)                |
-| `modelId`                     | `SAPAIModelId`             | Current model identifier (readonly)                 |
-| `provider`                    | `string`                   | Provider identifier (getter, e.g., `'sap-ai.chat'`) |
-| `supportedUrls`               | `Record<string, RegExp[]>` | URL patterns for supported media (getter)           |
-| `supportsImageUrls`           | `true`                     | Image URL support flag (readonly)                   |
-| `supportsMultipleCompletions` | `true`                     | Multiple completions support (readonly)             |
-| `supportsParallelToolCalls`   | `true`                     | Parallel tool calls support (readonly)              |
-| `supportsStreaming`           | `true`                     | Streaming support (readonly)                        |
-| `supportsStructuredOutputs`   | `true`                     | Structured output support (readonly)                |
-| `supportsToolCalls`           | `true`                     | Tool calling support (readonly)                     |
+| Property               | Type                       | Description                                         |
+| ---------------------- | -------------------------- | --------------------------------------------------- |
+| `specificationVersion` | `'v3'`                     | API specification version (readonly)                |
+| `modelId`              | `SAPAIModelId`             | Current model identifier (readonly)                 |
+| `provider`             | `string`                   | Provider identifier (getter, e.g., `'sap-ai.chat'`) |
+| `supportedUrls`        | `Record<string, RegExp[]>` | URL patterns for supported media (getter)           |
 
 **Methods:**
 
@@ -2317,8 +2380,8 @@ for await (const part of stream) {
 ```
 
 > **Note:** Streaming response IDs (`response-metadata.id`) are extracted from
-> the server's completion response when available. The `x-request-id` header is
-> also exposed in `providerMetadata` for request correlation — see
+> the server's completion response when available. `providerMetadata.requestId`
+> exposes the SAP request correlation id — see
 > [Provider Metadata](#provider-metadata-in-responses).
 
 ---
@@ -2330,23 +2393,26 @@ SAP-specific fields under the provider name key (default: `"sap-ai"`).
 
 **`doGenerate` — `providerMetadata[providerName]`:**
 
-| Field                  | Type                  | Description                                  |
-| ---------------------- | --------------------- | -------------------------------------------- |
-| `finishReason`         | `string \| undefined` | Raw finish reason from the SDK               |
-| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`)    |
-| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration) |
-| `requestId`            | `string \| undefined` | Server's `x-request-id` header (if present)  |
-| `version`              | `string`              | Provider package version                     |
+| Field                  | Type                  | Description                                                                                                |
+| ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `cacheUsage`           | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
+| `finishReason`         | `string`              | Raw finish reason from the SDK; defaults to `"unknown"` when the SDK omits it                              |
+| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`); `raw` preserves the unmodified SDK value (or `undefined`)       |
+| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
+| `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
+| `version`              | `string`              | Provider package version                                                                                   |
 
 **`doStream` — `finish` event `providerMetadata[providerName]`:**
 
-| Field                  | Type                  | Description                                   |
-| ---------------------- | --------------------- | --------------------------------------------- |
-| `finishReason`         | `string \| undefined` | Raw finish reason from the SDK                |
-| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)  |
-| `requestId`            | `string \| undefined` | Server's `x-request-id` header (if present)   |
-| `responseId`           | `string`              | Server completion ID or client-generated UUID |
-| `version`              | `string`              | Provider package version                      |
+| Field                  | Type                  | Description                                                                                                |
+| ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `cacheUsage`           | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
+| `finishReason`         | `string`              | Raw finish reason from the SDK; defaults to `"unknown"` when the SDK omits it                              |
+| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`); `raw` preserves the unmodified SDK value (or `undefined`)       |
+| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
+| `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
+| `responseId`           | `string`              | Server completion ID or client-generated UUID                                                              |
+| `version`              | `string`              | Provider package version                                                                                   |
 
 **Example (non-streaming):**
 
@@ -2360,7 +2426,7 @@ const result = await generateText({
 });
 
 const metadata = result.providerMetadata?.[SAP_AI_PROVIDER_NAME];
-console.log(metadata?.requestId); // "abc-123-def" (server x-request-id)
+console.log(metadata?.requestId); // "abc-123-def" (SAP pipeline correlation id)
 console.log(metadata?.version); // "4.x.x"
 ```
 
@@ -2378,7 +2444,7 @@ const result = streamText({
 for await (const part of result.fullStream) {
   if (part.type === "finish") {
     const metadata = part.providerMetadata?.[SAP_AI_PROVIDER_NAME];
-    console.log(metadata?.requestId); // Server x-request-id
+    console.log(metadata?.requestId); // SAP pipeline correlation id
     console.log(metadata?.responseId); // Server completion ID
   }
 }

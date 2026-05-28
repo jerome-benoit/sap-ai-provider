@@ -10,6 +10,7 @@ import {
   getProviderName,
   modelParamsSchema,
   orchestrationConfigRefSchema,
+  parseSAPPartProviderOptions,
   SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
   type SAPAIEmbeddingProviderOptions,
@@ -792,5 +793,102 @@ describe("validateEmbeddingModelParamsSettings", () => {
       dimensions: 1536,
       normalize: true,
     });
+  });
+});
+
+describe("parseSAPPartProviderOptions", () => {
+  it("should return parsed options when cacheControl is valid", () => {
+    expect(
+      parseSAPPartProviderOptions({
+        "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
+      }),
+    ).toEqual({ cacheControl: { ttl: "5m", type: "ephemeral" } });
+  });
+
+  it("should return undefined when sap-ai block is absent", () => {
+    expect(parseSAPPartProviderOptions({ anthropic: { cacheControl: {} } })).toBeUndefined();
+    expect(parseSAPPartProviderOptions({})).toBeUndefined();
+  });
+
+  it("should return undefined for primitives, arrays, null, and undefined", () => {
+    expect(parseSAPPartProviderOptions(null)).toBeUndefined();
+    expect(parseSAPPartProviderOptions(undefined)).toBeUndefined();
+    expect(parseSAPPartProviderOptions("string")).toBeUndefined();
+    expect(parseSAPPartProviderOptions(42)).toBeUndefined();
+    expect(parseSAPPartProviderOptions([{ "sap-ai": {} }])).toBeUndefined();
+  });
+
+  it.each([
+    { input: { cacheControl: {} }, label: "empty cacheControl" },
+    { input: { cacheControl: { type: "permanent" } }, label: "wrong literal type" },
+    { input: { cacheControl: { ttl: "10m", type: "ephemeral" } }, label: "unsupported ttl" },
+    { input: { cacheControl: 42 }, label: "non-object cacheControl" },
+    { input: { cacheControl: "string" }, label: "string cacheControl" },
+  ])("silently drops invalid cacheControl ($label)", ({ input }) => {
+    expect(parseSAPPartProviderOptions({ "sap-ai": input })).toBeUndefined();
+  });
+
+  it("should not throw on circular input", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => parseSAPPartProviderOptions(circular)).not.toThrow();
+  });
+
+  it("should push one warning per Zod issue when invalid block is provided", () => {
+    const warnings: SharedV3Warning[] = [];
+    const result = parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+
+    expect(result).toBeUndefined();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ type: "other" });
+    const message = (warnings[0] as { message?: string }).message ?? "";
+    expect(message).toMatch(
+      /^providerOptions\['sap-ai'\]\.cacheControl\.ttl is invalid: [^]+\. The directive was dropped\.$/,
+    );
+  });
+
+  it("should not push warnings when block is absent", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions({ anthropic: { cacheControl: {} } }, warnings);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("should not push warnings when block is valid", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+      warnings,
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("should dedupe warnings across repeated invocations sharing the same sink", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("should keep distinct warnings when issues differ across invocations", () => {
+    const warnings: SharedV3Warning[] = [];
+    parseSAPPartProviderOptions(
+      { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+      warnings,
+    );
+    parseSAPPartProviderOptions({ "sap-ai": { cacheControl: { type: "permanent" } } }, warnings);
+    expect(warnings).toHaveLength(2);
   });
 });

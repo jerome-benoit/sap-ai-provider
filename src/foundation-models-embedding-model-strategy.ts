@@ -8,10 +8,15 @@ import type {
 
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
-import type { EmbeddingProviderOptions } from "./strategy-utils.js";
+import type { EmbeddingProviderOptions, ResponseMetadata } from "./strategy-utils.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
-import { buildModelDeployment, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
+import {
+  buildModelDeployment,
+  extractResponseMetadata,
+  hasKeys,
+  normalizeEmbedding,
+} from "./strategy-utils.js";
 
 /**
  * Client with pre-merged params for thread-safe concurrent requests.
@@ -73,6 +78,12 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     const embeddingData = response._data.data;
     const sortedEmbeddings = embeddingData.slice().sort((a, b) => a.index - b.index);
     return sortedEmbeddings.map((item) => normalizeEmbedding(item.embedding as number[]));
+  }
+
+  protected override extractResponseMetadata(
+    response: AzureOpenAiEmbeddingResponse,
+  ): ResponseMetadata {
+    return extractResponseMetadata(response, "rawResponse");
   }
 
   protected extractTokenCount(response: AzureOpenAiEmbeddingResponse): number {

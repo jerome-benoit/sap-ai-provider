@@ -9,6 +9,7 @@ import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
+import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
@@ -20,6 +21,8 @@ import {
   buildModelParams,
   createAISDKRequestBodySummary,
   createStreamTransformer,
+  extractCompletionId,
+  extractResponseMetadata,
   mapToolChoice,
   type ParamMapping,
   type SAPToolChoice,
@@ -56,6 +59,8 @@ export interface StreamCallResponse {
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
   readonly getTokenUsage: () => null | SDKTokenUsage | undefined;
+  /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
+  readonly requestId?: string;
   readonly responseHeaders?: Record<string, string>;
   /** Server-provided completion ID extracted from _data, if available. */
   readonly responseId?: string;
@@ -113,6 +118,7 @@ export abstract class BaseLanguageModelStrategy<
         modelId: config.modelId,
         providerName: commonParts.providerName,
         requestBody: request,
+        requestId: response.requestId,
         response,
         responseHeaders: normalizeHeaders(response.rawResponse.headers),
         version: VERSION,
@@ -157,7 +163,7 @@ export abstract class BaseLanguageModelStrategy<
         modelId: config.modelId,
         options,
         providerName: commonParts.providerName,
-        responseHeaders: streamResponse.responseHeaders,
+        requestId: streamResponse.requestId,
         responseId,
         sdkStream: streamResponse.stream,
         streamResponseGetCitations: streamResponse.getCitations,
@@ -210,9 +216,19 @@ export abstract class BaseLanguageModelStrategy<
 
     const warnings: SharedV3Warning[] = [];
 
+    const resolvedState = this.resolveAdditionalState(
+      config,
+      settings,
+      sapOptions,
+      options,
+      warnings,
+    );
+
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
+      parsePartProviderOptions: this.getPartProviderOptionsParser(),
+      warnings,
     });
 
     const { modelParams, warnings: paramWarnings } = buildModelParams({
@@ -229,6 +245,7 @@ export abstract class BaseLanguageModelStrategy<
       messages,
       modelParams,
       providerName,
+      resolvedState,
       sapOptions,
       toolChoice,
       warnings,
@@ -311,6 +328,33 @@ export abstract class BaseLanguageModelStrategy<
   ): Promise<StreamCallResponse>;
 
   /**
+   * Resolves request id, completion id, and normalised headers from an SDK response.
+   * @param response - Raw SDK response or stream response.
+   * @returns Combined metadata fragment.
+   * @internal
+   */
+  protected extractMetadata(response: unknown): {
+    requestId?: string;
+    responseHeaders?: Record<string, string>;
+    responseId?: string;
+  } {
+    const responseId = extractCompletionId(
+      response as { _data?: unknown; getRequestId?: () => string | undefined },
+      this.getCompletionIdPath(),
+    );
+    const { headers, requestId } = extractResponseMetadata(response, "rawResponse");
+    return { requestId, responseHeaders: headers, responseId };
+  }
+
+  /**
+   * Returns the API-specific dotted path used to read the completion id off
+   * the SDK response's internal `_data` payload.
+   * @returns Path traversed under `_data` (e.g. `["final_result","id"]`, `["id"]`).
+   * @internal
+   */
+  protected abstract getCompletionIdPath(): readonly string[];
+
+  /**
    * Returns whether to escape template placeholders for this API.
    * @param _sapOptions - Parsed provider options (unused in base implementation).
    * @param _settings - Model settings (unused in base implementation).
@@ -348,9 +392,44 @@ export abstract class BaseLanguageModelStrategy<
   protected abstract getParamMappings(): readonly ParamMapping[];
 
   /**
+   * Returns a parser for per-message-part `providerOptions['sap-ai']`.
+   *
+   * Default returns `undefined`; strategies honouring part-level directives
+   * (e.g. Anthropic `cacheControl` on orchestration) override to return a parser.
+   * @returns Parser callback, or undefined to disable per-part plumbing.
+   * @internal
+   */
+  protected getPartProviderOptionsParser(): ParsePartProviderOptions | undefined {
+    return undefined;
+  }
+
+  /**
    * Returns the URL identifier for this API (used in error messages).
    * @returns URL string identifier.
    * @internal
    */
   protected abstract getUrl(): string;
+
+  /**
+   * Resolves API-specific extra state shared between doGenerate and doStream
+   * (e.g. orchestration `configRef` / `promptTemplateRef` / `tools`). Override
+   * to add API-specific deprecation checks or pre-resolve auxiliary inputs.
+   * Pushed warnings flow into the shared sink.
+   * @param _config - Strategy configuration.
+   * @param _settings - Model settings.
+   * @param _sapOptions - Parsed provider options, or `undefined`.
+   * @param _options - AI SDK call options.
+   * @param _warnings - Shared warnings sink for the current call.
+   * @returns Strategy-specific resolved state, or `undefined` (default).
+   * @internal
+   */
+  protected resolveAdditionalState(
+    _config: LanguageModelStrategyConfig,
+    _settings: TSettings,
+    _sapOptions: Record<string, unknown> | undefined,
+    _options: LanguageModelV3CallOptions,
+    _warnings: SharedV3Warning[],
+  ): unknown {
+    return undefined;
+  }
 }

@@ -2,7 +2,7 @@
  * Tests conversion from Vercel AI SDK prompt format to SAP AI SDK ChatMessage format.
  * @see convertToSAPMessages
  */
-import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
+import type { LanguageModelV3Prompt, SharedV3Warning } from "@ai-sdk/provider";
 
 import { InvalidPromptError } from "@ai-sdk/provider";
 import { Buffer } from "node:buffer";
@@ -13,6 +13,7 @@ import {
   escapeOrchestrationPlaceholders,
   unescapeOrchestrationPlaceholders,
 } from "./convert-to-sap-messages";
+import { parseSAPPartProviderOptions } from "./sap-ai-provider-options.js";
 
 const createUserPrompt = (text: string): LanguageModelV3Prompt => [
   { content: [{ text, type: "text" }], role: "user" },
@@ -1232,6 +1233,403 @@ describe("convertToSAPMessages", () => {
         const imagePart = message.content.find((c) => c.type === "image_url");
         expect(imagePart?.image_url?.url).toBe("data:image/png;base64,base64data");
       });
+    });
+  });
+
+  describe("cache_control plumbing", () => {
+    const parsePartProviderOptions = parseSAPPartProviderOptions;
+
+    it("should attach cache_control to a user text part when cacheControl is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "Cache me",
+              type: "text",
+            },
+            { text: "Don't cache me", type: "text" },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as {
+        content: { cache_control?: unknown; text: string; type: string }[];
+      };
+      expect(userMsg.content[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
+      expect(userMsg.content[1]?.cache_control).toBeUndefined();
+    });
+
+    it("should attach cache_control to a user image_url part", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              data: "base64data",
+              mediaType: "image/png",
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } } },
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: { cache_control?: unknown; type: string }[] };
+      expect(userMsg.content[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("should not collapse a single-text user message to string form when cache_control is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { type: "ephemeral" } } },
+              text: "with cache",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: unknown };
+      expect(Array.isArray(userMsg.content)).toBe(true);
+    });
+
+    it("should collapse a single-text user message to string form when cache_control is absent", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ text: "no cache", type: "text" }],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: unknown };
+      expect(typeof userMsg.content).toBe("string");
+      expect(userMsg.content).toBe("no cache");
+    });
+
+    it("should ignore cacheControl scoped to another provider key", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: {
+                anthropic: { cacheControl: { ttl: "5m", type: "ephemeral" } },
+              },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const userMsg = result[0] as { content: unknown };
+      expect(typeof userMsg.content).toBe("string");
+    });
+
+    it("should never attach cache_control when no parsePartProviderOptions callback is supplied", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const userMsg = result[0] as { content: unknown };
+      expect(typeof userMsg.content).toBe("string");
+    });
+
+    it("should surface parser warnings into the warnings sink when an invalid cacheControl block is provided", () => {
+      const warnings: SharedV3Warning[] = [];
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+      const userMsg = result[0] as { content: unknown };
+
+      expect(typeof userMsg.content).toBe("string");
+      expect(warnings.length).toBeGreaterThan(0);
+      expect(warnings[0]).toMatchObject({ type: "other" });
+      expect((warnings[0] as { message?: string }).message ?? "").toMatch(/cacheControl/);
+    });
+
+    it("should not push warnings when cacheControl is valid", () => {
+      const warnings: SharedV3Warning[] = [];
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "x",
+              type: "text",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+
+      expect(warnings).toHaveLength(0);
+    });
+
+    it("should attach cache_control to a system message via message-level providerOptions", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: "You are helpful.",
+          providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+          role: "system",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const systemMsg = result[0] as {
+        content: { cache_control?: unknown; text: string; type: string }[];
+      };
+      expect(Array.isArray(systemMsg.content)).toBe(true);
+      expect(systemMsg.content[0]).toEqual({
+        cache_control: { ttl: "5m", type: "ephemeral" },
+        text: "You are helpful.",
+        type: "text",
+      });
+    });
+
+    it("should keep system message content as a string when no cacheControl is set", () => {
+      const prompt: LanguageModelV3Prompt = [{ content: "no cache", role: "system" }];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const systemMsg = result[0] as { content: unknown };
+      expect(typeof systemMsg.content).toBe("string");
+      expect(systemMsg.content).toBe("no cache");
+    });
+
+    it("should attach cache_control to an assistant text part", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } } },
+              text: "Cached answer.",
+              type: "text",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const assistantMsg = result[0] as {
+        content: { cache_control?: unknown; text: string; type: string }[];
+      };
+      expect(Array.isArray(assistantMsg.content)).toBe(true);
+      expect(assistantMsg.content[0]).toEqual({
+        cache_control: { ttl: "1h", type: "ephemeral" },
+        text: "Cached answer.",
+        type: "text",
+      });
+    });
+
+    it("should preserve order across cached and uncached assistant text parts", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "first",
+              type: "text",
+            },
+            { text: "second", type: "text" },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const assistantMsg = result[0] as {
+        content: { cache_control?: unknown; text: string }[];
+      };
+      expect(assistantMsg.content).toEqual([
+        { cache_control: { ttl: "5m", type: "ephemeral" }, text: "first", type: "text" },
+        { text: "second", type: "text" },
+      ]);
+    });
+
+    it("should keep assistant content as a string when no part declares cacheControl", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: "first", type: "text" },
+            { text: " second", type: "text" },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const assistantMsg = result[0] as { content: unknown };
+      expect(typeof assistantMsg.content).toBe("string");
+      expect(assistantMsg.content).toBe("first second");
+    });
+
+    it("should drop empty-text assistant parts even when cacheControl is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              text: "",
+              type: "text",
+            },
+            { text: "kept", type: "text" },
+          ],
+          role: "assistant",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const assistantMsg = result[0] as { content: unknown };
+      expect(typeof assistantMsg.content).toBe("string");
+      expect(assistantMsg.content).toBe("kept");
+    });
+
+    it("should emit a single Zod warning when multiple parts share the same invalid cacheControl", () => {
+      const warnings: SharedV3Warning[] = [];
+      const invalid = { "sap-ai": { cacheControl: { ttl: "10m", type: "ephemeral" } } };
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { providerOptions: invalid, text: "a", type: "text" },
+            { providerOptions: invalid, text: "b", type: "text" },
+            { providerOptions: invalid, text: "c", type: "text" },
+          ],
+          role: "user",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+      const cacheControlIssues = warnings.filter((w) =>
+        ((w as { message?: string }).message ?? "").includes("cacheControl"),
+      );
+      expect(cacheControlIssues).toHaveLength(1);
+    });
+
+    it("should emit a single unsupported warning when multiple tool-call parts carry cacheControl", () => {
+      const warnings: SharedV3Warning[] = [];
+      const cacheOpts = {
+        "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" as const } },
+      };
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: "calling", type: "text" },
+            {
+              input: { q: "a" },
+              providerOptions: cacheOpts,
+              toolCallId: "c1",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+            {
+              input: { q: "b" },
+              providerOptions: cacheOpts,
+              toolCallId: "c2",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+            {
+              input: { q: "c" },
+              providerOptions: cacheOpts,
+              toolCallId: "c3",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+      const toolCallWarnings = warnings.filter((w) =>
+        ((w as { feature?: string }).feature ?? "").includes("tool-call"),
+      );
+      expect(toolCallWarnings).toHaveLength(1);
+    });
+
+    it("should surface an unsupported warning when cacheControl is set on an assistant tool-call", () => {
+      const warnings: SharedV3Warning[] = [];
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            { text: "calling tool", type: "text" },
+            {
+              input: { q: "weather" },
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+              toolCallId: "c1",
+              toolName: "lookup",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+      ];
+      convertToSAPMessages(prompt, { parsePartProviderOptions, warnings });
+
+      expect(warnings).toContainEqual({
+        details:
+          "SAP orchestration does not expose cache_control on the assistant tool-call envelope.",
+        feature: "cacheControl on assistant tool-call",
+        type: "unsupported",
+      });
+    });
+
+    it("should attach cache_control to a tool-result message", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              output: { type: "json", value: { ok: true } },
+              providerOptions: { "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } } },
+              toolCallId: "c1",
+              toolName: "lookup",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const toolMsg = result[0] as { content: { cache_control?: unknown; text: string }[] };
+      expect(Array.isArray(toolMsg.content)).toBe(true);
+      expect(toolMsg.content[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("should keep tool-result content as a string when no cacheControl is set", () => {
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              output: { type: "json", value: { ok: true } },
+              toolCallId: "c1",
+              toolName: "lookup",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
+      const toolMsg = result[0] as { content: unknown };
+      expect(typeof toolMsg.content).toBe("string");
     });
   });
 });

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SAPAILanguageModel } from "./sap-ai-language-model";
 import { clearStrategyCaches } from "./sap-ai-strategy.js";
+import { computeNoCache } from "./strategy-utils.js";
 
 vi.mock("@sap-ai-sdk/orchestration", () => {
   class MockOrchestrationClient {
@@ -322,7 +323,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       if (MockAzureOpenAiChatClient.chatCompletionResponse) {
         const response = MockAzureOpenAiChatClient.chatCompletionResponse;
         MockAzureOpenAiChatClient.chatCompletionResponse = undefined;
-        return Promise.resolve(response);
+        return Promise.resolve({ getRequestId: () => undefined, ...response });
       }
 
       const messages = (request as { messages?: unknown[] }).messages;
@@ -343,6 +344,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
         _data: { id: "chatcmpl-fm-test-123" },
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
+        getRequestId: () => "test-request-id",
         getTokenUsage: () => ({
           completion_tokens: 5,
           prompt_tokens: 10,
@@ -417,14 +419,19 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       const errorToThrow = MockAzureOpenAiChatClient.streamError;
 
       return Promise.resolve({
-        // Real AzureOpenAiChatCompletionStreamResponse has no _data or rawResponse.
         getFinishReason: () => lastFinishReason,
+        getRequestId: () => "test-stream-request-id",
         getTokenUsage: () =>
           lastTokenUsage ?? {
             completion_tokens: 5,
             prompt_tokens: 10,
             total_tokens: 15,
           },
+        rawResponse: {
+          headers: {
+            "x-request-id": "test-stream-request-id",
+          },
+        },
         stream: {
           *[Symbol.asyncIterator]() {
             for (const chunk of chunks) {
@@ -853,9 +860,17 @@ describe("SAPAILanguageModel", () => {
    * @param overrides.usage - Token usage information.
    * @param overrides.usage.completion_tokens - Completion token count.
    * @param overrides.usage.completion_tokens_details - Completion token details.
+   * @param overrides.usage.completion_tokens_details.accepted_prediction_tokens - Predicted-output tokens accepted by the model.
+   * @param overrides.usage.completion_tokens_details.audio_tokens - Audio tokens emitted in the completion.
    * @param overrides.usage.completion_tokens_details.reasoning_tokens - Reasoning token count.
+   * @param overrides.usage.completion_tokens_details.rejected_prediction_tokens - Predicted-output tokens rejected by the model.
    * @param overrides.usage.prompt_tokens - Prompt token count.
    * @param overrides.usage.prompt_tokens_details - Prompt token details.
+   * @param overrides.usage.prompt_tokens_details.audio_tokens - Audio tokens supplied in the prompt.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_token_details - Anthropic per-TTL cache creation breakdown.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_token_details.ephemeral_1h_input_tokens - Tokens written to the 1h cache.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_token_details.ephemeral_5m_input_tokens - Tokens written to the 5m cache.
+   * @param overrides.usage.prompt_tokens_details.cache_creation_tokens - Tokens written to the prompt cache.
    * @param overrides.usage.prompt_tokens_details.cached_tokens - Cached token count.
    * @param overrides.usage.total_tokens - Total token count.
    * @returns A mock chat response object.
@@ -876,10 +891,19 @@ describe("SAPAILanguageModel", () => {
       usage?: {
         completion_tokens: number;
         completion_tokens_details?: {
+          accepted_prediction_tokens?: number;
+          audio_tokens?: number;
           reasoning_tokens?: number;
+          rejected_prediction_tokens?: number;
         };
         prompt_tokens: number;
         prompt_tokens_details?: {
+          audio_tokens?: number;
+          cache_creation_token_details?: {
+            ephemeral_1h_input_tokens?: number;
+            ephemeral_5m_input_tokens?: number;
+          };
+          cache_creation_tokens?: number;
           cached_tokens?: number;
         };
         total_tokens: number;
@@ -949,7 +973,22 @@ describe("SAPAILanguageModel", () => {
         | undefined
         | {
             completion_tokens: number;
+            completion_tokens_details?: {
+              accepted_prediction_tokens?: number;
+              audio_tokens?: number;
+              reasoning_tokens?: number;
+              rejected_prediction_tokens?: number;
+            };
             prompt_tokens: number;
+            prompt_tokens_details?: {
+              audio_tokens?: number;
+              cache_creation_token_details?: {
+                ephemeral_1h_input_tokens?: number;
+                ephemeral_5m_input_tokens?: number;
+              };
+              cache_creation_tokens?: number;
+              cached_tokens?: number;
+            };
             total_tokens: number;
           };
     } = {},
@@ -1019,14 +1058,14 @@ describe("SAPAILanguageModel", () => {
       });
 
       describe("model capabilities", () => {
-        const expectedCapabilities = {
-          supportsImageUrls: true,
-          supportsMultipleCompletions: true,
-          supportsParallelToolCalls: true,
-          supportsStreaming: true,
-          supportsStructuredOutputs: true,
-          supportsToolCalls: true,
-        };
+        const v3RemovedFlags = [
+          "supportsImageUrls",
+          "supportsMultipleCompletions",
+          "supportsParallelToolCalls",
+          "supportsStreaming",
+          "supportsStructuredOutputs",
+          "supportsToolCalls",
+        ] as const;
 
         it.each([
           "any-model",
@@ -1036,10 +1075,15 @@ describe("SAPAILanguageModel", () => {
           "amazon--nova-pro",
           "mistralai--mistral-large-instruct",
           "unknown-future-model",
-        ])("should have consistent capabilities for model %s", (modelId) => {
-          const model = createModelForApi(api, modelId);
-          expect(model).toMatchObject(expectedCapabilities);
-        });
+        ])(
+          "should not expose V2-style supports* booleans on model %s (V3 spec uses supportedUrls)",
+          (modelId) => {
+            const model = createModelForApi(api, modelId);
+            for (const flag of v3RemovedFlags) {
+              expect(Object.prototype.hasOwnProperty.call(model, flag)).toBe(false);
+            }
+          },
+        );
       });
     },
   );
@@ -1724,15 +1768,10 @@ describe("SAPAILanguageModel", () => {
 
       const result = await model.doStream({ prompt });
 
-      if (api === "orchestration") {
-        expect(result.response?.headers).toBeDefined();
-        expect(result.response?.headers).toMatchObject({
-          "x-request-id": "test-stream-request-id",
-        });
-      } else {
-        // Foundation Models stream response has no rawResponse
-        expect(result.response?.headers).toBeUndefined();
-      }
+      expect(result.response?.headers).toBeDefined();
+      expect(result.response?.headers).toMatchObject({
+        "x-request-id": "test-stream-request-id",
+      });
     });
 
     it("should not mutate stream-start warnings when warnings occur during stream", async () => {
@@ -1839,7 +1878,11 @@ describe("SAPAILanguageModel", () => {
         modelId: "gpt-4o",
         type: "response-metadata",
       });
-      expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
+      if (api === "orchestration") {
+        expect((responseMetadata as { id: string }).id).toMatch(uuidRegex);
+      } else {
+        expect((responseMetadata as { id: string }).id).toBe("test-stream-request-id");
+      }
       expect(parts.some((p) => p.type === "text-delta")).toBe(true);
       expect(parts.some((p) => p.type === "finish")).toBe(true);
 
@@ -1849,13 +1892,13 @@ describe("SAPAILanguageModel", () => {
         expect(finishPart.finishReason).toEqual({ raw: "stop", unified: "stop" });
         const metadata = finishPart.providerMetadata?.["sap-ai"] as Record<string, unknown>;
         expect(metadata.finishReason).toBe("stop");
-        if (api === "orchestration") {
-          expect(metadata.requestId).toBe("test-stream-request-id");
-        } else {
-          expect(metadata.requestId).toBeUndefined();
-        }
+        expect(metadata.requestId).toBe("test-stream-request-id");
         expect(typeof metadata.responseId).toBe("string");
-        expect(metadata.responseId as string).toMatch(uuidRegex);
+        if (api === "orchestration") {
+          expect(metadata.responseId as string).toMatch(uuidRegex);
+        } else {
+          expect(metadata.responseId).toBe("test-stream-request-id");
+        }
         expect(metadata.version).toBeDefined();
       }
     });
@@ -1886,11 +1929,7 @@ describe("SAPAILanguageModel", () => {
           | Record<string, unknown>
           | undefined;
         expect(metadata).toBeDefined();
-        if (api === "orchestration") {
-          expect(metadata?.requestId).toBe("test-stream-request-id");
-        } else {
-          expect(metadata?.requestId).toBeUndefined();
-        }
+        expect(metadata?.requestId).toBe("test-stream-request-id");
       }
     });
 
@@ -1911,15 +1950,11 @@ describe("SAPAILanguageModel", () => {
 
       const MockClient = await getMockClientForApi(api);
       if (MockClient.setStreamResponseOverride) {
-        // Matches real SDK stream shapes:
-        // - Orchestration: _data is {}, getRequestId() returns undefined
-        // - Foundation-models: no _data, no rawResponse
         MockClient.setStreamResponseOverride({
-          ...(api === "orchestration"
-            ? { getRequestId: () => undefined, rawResponse: { headers: {} } }
-            : {}),
           getFinishReason: () => "stop",
+          getRequestId: () => undefined,
           getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 2, total_tokens: 3 }),
+          rawResponse: { headers: {} },
           stream: {
             *[Symbol.asyncIterator]() {
               for (const c of chunks) yield c;
@@ -2124,6 +2159,16 @@ describe("SAPAILanguageModel", () => {
         description: "function_call as tool-calls",
         expected: "tool-calls",
         input: "function_call",
+      },
+      {
+        description: "tool_use as tool-calls",
+        expected: "tool-calls",
+        input: "tool_use",
+      },
+      {
+        description: "guardrail_intervened as content-filter",
+        expected: "content-filter",
+        input: "guardrail_intervened",
       },
       {
         description: "unknown reason as other",
@@ -2984,6 +3029,204 @@ describe("SAPAILanguageModel", () => {
     });
   });
 
+  describe("Foundation Models response id and rawResponse resilience (foundation-models API)", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("foundation-models");
+    });
+
+    it("should fall back to response.getRequestId() when _data.id is absent on doGenerate", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "fm-canonical-req-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "fm-canonical-req-id" } },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBe("fm-canonical-req-id");
+    });
+
+    it("should leave response.id undefined when both _data.id and getRequestId() are absent", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: {} },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBeUndefined();
+    });
+
+    it("should source providerMetadata.requestId from getRequestId() in preference to the x-request-id header", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: { id: "completion-1" },
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "sdk-pipeline-rid",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "http-header-rid" } },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      const meta = result.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+      expect(meta.requestId).toBe("sdk-pipeline-rid");
+      expect(result.response?.headers?.["x-request-id"]).toBe("http-header-rid");
+    });
+
+    it("should fall back to x-request-id header for providerMetadata.requestId when getRequestId() is undefined", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "http-only-rid" } },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      const meta = result.providerMetadata?.["sap-ai"] as Record<string, unknown>;
+      expect(meta.requestId).toBe("http-only-rid");
+    });
+
+    it("should omit providerMetadata.requestId when both getRequestId() and the x-request-id header are absent", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => undefined,
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: {} },
+      });
+
+      const model = createFMModel();
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("requestId");
+    });
+
+    it("should keep streaming alive when rawResponse access throws", async () => {
+      const MockClient = await getMockClientForApi("foundation-models");
+      if (!MockClient.setStreamResponseOverride) {
+        throw new Error("mock missing setStreamResponseOverride");
+      }
+      MockClient.setStreamResponseOverride({
+        getFinishReason: () => "stop",
+        getRequestId: () => "fm-no-headers-req-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        get rawResponse(): { headers: Record<string, string> } {
+          throw new Error("rawResponse not available (deprecated constructor)");
+        },
+        stream: {
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async *[Symbol.asyncIterator]() {
+            yield {
+              getDeltaContent: () => "ok",
+              getDeltaToolCalls: () => undefined,
+              getFinishReason: () => "stop",
+              getTokenUsage: () => undefined,
+            };
+          },
+        },
+      });
+
+      const model = createFMModel();
+      const result = await model.doStream({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.headers).toBeUndefined();
+
+      const parts = await readAllStreamParts(result.stream);
+      const responseMetadata = parts.find((p) => p.type === "response-metadata");
+      expect(responseMetadata).toBeDefined();
+      expect((responseMetadata as { id: string }).id).toBe("fm-no-headers-req-id");
+    });
+  });
+
+  describe("Orchestration response id priority (orchestration API)", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("orchestration");
+    });
+
+    it("should prefer _data.final_result.id over getRequestId() on doGenerate", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: { final_result: { id: "orch-data-id" } },
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "orch-pipeline-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "orch-pipeline-id" } },
+      });
+
+      const model = createOrchModel("gpt-4o");
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBe("orch-data-id");
+    });
+
+    it("should fall back to getRequestId() when _data.final_result.id is absent on doGenerate", async () => {
+      const MockClient = await getMockClientForApi("orchestration");
+      if (!MockClient.setChatCompletionResponse) {
+        throw new Error("mock missing setChatCompletionResponse");
+      }
+      MockClient.setChatCompletionResponse({
+        _data: {},
+        getContent: () => "Hello!",
+        getFinishReason: () => "stop",
+        getRequestId: () => "orch-pipeline-id",
+        getTokenUsage: () => ({ completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 }),
+        getToolCalls: () => undefined,
+        rawResponse: { headers: { "x-request-id": "orch-pipeline-id" } },
+      });
+
+      const model = createOrchModel("gpt-4o");
+      const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+      expect(result.response?.id).toBe("orch-pipeline-id");
+    });
+  });
+
   describe("doGenerate citations and intermediateFailures (orchestration API)", () => {
     beforeEach(async () => {
       await resetMockStateForApi("orchestration");
@@ -3254,6 +3497,462 @@ describe("SAPAILanguageModel", () => {
         expect(result.usage.inputTokens.cacheRead).toBeUndefined();
         expect(result.usage.outputTokens.reasoning).toBeUndefined();
       });
+
+      it("should map cache_creation_tokens to inputTokens.cacheWrite", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 80, cached_tokens: 20 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.usage.inputTokens.cacheWrite).toBe(80);
+        expect(result.usage.inputTokens.cacheRead).toBe(20);
+      });
+
+      it("should surface cache_creation_token_details in providerMetadata.cacheUsage", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: {
+                cache_creation_token_details: {
+                  ephemeral_1h_input_tokens: 20,
+                  ephemeral_5m_input_tokens: 80,
+                },
+                cache_creation_tokens: 100,
+              },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.providerMetadata?.["sap-ai"]).toMatchObject({
+          cacheUsage: {
+            ephemeral_1h_input_tokens: 20,
+            ephemeral_5m_input_tokens: 80,
+          },
+        });
+      });
+
+      it("should omit cacheUsage when cache_creation_token_details is absent", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
+      });
+
+      it("should subtract both cacheRead and cacheWrite from noCache", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 30, cached_tokens: 50 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens.cacheRead).toBe(50);
+        expect(result.usage.inputTokens.cacheWrite).toBe(30);
+        expect(result.usage.inputTokens.noCache).toBe(20);
+        expect(result.usage.inputTokens.total).toBe(100);
+      });
+
+      it("should subtract only cacheWrite from noCache when cached is absent", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 40 },
+              total_tokens: 105,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens.noCache).toBe(60);
+      });
+
+      it("should leave noCache equal to prompt_tokens when no cache breakdown is reported", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens.noCache).toBe(result.usage.inputTokens.total);
+      });
+
+      it("should clamp noCache to 0 when cacheRead+cacheWrite exceed prompt_tokens", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 1,
+              prompt_tokens: 10,
+              prompt_tokens_details: { cache_creation_tokens: 8, cached_tokens: 5 },
+              total_tokens: 11,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.inputTokens).toEqual({
+          cacheRead: 5,
+          cacheWrite: 8,
+          noCache: computeNoCache(10, 5, 8),
+          total: 10,
+        });
+      });
+
+      it("should populate usage.raw when extended token detail fields are present", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 10,
+              completion_tokens_details: {
+                accepted_prediction_tokens: 4,
+                audio_tokens: 2,
+                rejected_prediction_tokens: 1,
+              },
+              prompt_tokens: 20,
+              prompt_tokens_details: { audio_tokens: 3 },
+              total_tokens: 30,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.raw).toEqual({
+          completion_tokens: 10,
+          completion_tokens_details: {
+            accepted_prediction_tokens: 4,
+            audio_tokens: 2,
+            rejected_prediction_tokens: 1,
+          },
+          prompt_tokens: 20,
+          prompt_tokens_details: { audio_tokens: 3 },
+          total_tokens: 30,
+        });
+      });
+
+      it("should omit usage.raw when no extended token detail fields are present", async () => {
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage).not.toHaveProperty("raw");
+      });
+
+      it("should populate usage.raw when audio_tokens is present with a zero value", async () => {
+        const MockClient = await getMockClientForApi(api);
+        if (!MockClient.setChatCompletionResponse) {
+          throw new Error("mock missing setChatCompletionResponse");
+        }
+        MockClient.setChatCompletionResponse(
+          createMockChatResponse(api, {
+            usage: {
+              completion_tokens: 5,
+              completion_tokens_details: { audio_tokens: 0 },
+              prompt_tokens: 3,
+              total_tokens: 8,
+            },
+          }),
+        );
+
+        const model = createModelForApi(api);
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        expect(result.usage.raw).toEqual({
+          completion_tokens: 5,
+          completion_tokens_details: { audio_tokens: 0 },
+          prompt_tokens: 3,
+          total_tokens: 8,
+        });
+      });
+    },
+  );
+
+  describe.each<APIType>(["orchestration", "foundation-models"])(
+    "doStream token usage details (%s API)",
+    (api) => {
+      beforeEach(async () => {
+        await resetMockStateForApi(api);
+      });
+
+      it("should map cache_creation_tokens to inputTokens.cacheWrite on the finish event", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 80, cached_tokens: 20 },
+              total_tokens: 105,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        expect(finishPart).toBeDefined();
+        if (finishPart?.type === "finish") {
+          expect(finishPart.usage.inputTokens.cacheWrite).toBe(80);
+          expect(finishPart.usage.inputTokens.cacheRead).toBe(20);
+        }
+      });
+
+      it("should surface cache_creation_token_details in stream finish providerMetadata.cacheUsage", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 5,
+              prompt_tokens: 100,
+              prompt_tokens_details: {
+                cache_creation_token_details: {
+                  ephemeral_1h_input_tokens: 20,
+                  ephemeral_5m_input_tokens: 80,
+                },
+                cache_creation_tokens: 100,
+              },
+              total_tokens: 105,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        expect(finishPart).toBeDefined();
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            cacheUsage: {
+              ephemeral_1h_input_tokens: 20,
+              ephemeral_5m_input_tokens: 80,
+            },
+          });
+        }
+      });
+
+      it("should preserve usage.raw on stream finish when un-typed token fields are present", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 10,
+              completion_tokens_details: {
+                accepted_prediction_tokens: 4,
+                audio_tokens: 2,
+                rejected_prediction_tokens: 1,
+              },
+              prompt_tokens: 20,
+              prompt_tokens_details: { audio_tokens: 3 },
+              total_tokens: 30,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        expect(finishPart).toBeDefined();
+        if (finishPart?.type === "finish") {
+          expect(finishPart.usage.raw).toEqual({
+            completion_tokens: 10,
+            completion_tokens_details: {
+              accepted_prediction_tokens: 4,
+              audio_tokens: 2,
+              rejected_prediction_tokens: 1,
+            },
+            prompt_tokens: 20,
+            prompt_tokens_details: { audio_tokens: 3 },
+            total_tokens: 30,
+          });
+        }
+      });
+
+      it("should omit cacheUsage on stream finish when ephemeral details are absent", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).not.toHaveProperty("cacheUsage");
+        }
+      });
+
+      it("should expose finishReasonMapped on stream finish providerMetadata", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            finishReason: "stop",
+            finishReasonMapped: { raw: "stop", unified: "stop" },
+          });
+        }
+      });
+
+      it("should fall back to finishReason='unknown' on stream finish when raw is null", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: null,
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            finishReason: "unknown",
+            finishReasonMapped: { raw: undefined, unified: "other" },
+          });
+        }
+      });
+
+      it("should subtract both cacheRead and cacheWrite from noCache on stream finish", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 1,
+              prompt_tokens: 100,
+              prompt_tokens_details: { cache_creation_tokens: 30, cached_tokens: 50 },
+              total_tokens: 101,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.usage.inputTokens).toEqual({
+            cacheRead: 50,
+            cacheWrite: 30,
+            noCache: 20,
+            total: 100,
+          });
+        }
+      });
+
+      it("should surface cacheUsage on stream finish when only ephemeral_1h is reported", async () => {
+        await setStreamChunksForApi(api, [
+          createMockStreamChunk({
+            deltaContent: "Hello",
+            finishReason: "stop",
+            usage: {
+              completion_tokens: 1,
+              prompt_tokens: 50,
+              prompt_tokens_details: {
+                cache_creation_token_details: { ephemeral_1h_input_tokens: 50 },
+                cache_creation_tokens: 50,
+              },
+              total_tokens: 51,
+            },
+          }),
+        ]);
+
+        const model = createModelForApi(api);
+        const result = await model.doStream({ prompt: createPrompt("Hi") });
+        const parts = await readAllStreamParts(result.stream);
+        const finishPart = parts.find((p) => p.type === "finish");
+
+        if (finishPart?.type === "finish") {
+          expect(finishPart.providerMetadata?.["sap-ai"]).toMatchObject({
+            cacheUsage: { ephemeral_1h_input_tokens: 50 },
+          });
+          expect(
+            (
+              finishPart.providerMetadata?.["sap-ai"]?.cacheUsage as
+                | undefined
+                | { ephemeral_5m_input_tokens?: number }
+            )?.ephemeral_5m_input_tokens,
+          ).toBeUndefined();
+        }
+      });
     },
   );
 
@@ -3299,6 +3998,53 @@ describe("SAPAILanguageModel", () => {
         const request = await getLastOrchRequest();
         expect(request).toHaveProperty("masking");
         expect(request.masking).toEqual(masking);
+      });
+
+      it("should warn when masking is configured with the deprecated masking_providers shape", async () => {
+        const model = createOrchModel("gpt-4o", {
+          masking: {
+            masking_providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+        });
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toMatchObject({ type: "other" });
+        expect((deprecation as { message?: string }).message).toBe(
+          "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+            "Migrate to settings.masking.providers.",
+        );
+      });
+
+      it("should not warn about deprecated masking_providers when orchestrationConfigRef is set", async () => {
+        const model = createOrchModel("gpt-4o", {
+          masking: {
+            masking_providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+          orchestrationConfigRef: { id: "server-resolved" },
+        });
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toBeUndefined();
       });
 
       it("should include filtering module in orchestration config", async () => {
@@ -4745,6 +5491,31 @@ describe("SAPAILanguageModel", () => {
           id: "provider-override-id",
         });
       });
+
+      it("should preserve full multi-role conversation in messagesHistory alongside placeholderValues", async () => {
+        const model = createOrchModel("gpt-4o", {
+          placeholderValues: { topic: "math" },
+          promptTemplateRef: { id: "tpl-multi-role" },
+        });
+
+        const prompt: LanguageModelV3Prompt = [
+          { content: "You are a helpful assistant.", role: "system" },
+          { content: [{ text: "Hello", type: "text" }], role: "user" },
+          { content: [{ text: "How can I help?", type: "text" }], role: "assistant" },
+          { content: [{ text: "Explain SAP AI Core.", type: "text" }], role: "user" },
+        ];
+
+        const result = await model.doGenerate({ prompt });
+
+        expectRequestBodyHasMessagesHistory(result);
+
+        const body = result.request?.body as Record<string, unknown>;
+        const history = body.messagesHistory as { role: string }[];
+        expect(history).toHaveLength(4);
+        expect(history.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
+        expect(body).toHaveProperty("placeholderValues");
+        expect(body.placeholderValues).toEqual({ topic: "math" });
+      });
     });
 
     describe("orchestrationConfigRef", () => {
@@ -5600,6 +6371,168 @@ describe("SAPAILanguageModel", () => {
       expect(constructorCall?.modelDeployment).toHaveProperty("modelName", modelId);
       expect(constructorCall?.modelDeployment).toHaveProperty("resourceGroup", "custom-group");
       expect(constructorCall?.modelDeployment).not.toHaveProperty("deploymentId");
+    });
+  });
+
+  describe("tool cache_control plumbing", () => {
+    beforeEach(async () => {
+      await resetMockStateForApi("orchestration");
+      await resetMockStateForApi("foundation-models");
+    });
+
+    it("should forward tool providerOptions['sap-ai'].cacheControl onto ChatCompletionTool.cache_control (orchestration)", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
+    });
+
+    it("should forward 1h TTL onto ChatCompletionTool.cache_control (orchestration)", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("should attach cache_control only to tools with cacheControl directive in a multi-tool array (orchestration)", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "cached",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "cached",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+          {
+            description: "uncached",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "uncached",
+            type: "function",
+          },
+          {
+            description: "long-cached",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "long-cached",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const tools = (
+        orch.lastRequest as {
+          tools?: { cache_control?: unknown; function: { name: string } }[];
+        }
+      ).tools;
+      expect(tools?.[0]?.cache_control).toEqual({ ttl: "5m", type: "ephemeral" });
+      expect(tools?.[1]).not.toHaveProperty("cache_control");
+      expect(tools?.[2]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    });
+
+    it("should omit cache_control when providerOptions['sap-ai'] is absent (orchestration)", async () => {
+      const model = createOrchModel("gpt-4o");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]).not.toHaveProperty("cache_control");
+    });
+
+    it("should silently drop invalid tool cacheControl block and surface a parser warning (orchestration)", async () => {
+      const model = createOrchModel("anthropic--claude-4.5-sonnet");
+      const result = await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { type: "wrong-type" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const orch = await getMockOrchClient();
+      const request = orch.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]).not.toHaveProperty("cache_control");
+      expect(result.warnings.length).toBeGreaterThan(0);
+      const cacheWarning = result.warnings.find((w) =>
+        ((w as { message?: string }).message ?? "").includes("cacheControl"),
+      );
+      expect(cacheWarning).toMatchObject({ type: "other" });
+    });
+
+    it("should ignore tool providerOptions['sap-ai'].cacheControl with foundation-models API (no plumbing)", async () => {
+      const model = createFMModel("gpt-4.1");
+      await model.doGenerate({
+        prompt: createPrompt("Hi"),
+        tools: [
+          {
+            description: "lookup",
+            inputSchema: { properties: {}, required: [], type: "object" },
+            name: "lookup",
+            providerOptions: {
+              "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } },
+            },
+            type: "function",
+          },
+        ],
+      });
+
+      const fm = await getMockClientForApi("foundation-models");
+      const request = fm.lastRequest as { tools?: { cache_control?: unknown }[] };
+      expect(request.tools?.[0]).not.toHaveProperty("cache_control");
     });
   });
 });

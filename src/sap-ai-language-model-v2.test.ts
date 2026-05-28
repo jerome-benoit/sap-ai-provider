@@ -224,6 +224,149 @@ describe("SAPAILanguageModelV2", () => {
       }
     });
 
+    it("should preserve response-metadata id through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockInternalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            id: "v3-to-v2-stream-id",
+            modelId: "gpt-4o",
+            timestamp: new Date(),
+            type: "response-metadata",
+          });
+          controller.enqueue({
+            finishReason: { raw: "stop", unified: "stop" },
+            type: "finish",
+            usage: { inputTokens: { total: 5 }, outputTokens: { total: 5 } },
+          });
+          controller.close();
+        },
+      });
+
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doStream = mockDoStream;
+
+      const result = await model.doStream({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      const parts = await readAllParts(result.stream);
+      const meta = parts.find((p) => p.type === "response-metadata");
+
+      expect(meta).toBeDefined();
+      expect((meta as { id?: string }).id).toBe("v3-to-v2-stream-id");
+    });
+
+    it("should preserve providerMetadata.cacheUsage on stream finish through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockInternalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            finishReason: { raw: "stop", unified: "stop" },
+            providerMetadata: {
+              "sap-ai": {
+                cacheUsage: { ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 },
+              },
+            },
+            type: "finish",
+            usage: { inputTokens: { total: 100 }, outputTokens: { total: 5 } },
+          });
+          controller.close();
+        },
+      });
+
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doStream = mockDoStream;
+
+      const result = await model.doStream({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      const parts = await readAllParts(result.stream);
+      const finish = parts.find((p) => p.type === "finish");
+
+      if (finish?.type !== "finish") {
+        throw new Error("expected a finish part");
+      }
+      expect(finish.providerMetadata).toEqual({
+        "sap-ai": {
+          cacheUsage: { ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 },
+        },
+      });
+    });
+
+    it.each<{
+      description: string;
+      expectedV2: { message: string; type: "other" };
+      v3Warning: { details?: string; feature?: string; message?: string; type: string };
+    }>([
+      {
+        description: "other-type warning forwards verbatim",
+        expectedV2: { message: "deprecated knob", type: "other" },
+        v3Warning: { message: "deprecated knob", type: "other" },
+      },
+      {
+        description: "unsupported warning rewrites to 'Unsupported feature: …'",
+        expectedV2: { message: "Unsupported feature: cacheControl on tool", type: "other" },
+        v3Warning: { feature: "cacheControl on tool", type: "unsupported" },
+      },
+      {
+        description: "compatibility warning rewrites to 'Compatibility mode: …'",
+        expectedV2: {
+          message: "Compatibility mode: legacy responses. switching is recommended",
+          type: "other",
+        },
+        v3Warning: {
+          details: "switching is recommended",
+          feature: "legacy responses",
+          type: "compatibility",
+        },
+      },
+    ])(
+      "should preserve stream-start $description through the V3→V2 facade",
+      async ({ expectedV2, v3Warning }) => {
+        const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+        const mockInternalStream = new ReadableStream({
+          start(controller) {
+            controller.enqueue({
+              type: "stream-start",
+              warnings: [v3Warning],
+            });
+            controller.enqueue({
+              finishReason: { raw: "stop", unified: "stop" },
+              type: "finish",
+              usage: { inputTokens: { total: 5 }, outputTokens: { total: 5 } },
+            });
+            controller.close();
+          },
+        });
+
+        const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+        (model as any).internalModel.doStream = mockDoStream;
+
+        const result = await model.doStream({
+          prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+        });
+
+        const parts = await readAllParts(result.stream);
+        const start = parts.find((p) => p.type === "stream-start");
+
+        if (start?.type !== "stream-start") {
+          throw new Error("expected a stream-start part");
+        }
+        expect(start.warnings).toEqual([expectedV2]);
+      },
+    );
+
     it("should propagate errors from internal doGenerate", async () => {
       const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
 
@@ -254,6 +397,152 @@ describe("SAPAILanguageModelV2", () => {
           prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
         }),
       ).rejects.toThrow("Internal streaming failed");
+    });
+
+    it("should preserve masking deprecation warning through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+      const expectedMessage =
+        "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+        "Migrate to settings.masking.providers.";
+
+      const mockDoGenerate = vi.fn().mockResolvedValue({
+        content: [{ text: "Test", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        usage: { inputTokens: { total: 10 }, outputTokens: { total: 20 } },
+        warnings: [{ message: expectedMessage, type: "other" }],
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doGenerate = mockDoGenerate;
+
+      const result = await model.doGenerate({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      expect(result.warnings).toEqual([{ message: expectedMessage, type: "other" }]);
+    });
+
+    it("should forward tool-level cacheControl through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockDoGenerate = vi.fn().mockResolvedValue({
+        content: [{ text: "Test", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        usage: { inputTokens: { total: 5 }, outputTokens: { total: 5 } },
+        warnings: [],
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doGenerate = mockDoGenerate;
+
+      const tools = [
+        {
+          inputSchema: { properties: {}, type: "object" as const },
+          name: "weatherLookup",
+          providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
+          type: "function" as const,
+        },
+      ];
+
+      await model.doGenerate({
+        prompt: [{ content: [{ text: "Test", type: "text" as const }], role: "user" as const }],
+        tools,
+      });
+
+      expect(mockDoGenerate).toHaveBeenCalledWith(expect.objectContaining({ tools }));
+    });
+
+    it("should preserve providerMetadata['sap-ai'].requestId through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockDoGenerate = vi.fn().mockResolvedValue({
+        content: [{ text: "Test", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        providerMetadata: { "sap-ai": { requestId: "v3-to-v2-req-id" } },
+        response: { headers: { "x-request-id": "header-rid" }, id: "v2-resp-id" },
+        usage: { inputTokens: { total: 10 }, outputTokens: { total: 20 } },
+        warnings: [],
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doGenerate = mockDoGenerate;
+
+      const result = await model.doGenerate({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      expect(
+        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
+      ).toBe("v3-to-v2-req-id");
+    });
+
+    it("should preserve providerMetadata['sap-ai'].requestId on stream finish through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockInternalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            finishReason: { raw: "stop", unified: "stop" },
+            providerMetadata: { "sap-ai": { requestId: "v3-to-v2-stream-req-id" } },
+            type: "finish",
+            usage: { inputTokens: { total: 10 }, outputTokens: { total: 5 } },
+          });
+          controller.close();
+        },
+      });
+
+      const mockDoStream = vi.fn().mockResolvedValue({ stream: mockInternalStream });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doStream = mockDoStream;
+
+      const result = await model.doStream({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      const parts = await readAllParts(result.stream);
+      const finish = parts.find((p) => p.type === "finish");
+      expect(
+        (finish as undefined | { providerMetadata?: { "sap-ai"?: { requestId?: string } } })
+          ?.providerMetadata?.["sap-ai"]?.requestId,
+      ).toBe("v3-to-v2-stream-req-id");
+    });
+
+    it("should preserve providerMetadata.cacheUsage on doGenerate through the V3→V2 facade", async () => {
+      const model = new SAPAILanguageModelV2("gpt-4o", {}, defaultConfig);
+
+      const mockDoGenerate = vi.fn().mockResolvedValue({
+        content: [{ text: "Test", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        providerMetadata: {
+          "sap-ai": {
+            cacheUsage: { ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 },
+          },
+        },
+        response: { id: "v2-resp-id" },
+        usage: { inputTokens: { total: 100 }, outputTokens: { total: 5 } },
+        warnings: [],
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      (model as any).internalModel.doGenerate = mockDoGenerate;
+
+      const result = await model.doGenerate({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+      });
+
+      expect(
+        (
+          result.providerMetadata?.["sap-ai"] as
+            | undefined
+            | {
+                cacheUsage?: {
+                  ephemeral_1h_input_tokens?: number;
+                  ephemeral_5m_input_tokens?: number;
+                };
+              }
+        )?.cacheUsage,
+      ).toEqual({ ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 });
     });
   });
 });

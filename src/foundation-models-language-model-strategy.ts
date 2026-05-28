@@ -15,7 +15,6 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
-import { normalizeHeaders } from "./sap-ai-error.js";
 import {
   buildModelDeployment,
   convertResponseFormat,
@@ -89,7 +88,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
 
     const request: AzureOpenAiChatCompletionParameters = {
       messages: commonParts.messages as AzureOpenAiChatCompletionParameters["messages"],
-      ...commonParts.modelParams,
+      ...(commonParts.modelParams as Partial<AzureOpenAiChatCompletionParameters>),
       ...(toolsResult.tools?.length ? { tools: toolsResult.tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
       ...(responseFormat ? { response_format: responseFormat } : {}),
@@ -119,12 +118,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<SDKResponse> {
     const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
 
-    const headers = normalizeHeaders(response.rawResponse.headers);
-
-    // Extract completion ID from SDK internal data (chatcmpl-xxx style).
-    // Falls back to the x-request-id header if not available.
-    const completionId =
-      (response as { _data?: { id?: string } })._data?.id ?? headers?.["x-request-id"];
+    const { requestId, responseId } = this.extractMetadata(response);
 
     return {
       getContent: () => response.getContent(),
@@ -133,7 +127,8 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
-      responseId: completionId,
+      requestId,
+      responseId,
     };
   }
 
@@ -145,13 +140,20 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal);
 
-    // AzureOpenAiChatCompletionStreamResponse exposes neither rawResponse nor _data.
-    // Response headers and completion ID are unavailable — base strategy falls back to UUID.
+    const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
+
     return {
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
+      requestId,
+      responseHeaders,
+      responseId,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
+  }
+
+  protected getCompletionIdPath(): readonly string[] {
+    return ["id"];
   }
 
   protected getParamMappings(): readonly ParamMapping[] {

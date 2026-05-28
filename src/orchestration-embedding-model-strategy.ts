@@ -1,8 +1,9 @@
 /** Orchestration embedding model strategy using `@sap-ai-sdk/orchestration`. */
-import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
+import type { EmbeddingModelV3Embedding, SharedV3Warning } from "@ai-sdk/provider";
 import type {
   EmbeddingModelConfig,
   EmbeddingModuleConfig,
+  MaskingModule,
   OrchestrationEmbeddingClient,
   OrchestrationEmbeddingResponse,
 } from "@sap-ai-sdk/orchestration";
@@ -11,7 +12,14 @@ import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { BaseEmbeddingModelStrategy } from "./base-embedding-model-strategy.js";
-import { type EmbeddingProviderOptions, hasKeys, normalizeEmbedding } from "./strategy-utils.js";
+import { validateMaskingProvidersDeprecation } from "./sap-ai-validation.js";
+import {
+  type EmbeddingProviderOptions,
+  extractResponseMetadata,
+  hasKeys,
+  normalizeEmbedding,
+  type ResponseMetadata,
+} from "./strategy-utils.js";
 
 /** @internal */
 type OrchestrationEmbeddingClientClass = typeof OrchestrationEmbeddingClient;
@@ -52,7 +60,9 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
 
     const moduleConfig: EmbeddingModuleConfig = {
       embeddings: embeddingConfig,
-      ...(settings.masking && hasKeys(settings.masking) ? { masking: settings.masking } : {}),
+      ...(settings.masking && hasKeys(settings.masking)
+        ? { masking: settings.masking as MaskingModule }
+        : {}),
     };
 
     return new this.ClientClass(moduleConfig, config.deploymentConfig, config.destination);
@@ -78,6 +88,12 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
     return sortedEmbeddings.map((data) => normalizeEmbedding(data.embedding));
   }
 
+  protected override extractResponseMetadata(
+    response: OrchestrationEmbeddingResponse,
+  ): ResponseMetadata {
+    return extractResponseMetadata(response, "response");
+  }
+
   protected extractTokenCount(response: OrchestrationEmbeddingResponse): number {
     const tokenUsage = response.getTokenUsage();
     return tokenUsage.total_tokens;
@@ -85,5 +101,12 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
 
   protected getUrl(): string {
     return "sap-ai:orchestration/embeddings";
+  }
+
+  protected override resolveWarnings(
+    settings: SAPAIEmbeddingSettings,
+    warnings: SharedV3Warning[],
+  ): void {
+    validateMaskingProvidersDeprecation(settings, warnings);
   }
 }

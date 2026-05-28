@@ -8,6 +8,11 @@ import { clearStrategyCaches } from "./sap-ai-strategy.js";
 
 type APIType = "foundation-models" | "orchestration";
 
+const EMBED_REQUEST_IDS = {
+  "foundation-models": "test-fm-embed-request-id",
+  orchestration: "test-orch-embed-request-id",
+} as const;
+
 interface FMConstructorCall {
   destination: unknown;
   modelDeployment:
@@ -29,6 +34,8 @@ interface FMEmbeddingResponse {
     data: { embedding: number[] | string; index: number }[];
     usage: { prompt_tokens: number; total_tokens: number };
   };
+  getRequestId?: () => string | undefined;
+  rawResponse?: { headers: Record<string, unknown> };
 }
 
 interface OrchestrationConstructorCall {
@@ -45,7 +52,9 @@ interface OrchestrationEmbedCall {
 }
 interface OrchestrationEmbeddingResponse {
   getEmbeddings: () => { embedding: number[] | string; index: number; object: string }[];
+  getRequestId?: () => string | undefined;
   getTokenUsage: () => { prompt_tokens: number; total_tokens: number };
+  response?: { headers: Record<string, unknown> };
 }
 
 vi.mock("@sap-ai-sdk/orchestration", () => {
@@ -68,14 +77,20 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
           if (MockOrchestrationEmbeddingClient.embedResponse) {
             const response = MockOrchestrationEmbeddingClient.embedResponse;
             MockOrchestrationEmbeddingClient.embedResponse = undefined;
-            return Promise.resolve(response);
+            return Promise.resolve({
+              getRequestId: () => undefined,
+              response: { headers: {} },
+              ...response,
+            });
           }
           return Promise.resolve({
             getEmbeddings: () => [
               { embedding: [0.1, 0.2, 0.3], index: 0, object: "embedding" },
               { embedding: [0.4, 0.5, 0.6], index: 1, object: "embedding" },
             ],
+            getRequestId: () => EMBED_REQUEST_IDS.orchestration,
             getTokenUsage: () => ({ prompt_tokens: 8, total_tokens: 8 }),
+            response: { headers: { "x-request-id": EMBED_REQUEST_IDS.orchestration } },
           });
         },
       );
@@ -121,7 +136,11 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
           if (MockAzureOpenAiEmbeddingClient.embedResponse) {
             const response = MockAzureOpenAiEmbeddingClient.embedResponse;
             MockAzureOpenAiEmbeddingClient.embedResponse = undefined;
-            return Promise.resolve(response);
+            return Promise.resolve({
+              getRequestId: () => undefined,
+              rawResponse: { headers: {} },
+              ...response,
+            });
           }
           return Promise.resolve({
             _data: {
@@ -131,6 +150,8 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
               ],
               usage: { prompt_tokens: 8, total_tokens: 8 },
             },
+            getRequestId: () => EMBED_REQUEST_IDS["foundation-models"],
+            rawResponse: { headers: { "x-request-id": EMBED_REQUEST_IDS["foundation-models"] } },
           });
         },
       );
@@ -371,6 +392,8 @@ describe("SAPAIEmbeddingModel", () => {
         values: ["Hello", "World"],
       });
 
+      const expectedRequestId = EMBED_REQUEST_IDS[api];
+
       expect(result.embeddings).toEqual([
         [0.1, 0.2, 0.3],
         [0.4, 0.5, 0.6],
@@ -378,9 +401,14 @@ describe("SAPAIEmbeddingModel", () => {
       expect(result.usage?.tokens).toBe(8);
       expect(result.warnings).toEqual([]);
       expect(result.providerMetadata).toEqual({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        "sap-ai": { model: "text-embedding-ada-002", version: expect.any(String) },
+        "sap-ai": {
+          model: "text-embedding-ada-002",
+          requestId: expectedRequestId,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          version: expect.any(String),
+        },
       });
+      expect(result.response?.headers?.["x-request-id"]).toBe(expectedRequestId);
     });
 
     it("should throw TooManyEmbeddingValuesForCallError when exceeding limit", async () => {
@@ -409,6 +437,152 @@ describe("SAPAIEmbeddingModel", () => {
 
       const lastCall = await getLastEmbedCallForApi(api);
       expect(lastCall?.requestConfig).toBeUndefined();
+    });
+
+    it("should omit requestId when SDK getRequestId() returns undefined", async () => {
+      await setEmbedResponseForApi(
+        api,
+        api === "foundation-models"
+          ? {
+              _data: {
+                data: [{ embedding: [0.1, 0.2], index: 0 }],
+                usage: { prompt_tokens: 1, total_tokens: 1 },
+              },
+              getRequestId: () => undefined,
+              rawResponse: { headers: {} },
+            }
+          : {
+              getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+              getRequestId: () => undefined,
+              getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+              response: { headers: {} },
+            },
+      );
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.providerMetadata?.["sap-ai"]).not.toHaveProperty("requestId");
+    });
+
+    it("should not crash when SDK lacks getRequestId or response headers entirely", async () => {
+      await setEmbedResponseForApi(
+        api,
+        api === "foundation-models"
+          ? {
+              _data: {
+                data: [{ embedding: [0.1, 0.2], index: 0 }],
+                usage: { prompt_tokens: 1, total_tokens: 1 },
+              },
+            }
+          : {
+              getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+              getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+            },
+      );
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.embeddings).toEqual([[0.1, 0.2]]);
+      expect(result.usage?.tokens).toBe(1);
+    });
+
+    it("should not crash when SDK rawResponse/response accessor throws", async () => {
+      const baseFM = {
+        _data: {
+          data: [{ embedding: [0.1, 0.2], index: 0 }],
+          usage: { prompt_tokens: 1, total_tokens: 1 },
+        },
+        getRequestId: () => "throwing-rid",
+      };
+      const baseOrch = {
+        getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+        getRequestId: () => "throwing-rid",
+        getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+      };
+      const headersField = api === "foundation-models" ? "rawResponse" : "response";
+      const probe = api === "foundation-models" ? { ...baseFM } : { ...baseOrch };
+      Object.defineProperty(probe, headersField, {
+        get(): { headers: Record<string, string> } {
+          throw new Error("rawResponse not available");
+        },
+      });
+      await setEmbedResponseForApi(api, probe);
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.embeddings).toEqual([[0.1, 0.2]]);
+      expect(result.response?.headers).toBeUndefined();
+      expect(
+        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
+      ).toBe("throwing-rid");
+    });
+
+    it("should not crash when SDK getRequestId() throws", async () => {
+      const headersField = api === "foundation-models" ? "rawResponse" : "response";
+      const baseFM = {
+        _data: {
+          data: [{ embedding: [0.1, 0.2], index: 0 }],
+          usage: { prompt_tokens: 1, total_tokens: 1 },
+        },
+        getRequestId: () => {
+          throw new Error("getRequestId not available");
+        },
+        [headersField]: { headers: { "x-request-id": "header-rid" } },
+      };
+      const baseOrch = {
+        getEmbeddings: () => [{ embedding: [0.1, 0.2], index: 0, object: "embedding" }],
+        getRequestId: () => {
+          throw new Error("getRequestId not available");
+        },
+        getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+        [headersField]: { headers: { "x-request-id": "header-rid" } },
+      };
+      const probe = api === "foundation-models" ? baseFM : baseOrch;
+      await setEmbedResponseForApi(api, probe);
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.embeddings).toEqual([[0.1, 0.2]]);
+      expect(
+        (result.providerMetadata?.["sap-ai"] as undefined | { requestId?: string })?.requestId,
+      ).toBe("header-rid");
+    });
+
+    it.each([
+      {
+        description: "wire normalizeHeaders into doEmbed response",
+        expected: { "x-multi": "a; b", "x-request-id": "rid" },
+        headers: { "x-multi": ["a", "b"], "x-request-id": "rid" },
+      },
+    ])("should $description", async ({ expected, headers }) => {
+      const headerBag = headers as Record<string, unknown>;
+      await setEmbedResponseForApi(
+        api,
+        api === "foundation-models"
+          ? {
+              _data: {
+                data: [{ embedding: [0.1], index: 0 }],
+                usage: { prompt_tokens: 1, total_tokens: 1 },
+              },
+              getRequestId: () => undefined,
+              rawResponse: { headers: headerBag },
+            }
+          : {
+              getEmbeddings: () => [{ embedding: [0.1], index: 0, object: "embedding" }],
+              getRequestId: () => undefined,
+              getTokenUsage: () => ({ prompt_tokens: 1, total_tokens: 1 }),
+              response: { headers: headerBag },
+            },
+      );
+
+      const model = createModelForApi(api);
+      const result = await model.doEmbed({ values: ["a"] });
+
+      expect(result.response?.headers).toEqual(expected);
     });
   });
 
@@ -624,6 +798,52 @@ describe("SAPAIEmbeddingModel", () => {
         expect(MockOrchestrationEmbeddingClient.lastConstructorCall?.config.masking).toEqual(
           masking,
         );
+      });
+
+      it("should surface masking_providers deprecation warning on embedding orch path", async () => {
+        const model = createModelForApi("orchestration", "text-embedding-ada-002", {
+          masking: {
+            masking_providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+        });
+
+        const result = await model.doEmbed({ values: ["x"] });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toMatchObject({ type: "other" });
+        expect((deprecation as { message?: string }).message).toBe(
+          "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
+            "Migrate to settings.masking.providers.",
+        );
+      });
+
+      it("should not surface deprecation on embedding orch path when providers shape is used", async () => {
+        const model = createModelForApi("orchestration", "text-embedding-ada-002", {
+          masking: {
+            providers: [
+              {
+                entities: [{ type: "profile-email" }],
+                method: "anonymization",
+                type: "sap_data_privacy_integration",
+              },
+            ],
+          },
+        });
+
+        const result = await model.doEmbed({ values: ["x"] });
+
+        const deprecation = result.warnings.find((w) =>
+          ((w as { message?: string }).message ?? "").includes("masking_providers"),
+        );
+        expect(deprecation).toBeUndefined();
       });
 
       it("should omit masking when empty object", async () => {
