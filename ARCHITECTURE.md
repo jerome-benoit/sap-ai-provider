@@ -16,7 +16,7 @@ see [API Reference](./API_REFERENCE.md).
 - Transforms messages bidirectionally (AI SDK ↔ SAP format)
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
 
-**Key Components:** Provider → OAuth Manager → Message Transformer → Error
+**Key Components:** Provider → SAP SDK Client Configuration → Message Transformer → Error
 Handler → SAP AI Core API
 
 ## Table of Contents
@@ -33,7 +33,7 @@ Handler → SAP AI Core API
     - [`SAPAIProvider`](#sapaiprovider)
     - [`SAPAILanguageModel`](#sapailanguagemodel)
     - [`SAPAIEmbeddingModel`](#sapaiembeddingmodel)
-    - [`Authentication System`](#authentication-system)
+    - [`SAP SDK Client Configuration`](#sap-sdk-client-configuration)
     - [`Message Conversion`](#message-conversion)
 - [Request/Response Flow](#requestresponse-flow)
   - [Standard Text Generation (Complete Flow)](#standard-text-generation-complete-flow)
@@ -46,9 +46,9 @@ Handler → SAP AI Core API
   - [Request Cancellation](#request-cancellation)
   - [Tool Calling Flow](#tool-calling-flow)
   - [Data Masking Flow (SAP DPI Integration)](#data-masking-flow-sap-dpi-integration)
-- [Authentication System](#authentication-system-1)
-  - [OAuth2 Authentication Flow](#oauth2-authentication-flow)
-  - [OAuth2 Flow](#oauth2-flow)
+- [SAP SDK Authentication](#sap-sdk-authentication)
+  - [Credential Sources](#credential-sources)
+  - [Provider Responsibilities](#provider-responsibilities)
 - [Error Handling](#error-handling)
   - [Error Conversion Architecture](#error-conversion-architecture)
   - [Error Classification](#error-classification)
@@ -85,10 +85,11 @@ formats.
 
 The diagram below illustrates the complete architecture of the SAP AI Provider,
 showing how it integrates your application with SAP AI Core through the Vercel
-AI SDK. The provider layer handles OAuth2 authentication, message transformation
-between AI SDK and SAP formats, and error handling. SAP AI Core routes requests
-to various AI models (OpenAI, Anthropic Claude, Google Gemini, Amazon Nova,
-and open-source models).
+AI SDK. The provider layer configures SAP AI SDK clients, transforms messages
+between AI SDK and SAP formats, and converts errors. The SAP AI SDK and SAP
+Cloud SDK handle credential discovery, token acquisition, token caching, and
+token refresh. SAP AI Core routes requests to various AI models (OpenAI,
+Anthropic Claude, Google Gemini, Amazon Nova, and open-source models).
 
 ```mermaid
 graph TB
@@ -99,7 +100,7 @@ graph TB
 
     subgraph "Provider Layer"
         Provider[SAP AI Provider]
-        Auth[OAuth2 Manager]
+        SAPSDK[SAP AI SDK Client]
         Transform[Message Transformer]
         Error[Error Handler]
     end
@@ -119,9 +120,9 @@ graph TB
 
     App -->|generateText/streamText| SDK
     SDK -->|doGenerate/doStream| Provider
-    Provider -->|Get Token| Auth
-    Auth -->|Client Credentials| OAuth
-    OAuth -->|Access Token| Auth
+    Provider -->|Configure Client| SAPSDK
+    SAPSDK -->|Credential and Token Handling| OAuth
+    OAuth -->|Access Token| SAPSDK
     Provider -->|Convert Messages| Transform
     Transform -->|SAP Format| Provider
     Provider -->|v2 API Request| SAPAI
@@ -151,17 +152,17 @@ graph TB
 
 This sequence diagram shows the complete request lifecycle from your application
 through the AI SDK and provider to SAP AI Core. The flow is divided into four
-phases: Authentication (OAuth2 token retrieval), Message Transformation
-(converting AI SDK format to SAP format), API Request & Response (communication
-with SAP AI Core and the AI model), and Response Processing (parsing and
-converting back to AI SDK format).
+phases: SAP SDK client setup, Message Transformation (converting AI SDK format
+to SAP format), API Request & Response (communication with SAP AI Core and the
+AI model), and Response Processing (parsing and converting back to AI SDK
+format).
 
 ```mermaid
 sequenceDiagram
     participant App as Application
     participant SDK as Vercel AI SDK
     participant Prov as SAP AI Provider
-    participant Auth as OAuth Manager
+    participant SAPSDK as SAP AI SDK
     participant Trans as Transformer
     participant SAP as SAP AI Core
     participant Model as AI Model
@@ -170,11 +171,11 @@ sequenceDiagram
     SDK->>Prov: doGenerate(options)
 
     rect rgb(240, 248, 255)
-        Note over Prov,Auth: Authentication Phase
-        Prov->>Auth: getToken()
-        Auth->>SAP: POST /oauth/token
-        SAP-->>Auth: access_token
-        Auth-->>Prov: Bearer token
+        Note over Prov,SAPSDK: SAP SDK Client Setup
+        Prov->>SAPSDK: Create client with deployment/resource group
+        SAPSDK->>SAP: Resolve credentials and token
+        SAP-->>SAPSDK: access_token
+        SAPSDK-->>Prov: Authenticated client
     end
 
     rect rgb(255, 248, 240)
@@ -216,15 +217,16 @@ sequenceDiagram
 ### Component Interaction Map
 
 This diagram details the responsibilities of each major component in the
-provider architecture, including the SAPAIProvider (OAuth2 management,
-configuration), SAPAILanguageModel (request/response handling, tool calls),
-Authentication System (token management), Message Transformer (format
-conversion), API Client (HTTP communication), and Error Handling system.
+provider architecture, including the SAPAIProvider (factory and shared
+configuration), SAPAILanguageModel (request/response handling, tool calls), SAP
+SDK Client Configuration (deployment, resource group, and destination setup),
+Message Transformer (format conversion), API Client (HTTP communication), and
+Error Handling system.
 
 ```mermaid
 graph TB
     subgraph "Component Responsibilities"
-        Provider[SAPAIProvider<br/>━━━━━━━━━━━━━<br/>• OAuth2 Management<br/>• Provider Factory<br/>• Configuration<br/>• API Selection]
+        Provider[SAPAIProvider<br/>━━━━━━━━━━━━━<br/>• Provider Factory<br/>• SAP SDK Client Config<br/>• Configuration<br/>• API Selection]
 
         Model[SAPAILanguageModel<br/>━━━━━━━━━━━━━━━━━<br/>• doGenerate/doStream<br/>• API Resolution<br/>• Strategy Delegation<br/>• Late Binding]
 
@@ -318,7 +320,7 @@ src/
 
 - **Purpose**: Factory for creating language and embedding model instances
 - **Responsibilities**:
-  - Authentication management
+  - SAP AI SDK client configuration
   - Configuration validation
   - Model instance creation (language and embedding)
   - Base URL and deployment management
@@ -341,13 +343,14 @@ src/
   - AbortSignal handling for request cancellation
   - Uses `OrchestrationEmbeddingClient` from SAP AI SDK
 
-#### `Authentication System`
+#### `SAP SDK Client Configuration`
 
-- **Purpose**: OAuth2 token management for SAP AI Core
+- **Purpose**: Configure SAP AI SDK clients for SAP AI Core calls
 - **Responsibilities**:
-  - Service key parsing
-  - Token acquisition and refresh
-  - Credential validation
+  - Pass deployment ID or resource group to SAP AI SDK clients
+  - Pass custom SAP Cloud SDK destination options when configured
+  - Set SAP Cloud SDK log level defaults
+  - Leave credential discovery, token acquisition, token caching, and token refresh to the SAP AI SDK and SAP Cloud SDK
 
 #### `Message Conversion`
 
@@ -371,7 +374,7 @@ sequenceDiagram
     participant App as Application
     participant SDK as Vercel AI SDK
     participant Provider as SAP AI Provider
-    participant Auth as Auth System
+    participant SAPSDK as SAP AI SDK
     participant Transform as Message Transformer
     participant SAP as SAP AI Core
     participant Model as AI Model (gpt-4.1, Claude, etc.)
@@ -388,17 +391,9 @@ sequenceDiagram
     end
 
     rect rgb(240, 255, 240)
-        Note over Provider,Auth: 3. Authentication
-        Provider->>Auth: getAuthToken()
-
-        alt Token Cached
-            Auth-->>Provider: Cached token
-        else Token Expired/Missing
-            Auth->>SAP: POST /oauth/token<br/>{grant_type: client_credentials}
-            SAP-->>Auth: {access_token, expires_in}
-            Auth->>Auth: Cache token
-            Auth-->>Provider: Fresh token
-        end
+        Note over Provider,SAPSDK: 3. SAP SDK Client Configuration
+        Provider->>SAPSDK: Create client with deployment config<br/>and destination options
+        Note right of SAPSDK: SAP AI SDK and SAP Cloud SDK<br/>resolve credentials, acquire tokens,<br/>cache tokens, and refresh tokens
     end
 
     rect rgb(255, 245, 230)
@@ -839,85 +834,59 @@ sequenceDiagram
     end
 ```
 
-## Authentication System
+## SAP SDK Authentication
 
-### OAuth2 Authentication Flow
+Authentication is handled by the SAP AI SDK packages and the SAP Cloud SDK. This
+provider doesn't implement an OAuth manager or token cache. It creates SAP SDK
+clients with the selected deployment configuration, resource group, and optional
+destination settings, then the SDK layers resolve credentials and manage tokens.
 
-This diagram shows how OAuth2 authentication works with token caching. The
-provider checks for a valid cached token first; if expired or missing, it
-requests a new token using client credentials, caches it, and uses it for API
-requests.
+### Credential Sources
+
+The SAP SDK layers read credentials from the standard SAP Cloud SDK sources:
+
+- **Local**: `AICORE_SERVICE_KEY` environment variable
+- **SAP BTP**: `VCAP_SERVICES` service binding
+- **Custom destination**: `destination` passed to `createSAPAIProvider()`
 
 ```mermaid
 sequenceDiagram
     participant App as Application
     participant Provider as SAP AI Provider
-    participant Cache as Token Cache
+    participant SAPSDK as SAP AI SDK / SAP Cloud SDK
     participant OAuth as SAP OAuth2 Server
     participant SAPAI as SAP AI Core API
 
-    rect rgb(240, 248, 255)
-        Note over App,Provider: 1. Provider Initialization (v2.0+)
-        App->>Provider: createSAPAIProvider()<br/>(synchronous, no await needed)
-        Provider->>Provider: Initialize with SAP AI SDK<br/>Authentication handled automatically
+    App->>Provider: createSAPAIProvider(options)
+    Provider->>Provider: Store provider settings
+    App->>Provider: generateText() / streamText()
+    Provider->>SAPSDK: Create Orchestration or Foundation Models client
+    SAPSDK->>SAPSDK: Resolve credentials and cached token
+
+    alt Token missing or expired
+        SAPSDK->>OAuth: Request access token
+        OAuth-->>SAPSDK: access_token
+        SAPSDK->>SAPSDK: Cache token for reuse
     end
 
-    rect rgb(255, 248, 240)
-        Note over Provider,Cache: 2. First API Call (No Token)
-        Provider->>Cache: Check for cached token
-        Cache-->>Provider: Token not found
-    end
-
-    rect rgb(248, 255, 240)
-        Note over Provider,OAuth: 3. Token Acquisition
-        Provider->>Provider: Encode credentials to Base64<br/>clientid:clientsecret
-        Provider->>OAuth: POST /oauth/token<br/>Headers: {<br/>  Authorization: Basic {base64_credentials},<br/>  Content-Type: application/x-www-form-urlencoded<br/>}<br/>Body: grant_type=client_credentials
-
-        OAuth->>OAuth: Validate credentials<br/>Check permissions<br/>Generate token
-
-        OAuth-->>Provider: {<br/>  access_token: "eyJhbGc...",<br/>  token_type: "bearer",<br/>  expires_in: 43199,<br/>  scope: "...",<br/>  jti: "..."<br/>}
-    end
-
-    rect rgb(255, 240, 248)
-        Note over Provider,Cache: 4. Token Caching
-        Provider->>Cache: Store token<br/>{<br/>  token: "eyJhbGc...",<br/>  expiresAt: Date.now() + 43199000<br/>}
-        Cache-->>Provider: Token cached
-    end
-
-    rect rgb(240, 255, 248)
-        Note over Provider,SAPAI: 5. API Call with Token
-        Provider->>SAPAI: POST /v2/inference/deployments/{id}/v2/completion<br/>Headers: {<br/>  Authorization: Bearer eyJhbGc...,<br/>  AI-Resource-Group: default<br/>}
-        SAPAI->>SAPAI: Validate token<br/>Extract tenant info<br/>Check permissions
-        SAPAI-->>Provider: Success response
-    end
-
-    rect rgb(248, 240, 255)
-        Note over Provider,SAPAI: 6. Subsequent Calls (Token Cached)
-        Provider->>Cache: Check for cached token
-        Cache-->>Provider: Token found (not expired)
-        Provider->>SAPAI: Use cached token
-        SAPAI-->>Provider: Success response
-    end
-
-    rect rgb(255, 248, 248)
-        Note over Provider,OAuth: 7. Token Expiration & Refresh
-        Provider->>Cache: Check for cached token
-        Cache-->>Provider: Token expired
-        Provider->>OAuth: POST /oauth/token<br/>(Request new token)
-        OAuth-->>Provider: New token
-        Provider->>Cache: Update cached token
-        Provider->>SAPAI: Use new token
-    end
+    SAPSDK->>SAPAI: Send authenticated request
+    SAPAI-->>SAPSDK: SAP AI Core response
+    SAPSDK-->>Provider: SDK response object
+    Provider-->>App: AI SDK result
 ```
 
-### OAuth2 Flow
+### Provider Responsibilities
 
-Authentication is handled automatically by the SAP AI SDK packages:
+This provider is responsible for:
 
-- **Local**: `AICORE_SERVICE_KEY` environment variable
-- **SAP BTP**: `VCAP_SERVICES` service binding
+- Selecting Orchestration or Foundation Models API
+- Passing `deploymentId`, `resourceGroup`, and `destination` to SAP SDK clients
+- Applying model settings and per-call provider options
+- Converting messages and responses between AI SDK and SAP formats
+- Converting SAP SDK errors to Vercel AI SDK error types
 
-The SDK manages credentials, token acquisition, caching, and refresh internally.
+The SAP AI SDK and SAP Cloud SDK are responsible for credential discovery, token
+acquisition, token caching, token refresh, and authenticated HTTP calls.
 
 ## Error Handling
 
@@ -1359,7 +1328,7 @@ suggestions for which API to use instead.
 
 1. **Connection Pooling**: Reuse HTTP connections
 2. **Request Batching**: Group multiple requests when possible
-3. **Caching**: Cache responses and authentication tokens
+3. **Caching**: Reuse SAP SDK clients and let SAP Cloud SDK handle token caching
 4. **Compression**: Enable gzip/deflate for requests/responses
 
 ### Memory Management
@@ -1378,7 +1347,7 @@ Consider tracking:
 - Request counts (total, successful, failed)
 - Response times and token usage
 - Error rates by status code
-- Authentication token refresh frequency
+- SAP SDK authentication and service-binding errors
 
 ### Scalability Patterns
 

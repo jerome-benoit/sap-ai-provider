@@ -206,6 +206,39 @@ describe("validateSettings", () => {
       }).toThrow(/Content filtering.*will be ignored by Foundation Models API/);
     });
 
+    it("should throw UnsupportedFeatureError for fallbackModuleConfigs", () => {
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            fallbackModuleConfigs: [
+              {
+                promptTemplating: {
+                  model: { name: "gpt-4.1-mini" },
+                  prompt: { template: [] },
+                },
+              },
+            ],
+          }),
+        });
+      }).toThrow(UnsupportedFeatureError);
+      expect(() => {
+        validateSettings({
+          api: "foundation-models",
+          modelSettings: mockSettings({
+            fallbackModuleConfigs: [
+              {
+                promptTemplating: {
+                  model: { name: "gpt-4.1-mini" },
+                  prompt: { template: [] },
+                },
+              },
+            ],
+          }),
+        });
+      }).toThrow(/fallbackModuleConfigs.*will be ignored by Foundation Models API/);
+    });
+
     it("should throw UnsupportedFeatureError for grounding", () => {
       expect(() => {
         validateSettings({
@@ -662,6 +695,19 @@ describe("validateSettings", () => {
 
     describe("switching from Orchestration to Foundation Models", () => {
       it.each([
+        {
+          feature: "fallbackModuleConfigs",
+          settings: {
+            fallbackModuleConfigs: [
+              {
+                promptTemplating: {
+                  model: { name: "gpt-4.1-mini" },
+                  prompt: { template: [] },
+                },
+              },
+            ],
+          },
+        },
         { feature: "filtering", settings: { filtering: { input: {} } } },
         {
           feature: "grounding",

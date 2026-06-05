@@ -531,28 +531,14 @@ const dpiConfig = buildDpiMaskingProvider({
 
 ### Content Filtering
 
-```typescript
-import "dotenv/config"; // Load environment variables
-import { buildAzureContentSafetyFilter, createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+Content filtering is available through the Orchestration API.
 
-const provider = createSAPAIProvider({
-  defaultSettings: {
-    filtering: {
-      input: {
-        filters: [
-          buildAzureContentSafetyFilter("input", {
-            hate: "ALLOW_SAFE",
-            violence: "ALLOW_SAFE_LOW_MEDIUM",
-          }),
-        ],
-      },
-    },
-  },
-});
-```
-
+**Complete example:**
+[examples/example-content-filtering.ts](./examples/example-content-filtering.ts)\
 **Complete documentation:**
 [API Reference - Content Filtering](./API_REFERENCE.md#buildazurecontentsafetyfiltertype-config)
+
+**Run it:** `npx tsx examples/example-content-filtering.ts`
 
 ### Document Grounding (RAG)
 
@@ -567,23 +553,26 @@ Ground LLM responses in your own documents using vector databases.
 const provider = createSAPAIProvider({
   defaultSettings: {
     grounding: buildDocumentGroundingConfig({
-      filters: [
-        {
-          id: "vector-store-1", // Your vector database ID
-          data_repositories: ["*"], // Search all repositories
-        },
-      ],
-      placeholders: {
-        input: ["?question"],
-        output: "groundingOutput",
-      },
+      filters: [{ id: "vector-store-1", data_repositories: ["*"] }],
+      placeholders: { input: ["groundingRequest"], output: "groundingOutput" },
     }),
   },
 });
 
-// Queries are now grounded in your documents
-const model = provider("gpt-4.1");
+const result = await generateText({
+  model: provider("gpt-4.1"),
+  prompt: "Question: {{?groundingRequest}}\nContext: {{?groundingOutput}}",
+  providerOptions: {
+    "sap-ai": {
+      escapeTemplatePlaceholders: false,
+      placeholderValues: { groundingRequest: "What is SAP?" },
+    },
+  },
+});
 ```
+
+Set `escapeTemplatePlaceholders` to `false` only when intentionally sending SAP
+or Jinja placeholders in prompts or messages.
 
 **Run it:** `npx tsx examples/example-document-grounding.ts`
 
@@ -736,6 +725,7 @@ features:
 | `example-streaming-chat.ts`         | Streaming responses         | Real-time text generation, SSE          |
 | `example-image-recognition.ts`      | Multi-modal with images     | Vision models, image analysis           |
 | `example-data-masking.ts`           | Data privacy integration    | DPI masking, anonymization              |
+| `example-content-filtering.ts`      | Content filtering           | Azure Content Safety, orchestration     |
 | `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen   |
 | `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation |
 | `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity  |

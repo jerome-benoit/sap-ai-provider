@@ -132,6 +132,7 @@ const ORCHESTRATION_MODULE_KEYS = ["masking", "filtering", "grounding", "transla
  */
 const CONFIG_REF_IGNORED_MODULES = [
   ...ORCHESTRATION_MODULE_KEYS,
+  "fallbackModuleConfigs",
   "promptTemplateRef",
   "responseFormat",
   "tools",

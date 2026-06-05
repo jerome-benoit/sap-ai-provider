@@ -68,6 +68,7 @@ consistently:
 - [Provider Options](#provider-options)
   - [`SAP_AI_PROVIDER_NAME`](#sap-ai-provider-name-constant)
   - [Per-message-part Provider Options (Anthropic prompt caching)](#per-message-part-provider-options-anthropic-prompt-caching)
+  - [File Parts](#file-parts)
   - [`sapAILanguageModelProviderOptions`](#sapailanguagemodelprovideroptions)
   - [`sapAIEmbeddingProviderOptions`](#sapaiembeddingprovideroptions)
   - [`SAPAILanguageModelProviderOptions` (Type)](#sapailanguagemodelprovideroptions-type)
@@ -1205,21 +1206,22 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                         | Default | Description                                              |
-| ---------------------------- | ---------------------------- | ------- | -------------------------------------------------------- |
-| `modelVersion`               | `string`                     | -       | Specific model version                                   |
-| `includeReasoning`           | `boolean`                    | `false` | Include reasoning parts in SAP prompt conversion         |
-| `escapeTemplatePlaceholders` | `boolean`                    | `true`  | Escape template delimiters to prevent conflicts          |
-| `modelParams`                | `ModelParams`                | -       | Model generation parameters                              |
-| `masking`                    | `MaskingModule`              | -       | Data masking configuration (DPI)                         |
-| `filtering`                  | `FilteringModule`            | -       | Content filtering configuration                          |
-| `grounding`                  | `GroundingModule`            | -       | Document grounding configuration                         |
-| `translation`                | `TranslationModule`          | -       | Translation configuration (Orchestration only)           |
-| `placeholderValues`          | `Record<string, string>`     | -       | Default values for template placeholders                 |
-| `promptTemplateRef`          | `PromptTemplateRef`          | -       | Reference to a Prompt Registry template                  |
-| `responseFormat`             | `ResponseFormatConfig`       | -       | Response format specification                            |
-| `streamOptions`              | `OrchestrationStreamOptions` | -       | Stream options for post-LLM modules (Orchestration only) |
-| `tools`                      | `ChatCompletionTool[]`       | -       | Tool definitions in SAP AI SDK format                    |
+| Property                     | Type                          | Default | Description                                                         |
+| ---------------------------- | ----------------------------- | ------- | ------------------------------------------------------------------- |
+| `modelVersion`               | `string`                      | -       | Specific model version                                              |
+| `includeReasoning`           | `boolean`                     | `false` | Include reasoning parts in SAP prompt conversion                    |
+| `escapeTemplatePlaceholders` | `boolean`                     | `true`  | Escape template delimiters to prevent conflicts                     |
+| `modelParams`                | `ModelParams`                 | -       | Model generation parameters                                         |
+| `masking`                    | `MaskingModule`               | -       | Data masking configuration (DPI)                                    |
+| `filtering`                  | `FilteringModule`             | -       | Content filtering configuration                                     |
+| `grounding`                  | `GroundingModule`             | -       | Document grounding configuration                                    |
+| `translation`                | `TranslationModule`           | -       | Translation configuration (Orchestration only)                      |
+| `placeholderValues`          | `Record<string, string>`      | -       | Default values for template placeholders                            |
+| `promptTemplateRef`          | `PromptTemplateRef`           | -       | Reference to a Prompt Registry template                             |
+| `responseFormat`             | `ResponseFormatConfig`        | -       | Response format specification                                       |
+| `streamOptions`              | `OrchestrationStreamOptions`  | -       | Stream options for post-LLM modules (Orchestration only)            |
+| `tools`                      | `ChatCompletionTool[]`        | -       | Tool definitions in SAP AI SDK format                               |
+| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]` | -       | Ordered fallback prompt module configurations for Orchestration API |
 
 **Example:**
 
@@ -1250,7 +1252,9 @@ const settings: SAPAISettings = {
 };
 ```
 
-> **Note:** The `escapeTemplatePlaceholders` option is enabled by default to prevent SAP AI Core orchestration API errors when content contains template syntax (`{{variable}}`, `{% if %}`, `{# comment #}`). Set to `false` only if you intentionally use SAP orchestration templating features. See [Troubleshooting - Problem: Template Placeholder Conflicts](./TROUBLESHOOTING.md#problem-template-placeholder-conflicts) for details.
+> **Note:** The `escapeTemplatePlaceholders` option is enabled by default to prevent SAP AI Core orchestration API errors when content contains template syntax (`{{variable}}`, `{% if %}`, `{# comment #}`). Set it to `false` only when you intentionally send SAP or Jinja placeholders in prompts or messages and supply their values through `placeholderValues`. See [Troubleshooting - Problem: Template Placeholder Conflicts](./TROUBLESHOOTING.md#problem-template-placeholder-conflicts) for details.
+>
+> **Note:** `fallbackModuleConfigs` are only used when the Orchestration API builds inline or prompt-template configuration locally. They are ignored when `orchestrationConfigRef` is set because the stored orchestration configuration owns the module list.
 
 **API-Specific Settings Types:**
 
@@ -1258,7 +1262,7 @@ For type-safe API-specific configuration, use the discriminated union types:
 
 - `OrchestrationModelSettings` - Settings with `api?: "orchestration"` and
   Orchestration-only options (`filtering`, `masking`, `grounding`, `translation`,
-  `tools`, `streamOptions`, `escapeTemplatePlaceholders`)
+  `tools`, `streamOptions`, `fallbackModuleConfigs`, `escapeTemplatePlaceholders`)
 - `FoundationModelsModelSettings` - Settings with `api: "foundation-models"` and
   Foundation Models-only options (`dataSources`)
 
@@ -1523,7 +1527,9 @@ const result = await generateText({
 
 Per-part directive (`providerOptions['sap-ai'].cacheControl`) requesting
 Anthropic ephemeral prompt caching. Honored only by the orchestration API
-(forwarded as `cache_control`); Foundation Models ignores it.
+(forwarded as `cache_control`); Foundation Models ignores it. This is a request
+directive passed to the backend, not a guarantee that the model will report a
+cache hit.
 
 **Input shape:**
 
@@ -1547,7 +1553,9 @@ type CacheControl = {
 
 `cacheControl` on an assistant `tool-call` part is unsupported and emits a
 single `unsupported` warning (deduplicated by feature key). Invalid blocks are
-dropped and surface a `type: "other"` warning naming the offending path.
+dropped and surface a `type: "other"` warning naming the offending path. Use
+`providerMetadata['sap-ai'].cacheUsage` on the result to inspect backend-reported
+prompt-cache token buckets when they are present.
 
 **Example:**
 
@@ -1578,23 +1586,67 @@ const cacheUsage = result.providerMetadata?.["sap-ai"]?.cacheUsage;
 
 ---
 
+### File Parts
+
+User message `file` parts are converted for the Orchestration API before they are
+sent to SAP AI Core:
+
+| AI SDK file part                         | SAP message content                     |
+| ---------------------------------------- | --------------------------------------- |
+| `mediaType` starts with `image/`         | `image_url` with a data URL             |
+| any other `mediaType`                    | `file` with `file_data` data URL        |
+| `filename` on the AI SDK file part       | forwarded as `file.filename`            |
+| `providerOptions['sap-ai'].cacheControl` | forwarded as `cache_control` when valid |
+
+File data may be a `URL`, a base64 string, `Uint8Array`, `Buffer`, or a
+buffer-like object with `toString("base64")`. Non-image file conversion is
+supported by this provider, but SAP AI Core backend and model MIME support varies
+by tenant, deployment, and selected model. If a model rejects a MIME type, choose
+a model or orchestration setup that supports that file type.
+
+```typescript
+const result = await generateText({
+  model: provider("gpt-4.1"),
+  messages: [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "Summarize this document." },
+        {
+          type: "file",
+          filename: "policy.pdf",
+          mediaType: "application/pdf",
+          data: pdfBytes,
+        },
+      ],
+    },
+  ],
+});
+```
+
+---
+
 ### `sapAILanguageModelProviderOptions`
 
 Zod schema for validating language model provider options.
 
 **Validated Fields:**
 
-| Field                             | Type                     | Description                                                           |
-| --------------------------------- | ------------------------ | --------------------------------------------------------------------- |
-| `includeReasoning`                | `boolean`                | Whether to include assistant reasoning in responses                   |
-| `orchestrationConfigRef`          | `OrchestrationConfigRef` | Reference to a stored orchestration configuration (Orchestration API) |
-| `modelParams.temperature`         | `number (0-2)`           | Sampling temperature                                                  |
-| `modelParams.maxTokens`           | `positive integer`       | Maximum tokens to generate                                            |
-| `modelParams.topP`                | `number (0-1)`           | Nucleus sampling parameter                                            |
-| `modelParams.frequencyPenalty`    | `number (-2 to 2)`       | Frequency penalty                                                     |
-| `modelParams.presencePenalty`     | `number (-2 to 2)`       | Presence penalty                                                      |
-| `modelParams.n`                   | `positive integer`       | Number of completions                                                 |
-| `modelParams.parallel_tool_calls` | `boolean`                | Enable parallel tool calls                                            |
+| Field                             | Type                                     | Description                                                           |
+| --------------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| `api`                             | `"orchestration" \| "foundation-models"` | Override API selection for this call                                  |
+| `escapeTemplatePlaceholders`      | `boolean`                                | Escape SAP or Jinja delimiters in prompt and message text             |
+| `includeReasoning`                | `boolean`                                | Whether to include assistant reasoning in responses                   |
+| `orchestrationConfigRef`          | `OrchestrationConfigRef`                 | Reference to a stored orchestration configuration (Orchestration API) |
+| `placeholderValues`               | `Record<string, string>`                 | Placeholder values sent to Orchestration API                          |
+| `promptTemplateRef`               | `PromptTemplateRef`                      | Reference to a Prompt Registry template                               |
+| `modelParams.temperature`         | `number (0-2)`                           | Sampling temperature                                                  |
+| `modelParams.maxTokens`           | `positive integer`                       | Maximum tokens to generate                                            |
+| `modelParams.topP`                | `number (0-1)`                           | Nucleus sampling parameter                                            |
+| `modelParams.frequencyPenalty`    | `number (-2 to 2)`                       | Frequency penalty                                                     |
+| `modelParams.presencePenalty`     | `number (-2 to 2)`                       | Presence penalty                                                      |
+| `modelParams.n`                   | `positive integer`                       | Number of completions                                                 |
+| `modelParams.parallel_tool_calls` | `boolean`                                | Enable parallel tool calls                                            |
 
 **Example:**
 
@@ -1712,32 +1764,36 @@ const { text } = await generateText({
 **Example with grounding placeholders:**
 
 ```typescript
-// When using grounding with orchestration templates
-const { text } = await generateText({
-  model: provider("gpt-4.1", {
-    grounding: {
-      // grounding configuration
-    },
+const model = provider("gpt-4.1", {
+  grounding: buildDocumentGroundingConfig({
+    filters: [{ id: "vector-store-1", data_repositories: ["*"] }],
+    placeholders: { input: ["groundingRequest"], output: "groundingOutput" },
   }),
-  prompt: "{​{groundingInput}}", // Template placeholder
+});
+
+const { text } = await generateText({
+  model,
+  prompt: "Question: {{?groundingRequest}}\nContext: {{?groundingOutput}}",
   providerOptions: {
     "sap-ai": {
-      escapeTemplatePlaceholders: false, // Required for template usage
+      escapeTemplatePlaceholders: false,
       placeholderValues: {
-        groundingInput: "What is SAP?",
-        groundingOutput: "", // Will be populated by grounding
+        groundingRequest: "What is SAP?",
       },
     },
   },
 });
 ```
 
+Use `escapeTemplatePlaceholders: false` only when you intentionally send SAP or
+Jinja placeholders such as `{{?groundingRequest}}` in the prompt or messages.
+For normal user text, keep the default escaping enabled.
+
 **Example with settings and providerOptions merge:**
 
 ```typescript
 // Default placeholders in settings, override per-request in providerOptions
 const model = provider("gpt-4.1", {
-  escapeTemplatePlaceholders: false,
   placeholderValues: {
     product: "SAP Cloud SDK", // Default product
     language: "English", // Default language
@@ -1965,9 +2021,9 @@ the `OrchestrationClient`.
 
 **Important Behavior:** When using `orchestrationConfigRef`, local module
 settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
-responseFormat, modelParams, modelVersion) are **ignored** with a warning. Only
-`messages` and `placeholderValues` are passed through to the stored
-configuration.
+responseFormat, modelParams, modelVersion, fallbackModuleConfigs) are **ignored**
+with a warning. Only `messages` and `placeholderValues` are passed through to
+the stored configuration.
 
 **Usage Examples:**
 
@@ -2053,6 +2109,7 @@ Settings for the Orchestration API (default).
 export interface OrchestrationModelSettings {
   readonly api?: "orchestration";
   readonly escapeTemplatePlaceholders?: boolean; // Default: true
+  readonly fallbackModuleConfigs?: OrchestrationModuleConfig[];
   readonly filtering?: FilteringModule;
   readonly grounding?: GroundingModule;
   readonly includeReasoning?: boolean;
@@ -2072,12 +2129,31 @@ export interface OrchestrationModelSettings {
 **Orchestration-Only Features:**
 
 - `filtering` - Content safety filtering (Azure Content Safety, LlamaGuard)
+- `fallbackModuleConfigs` - Ordered fallback `OrchestrationModuleConfig` entries used when local orchestration configuration is active
 - `grounding` - Document-based RAG via SAP HANA Vector Engine
 - `masking` - Data anonymization via SAP DPI
 - `translation` - Input/output translation
 - `escapeTemplatePlaceholders` - Prevent template syntax conflicts
 - `promptTemplateRef` - Reference templates from SAP AI Core Prompt Registry
-- `orchestrationConfigRef` - Reference complete configurations from SAP AI Core
+- `orchestrationConfigRef` - Reference complete configurations from SAP AI Core. When set, local module settings and `fallbackModuleConfigs` are ignored because the stored configuration owns the module list
+
+`fallbackModuleConfigs` accepts full SAP AI SDK `OrchestrationModuleConfig`
+objects. The provider sends the primary module configuration first, followed by
+fallback entries in the order provided. SAP AI Core decides when to try a
+fallback. This option is bypassed when `orchestrationConfigRef` is set.
+
+```typescript
+const model = provider("gpt-4.1", {
+  fallbackModuleConfigs: [
+    {
+      promptTemplating: {
+        model: { name: "gpt-4.1-mini" },
+        prompt: { template: [] },
+      },
+    },
+  ],
+});
+```
 
 #### `FoundationModelsModelSettings`
 
@@ -2598,13 +2674,19 @@ try {
     console.error("Status:", error.statusCode);
     console.error("Retryable:", error.isRetryable);
 
-    // Parse SAP error details
-    try {
-      const sapError = JSON.parse(error.responseBody);
-      console.error("SAP Error Code:", sapError.error.code);
-      console.error("Location:", sapError.error.location);
-      console.error("Request ID:", sapError.error.request_id);
-    } catch {}
+    const responseBody = error.responseBody;
+    if (responseBody) {
+      try {
+        const sapError = JSON.parse(responseBody) as {
+          error?: { code?: string; location?: string; request_id?: string };
+        };
+        console.error("SAP Error Code:", sapError.error?.code);
+        console.error("Location:", sapError.error?.location);
+        console.error("Request ID:", sapError.error?.request_id);
+      } catch {
+        console.error("SAP error body:", responseBody);
+      }
+    }
   }
 }
 ```
@@ -3061,13 +3143,19 @@ function buildAzureContentSafetyFilter(type: "input" | "output", config?: AzureC
   for all)
   - `hate`: Hate speech filter level
   - `violence`: Violence content filter level
-  - `selfHarm`: Self-harm content filter level
+  - `self_harm`: Self-harm content filter level
   - `sexual`: Sexual content filter level
 
 **Filter Levels:** `ALLOW_SAFE`, `ALLOW_SAFE_LOW`, `ALLOW_SAFE_LOW_MEDIUM`, or
 block all
 
 **Returns:** Azure Content Safety filter configuration
+
+**Complete example:**
+[examples/example-content-filtering.ts](./examples/example-content-filtering.ts)
+
+> **Note:** Content filtering is an Orchestration API module. It is not available
+> with the Foundation Models API.
 
 **Example:**
 
@@ -3080,7 +3168,7 @@ const provider = createSAPAIProvider({
           buildAzureContentSafetyFilter("input", {
             hate: "ALLOW_SAFE",
             violence: "ALLOW_SAFE_LOW_MEDIUM",
-            selfHarm: "ALLOW_SAFE",
+            self_harm: "ALLOW_SAFE",
             sexual: "ALLOW_SAFE",
           }),
         ],
@@ -3089,6 +3177,8 @@ const provider = createSAPAIProvider({
   },
 });
 ```
+
+**Run it:** `npx tsx examples/example-content-filtering.ts`
 
 ---
 
@@ -3157,8 +3247,8 @@ const groundingConfig = buildDocumentGroundingConfig({
     },
   ],
   placeholders: {
-    input: ["?question"], // Placeholder for user question
-    output: "groundingOutput", // Placeholder for grounding output
+    input: ["groundingRequest"],
+    output: "groundingOutput",
   },
   metadata_params: ["file_name", "document_id"], // Optional metadata
 });
@@ -3169,20 +3259,25 @@ const provider = createSAPAIProvider({
   },
 });
 
-// Now queries will be grounded in your documents
 const { text } = await generateText({
   model: provider("gpt-4.1"),
-  prompt: "What is SAP?",
+  prompt: "Question: {{?groundingRequest}}\nContext: {{?groundingOutput}}",
   providerOptions: {
     "sap-ai": {
-      escapeTemplatePlaceholders: false, // Required for grounding templates
+      escapeTemplatePlaceholders: false,
       placeholderValues: {
-        "?question": "What is SAP?", // Maps to input placeholder
+        groundingRequest: "What is SAP?",
       },
     },
   },
 });
 ```
+
+The `prompt` intentionally contains SAP template placeholders such as
+`{{?groundingRequest}}` and `{{?groundingOutput}}`, so the example disables
+placeholder escaping for that call and provides the input value through
+`providerOptions['sap-ai'].placeholderValues`. Keep the default escaping enabled
+for normal prompt text.
 
 **Run it:** `npx tsx examples/example-document-grounding.ts`
 

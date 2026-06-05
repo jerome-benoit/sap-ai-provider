@@ -113,6 +113,7 @@ function validateOrchestrationOnlyEmbeddingOptions(
  * Validates that Orchestration-only options are not used with Foundation Models API.
  *
  * Orchestration-only features:
+ * - `fallbackModuleConfigs` - Prompt module fallback configuration list
  * - `filtering` - Content filtering module
  * - `grounding` - Document grounding module
  * - `masking` - Data masking module
@@ -148,6 +149,7 @@ function validateOrchestrationOnlyOptions(
  * @internal
  */
 const ORCHESTRATION_ONLY_FEATURE_KEYS = [
+  "fallbackModuleConfigs",
   "filtering",
   "grounding",
   "masking",
@@ -167,6 +169,7 @@ const ORCHESTRATION_ONLY_FEATURE_KEYS = [
 const ORCHESTRATION_ONLY_FEATURES: Readonly<
   Record<(typeof ORCHESTRATION_ONLY_FEATURE_KEYS)[number], string>
 > = {
+  fallbackModuleConfigs: "Fallback module configurations (fallbackModuleConfigs)",
   filtering: "Content filtering",
   grounding: "Document grounding",
   masking: "Data masking",

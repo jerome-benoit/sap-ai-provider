@@ -284,6 +284,8 @@ export interface SAPAISettings {
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
   /** Orchestration API only. */
+  readonly fallbackModuleConfigs?: OrchestrationModuleConfig[];
+  /** Orchestration API only. */
   readonly filtering?: FilteringModule;
   /** Orchestration API only. */
   readonly grounding?: GroundingModule;

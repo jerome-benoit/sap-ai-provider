@@ -5630,6 +5630,33 @@ describe("SAPAILanguageModel", () => {
         expectWarningMessageContains(result.warnings, "filtering");
       });
 
+      it("should warn when fallbackModuleConfigs are ignored due to configRef", async () => {
+        const model = createOrchModel("gpt-4o", {
+          fallbackModuleConfigs: [
+            {
+              promptTemplating: {
+                model: { name: "gpt-4.1-mini" },
+                prompt: { template: [] },
+              },
+            },
+          ],
+          orchestrationConfigRef: { id: "my-config-id" },
+        });
+
+        const prompt = createPrompt("Hello");
+
+        const result = await model.doGenerate({ prompt });
+
+        expectRequestBodyHasMessagesHistory(result);
+
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({ id: "my-config-id" });
+
+        expect(result.warnings.length).toBeGreaterThan(0);
+        expectWarningMessageContains(result.warnings, "orchestrationConfigRef is set");
+        expectWarningMessageContains(result.warnings, "fallbackModuleConfigs");
+      });
+
       it("should ignore promptTemplateRef when orchestrationConfigRef is set in settings", async () => {
         const model = createOrchModel("gpt-4o", {
           orchestrationConfigRef: { id: "my-config-id" },

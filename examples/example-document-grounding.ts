@@ -28,7 +28,19 @@ import { generateText } from "ai";
 // This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider, buildDocumentGroundingConfig } from "@jerome-benoit/sap-ai-provider";
-import { buildDocumentGroundingConfig, createSAPAIProvider } from "../src/index";
+import {
+  buildDocumentGroundingConfig,
+  createSAPAIProvider,
+  SAP_AI_PROVIDER_NAME,
+} from "../src/index";
+
+interface SAPErrorResponseBody {
+  error?: {
+    code?: string;
+    message?: string;
+    request_id?: string;
+  };
+}
 
 /**
  *
@@ -63,9 +75,9 @@ async function documentGroundingExample() {
           id: VECTOR_STORE_ID,
         },
       ],
-      // Required: Define placeholders for input question and output
+      // Required: Define the placeholders used by the grounding module.
       placeholders: {
-        input: ["?question"],
+        input: ["groundingRequest"],
         output: "groundingOutput",
       },
     });
@@ -81,13 +93,16 @@ async function documentGroundingExample() {
     console.log("📝 Query: What are the key features of SAP AI Core?\n");
 
     const { text } = await generateText({
-      messages: [
-        {
-          content: "What are the key features of SAP AI Core?",
-          role: "user",
-        },
-      ],
       model,
+      prompt: "Question: {{?groundingRequest}}\nContext: {{?groundingOutput}}",
+      providerOptions: {
+        [SAP_AI_PROVIDER_NAME]: {
+          escapeTemplatePlaceholders: false,
+          placeholderValues: {
+            groundingRequest: "What are the key features of SAP AI Core?",
+          },
+        },
+      },
     });
 
     console.log("🤖 Grounded Response:", text);
@@ -108,7 +123,7 @@ async function documentGroundingExample() {
       // Request metadata about the retrieved chunks
       metadata_params: ["file_name", "document_id", "chunk_id"],
       placeholders: {
-        input: ["?question"],
+        input: ["groundingRequest"],
         output: "groundingOutput",
       },
     });
@@ -124,14 +139,17 @@ async function documentGroundingExample() {
     console.log("📝 Query: How do I deploy a model in SAP AI Core? Include sources.\n");
 
     const { text: advancedText } = await generateText({
-      messages: [
-        {
-          content:
-            "How do I deploy a model in SAP AI Core? Please cite your sources with file names.",
-          role: "user",
-        },
-      ],
       model: modelAdvanced,
+      prompt: "Question: {{?groundingRequest}}\nContext: {{?groundingOutput}}",
+      providerOptions: {
+        [SAP_AI_PROVIDER_NAME]: {
+          escapeTemplatePlaceholders: false,
+          placeholderValues: {
+            groundingRequest:
+              "How do I deploy a model in SAP AI Core? Please cite your sources with file names.",
+          },
+        },
+      },
     });
 
     console.log("🤖 Grounded Response with Metadata:", advancedText);
@@ -161,19 +179,26 @@ async function documentGroundingExample() {
 
     console.log("\n📚 Response WITH grounding (your documents):");
     const { text: groundedText } = await generateText({
-      messages: [
-        {
-          content: query,
-          role: "user",
-        },
-      ],
       model,
+      prompt: "Question: {{?groundingRequest}}\nContext: {{?groundingOutput}}",
+      providerOptions: {
+        [SAP_AI_PROVIDER_NAME]: {
+          escapeTemplatePlaceholders: false,
+          placeholderValues: {
+            groundingRequest: query,
+          },
+        },
+      },
     });
     console.log(groundedText);
 
     console.log("\n✅ Document grounding example completed!");
 
     console.log("\n💡 Next Steps:");
+    console.log("   - Keep escapeTemplatePlaceholders enabled for normal prompts");
+    console.log(
+      "   - Set it to false only when sending SAP template placeholders like {{?groundingRequest}}",
+    );
     console.log("   - Index your documents in SAP HANA Cloud Vector Engine");
     console.log("   - Set VECTOR_STORE_ID environment variable");
     console.log("   - Use document_metadata filters to restrict search to specific documents");
@@ -186,11 +211,8 @@ async function documentGroundingExample() {
     } else if (error instanceof APICallError) {
       console.error("❌ API Call Error:", error.statusCode, error.message);
 
-      // Parse SAP-specific metadata
-      const sapError = JSON.parse(error.responseBody ?? "{}") as {
-        error?: { code?: string; message?: string; request_id?: string };
-      };
-      if (sapError.error?.request_id) {
+      const sapError = parseSAPErrorResponseBody(error.responseBody);
+      if (sapError?.error?.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
         console.error("   SAP Error Code:", sapError.error.code);
         console.error("   SAP Error Message:", sapError.error.message);
@@ -212,6 +234,55 @@ async function documentGroundingExample() {
     console.error("   - Verify your vector database is configured and populated");
     console.error("   - Ensure VECTOR_STORE_ID matches your actual vector store");
     console.error("   - Check that documents are indexed in the vector database");
+  }
+}
+
+/**
+ * Checks whether a value is a non-null object record.
+ * @param value - Value to inspect.
+ * @returns True when the value can be accessed as a record.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * Parses SAP AI Core error details from an API response body.
+ * @param responseBody - Raw API response body from APICallError.
+ * @returns Parsed SAP error details when the body matches the expected shape.
+ */
+function parseSAPErrorResponseBody(
+  responseBody: string | undefined,
+): SAPErrorResponseBody | undefined {
+  if (!responseBody) {
+    return undefined;
+  }
+
+  try {
+    const parsedResponseBody: unknown = JSON.parse(responseBody);
+
+    if (!isRecord(parsedResponseBody) || !isRecord(parsedResponseBody.error)) {
+      return undefined;
+    }
+
+    return {
+      error: {
+        code:
+          typeof parsedResponseBody.error.code === "string"
+            ? parsedResponseBody.error.code
+            : undefined,
+        message:
+          typeof parsedResponseBody.error.message === "string"
+            ? parsedResponseBody.error.message
+            : undefined,
+        request_id:
+          typeof parsedResponseBody.error.request_id === "string"
+            ? parsedResponseBody.error.request_id
+            : undefined,
+      },
+    };
+  } catch {
+    return undefined;
   }
 }
 
