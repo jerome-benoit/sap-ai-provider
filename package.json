@@ -94,7 +94,7 @@
     "eslint": "^10.5.0",
     "eslint-plugin-jsdoc": "^63.0.7",
     "eslint-plugin-perfectionist": "^5.9.1",
-    "globals": "^17.6.0",
+    "globals": "^17.7.0",
     "lefthook": "^2.1.9",
     "markdown-link-check": "^3.14.2",
     "markdownlint-cli2": "^0.22.1",
@@ -103,7 +103,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1",
+    "typescript-eslint": "^8.62.0",
     "vitest": "^4.1.9"
   },
   "peerDependencies": {
