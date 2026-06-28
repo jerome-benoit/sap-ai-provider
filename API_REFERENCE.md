@@ -1243,9 +1243,7 @@ const settings: SAPAISettings = {
       function: {
         name: "calculator",
         description: "Perform calculations",
-        parameters: {
-          /* JSON Schema */
-        },
+        parameters: {/* JSON Schema */},
       },
     },
   ],
@@ -1272,12 +1270,8 @@ import type { OrchestrationModelSettings, FoundationModelsModelSettings } from "
 // Type-safe Orchestration settings
 const orchSettings: OrchestrationModelSettings = {
   api: "orchestration",
-  filtering: {
-    /* ... */
-  },
-  masking: {
-    /* ... */
-  },
+  filtering: {/* ... */},
+  masking: {/* ... */},
 };
 
 // Type-safe Foundation Models settings
@@ -1286,9 +1280,7 @@ const fmSettings: FoundationModelsModelSettings = {
   dataSources: [
     {
       type: "azure_search",
-      parameters: {
-        /* ... */
-      },
+      parameters: {/* ... */},
     },
   ],
   modelParams: { logprobs: true, seed: 42 },
@@ -2577,9 +2569,7 @@ try {
   // Using filtering with Foundation Models API
   const model = provider("gpt-4.1", {
     api: "foundation-models",
-    filtering: {
-      /* ... */
-    }, // Not supported!
+    filtering: {/* ... */}, // Not supported!
   });
 } catch (error) {
   if (error instanceof UnsupportedFeatureError) {
@@ -2609,9 +2599,7 @@ import { ApiSwitchError } from "@jerome-benoit/sap-ai-provider";
 
 // Model configured with Orchestration-only feature
 const model = provider("gpt-4.1", {
-  filtering: {
-    /* ... */
-  },
+  filtering: {/* ... */},
 });
 
 try {
@@ -2845,12 +2833,8 @@ import type { ChatMessage, FilteringModule, GroundingModule } from "@jerome-beno
 
 // Type-safe module configuration
 const filtering: FilteringModule = {
-  input: {
-    /* ... */
-  },
-  output: {
-    /* ... */
-  },
+  input: {/* ... */},
+  output: {/* ... */},
 };
 ```
 
@@ -2864,20 +2848,12 @@ import type { OrchestrationModuleConfigList } from "@jerome-benoit/sap-ai-provid
 
 const configWithFallbacks: OrchestrationModuleConfigList = [
   {
-    templating: [
-      /* primary template */
-    ],
-    llm: {
-      /* ... */
-    },
+    templating: [/* primary template */],
+    llm: {/* ... */},
   },
   {
-    templating: [
-      /* fallback template */
-    ],
-    llm: {
-      /* ... */
-    },
+    templating: [/* fallback template */],
+    llm: {/* ... */},
   },
 ];
 ```
@@ -3054,9 +3030,7 @@ const api = resolveApi(providerApi, modelApi, invocationApi);
 validateSettings({
   api: "foundation-models",
   modelSettings: {
-    filtering: {
-      /* ... */
-    },
+    filtering: {/* ... */},
   }, // Orchestration-only feature
 });
 
@@ -3065,9 +3039,7 @@ validateSettings({
   api: "foundation-models",
   modelApi: "orchestration",
   modelSettings: {
-    masking: {
-      /* ... */
-    },
+    masking: {/* ... */},
   },
   invocationSettings: { api: "foundation-models" },
 });

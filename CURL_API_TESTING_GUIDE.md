@@ -196,12 +196,8 @@ curl --request POST \
   "config": {
     "modules": {
       "prompt_templating": {
-        "prompt": {
-          /* Prompt configuration */
-        },
-        "model": {
-          /* Model configuration */
-        }
+        "prompt": {/* Prompt configuration */},
+        "model": {/* Model configuration */}
       }
     }
   }

@@ -211,8 +211,7 @@ export type SAPAIApiType = "foundation-models" | "orchestration";
 
 /** Union type for API-specific default settings configuration. */
 export type SAPAIDefaultSettingsConfig =
-  | FoundationModelsDefaultSettings
-  | OrchestrationDefaultSettings;
+  FoundationModelsDefaultSettings | OrchestrationDefaultSettings;
 
 /** Settings for the SAP AI Embedding Model. */
 export interface SAPAIEmbeddingSettings {

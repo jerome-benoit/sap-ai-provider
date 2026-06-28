@@ -16,8 +16,7 @@ const EMBED_REQUEST_IDS = {
 interface FMConstructorCall {
   destination: unknown;
   modelDeployment:
-    | { deploymentId: string }
-    | { modelName: string; modelVersion?: string; resourceGroup?: string };
+    { deploymentId: string } | { modelName: string; modelVersion?: string; resourceGroup?: string };
 }
 interface FMEmbedCall {
   request: {
