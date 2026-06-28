@@ -27,15 +27,13 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
             total_tokens: number;
           };
           getToolCalls: () =>
-            | undefined
-            | { function: { arguments: string; name: string }; id: string }[];
+            undefined | { function: { arguments: string; name: string }; id: string }[];
           rawResponse?: { headers?: Record<string, unknown> };
         };
     static lastChatCompletionRequest: unknown;
     static lastChatCompletionRequestConfig: unknown;
     static lastConstructorCall:
-      | undefined
-      | { config: unknown; deploymentConfig: unknown; destination: unknown };
+      undefined | { config: unknown; deploymentConfig: unknown; destination: unknown };
 
     static lastStreamAbortSignal: unknown;
 
@@ -274,8 +272,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
             total_tokens: number;
           };
           getToolCalls: () =>
-            | undefined
-            | { function: { arguments: string; name: string }; id: string }[];
+            undefined | { function: { arguments: string; name: string }; id: string }[];
           rawResponse?: { headers?: Record<string, unknown> };
         };
     static lastConstructorCall: undefined | { destination: unknown; modelDeployment: unknown };
@@ -611,8 +608,7 @@ describe("SAPAILanguageModel", () => {
       lastChatCompletionRequest: unknown;
       lastChatCompletionRequestConfig: unknown;
       lastConstructorCall:
-        | undefined
-        | { config: unknown; deploymentConfig: unknown; destination: unknown };
+        undefined | { config: unknown; deploymentConfig: unknown; destination: unknown };
       lastStreamAbortSignal: unknown;
       lastStreamConfig: unknown;
       lastStreamRequest: unknown;
@@ -1926,8 +1922,7 @@ describe("SAPAILanguageModel", () => {
       expect(finishPart).toBeDefined();
       if (finishPart?.type === "finish") {
         const metadata = finishPart.providerMetadata?.["sap-ai"] as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         expect(metadata).toBeDefined();
         expect(metadata?.requestId).toBe("test-stream-request-id");
       }
@@ -3947,8 +3942,7 @@ describe("SAPAILanguageModel", () => {
           expect(
             (
               finishPart.providerMetadata?.["sap-ai"]?.cacheUsage as
-                | undefined
-                | { ephemeral_5m_input_tokens?: number }
+                undefined | { ephemeral_5m_input_tokens?: number }
             )?.ephemeral_5m_input_tokens,
           ).toBeUndefined();
         }

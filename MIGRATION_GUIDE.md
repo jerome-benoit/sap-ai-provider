@@ -755,9 +755,7 @@ Apply consistent settings across all models created by a provider instance:
 const provider = createSAPAIProvider({
   defaultSettings: {
     modelParams: { temperature: 0.7, maxTokens: 2000 },
-    masking: {
-      /* DPI config */
-    },
+    masking: {/* DPI config */},
   },
 });
 

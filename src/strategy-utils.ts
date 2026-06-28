@@ -44,10 +44,7 @@ export interface AISDKTool {
  * @internal
  */
 export type AISDKToolChoice =
-  | { toolName: string; type: "tool" }
-  | { type: "auto" }
-  | { type: "none" }
-  | { type: "required" };
+  { toolName: string; type: "tool" } | { type: "auto" } | { type: "none" } | { type: "required" };
 
 /**
  * Anthropic prompt-cache breakdown surfaced via `providerMetadata['sap-ai'].cacheUsage`.
@@ -235,10 +232,7 @@ export interface SAPTool<P = SAPToolParameters> {
  * @internal
  */
 export type SAPToolChoice =
-  | "auto"
-  | "none"
-  | "required"
-  | { function: { name: string }; type: "function" };
+  "auto" | "none" | "required" | { function: { name: string }; type: "function" };
 
 /**
  * @internal
@@ -885,8 +879,7 @@ export function extractResponseMetadata(
   let rawHeaders: unknown;
   try {
     const wrapper = (response as null | Record<string, unknown>)?.[field] as
-      | undefined
-      | { headers?: unknown };
+      undefined | { headers?: unknown };
     rawHeaders = wrapper?.headers;
   } catch {
     rawHeaders = undefined;

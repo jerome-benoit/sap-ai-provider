@@ -601,9 +601,7 @@ limit varies by model and prevents excessive API calls.
    ```typescript
    import { embedMany } from "ai";
 
-   const values = [
-     /* large array of texts */
-   ];
+   const values = [/* large array of texts */];
    const batchSize = 2048;
 
    const allEmbeddings = [];

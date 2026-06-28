@@ -528,8 +528,7 @@ function extractErrorFields(response: OrchestrationErrorResponse): {
   const innerError = response.error;
   if (Array.isArray(innerError)) {
     const first = innerError[0] as
-      | undefined
-      | { code?: number; location?: string; message: string; request_id?: string };
+      undefined | { code?: number; location?: string; message: string; request_id?: string };
     return {
       code: first?.code,
       location: first?.location,
