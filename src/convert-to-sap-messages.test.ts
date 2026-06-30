@@ -323,6 +323,57 @@ describe("convertToSAPMessages", () => {
       expect((result[0] as { tool_calls: unknown[] }).tool_calls).toHaveLength(2);
     });
 
+    it("should replay signed tool call ids unchanged across assistant and tool messages", () => {
+      const signedToolCallId =
+        "vertex_tool_be5b294b-ece3-46f0-8b0d-22cd00000000__sig_AY89a1_testSignature";
+
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [
+            {
+              input: { location: "Tokyo" },
+              toolCallId: signedToolCallId,
+              toolName: "get_weather",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+        {
+          content: [
+            {
+              output: { type: "json" as const, value: { weather: "sunny" } },
+              toolCallId: signedToolCallId,
+              toolName: "get_weather",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+
+      const result = convertToSAPMessages(prompt);
+      const assistantMessage = result[0] as {
+        tool_calls: {
+          extra_content?: unknown;
+          function: { arguments: string; name: string };
+          id: string;
+          thought_signature?: unknown;
+          type: string;
+        }[];
+      };
+      const toolMessage = result[1] as { tool_call_id: string };
+
+      expect(assistantMessage.tool_calls[0]).toMatchObject({
+        function: { arguments: '{"location":"Tokyo"}', name: "get_weather" },
+        id: signedToolCallId,
+        type: "function",
+      });
+      expect(assistantMessage.tool_calls[0]).not.toHaveProperty("thought_signature");
+      expect(assistantMessage.tool_calls[0]).not.toHaveProperty("extra_content");
+      expect(toolMessage.tool_call_id).toBe(signedToolCallId);
+    });
+
     it("should handle text and tool calls together", () => {
       const prompt: LanguageModelV3Prompt = [
         {
