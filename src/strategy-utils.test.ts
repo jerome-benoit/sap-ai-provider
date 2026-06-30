@@ -10,10 +10,12 @@ import {
   computeNoCache,
   convertToolsToSAPFormat,
   extractCompletionId,
+  extractResponseContent,
   mapFinishReason,
   sanitizeAsJSONArray,
   sanitizeAsJSONObject,
   type SAPTool,
+  type SDKResponse,
 } from "./strategy-utils.js";
 
 interface ChatCompletionTool extends SAPTool<unknown> {
@@ -242,6 +244,38 @@ describe("extractCompletionId", () => {
         path,
       ),
     ).toBe(expected);
+  });
+});
+
+describe("extractResponseContent", () => {
+  it("should preserve SAP's Gemini thought signature in the tool-call id suffix", () => {
+    const signedToolCallId =
+      "vertex_tool_be5b294b-ece3-46f0-8b0d-22cd00000000__sig_AY89a1_testSignature";
+
+    const response: SDKResponse = {
+      getContent: () => undefined,
+      getFinishReason: () => undefined,
+      getTokenUsage: () => undefined,
+      getToolCalls: () => [
+        {
+          function: {
+            arguments: "{}",
+            name: "lookup",
+          },
+          id: signedToolCallId,
+        },
+      ],
+      rawResponse: { headers: new Headers() },
+    };
+
+    const [toolCall] = extractResponseContent(response);
+
+    expect(toolCall).toEqual(
+      expect.objectContaining({
+        toolCallId: signedToolCallId,
+        type: "tool-call",
+      }),
+    );
   });
 });
 

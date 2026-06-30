@@ -1567,6 +1567,67 @@ describe("SAPAILanguageModel", () => {
       });
     });
 
+    it("should preserve signed SAP Gemini tool call ids in orchestration replay requests", async () => {
+      if (api !== "orchestration") {
+        return;
+      }
+
+      const signedToolCallId =
+        "vertex_tool_be5b294b-ece3-46f0-8b0d-22cd00000000__sig_AY89a1_testSignature";
+      const model = createModelForApi("orchestration");
+      const prompt: LanguageModelV3Prompt = [
+        {
+          content: [{ text: "Use the weather tool", type: "text" }],
+          role: "user",
+        },
+        {
+          content: [
+            {
+              input: { location: "Tokyo" },
+              toolCallId: signedToolCallId,
+              toolName: "get_weather",
+              type: "tool-call",
+            },
+          ],
+          role: "assistant",
+        },
+        {
+          content: [
+            {
+              output: { type: "json" as const, value: { weather: "sunny" } },
+              toolCallId: signedToolCallId,
+              toolName: "get_weather",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+
+      await model.doGenerate({ prompt });
+
+      const request = await getLastOrchRequest();
+      expect(request.messages).toEqual([
+        { content: "Use the weather tool", role: "user" },
+        {
+          content: "",
+          role: "assistant",
+          tool_calls: [
+            {
+              function: { arguments: '{"location":"Tokyo"}', name: "get_weather" },
+              id: signedToolCallId,
+              type: "function",
+            },
+          ],
+        },
+        {
+          content: '{"type":"json","value":{"weather":"sunny"}}',
+          role: "tool",
+          tool_call_id: signedToolCallId,
+        },
+      ]);
+    });
+
     it.each([
       {
         description: "normalize array header values",
