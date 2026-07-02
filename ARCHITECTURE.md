@@ -702,13 +702,18 @@ per-call `abortSignal` is merged with the provider-level `requestConfig` (see
 via the internal `mergeRequestConfig` helper. Any `signal` present on
 `requestConfig` is dropped so the AI SDK `abortSignal` always wins.
 
-**Non-streaming:**
+The snippets below show the **Orchestration** call sites. The **Foundation Models**
+path uses `client.run()` for non-streaming and a 3-argument
+`client.stream(request, abortSignal, requestConfig)` for streaming; the same
+`mergeRequestConfig` helper is applied in both cases.
+
+**Non-streaming (Orchestration):**
 
 ```typescript
 const response = await client.chatCompletion(request, mergeRequestConfig(requestConfig, abortSignal));
 ```
 
-**Streaming:**
+**Streaming (Orchestration):**
 
 ```typescript
 const stream = await client.stream(request, abortSignal, streamOptions, mergeRequestConfig(requestConfig, undefined));

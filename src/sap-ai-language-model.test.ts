@@ -14,6 +14,7 @@ import { clearStrategyCaches } from "./sap-ai-strategy.js";
 import { computeNoCache } from "./strategy-utils.js";
 
 interface CapturedRequestConfig {
+  [key: string]: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
 }

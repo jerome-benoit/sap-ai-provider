@@ -9,6 +9,7 @@ import { clearStrategyCaches } from "./sap-ai-strategy.js";
 type APIType = "foundation-models" | "orchestration";
 
 interface CapturedRequestConfig {
+  [key: string]: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
 }

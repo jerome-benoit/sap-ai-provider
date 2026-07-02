@@ -80,25 +80,17 @@ export interface SAPAIProviderSettings {
   readonly name?: string;
 
   /**
-   * Custom request configuration forwarded to the underlying SAP AI SDK client on every call
-   * created from this provider.
+   * Custom request configuration forwarded to the underlying SAP AI SDK client on every
+   * call created from this provider.
    *
-   * Scope: provider-level only. Not overridable via `providerOptions['sap-ai']`; create a
-   * separate provider instance when you need per-request variation.
+   * Provider-level only (not overridable per-call via `providerOptions['sap-ai']`). The
+   * AI SDK `abortSignal` option always wins over any `signal` on `requestConfig`; the
+   * latter is dropped before the request is forwarded. Node-only knobs (`httpAgent`,
+   * `httpsAgent`) are silently ignored on Edge / Cloudflare Workers runtimes.
    *
-   * Common uses:
-   * - `requestConfig.headers` — service-specific HTTP headers. SAP AI Core recognises
-   *   `AI-Object-Store-Secret-Name` (feedback service; identifies the pre-registered object
-   *   store secret used to write inference feedback). Prefer the `resourceGroup` option
-   *   over the `AI-Resource-Group` header.
-   * - `requestConfig.params` / `requestConfig.timeout` — plain axios-style knobs.
-   *
-   * Portability: `httpAgent`, `httpsAgent`, `proxy`, and `adapter` are Node-only and are
-   * silently ignored on Edge / Cloudflare Workers runtimes.
-   *
-   * Abort semantics: the AI SDK `abortSignal` option always wins over any `signal` set on
-   * `requestConfig`; the latter is dropped before the request is forwarded.
-   * @see {@link https://sap.github.io/ai-sdk/docs/js SAP AI SDK for JavaScript}
+   * See the "Note on `requestConfig`" section under `SAPAIProviderSettings` in
+   * `API_REFERENCE.md` for the full SAP AI Core `AI-*` header guidance.
+   * @see {@link https://sap.github.io/ai-sdk/docs/js/getting-started SAP Cloud SDK for AI (JS)}
    */
   readonly requestConfig?: CustomRequestConfig;
 
@@ -125,7 +117,7 @@ export interface SAPAIProviderSettings {
  * @param options.destination - Custom SAP Cloud SDK destination configuration.
  * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
  * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
- * @param options.requestConfig - Custom request configuration forwarded to the SAP AI SDK client on every call.
+ * @param options.requestConfig - Provider-level custom request configuration. See {@link SAPAIProviderSettings.requestConfig} for scope, portability, and abort semantics.
  * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`).
  * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.
  * @returns A configured SAP AI provider instance that can be used as a callable or via methods.
