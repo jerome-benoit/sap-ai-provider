@@ -1105,6 +1105,40 @@ const provider = createSAPAIProvider({
 });
 ```
 
+**Example with a custom request timeout:**
+
+```typescript
+const provider = createSAPAIProvider({
+  requestConfig: {
+    timeout: 30_000, // 30 seconds
+  },
+});
+```
+
+**Notes on `requestConfig`:**
+
+- **Provider-level only.** `requestConfig` is applied to every call from this provider
+  and is not currently overridable per-call via `providerOptions['sap-ai']`. For
+  per-request variation (e.g. different `AI-Object-Store-Secret-Name` per tenant),
+  create separate provider instances.
+- **Runtime portability.** `httpAgent`, `httpsAgent`, `proxy`, and `adapter` are
+  Node-only and are silently ignored on Edge / Cloudflare Workers runtimes. Prefer
+  `headers`, `params`, and `timeout` for portable configuration.
+- **Abort semantics.** The AI SDK `abortSignal` option always wins over any `signal`
+  set on `requestConfig`; the latter is dropped before the request is forwarded.
+- **SAP AI Core `AI-*` headers.** `requestConfig.headers` accepts SAP-specific
+  headers that alter server-side behaviour:
+  - **`AI-Object-Store-Secret-Name`** — _feedback service only._ Names the
+    pre-registered object store secret used by the SAP AI Core Orchestration Service
+    to write inference feedback / observability data. Omit if you are not using the
+    feedback service.
+  - **`AI-Resource-Group`** — scopes the request to a resource group. Prefer the
+    `resourceGroup` provider option; pass this header only when you need a
+    per-request override.
+
+  These headers are SAP AI Core product-specific. Source: SAP AI SDK JS
+  [`orchestration-types.ts`](https://github.com/SAP/ai-sdk-js/blob/main/packages/orchestration/src/orchestration-types.ts).
+
 **Example with provider name:**
 
 ```typescript

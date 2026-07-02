@@ -170,6 +170,14 @@ export { resolveApi, validateSettings } from "./sap-ai-validation.js";
 export { VERSION } from "./version.js";
 
 /**
+ * SAP AI SDK request configuration type for {@link SAPAIProviderSettings.requestConfig}.
+ *
+ * Re-exported so consumers can type provider options without a direct dependency on
+ * `@sap-ai-sdk/core`.
+ */
+export type { CustomRequestConfig } from "@sap-ai-sdk/core";
+
+/**
  * Error handling types and classes for SAP AI Core error responses.
  */
 export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";

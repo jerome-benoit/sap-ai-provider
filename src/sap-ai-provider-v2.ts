@@ -60,9 +60,25 @@ export interface SAPAIProviderSettings {
   readonly name?: string;
 
   /**
-   * Custom request configuration forwarded to the underlying SAP AI SDK client on every call.
-   * Use `requestConfig.headers` to pass service-specific HTTP headers (e.g. `AI-Object-Store-Secret-Name`).
-   * The `signal` property is ignored here — use the AI SDK `abortSignal` option instead.
+   * Custom request configuration forwarded to the underlying SAP AI SDK client on every call
+   * created from this provider.
+   *
+   * Scope: provider-level only. Not overridable via `providerOptions['sap-ai']`; create a
+   * separate provider instance when you need per-request variation.
+   *
+   * Common uses:
+   * - `requestConfig.headers` — service-specific HTTP headers. SAP AI Core recognises
+   *   `AI-Object-Store-Secret-Name` (feedback service; identifies the pre-registered object
+   *   store secret used to write inference feedback). Prefer the `resourceGroup` option
+   *   over the `AI-Resource-Group` header.
+   * - `requestConfig.params` / `requestConfig.timeout` — plain axios-style knobs.
+   *
+   * Portability: `httpAgent`, `httpsAgent`, `proxy`, and `adapter` are Node-only and are
+   * silently ignored on Edge / Cloudflare Workers runtimes.
+   *
+   * Abort semantics: the AI SDK `abortSignal` option always wins over any `signal` set on
+   * `requestConfig`; the latter is dropped before the request is forwarded.
+   * @see {@link https://sap.github.io/ai-sdk/docs/js SAP AI SDK for JavaScript}
    */
   readonly requestConfig?: CustomRequestConfig;
 

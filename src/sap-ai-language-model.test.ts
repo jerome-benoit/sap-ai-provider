@@ -13,6 +13,11 @@ import { SAPAILanguageModel } from "./sap-ai-language-model";
 import { clearStrategyCaches } from "./sap-ai-strategy.js";
 import { computeNoCache } from "./strategy-utils.js";
 
+interface CapturedRequestConfig {
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
 vi.mock("@sap-ai-sdk/orchestration", () => {
   class MockOrchestrationClient {
     static chatCompletionError: Error | undefined;
@@ -596,11 +601,11 @@ describe("SAPAILanguageModel", () => {
   interface MockClientInterface {
     lastConstructorConfig?: unknown;
     lastRequest: unknown;
-    lastRequestConfig: unknown;
+    lastRequestConfig: CapturedRequestConfig | undefined;
     lastStreamAbortSignal: unknown;
     lastStreamConfig?: unknown;
     lastStreamRequest: unknown;
-    lastStreamRequestConfig?: unknown;
+    lastStreamRequestConfig?: CapturedRequestConfig;
     setChatCompletionError?: (error: Error) => void;
     setChatCompletionResponse?: (response: unknown) => void;
     setStreamChunks?: (chunks: unknown[]) => void;
@@ -613,13 +618,13 @@ describe("SAPAILanguageModel", () => {
     const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
     const client = OrchestrationClient as unknown as {
       lastChatCompletionRequest: unknown;
-      lastChatCompletionRequestConfig: unknown;
+      lastChatCompletionRequestConfig: CapturedRequestConfig | undefined;
       lastConstructorCall:
         undefined | { config: unknown; deploymentConfig: unknown; destination: unknown };
       lastStreamAbortSignal: unknown;
       lastStreamConfig: unknown;
       lastStreamRequest: unknown;
-      lastStreamRequestConfig: unknown;
+      lastStreamRequestConfig: CapturedRequestConfig | undefined;
       setChatCompletionError?: (error: Error) => void;
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
@@ -649,10 +654,10 @@ describe("SAPAILanguageModel", () => {
     const client = AzureOpenAiChatClient as unknown as {
       lastConstructorCall: undefined | { destination: unknown; modelDeployment: unknown };
       lastRunRequest: unknown;
-      lastRunRequestConfig: unknown;
+      lastRunRequestConfig: CapturedRequestConfig | undefined;
       lastStreamAbortSignal: unknown;
       lastStreamRequest: unknown;
-      lastStreamRequestConfig: unknown;
+      lastStreamRequestConfig: CapturedRequestConfig | undefined;
       setChatCompletionError?: (error: Error) => void;
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
@@ -1302,7 +1307,7 @@ describe("SAPAILanguageModel", () => {
         const MockClient = await getMockClientForApi(api);
         expect(MockClient.lastRequestConfig).toBeDefined();
         expect(MockClient.lastRequestConfig).toHaveProperty("headers");
-        expect((MockClient.lastRequestConfig as Record<string, unknown>).headers).toMatchObject({
+        expect(MockClient.lastRequestConfig?.headers).toMatchObject({
           "x-custom": "value",
         });
       });
@@ -1321,7 +1326,7 @@ describe("SAPAILanguageModel", () => {
         const MockClient = await getMockClientForApi(api);
         expect(MockClient.lastRequestConfig).toBeDefined();
         expect(MockClient.lastRequestConfig).toHaveProperty("signal", controller.signal);
-        expect((MockClient.lastRequestConfig as Record<string, unknown>).headers).toMatchObject({
+        expect(MockClient.lastRequestConfig?.headers).toMatchObject({
           "x-custom": "value",
         });
       });
@@ -1344,9 +1349,7 @@ describe("SAPAILanguageModel", () => {
 
         const MockClient = await getMockClientForApi(api);
         expect(MockClient.lastStreamRequestConfig).toBeDefined();
-        expect(
-          (MockClient.lastStreamRequestConfig as Record<string, unknown>).headers,
-        ).toMatchObject({
+        expect(MockClient.lastStreamRequestConfig?.headers).toMatchObject({
           "x-custom": "stream-value",
         });
       });
