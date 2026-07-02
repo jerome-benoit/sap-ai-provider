@@ -70,7 +70,8 @@ export interface SAPAIProviderSettings {
    *
    * See the "Note on `requestConfig`" section under `SAPAIProviderSettings` in
    * `API_REFERENCE.md` for the full SAP AI Core `AI-*` header guidance.
-   * @see {@link https://sap.github.io/ai-sdk/docs/js/getting-started SAP Cloud SDK for AI (JS)}
+   * @see {@link https://sap.github.io/ai-sdk/docs/js/getting-started | SAP Cloud SDK for AI (JS)}
+   * @see {@link https://github.com/jerome-benoit/sap-ai-provider/blob/main/API_REFERENCE.md#requestconfig-note | Note on `requestConfig` (API_REFERENCE.md)}
    */
   readonly requestConfig?: CustomRequestConfig;
 
