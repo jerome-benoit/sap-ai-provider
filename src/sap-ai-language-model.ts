@@ -13,6 +13,7 @@ import type {
   LanguageModelV3StreamResult,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -37,6 +38,7 @@ interface SAPAILanguageModelConfig {
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
   readonly providerApi?: SAPAIApiType;
+  readonly requestConfig?: CustomRequestConfig;
 }
 
 /**
@@ -169,6 +171,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       destination: this.config.destination,
       modelId: this.modelId,
       provider: this.config.provider,
+      requestConfig: this.config.requestConfig,
     };
 
     return { strategy, strategyConfig };

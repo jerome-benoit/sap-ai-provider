@@ -17,6 +17,7 @@ import type {
   SharedV3Warning,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { ZodType } from "zod";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
@@ -1077,6 +1078,26 @@ export function mapToolChoice(toolChoice: AISDKToolChoice | undefined): SAPToolC
     default:
       return undefined;
   }
+}
+
+/**
+ * Merges provider-level `requestConfig` with the per-call `abortSignal`.
+ *
+ * The AI SDK `abortSignal` always wins: any `signal` present on `requestConfig` is
+ * dropped so callers cannot accidentally bypass the abort contract described in the
+ * JSDoc of `SAPAIProviderSettings.requestConfig`.
+ * @param requestConfig - Provider-level custom request configuration.
+ * @param abortSignal - Per-call abort signal from the AI SDK.
+ * @returns Merged configuration, or `undefined` when there is nothing to forward.
+ * @internal
+ */
+export function mergeRequestConfig(
+  requestConfig: CustomRequestConfig | undefined,
+  abortSignal: AbortSignal | undefined,
+): CustomRequestConfig | undefined {
+  const { signal: _dropped, ...rest } = requestConfig ?? {};
+  if (abortSignal) return { ...rest, signal: abortSignal };
+  return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
 /**

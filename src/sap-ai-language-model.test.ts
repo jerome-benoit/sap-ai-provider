@@ -41,6 +41,8 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
     static lastStreamRequest: unknown;
 
+    static lastStreamRequestConfig: unknown;
+
     static streamChunks:
       | undefined
       | {
@@ -114,10 +116,11 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       });
     });
 
-    stream = vi.fn().mockImplementation((request, abortSignal, config) => {
+    stream = vi.fn().mockImplementation((request, abortSignal, config, requestConfig) => {
       MockOrchestrationClient.lastStreamRequest = request;
       MockOrchestrationClient.lastStreamAbortSignal = abortSignal;
       MockOrchestrationClient.lastStreamConfig = config;
+      MockOrchestrationClient.lastStreamRequestConfig = requestConfig;
 
       if (MockOrchestrationClient.streamSetupError) {
         const error = MockOrchestrationClient.streamSetupError;
@@ -283,6 +286,8 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
 
     static lastStreamRequest: unknown;
 
+    static lastStreamRequestConfig: unknown;
+
     static streamChunks:
       | undefined
       | {
@@ -356,9 +361,10 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
       });
     });
 
-    stream = vi.fn().mockImplementation((request, abortSignal) => {
+    stream = vi.fn().mockImplementation((request, abortSignal, requestConfig) => {
       MockAzureOpenAiChatClient.lastStreamRequest = request;
       MockAzureOpenAiChatClient.lastStreamAbortSignal = abortSignal;
+      MockAzureOpenAiChatClient.lastStreamRequestConfig = requestConfig;
 
       if (MockAzureOpenAiChatClient.streamSetupError) {
         const error = MockAzureOpenAiChatClient.streamSetupError;
@@ -594,6 +600,7 @@ describe("SAPAILanguageModel", () => {
     lastStreamAbortSignal: unknown;
     lastStreamConfig?: unknown;
     lastStreamRequest: unknown;
+    lastStreamRequestConfig?: unknown;
     setChatCompletionError?: (error: Error) => void;
     setChatCompletionResponse?: (response: unknown) => void;
     setStreamChunks?: (chunks: unknown[]) => void;
@@ -612,6 +619,7 @@ describe("SAPAILanguageModel", () => {
       lastStreamAbortSignal: unknown;
       lastStreamConfig: unknown;
       lastStreamRequest: unknown;
+      lastStreamRequestConfig: unknown;
       setChatCompletionError?: (error: Error) => void;
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
@@ -626,6 +634,7 @@ describe("SAPAILanguageModel", () => {
       lastStreamAbortSignal: client.lastStreamAbortSignal,
       lastStreamConfig: client.lastStreamConfig,
       lastStreamRequest: client.lastStreamRequest,
+      lastStreamRequestConfig: client.lastStreamRequestConfig,
       setChatCompletionError: client.setChatCompletionError,
       setChatCompletionResponse: client.setChatCompletionResponse,
       setStreamChunks: client.setStreamChunks,
@@ -643,6 +652,7 @@ describe("SAPAILanguageModel", () => {
       lastRunRequestConfig: unknown;
       lastStreamAbortSignal: unknown;
       lastStreamRequest: unknown;
+      lastStreamRequestConfig: unknown;
       setChatCompletionError?: (error: Error) => void;
       setChatCompletionResponse?: (response: unknown) => void;
       setStreamChunks?: (chunks: unknown[]) => void;
@@ -656,6 +666,7 @@ describe("SAPAILanguageModel", () => {
       lastRequestConfig: client.lastRunRequestConfig,
       lastStreamAbortSignal: client.lastStreamAbortSignal,
       lastStreamRequest: client.lastStreamRequest,
+      lastStreamRequestConfig: client.lastStreamRequestConfig,
       setChatCompletionError: client.setChatCompletionError,
       setChatCompletionResponse: client.setChatCompletionResponse,
       setStreamChunks: client.setStreamChunks,
@@ -1274,6 +1285,70 @@ describe("SAPAILanguageModel", () => {
         await expect(
           model.doGenerate({ abortSignal: controller.signal, prompt }),
         ).rejects.toThrow();
+      });
+    });
+
+    describe("requestConfig support", () => {
+      it("should pass custom headers via requestConfig in doGenerate", async () => {
+        const config = {
+          ...getConfigForApi(api),
+          requestConfig: { headers: { "x-custom": "value" } },
+        };
+        const model = new SAPAILanguageModel("gpt-4o", {}, config);
+        const prompt = createPrompt("Hello");
+
+        await model.doGenerate({ prompt });
+
+        const MockClient = await getMockClientForApi(api);
+        expect(MockClient.lastRequestConfig).toBeDefined();
+        expect(MockClient.lastRequestConfig).toHaveProperty("headers");
+        expect((MockClient.lastRequestConfig as Record<string, unknown>).headers).toMatchObject({
+          "x-custom": "value",
+        });
+      });
+
+      it("should merge custom headers with abort signal in doGenerate", async () => {
+        const config = {
+          ...getConfigForApi(api),
+          requestConfig: { headers: { "x-custom": "value" } },
+        };
+        const model = new SAPAILanguageModel("gpt-4o", {}, config);
+        const prompt = createPrompt("Hello");
+        const controller = new AbortController();
+
+        await model.doGenerate({ abortSignal: controller.signal, prompt });
+
+        const MockClient = await getMockClientForApi(api);
+        expect(MockClient.lastRequestConfig).toBeDefined();
+        expect(MockClient.lastRequestConfig).toHaveProperty("signal", controller.signal);
+        expect((MockClient.lastRequestConfig as Record<string, unknown>).headers).toMatchObject({
+          "x-custom": "value",
+        });
+      });
+
+      it("should pass custom headers via requestConfig in doStream", async () => {
+        const config = {
+          ...getConfigForApi(api),
+          requestConfig: { headers: { "x-custom": "stream-value" } },
+        };
+        const model = new SAPAILanguageModel("gpt-4o", {}, config);
+        const prompt = createPrompt("Hello");
+
+        const streamResult = await model.doStream({ prompt });
+        const reader = streamResult.stream.getReader();
+        let done = false;
+        while (!done) {
+          const r = await reader.read();
+          done = r.done;
+        }
+
+        const MockClient = await getMockClientForApi(api);
+        expect(MockClient.lastStreamRequestConfig).toBeDefined();
+        expect(
+          (MockClient.lastStreamRequestConfig as Record<string, unknown>).headers,
+        ).toMatchObject({
+          "x-custom": "stream-value",
+        });
       });
     });
 

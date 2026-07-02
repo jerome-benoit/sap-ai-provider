@@ -1,5 +1,6 @@
 /** Foundation Models embedding model strategy using `@sap-ai-sdk/foundation-models`. */
 import type { EmbeddingModelV3Embedding } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type {
   AzureOpenAiEmbeddingClient,
   AzureOpenAiEmbeddingParameters,
@@ -15,6 +16,7 @@ import {
   buildModelDeployment,
   extractResponseMetadata,
   hasKeys,
+  mergeRequestConfig,
   normalizeEmbedding,
 } from "./strategy-utils.js";
 
@@ -68,9 +70,10 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     values: string[],
     _embeddingType: unknown,
     abortSignal: AbortSignal | undefined,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<AzureOpenAiEmbeddingResponse> {
     const request = this.buildRequest(values, clientWithContext.mergedParams);
-    return clientWithContext.client.run(request, abortSignal ? { signal: abortSignal } : undefined);
+    return clientWithContext.client.run(request, mergeRequestConfig(requestConfig, abortSignal));
   }
 
   protected extractEmbeddings(response: AzureOpenAiEmbeddingResponse): EmbeddingModelV3Embedding[] {

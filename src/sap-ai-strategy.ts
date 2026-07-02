@@ -7,6 +7,7 @@ import type {
   LanguageModelV3StreamResult,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import type {
@@ -31,6 +32,7 @@ export interface EmbeddingModelStrategyConfig {
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly modelId: string;
   readonly provider: string;
+  readonly requestConfig?: CustomRequestConfig;
 }
 
 /**
@@ -60,6 +62,7 @@ export interface LanguageModelStrategyConfig {
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly modelId: string;
   readonly provider: string;
+  readonly requestConfig?: CustomRequestConfig;
 }
 
 /** @internal */

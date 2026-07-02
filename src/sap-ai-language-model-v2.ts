@@ -20,6 +20,7 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
@@ -38,6 +39,7 @@ interface SAPAILanguageModelV2Config {
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly provider: string;
   readonly providerApi?: SAPAIApiType;
+  readonly requestConfig?: CustomRequestConfig;
 }
 
 /**

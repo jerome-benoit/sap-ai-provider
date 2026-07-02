@@ -1,5 +1,6 @@
 /** Foundation Models language model strategy using `@sap-ai-sdk/foundation-models`. */
 import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type {
   AzureOpenAiChatClient,
   AzureOpenAiChatCompletionParameters,
@@ -19,6 +20,7 @@ import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
+  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -115,8 +117,9 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
     abortSignal: AbortSignal | undefined,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const response = await client.run(request, abortSignal ? { signal: abortSignal } : undefined);
+    const response = await client.run(request, mergeRequestConfig(requestConfig, abortSignal));
 
     const { requestId, responseId } = this.extractMetadata(response);
 
@@ -137,8 +140,13 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     request: AzureOpenAiChatCompletionParameters,
     abortSignal: AbortSignal | undefined,
     _settings: FoundationModelsModelSettings,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<StreamCallResponse> {
-    const streamResponse = await client.stream(request, abortSignal);
+    const streamResponse = await client.stream(
+      request,
+      abortSignal,
+      mergeRequestConfig(requestConfig, undefined),
+    );
 
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 

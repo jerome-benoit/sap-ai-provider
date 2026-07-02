@@ -545,4 +545,21 @@ describe("SAPAILanguageModelV2", () => {
       ).toEqual({ ephemeral_1h_input_tokens: 20, ephemeral_5m_input_tokens: 80 });
     });
   });
+
+  describe("requestConfig forwarding", () => {
+    it("forwards requestConfig through the V2 facade to the internal V3 model", () => {
+      const requestConfig = { headers: { "x-tenant": "v2-test" } };
+      const model = new SAPAILanguageModelV2(
+        "gpt-4o",
+        {},
+        {
+          ...defaultConfig,
+          requestConfig,
+        },
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      expect((model as any).internalModel.config.requestConfig).toBe(requestConfig);
+    });
+  });
 });

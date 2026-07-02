@@ -5,6 +5,7 @@ import type {
   LanguageModelV3StreamResult,
   SharedV3Warning,
 } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
@@ -112,7 +113,12 @@ export abstract class BaseLanguageModelStrategy<
 
       const client = this.createClient(config, settings, commonParts);
 
-      const response = await this.executeApiCall(client, request, options.abortSignal ?? undefined);
+      const response = await this.executeApiCall(
+        client,
+        request,
+        options.abortSignal ?? undefined,
+        config.requestConfig,
+      );
 
       return buildGenerateResult({
         modelId: config.modelId,
@@ -149,6 +155,7 @@ export abstract class BaseLanguageModelStrategy<
         request,
         options.abortSignal ?? undefined,
         settings,
+        config.requestConfig,
       );
 
       const idGenerator = new StreamIdGenerator();
@@ -302,6 +309,7 @@ export abstract class BaseLanguageModelStrategy<
    * @param client - SDK client instance.
    * @param request - Request body.
    * @param abortSignal - Optional abort signal.
+   * @param requestConfig - Optional custom request configuration (e.g. custom headers).
    * @returns SDK response.
    * @internal
    */
@@ -309,6 +317,7 @@ export abstract class BaseLanguageModelStrategy<
     client: TClient,
     request: TRequest,
     abortSignal: AbortSignal | undefined,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse>;
 
   /**
@@ -317,6 +326,7 @@ export abstract class BaseLanguageModelStrategy<
    * @param request - Request body.
    * @param abortSignal - Optional abort signal.
    * @param settings - Model settings for API-specific stream options.
+   * @param requestConfig - Optional custom request configuration (e.g. custom headers).
    * @returns Stream response with accessors.
    * @internal
    */
@@ -325,6 +335,7 @@ export abstract class BaseLanguageModelStrategy<
     request: TRequest,
     abortSignal: AbortSignal | undefined,
     settings: TSettings,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<StreamCallResponse>;
 
   /**

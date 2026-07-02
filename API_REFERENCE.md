@@ -1065,16 +1065,17 @@ Configuration options for the SAP AI Provider.
 
 **Properties:**
 
-| Property                | Type                                     | Default           | Description                                                                                                                                          |
-| ----------------------- | ---------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                  | `string`                                 | `'sap-ai'`        | Provider name used as key in `providerOptions`/`providerMetadata`. Provider identifier uses `{name}.{type}` format (e.g., `"sap-ai.chat"`)           |
-| `api`                   | `'orchestration' \| 'foundation-models'` | `'orchestration'` | SAP AI Core API to use. Orchestration provides full features (masking, filtering, grounding); Foundation Models provides direct model access         |
-| `resourceGroup`         | `string`                                 | `'default'`       | SAP AI Core resource group                                                                                                                           |
-| `deploymentId`          | `string`                                 | Auto              | SAP AI Core deployment ID                                                                                                                            |
-| `destination`           | `HttpDestinationOrFetchOptions`          | -                 | Custom destination configuration                                                                                                                     |
-| `defaultSettings`       | `SAPAISettings`                          | -                 | Default model settings applied to all models                                                                                                         |
-| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Log level for SAP Cloud SDK internal logging (authentication, service binding). Can be overridden via `SAP_CLOUD_SDK_LOG_LEVEL` environment variable |
-| `warnOnAmbiguousConfig` | `boolean`                                | `true`            | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)                    |
+| Property                | Type                                     | Default           | Description                                                                                                                                                                                                                                                                           |
+| ----------------------- | ---------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                  | `string`                                 | `'sap-ai'`        | Provider name used as key in `providerOptions`/`providerMetadata`. Provider identifier uses `{name}.{type}` format (e.g., `"sap-ai.chat"`)                                                                                                                                            |
+| `api`                   | `'orchestration' \| 'foundation-models'` | `'orchestration'` | SAP AI Core API to use. Orchestration provides full features (masking, filtering, grounding); Foundation Models provides direct model access                                                                                                                                          |
+| `resourceGroup`         | `string`                                 | `'default'`       | SAP AI Core resource group                                                                                                                                                                                                                                                            |
+| `deploymentId`          | `string`                                 | Auto              | SAP AI Core deployment ID                                                                                                                                                                                                                                                             |
+| `destination`           | `HttpDestinationOrFetchOptions`          | -                 | Custom destination configuration                                                                                                                                                                                                                                                      |
+| `requestConfig`         | `CustomRequestConfig`                    | -                 | Custom request configuration forwarded to the underlying SAP AI SDK client on every call. Use `requestConfig.headers` to pass service-specific HTTP headers (e.g. `AI-Object-Store-Secret-Name`). The `signal` property is ignored here — use the AI SDK `abortSignal` option instead |
+| `defaultSettings`       | `SAPAISettings`                          | -                 | Default model settings applied to all models                                                                                                                                                                                                                                          |
+| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Log level for SAP Cloud SDK internal logging (authentication, service binding). Can be overridden via `SAP_CLOUD_SDK_LOG_LEVEL` environment variable                                                                                                                                  |
+| `warnOnAmbiguousConfig` | `boolean`                                | `true`            | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)                                                                                                                                                     |
 
 **Example:**
 
@@ -1091,6 +1092,17 @@ const settings: SAPAIProviderSettings = {
     },
   },
 };
+```
+
+**Example with custom request headers:**
+
+```typescript
+const provider = createSAPAIProvider({
+  resourceGroup: "production",
+  requestConfig: {
+    headers: { "AI-Object-Store-Secret-Name": "my-secret" },
+  },
+});
 ```
 
 **Example with provider name:**
