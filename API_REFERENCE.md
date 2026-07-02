@@ -1114,7 +1114,7 @@ const settings: SAPAIProviderSettings = {
 >   headers that alter server-side behaviour:
 >   - **`AI-Object-Store-Secret-Name`** — names the object store secret used by the
 >     feedback service. Omit if you are not using the feedback service.
->   - **`AI-Resource-Group`** — **not a supported override on `requestConfig.headers`**.
+>   - **`AI-Resource-Group`** — **do not set via `requestConfig.headers`**.
 >     The SAP AI SDK types this header as `never` on its internal
 >     `OrchestrationRequestHeaders` type, but that constraint does not flow through
 >     `CustomRequestConfig.headers` (typed as `Record<string, any>`), so TypeScript

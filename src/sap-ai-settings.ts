@@ -232,7 +232,7 @@ export interface SAPAIEmbeddingSettings {
  *
  * Model availability depends on tenant configuration and region.
  * Common values include: `'gpt-4.1'`, `'gpt-4.1-mini'`, `'anthropic--claude-4.5-sonnet'`, `'gemini-2.5-pro'`.
- * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/models-and-scenarios-in-generative-ai-hub|SAP AI Core Models}
+ * @see {@link https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/models-and-scenarios-in-generative-ai-hub | SAP AI Core Models}
  */
 export type SAPAIModelId = ChatModel;
 
