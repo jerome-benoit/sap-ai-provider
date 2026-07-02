@@ -12,6 +12,7 @@ import {
   extractCompletionId,
   extractResponseContent,
   mapFinishReason,
+  mergeRequestConfig,
   sanitizeAsJSONArray,
   sanitizeAsJSONObject,
   type SAPTool,
@@ -295,5 +296,44 @@ describe("computeNoCache", () => {
     ],
   )("should %s", (_label, prompt, cached, cacheWrite, expected) => {
     expect(computeNoCache(prompt, cached, cacheWrite)).toBe(expected);
+  });
+});
+
+describe("mergeRequestConfig", () => {
+  it("returns undefined when both inputs are absent", () => {
+    expect(mergeRequestConfig(undefined, undefined)).toBeUndefined();
+  });
+
+  it("ignores requestConfig.signal even when no abortSignal is provided", () => {
+    const userSignal = new AbortController().signal;
+    const result = mergeRequestConfig({ signal: userSignal }, undefined);
+    expect(result).toBeUndefined();
+  });
+
+  it("returns abortSignal when requestConfig is absent", () => {
+    const signal = new AbortController().signal;
+    const result = mergeRequestConfig(undefined, signal);
+    expect(result).toEqual({ signal });
+  });
+
+  it("overrides requestConfig.signal with abortSignal when both are set", () => {
+    const userSignal = new AbortController().signal;
+    const sdkSignal = new AbortController().signal;
+    const result = mergeRequestConfig({ headers: { "x-h": "v" }, signal: userSignal }, sdkSignal);
+    expect(result?.signal).toBe(sdkSignal);
+    expect((result as Record<string, unknown>).headers).toEqual({ "x-h": "v" });
+    expect(result?.signal).not.toBe(userSignal);
+  });
+
+  it("preserves non-signal fields when no abortSignal is provided", () => {
+    const result = mergeRequestConfig({ headers: { "x-custom": "1" } }, undefined);
+    expect(result).toEqual({ headers: { "x-custom": "1" } });
+  });
+
+  it("merges non-signal fields with abortSignal", () => {
+    const signal = new AbortController().signal;
+    const result = mergeRequestConfig({ headers: { "x-custom": "1" } }, signal);
+    expect(result?.signal).toBe(signal);
+    expect((result as Record<string, unknown>).headers).toEqual({ "x-custom": "1" });
   });
 });

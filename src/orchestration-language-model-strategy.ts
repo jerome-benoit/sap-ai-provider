@@ -33,6 +33,7 @@ import {
   convertResponseFormat,
   convertToolsToSAPFormat,
   hasKeys,
+  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKCitation,
@@ -305,10 +306,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const mergedRequestConfig = abortSignal
-      ? { ...requestConfig, signal: abortSignal }
-      : requestConfig;
-    const response = await client.chatCompletion(request, mergedRequestConfig);
+    const response = await client.chatCompletion(
+      request,
+      mergeRequestConfig(requestConfig, abortSignal),
+    );
 
     const { requestId, responseId } = this.extractMetadata(response);
 
@@ -342,7 +343,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       request,
       abortSignal,
       sdkStreamOptions,
-      requestConfig,
+      mergeRequestConfig(requestConfig, undefined),
     );
 
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);

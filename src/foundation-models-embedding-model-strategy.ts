@@ -16,6 +16,7 @@ import {
   buildModelDeployment,
   extractResponseMetadata,
   hasKeys,
+  mergeRequestConfig,
   normalizeEmbedding,
 } from "./strategy-utils.js";
 
@@ -72,10 +73,7 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<AzureOpenAiEmbeddingResponse> {
     const request = this.buildRequest(values, clientWithContext.mergedParams);
-    const mergedRequestConfig = abortSignal
-      ? { ...requestConfig, signal: abortSignal }
-      : requestConfig;
-    return clientWithContext.client.run(request, mergedRequestConfig);
+    return clientWithContext.client.run(request, mergeRequestConfig(requestConfig, abortSignal));
   }
 
   protected extractEmbeddings(response: AzureOpenAiEmbeddingResponse): EmbeddingModelV3Embedding[] {

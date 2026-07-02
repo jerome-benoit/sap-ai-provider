@@ -18,6 +18,7 @@ import {
   type EmbeddingProviderOptions,
   extractResponseMetadata,
   hasKeys,
+  mergeRequestConfig,
   normalizeEmbedding,
   type ResponseMetadata,
 } from "./strategy-utils.js";
@@ -76,10 +77,10 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
     abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<OrchestrationEmbeddingResponse> {
-    const mergedRequestConfig = abortSignal
-      ? { ...requestConfig, signal: abortSignal }
-      : requestConfig;
-    return client.embed({ input: values, type: embeddingType }, mergedRequestConfig);
+    return client.embed(
+      { input: values, type: embeddingType },
+      mergeRequestConfig(requestConfig, abortSignal),
+    );
   }
 
   protected extractEmbeddings(

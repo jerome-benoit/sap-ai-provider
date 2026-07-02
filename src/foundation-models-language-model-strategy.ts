@@ -20,6 +20,7 @@ import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
+  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -118,10 +119,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const mergedRequestConfig = abortSignal
-      ? { ...requestConfig, signal: abortSignal }
-      : requestConfig;
-    const response = await client.run(request, mergedRequestConfig);
+    const response = await client.run(request, mergeRequestConfig(requestConfig, abortSignal));
 
     const { requestId, responseId } = this.extractMetadata(response);
 
@@ -144,7 +142,11 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     _settings: FoundationModelsModelSettings,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<StreamCallResponse> {
-    const streamResponse = await client.stream(request, abortSignal, requestConfig);
+    const streamResponse = await client.stream(
+      request,
+      abortSignal,
+      mergeRequestConfig(requestConfig, undefined),
+    );
 
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 

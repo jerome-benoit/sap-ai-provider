@@ -210,4 +210,21 @@ describe("SAPAIEmbeddingModelV2", () => {
       }
     });
   });
+
+  describe("requestConfig forwarding", () => {
+    it("forwards requestConfig through the V2 facade to the internal V3 model", () => {
+      const requestConfig = { headers: { "x-tenant": "v2-embed-test" } };
+      const model = new SAPAIEmbeddingModelV2(
+        "text-embedding-ada-002",
+        {},
+        {
+          ...defaultConfig,
+          requestConfig,
+        },
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      expect((model as any).internalModel.config.requestConfig).toBe(requestConfig);
+    });
+  });
 });
