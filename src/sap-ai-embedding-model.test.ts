@@ -8,6 +8,12 @@ import { clearStrategyCaches } from "./sap-ai-strategy.js";
 
 type APIType = "foundation-models" | "orchestration";
 
+interface CapturedRequestConfig {
+  [key: string]: unknown;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
 const EMBED_REQUEST_IDS = {
   "foundation-models": "test-fm-embed-request-id",
   orchestration: "test-orch-embed-request-id",
@@ -26,7 +32,7 @@ interface FMEmbedCall {
     input_type?: string;
     user?: string;
   };
-  requestConfig?: { signal?: AbortSignal };
+  requestConfig?: CapturedRequestConfig;
 }
 interface FMEmbeddingResponse {
   _data: {
@@ -47,7 +53,7 @@ interface OrchestrationConstructorCall {
 }
 interface OrchestrationEmbedCall {
   request: { input: string[]; type?: string };
-  requestConfig?: { signal?: AbortSignal };
+  requestConfig?: CapturedRequestConfig;
 }
 interface OrchestrationEmbeddingResponse {
   getEmbeddings: () => { embedding: number[] | string; index: number; object: string }[];
@@ -66,7 +72,7 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
     embed = vi
       .fn()
       .mockImplementation(
-        (request: { input: string[]; type?: string }, requestConfig?: { signal?: AbortSignal }) => {
+        (request: { input: string[]; type?: string }, requestConfig?: CapturedRequestConfig) => {
           MockOrchestrationEmbeddingClient.lastEmbedCall = { request, requestConfig };
           const errorToThrow = MockOrchestrationEmbeddingClient.embedError;
           if (errorToThrow) {
@@ -125,7 +131,7 @@ vi.mock("@sap-ai-sdk/foundation-models", () => {
     run = vi
       .fn()
       .mockImplementation(
-        (request: FMEmbedCall["request"], requestConfig?: { signal?: AbortSignal }) => {
+        (request: FMEmbedCall["request"], requestConfig?: CapturedRequestConfig) => {
           MockAzureOpenAiEmbeddingClient.lastEmbedCall = { request, requestConfig };
           const errorToThrow = MockAzureOpenAiEmbeddingClient.embedError;
           if (errorToThrow) {
@@ -449,7 +455,7 @@ describe("SAPAIEmbeddingModel", () => {
 
       const lastCall = await getLastEmbedCallForApi(api);
       expect(lastCall?.requestConfig).toBeDefined();
-      expect((lastCall?.requestConfig as Record<string, unknown>).headers).toMatchObject({
+      expect(lastCall?.requestConfig?.headers).toMatchObject({
         "x-custom": "embed-value",
       });
     });
@@ -466,7 +472,7 @@ describe("SAPAIEmbeddingModel", () => {
 
       const lastCall = await getLastEmbedCallForApi(api);
       expect(lastCall?.requestConfig?.signal).toBe(abortController.signal);
-      expect((lastCall?.requestConfig as Record<string, unknown>).headers).toMatchObject({
+      expect(lastCall?.requestConfig?.headers).toMatchObject({
         "x-custom": "embed-value",
       });
     });

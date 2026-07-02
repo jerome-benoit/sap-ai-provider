@@ -696,21 +696,32 @@ modules: {
 
 ### Request Cancellation
 
-The provider supports HTTP-level request cancellation via `AbortSignal`.
+The provider supports HTTP-level request cancellation via `AbortSignal`. The
+per-call `abortSignal` is merged with the provider-level `requestConfig` (see
+[`SAPAIProviderSettings.requestConfig`](./API_REFERENCE.md#sapaiprovidersettings))
+via the internal `mergeRequestConfig` helper. Any `signal` present on
+`requestConfig` is dropped so the AI SDK `abortSignal` always wins.
 
-**Non-streaming:**
+The snippets below show the **Orchestration** call sites. The **Foundation Models**
+path uses `client.run()` for non-streaming and a 3-argument
+`client.stream(request, abortSignal, requestConfig)` for streaming; the same
+`mergeRequestConfig` helper is applied in both cases.
+
+**Non-streaming (Orchestration):**
 
 ```typescript
-const response = await client.chatCompletion(requestBody, options.abortSignal ? { signal: options.abortSignal } : undefined);
+const response = await client.chatCompletion(request, mergeRequestConfig(requestConfig, abortSignal));
 ```
 
-**Streaming:**
+**Streaming (Orchestration):**
 
 ```typescript
-const stream = await client.stream(requestBody, options.abortSignal, streamOptions, requestConfig);
+const stream = await client.stream(request, abortSignal, streamOptions, mergeRequestConfig(requestConfig, undefined));
 ```
 
-The signal passes through `requestConfig` to the SAP AI SDK, which forwards it to the underlying Axios HTTP client. When aborted, the HTTP connection is closed and server-side processing stops.
+The signal is forwarded to the SAP AI SDK, which passes it to the underlying
+Axios HTTP client. When aborted, the HTTP connection is closed and server-side
+processing stops.
 
 ### Tool Calling Flow
 

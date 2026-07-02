@@ -60,9 +60,18 @@ export interface SAPAIProviderSettings {
   readonly name?: string;
 
   /**
-   * Custom request configuration forwarded to the underlying SAP AI SDK client on every call.
-   * Use `requestConfig.headers` to pass service-specific HTTP headers (e.g. `AI-Object-Store-Secret-Name`).
-   * The `signal` property is ignored here — use the AI SDK `abortSignal` option instead.
+   * Custom request configuration forwarded to the underlying SAP AI SDK client on every
+   * call created from this provider.
+   *
+   * Provider-level only (not overridable per-call via `providerOptions['sap-ai']`). The
+   * AI SDK `abortSignal` option always wins over any `signal` on `requestConfig`; the
+   * latter is dropped before the request is forwarded. Node-only knobs (`httpAgent`,
+   * `httpsAgent`) are silently ignored on Edge / Cloudflare Workers runtimes.
+   *
+   * See the "Note on `requestConfig`" section under `SAPAIProviderSettings` in
+   * `API_REFERENCE.md` for the full SAP AI Core `AI-*` header guidance.
+   * @see {@link https://sap.github.io/ai-sdk/docs/js/getting-started | SAP Cloud SDK for AI (JS)}
+   * @see {@link https://github.com/jerome-benoit/sap-ai-provider/blob/main/API_REFERENCE.md#requestconfig-note | Note on `requestConfig` (API_REFERENCE.md)}
    */
   readonly requestConfig?: CustomRequestConfig;
 
@@ -102,7 +111,7 @@ export interface SAPAIProviderV2 extends ProviderV2 {
  * @param options.destination - Custom SAP Cloud SDK destination configuration.
  * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
  * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
- * @param options.requestConfig - Custom request configuration forwarded to the SAP AI SDK client on every call.
+ * @param options.requestConfig - Provider-level custom request configuration. See {@link SAPAIProviderSettings.requestConfig} for scope, portability, and abort semantics.
  * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`).
  * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.
  * @returns A configured SAP AI provider instance that can be used as a callable or via methods.

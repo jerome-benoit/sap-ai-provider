@@ -648,8 +648,11 @@ authentication, model parameters, data masking, content filtering, and more.
   `providerOptions`/`providerMetadata`.
 - `resourceGroup`: SAP AI Core resource group (default: 'default')
 - `deploymentId`: Specific deployment ID (auto-resolved if not set)
-- `requestConfig`: Custom HTTP request configuration (headers, params, etc.) forwarded
-  to the underlying SAP AI SDK client on every call
+- `requestConfig`: Custom HTTP request configuration (headers, params, timeout, etc.)
+  forwarded to the underlying SAP AI SDK client on every call. Provider-level scope
+  only; use `requestConfig.headers` for SAP-specific headers such as
+  `AI-Object-Store-Secret-Name` (feedback service). See
+  [API Reference](./API_REFERENCE.md#sapaiprovidersettings) for portability caveats.
 - `modelParams`: Temperature, maxTokens, topP, and other generation parameters
 - `masking`: SAP Data Privacy Integration (DPI) configuration
 - `filtering`: Content safety filters (Azure Content Safety, Llama Guard)

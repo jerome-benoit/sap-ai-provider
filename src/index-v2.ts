@@ -170,6 +170,16 @@ export { resolveApi, validateSettings } from "./sap-ai-validation.js";
 export { VERSION } from "./version.js";
 
 /**
+ * SAP AI SDK request configuration type for {@link SAPAIProviderSettings.requestConfig}.
+ *
+ * Re-exported so consumers can type provider options without a direct dependency on
+ * `@sap-ai-sdk/core`. The shape tracks `@sap-ai-sdk/core` versioning and is inherited
+ * transitively; upstream changes to `CustomRequestConfig` propagate here without a
+ * release of this package.
+ */
+export type { CustomRequestConfig } from "@sap-ai-sdk/core";
+
+/**
  * Error handling types and classes for SAP AI Core error responses.
  */
 export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
@@ -180,3 +190,12 @@ export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
  * For advanced users who need to use the SAP AI SDK directly.
  */
 export { OrchestrationClient, OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
+
+/**
+ * SAP Cloud SDK destination type for {@link SAPAIProviderSettings.destination}.
+ *
+ * Re-exported so consumers can type provider options without a direct dependency on
+ * `@sap-cloud-sdk/connectivity`. The shape tracks `@sap-cloud-sdk/connectivity`
+ * versioning and is inherited transitively.
+ */
+export type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
