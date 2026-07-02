@@ -5,6 +5,7 @@ import type {
   EmbeddingModelV3Result,
   SharedV3Warning,
 } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
 import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 
@@ -62,7 +63,13 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const client = this.createClient(config, settings, embeddingOptions);
 
-      const response = await this.executeCall(client, values, embeddingType, abortSignal);
+      const response = await this.executeCall(
+        client,
+        values,
+        embeddingType,
+        abortSignal,
+        config.requestConfig,
+      );
 
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
@@ -110,6 +117,7 @@ export abstract class BaseEmbeddingModelStrategy<
    * @param values - Input strings to embed.
    * @param embeddingType - Type of embedding (text, query, document).
    * @param abortSignal - Optional abort signal.
+   * @param requestConfig - Optional custom request configuration (e.g. custom headers).
    * @returns SDK response containing embeddings.
    * @internal
    */
@@ -118,6 +126,7 @@ export abstract class BaseEmbeddingModelStrategy<
     values: string[],
     embeddingType: EmbeddingType,
     abortSignal: AbortSignal | undefined,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<TResponse>;
 
   /**

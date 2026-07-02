@@ -438,6 +438,39 @@ describe("SAPAIEmbeddingModel", () => {
       expect(lastCall?.requestConfig).toBeUndefined();
     });
 
+    it("should pass custom headers via requestConfig", async () => {
+      const config = {
+        ...getConfigForApi(api),
+        requestConfig: { headers: { "x-custom": "embed-value" } },
+      };
+      const model = new SAPAIEmbeddingModel("text-embedding-ada-002", {}, config);
+
+      await model.doEmbed({ values: ["hello"] });
+
+      const lastCall = await getLastEmbedCallForApi(api);
+      expect(lastCall?.requestConfig).toBeDefined();
+      expect((lastCall?.requestConfig as Record<string, unknown>).headers).toMatchObject({
+        "x-custom": "embed-value",
+      });
+    });
+
+    it("should merge custom headers with abort signal", async () => {
+      const abortController = new AbortController();
+      const config = {
+        ...getConfigForApi(api),
+        requestConfig: { headers: { "x-custom": "embed-value" } },
+      };
+      const model = new SAPAIEmbeddingModel("text-embedding-ada-002", {}, config);
+
+      await model.doEmbed({ abortSignal: abortController.signal, values: ["hello"] });
+
+      const lastCall = await getLastEmbedCallForApi(api);
+      expect(lastCall?.requestConfig?.signal).toBe(abortController.signal);
+      expect((lastCall?.requestConfig as Record<string, unknown>).headers).toMatchObject({
+        "x-custom": "embed-value",
+      });
+    });
+
     it("should omit requestId when SDK getRequestId() returns undefined", async () => {
       await setEmbedResponseForApi(
         api,

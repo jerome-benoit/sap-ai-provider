@@ -1,4 +1,5 @@
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import { NoSuchModelError, ProviderV3 } from "@ai-sdk/provider";
@@ -79,6 +80,13 @@ export interface SAPAIProviderSettings {
   readonly name?: string;
 
   /**
+   * Custom request configuration forwarded to the underlying SAP AI SDK client on every call.
+   * Use `requestConfig.headers` to pass service-specific HTTP headers (e.g. `AI-Object-Store-Secret-Name`).
+   * The `signal` property is ignored here — use the AI SDK `abortSignal` option instead.
+   */
+  readonly requestConfig?: CustomRequestConfig;
+
+  /**
    * SAP AI Core resource group for resource isolation and access control.
    * @default 'default'
    */
@@ -101,6 +109,7 @@ export interface SAPAIProviderSettings {
  * @param options.destination - Custom SAP Cloud SDK destination configuration.
  * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
  * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
+ * @param options.requestConfig - Custom request configuration forwarded to the SAP AI SDK client on every call.
  * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`).
  * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.
  * @returns A configured SAP AI provider instance that can be used as a callable or via methods.
@@ -168,6 +177,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
       destination: options.destination,
       provider: `${providerName}.chat`,
       providerApi,
+      requestConfig: options.requestConfig,
     });
   };
 
@@ -190,6 +200,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
       destination: options.destination,
       provider: `${providerName}.embedding`,
       providerApi,
+      requestConfig: options.requestConfig,
     });
   };
 

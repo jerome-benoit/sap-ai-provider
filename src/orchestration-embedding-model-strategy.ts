@@ -1,5 +1,6 @@
 /** Orchestration embedding model strategy using `@sap-ai-sdk/orchestration`. */
 import type { EmbeddingModelV3Embedding, SharedV3Warning } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type {
   EmbeddingModelConfig,
   EmbeddingModuleConfig,
@@ -72,12 +73,13 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
     client: OrchestrationEmbeddingClient,
     values: string[],
     embeddingType: "document" | "query" | "text" | undefined,
-    abortSignal?: AbortSignal,
+    abortSignal: AbortSignal | undefined,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<OrchestrationEmbeddingResponse> {
-    return client.embed(
-      { input: values, type: embeddingType },
-      abortSignal ? { signal: abortSignal } : undefined,
-    );
+    const mergedRequestConfig = abortSignal
+      ? { ...requestConfig, signal: abortSignal }
+      : requestConfig;
+    return client.embed({ input: values, type: embeddingType }, mergedRequestConfig);
   }
 
   protected extractEmbeddings(

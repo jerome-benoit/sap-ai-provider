@@ -1,5 +1,6 @@
 /** Orchestration language model strategy using `@sap-ai-sdk/orchestration`. */
 import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type {
   ChatCompletionTool,
   ChatMessage,
@@ -302,11 +303,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     client: OrchestrationClientInstance,
     request: OrchestrationRequest,
     abortSignal: AbortSignal | undefined,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const response = await client.chatCompletion(
-      request,
-      abortSignal ? { signal: abortSignal } : undefined,
-    );
+    const mergedRequestConfig = abortSignal
+      ? { ...requestConfig, signal: abortSignal }
+      : requestConfig;
+    const response = await client.chatCompletion(request, mergedRequestConfig);
 
     const { requestId, responseId } = this.extractMetadata(response);
 
@@ -333,9 +335,15 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     request: OrchestrationRequest,
     abortSignal: AbortSignal | undefined,
     settings: OrchestrationModelSettings,
+    requestConfig: CustomRequestConfig | undefined,
   ): Promise<StreamCallResponse> {
     const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
-    const streamResponse = await client.stream(request, abortSignal, sdkStreamOptions);
+    const streamResponse = await client.stream(
+      request,
+      abortSignal,
+      sdkStreamOptions,
+      requestConfig,
+    );
 
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
