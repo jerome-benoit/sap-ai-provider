@@ -79,7 +79,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.13",
-    "@ai-sdk/provider-utils": "^4.0.35",
+    "@ai-sdk/provider-utils": "^4.0.37",
     "@sap-ai-sdk/foundation-models": "^2.12.0",
     "@sap-ai-sdk/orchestration": "^2.12.0",
     "zod": "^4.4.3"
@@ -88,12 +88,12 @@
     "@ai-hero/sandcastle": "^0.12.0",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.9.4",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@types/node": "^25.9.5",
+    "@vitest/coverage-v8": "^4.1.10",
     "dotenv": "^17.4.2",
     "eslint": "^10.6.0",
     "eslint-plugin-jsdoc": "^63.0.12",
-    "eslint-plugin-perfectionist": "^5.9.1",
+    "eslint-plugin-perfectionist": "^5.10.0",
     "globals": "^17.7.0",
     "lefthook": "^2.1.9",
     "markdown-link-check": "^3.14.2",
@@ -103,8 +103,8 @@
     "tsup": "^8.5.1",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.1",
-    "vitest": "^4.1.9"
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "ai": "^5.0.0 || ^6.0.0"
