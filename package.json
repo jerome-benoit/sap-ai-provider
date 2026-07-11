@@ -91,7 +91,7 @@
     "@types/node": "^25.9.5",
     "@vitest/coverage-v8": "^4.1.10",
     "dotenv": "^17.4.2",
-    "eslint": "^10.6.0",
+    "eslint": "^10.7.0",
     "eslint-plugin-jsdoc": "^63.0.13",
     "eslint-plugin-perfectionist": "^5.10.0",
     "globals": "^17.7.0",
