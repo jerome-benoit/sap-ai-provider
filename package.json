@@ -27,7 +27,7 @@
   "license": "Apache-2.0",
   "author": "jerome-benoit",
   "volta": {
-    "node": "24.18.1"
+    "node": "24.19.0"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -103,7 +103,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.23.5",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.65.0",
+    "typescript-eslint": "^8.66.0",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
