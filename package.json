@@ -78,7 +78,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.14",
+    "@ai-sdk/provider": "^4.0.7",
     "@ai-sdk/provider-utils": "^4.0.42",
     "@sap-ai-sdk/foundation-models": "^2.14.0",
     "@sap-ai-sdk/orchestration": "^2.14.0",
