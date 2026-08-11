@@ -78,8 +78,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.14",
-    "@ai-sdk/provider-utils": "^4.0.42",
+    "@ai-sdk/provider": "^3.0.15",
+    "@ai-sdk/provider-utils": "^4.0.44",
     "@sap-ai-sdk/foundation-models": "^2.14.0",
     "@sap-ai-sdk/orchestration": "^2.14.0",
     "zod": "^4.4.3"
@@ -92,7 +92,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "dotenv": "^17.4.2",
     "eslint": "^10.8.1",
-    "eslint-plugin-jsdoc": "^64.0.2",
+    "eslint-plugin-jsdoc": "^64.1.0",
     "eslint-plugin-perfectionist": "^5.10.1",
     "globals": "^17.9.0",
     "lefthook": "^2.1.10",
@@ -103,7 +103,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.66.0",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {
