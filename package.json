@@ -79,7 +79,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.15",
-    "@ai-sdk/provider-utils": "^4.0.44",
+    "@ai-sdk/provider-utils": "^4.0.46",
     "@sap-ai-sdk/foundation-models": "^2.14.0",
     "@sap-ai-sdk/orchestration": "^2.14.0",
     "zod": "^4.4.3"
@@ -92,9 +92,9 @@
     "@vitest/coverage-v8": "^4.1.10",
     "dotenv": "^17.4.2",
     "eslint": "^10.8.1",
-    "eslint-plugin-jsdoc": "^64.1.0",
+    "eslint-plugin-jsdoc": "^64.2.0",
     "eslint-plugin-perfectionist": "^5.10.1",
-    "globals": "^17.9.0",
+    "globals": "^17.11.0",
     "lefthook": "^2.1.10",
     "markdown-link-check": "^3.15.0",
     "markdownlint-cli2": "^0.23.2",
