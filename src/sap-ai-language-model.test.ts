@@ -756,7 +756,7 @@ describe("SAPAILanguageModel", () => {
 
   type FMChatCompletionRequest = Record<string, unknown> & {
     frequency_penalty?: number;
-    max_tokens?: number;
+    max_completion_tokens?: number;
     messages?: unknown;
     model?: string;
     presence_penalty?: number;
@@ -4902,7 +4902,7 @@ describe("SAPAILanguageModel", () => {
         {
           apis: ["orchestration", "foundation-models"] as APIType[],
           camelCaseKey: "maxTokens",
-          expectedKey: "max_tokens",
+          expectedKey: "max_completion_tokens",
           expectedValue: 1000,
           optionKey: "maxOutputTokens",
           optionValue: 1000,
@@ -5074,7 +5074,7 @@ describe("SAPAILanguageModel", () => {
           expect(getModelParamFromRequest(api, request, "customParam")).toBe("custom-value");
           expect(getModelParamFromRequest(api, request, "unknownField")).toBe(123);
 
-          expect(getModelParamFromRequest(api, request, "max_tokens")).toBe(100);
+          expect(getModelParamFromRequest(api, request, "max_completion_tokens")).toBe(100);
           expect(getModelParamFromRequest(api, request, "maxTokens")).toBeUndefined();
           expect(getModelParamFromRequest(api, request, "top_p")).toBe(0.8);
           expect(getModelParamFromRequest(api, request, "topP")).toBeUndefined();
@@ -5148,7 +5148,7 @@ describe("SAPAILanguageModel", () => {
           expect(getModelParamFromRequest(api, request, "fromProvider")).toBe("provider-value");
           expect(getModelParamFromRequest(api, request, "sharedParam")).toBe("from-provider");
 
-          expect(getModelParamFromRequest(api, request, "max_tokens")).toBe(800);
+          expect(getModelParamFromRequest(api, request, "max_completion_tokens")).toBe(800);
           expect(getModelParamFromRequest(api, request, "maxTokens")).toBeUndefined();
           expect(getModelParamFromRequest(api, request, "top_p")).toBe(0.95);
           expect(getModelParamFromRequest(api, request, "topP")).toBeUndefined();
@@ -5222,7 +5222,7 @@ describe("SAPAILanguageModel", () => {
           const request = await getLastRequestForApi(api);
 
           expect(getModelParamFromRequest(api, request, "temperature")).toBe(0.8);
-          expect(getModelParamFromRequest(api, request, "max_tokens")).toBe(500);
+          expect(getModelParamFromRequest(api, request, "max_completion_tokens")).toBe(500);
           expect(getModelParamFromRequest(api, request, "maxTokens")).toBeUndefined();
           expect(getModelParamFromRequest(api, request, "customParam")).toBe("custom-value");
         });

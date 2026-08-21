@@ -85,7 +85,7 @@ export abstract class BaseLanguageModelStrategy<
    * @internal
    */
   static readonly COMMON_PARAM_MAPPINGS: readonly ParamMapping[] = [
-    { camelCaseKey: "maxTokens", optionKey: "maxOutputTokens", outputKey: "max_tokens" },
+    { camelCaseKey: "maxTokens", optionKey: "maxOutputTokens", outputKey: "max_completion_tokens" },
     { camelCaseKey: "temperature", optionKey: "temperature", outputKey: "temperature" },
     { camelCaseKey: "topP", optionKey: "topP", outputKey: "top_p" },
     {
