@@ -107,7 +107,10 @@ export type {
   LlmModelDetails,
   LlmModelParams,
   MaskingModule,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the upstream deprecated public API.
   OrchestrationConfigRef,
+  OrchestrationConfigRefById,
+  OrchestrationConfigRefByName,
   OrchestrationError,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
