@@ -77,7 +77,7 @@ consistently:
   - [`SAPAIModelId`](#sapaimodelid)
   - [`SAPAIApiType`](#sapaiapitype)
   - [`PromptTemplateRef`](#prompttemplateref)
-  - [`OrchestrationConfigRef`](#orchestrationconfigref)
+  - [Orchestration configuration reference types](#orchestration-configuration-reference-types)
   - [`DpiEntities`](#dpientities)
   - [API-Specific Settings Types](#api-specific-settings-types)
   - [Model Parameters Types](#model-parameters-types)
@@ -1675,21 +1675,21 @@ Zod schema for validating language model provider options.
 
 **Validated Fields:**
 
-| Field                             | Type                                     | Description                                                           |
-| --------------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
-| `api`                             | `"orchestration" \| "foundation-models"` | Override API selection for this call                                  |
-| `escapeTemplatePlaceholders`      | `boolean`                                | Escape SAP or Jinja delimiters in prompt and message text             |
-| `includeReasoning`                | `boolean`                                | Whether to include assistant reasoning in responses                   |
-| `orchestrationConfigRef`          | `OrchestrationConfigRef`                 | Reference to a stored orchestration configuration (Orchestration API) |
-| `placeholderValues`               | `Record<string, string>`                 | Placeholder values sent to Orchestration API                          |
-| `promptTemplateRef`               | `PromptTemplateRef`                      | Reference to a Prompt Registry template                               |
-| `modelParams.temperature`         | `number (0-2)`                           | Sampling temperature                                                  |
-| `modelParams.maxTokens`           | `positive integer`                       | Maximum tokens to generate                                            |
-| `modelParams.topP`                | `number (0-1)`                           | Nucleus sampling parameter                                            |
-| `modelParams.frequencyPenalty`    | `number (-2 to 2)`                       | Frequency penalty                                                     |
-| `modelParams.presencePenalty`     | `number (-2 to 2)`                       | Presence penalty                                                      |
-| `modelParams.n`                   | `positive integer`                       | Number of completions                                                 |
-| `modelParams.parallel_tool_calls` | `boolean`                                | Enable parallel tool calls                                            |
+| Field                             | Type                                                         | Description                                                           |
+| --------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `api`                             | `"orchestration" \| "foundation-models"`                     | Override API selection for this call                                  |
+| `escapeTemplatePlaceholders`      | `boolean`                                                    | Escape SAP or Jinja delimiters in prompt and message text             |
+| `includeReasoning`                | `boolean`                                                    | Whether to include assistant reasoning in responses                   |
+| `orchestrationConfigRef`          | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration (Orchestration API) |
+| `placeholderValues`               | `Record<string, string>`                                     | Placeholder values sent to Orchestration API                          |
+| `promptTemplateRef`               | `PromptTemplateRef`                                          | Reference to a Prompt Registry template                               |
+| `modelParams.temperature`         | `number (0-2)`                                               | Sampling temperature                                                  |
+| `modelParams.maxTokens`           | `positive integer`                                           | Maximum tokens to generate                                            |
+| `modelParams.topP`                | `number (0-1)`                                               | Nucleus sampling parameter                                            |
+| `modelParams.frequencyPenalty`    | `number (-2 to 2)`                                           | Frequency penalty                                                     |
+| `modelParams.presencePenalty`     | `number (-2 to 2)`                                           | Presence penalty                                                      |
+| `modelParams.n`                   | `positive integer`                                           | Number of completions                                                 |
+| `modelParams.parallel_tool_calls` | `boolean`                                                    | Enable parallel tool calls                                            |
 
 **Example:**
 
@@ -1769,7 +1769,7 @@ type SAPAILanguageModelProviderOptions = {
     topP?: number;
     [key: string]: unknown; // Passthrough for custom params
   };
-  orchestrationConfigRef?: OrchestrationConfigRef;
+  orchestrationConfigRef?: OrchestrationConfigRefById | OrchestrationConfigRefByName;
   placeholderValues?: Record<string, string>;
   promptTemplateRef?: PromptTemplateRef;
 };
@@ -1777,15 +1777,15 @@ type SAPAILanguageModelProviderOptions = {
 
 **Properties:**
 
-| Property                     | Type                     | Description                                                         |
-| ---------------------------- | ------------------------ | ------------------------------------------------------------------- |
-| `api`                        | `string`                 | Override API selection (`'orchestration'` or `'foundation-models'`) |
-| `escapeTemplatePlaceholders` | `boolean`                | Escape template delimiters to prevent SAP templating conflicts      |
-| `includeReasoning`           | `boolean`                | Include assistant reasoning parts in the response                   |
-| `modelParams`                | `object`                 | Model generation parameters for this specific call                  |
-| `orchestrationConfigRef`     | `OrchestrationConfigRef` | Reference to a stored orchestration configuration                   |
-| `placeholderValues`          | `Record<string, string>` | Values for template placeholders (overrides settings values)        |
-| `promptTemplateRef`          | `PromptTemplateRef`      | Reference to a template in SAP AI Core's Prompt Registry            |
+| Property                     | Type                                                         | Description                                                         |
+| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `api`                        | `string`                                                     | Override API selection (`'orchestration'` or `'foundation-models'`) |
+| `escapeTemplatePlaceholders` | `boolean`                                                    | Escape template delimiters to prevent SAP templating conflicts      |
+| `includeReasoning`           | `boolean`                                                    | Include assistant reasoning parts in the response                   |
+| `modelParams`                | `object`                                                     | Model generation parameters for this specific call                  |
+| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration                   |
+| `placeholderValues`          | `Record<string, string>`                                     | Values for template placeholders (overrides settings values)        |
+| `promptTemplateRef`          | `PromptTemplateRef`                                          | Reference to a template in SAP AI Core's Prompt Registry            |
 
 **Example with placeholderValues:**
 
@@ -1884,13 +1884,15 @@ Model identifier type for SAP AI Core models.
 **Type:**
 
 ```typescript
-export type SAPAIModelId = ChatModel; // Re-exported from @sap-ai-sdk/orchestration
+export type SAPAIModelId = ChatModel; // Provider-specific alias of the upstream type
 ```
 
 **Description:**
 
-Re-exports the `ChatModel` type from `@sap-ai-sdk/orchestration`, which is
-dynamically maintained by SAP AI SDK.
+`SAPAIModelId` aliases the `ChatModel` type from `@sap-ai-sdk/orchestration`
+for the provider's model ID contract. Referencing the upstream type keeps the
+accepted model identifiers synchronized with SAP AI SDK without redefining its
+structure.
 
 **For complete model information, see the [Models](#models) section above**,
 including:
@@ -2031,27 +2033,18 @@ const model = provider("gpt-4.1", {
 
 ---
 
-### `OrchestrationConfigRef`
+### Orchestration configuration reference types
 
-Reference to a complete orchestration configuration stored in SAP AI Core.
+SAP AI SDK types for references to complete orchestration configurations stored
+in SAP AI Core. They are re-exported unchanged by this package.
+`OrchestrationConfigRef` remains available for backward compatibility and keeps
+its upstream deprecation; new code should use `OrchestrationConfigRefById` or
+`OrchestrationConfigRefByName`.
 
 **Types:**
 
 ```typescript
-// Reference by configuration ID
-export interface OrchestrationConfigRefById {
-  readonly id: string;
-}
-
-// Reference by scenario/name/version
-export interface OrchestrationConfigRefByScenarioNameVersion {
-  readonly scenario: string;
-  readonly name: string;
-  readonly version: string;
-}
-
-// Union type for both reference methods
-export type OrchestrationConfigRef = OrchestrationConfigRefById | OrchestrationConfigRefByScenarioNameVersion;
+import type { OrchestrationConfigRef, OrchestrationConfigRefById, OrchestrationConfigRefByName } from "@jerome-benoit/sap-ai-provider";
 ```
 
 **Description:**
@@ -2159,7 +2152,7 @@ export interface OrchestrationModelSettings {
   readonly masking?: MaskingModule;
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
-  readonly orchestrationConfigRef?: OrchestrationConfigRef;
+  readonly orchestrationConfigRef?: OrchestrationConfigRefById | OrchestrationConfigRefByName;
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
@@ -2761,30 +2754,18 @@ to each error type.
 
 ### `OrchestrationErrorResponse`
 
-Type representing SAP AI SDK error response structure (for advanced usage).
+SAP AI SDK error response type re-exported unchanged for advanced usage.
 
-**Type:**
+**Import:**
 
 ```typescript
-type OrchestrationErrorResponse = {
-  error:
-    | {
-        message: string;
-        code?: number;
-        location?: string;
-        request_id?: string;
-      }
-    | Array<{
-        message: string;
-        code?: number;
-        location?: string;
-        request_id?: string;
-      }>;
-};
+import type { OrchestrationErrorResponse } from "@jerome-benoit/sap-ai-provider";
 ```
 
-This type is primarily used internally for error conversion but is exported for
-advanced use cases.
+Its structure is defined by `@sap-ai-sdk/orchestration`; consumers inherit
+upstream changes without a local type copy. Refer to the
+[SAP AI SDK source](https://github.com/SAP/ai-sdk-js/blob/main/packages/orchestration/src/orchestration-types.ts)
+for the current definition.
 
 ---
 
@@ -2836,18 +2817,20 @@ definitions.
 
 **Configuration Types:**
 
-| Type                                    | Description                             |
-| --------------------------------------- | --------------------------------------- |
-| `AzureOpenAiChatExtensionConfiguration` | Azure OpenAI data source configuration  |
-| `ChatCompletionRequest`                 | Full chat completion request structure  |
-| `ChatCompletionTool`                    | Tool definition for function calling    |
-| `FunctionObject`                        | Function schema within a tool           |
-| `LlmModelDetails`                       | Model configuration details             |
-| `LlmModelParams`                        | Model-specific parameters               |
-| `OrchestrationConfigRef`                | Reference to a stored configuration     |
-| `OrchestrationModuleConfig`             | Full orchestration module configuration |
-| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks  |
-| `PromptTemplatingModule`                | Prompt template configuration           |
+| Type                                    | Description                                                   |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `AzureOpenAiChatExtensionConfiguration` | Azure OpenAI data source configuration                        |
+| `ChatCompletionRequest`                 | Full chat completion request structure                        |
+| `ChatCompletionTool`                    | Tool definition for function calling                          |
+| `FunctionObject`                        | Function schema within a tool                                 |
+| `LlmModelDetails`                       | Model configuration details                                   |
+| `LlmModelParams`                        | Model-specific parameters                                     |
+| `OrchestrationConfigRef`                | Deprecated upstream configuration reference                   |
+| `OrchestrationConfigRefById`            | Stored configuration reference by ID                          |
+| `OrchestrationConfigRefByName`          | Stored configuration reference by scenario, name, and version |
+| `OrchestrationModuleConfig`             | Full orchestration module configuration                       |
+| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks                        |
+| `PromptTemplatingModule`                | Prompt template configuration                                 |
 
 **Module Configuration Types:**
 

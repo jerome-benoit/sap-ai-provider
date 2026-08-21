@@ -5,7 +5,8 @@ import type {
   FilteringModule,
   GroundingModule,
   MaskingModule,
-  OrchestrationConfigRef,
+  OrchestrationConfigRefById,
+  OrchestrationConfigRefByName,
   OrchestrationModuleConfig,
   TranslationModule,
 } from "@sap-ai-sdk/orchestration";
@@ -142,7 +143,7 @@ export interface OrchestrationModelSettings {
    * @example { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
    * @example { scenario: "customer-support", name: "prod-config", version: "1.0.0" }
    */
-  readonly orchestrationConfigRef?: OrchestrationConfigRef;
+  readonly orchestrationConfigRef?: OrchestrationConfigRefById | OrchestrationConfigRefByName;
   readonly placeholderValues?: Record<string, string>;
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
@@ -244,19 +245,6 @@ export type SAPAIModelId = ChatModel;
  */
 export type SAPAIModelSettings = FoundationModelsModelSettings | OrchestrationModelSettings;
 
-/** Re-exported Azure OpenAI types from `@sap-ai-sdk/foundation-models`. */
-export type {
-  AzureOpenAiChatCompletionParameters,
-  AzureOpenAiChatCompletionRequestAssistantMessage,
-  AzureOpenAiChatCompletionRequestMessage,
-  AzureOpenAiChatCompletionRequestSystemMessage,
-  AzureOpenAiChatCompletionRequestToolMessage,
-  AzureOpenAiChatCompletionRequestUserMessage,
-  AzureOpenAiChatCompletionTool,
-  AzureOpenAiEmbeddingParameters,
-  AzureOpenAiFunctionObject,
-} from "@sap-ai-sdk/foundation-models";
-
 /** Re-exported SAP AI SDK orchestration types. */
 export type {
   FilteringModule,
@@ -295,7 +283,7 @@ export interface SAPAISettings {
   readonly modelParams?: CommonModelParams;
   readonly modelVersion?: string;
   /** Orchestration API only. */
-  readonly orchestrationConfigRef?: OrchestrationConfigRef;
+  readonly orchestrationConfigRef?: OrchestrationConfigRefById | OrchestrationConfigRefByName;
   /** Orchestration API only. */
   readonly placeholderValues?: Record<string, string>;
   /** Orchestration API only. */
@@ -324,7 +312,10 @@ export type {
   ImageContentUrl,
   LlmModelDetails,
   LlmModelParams,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the upstream deprecated public API.
   OrchestrationConfigRef,
+  OrchestrationConfigRefById,
+  OrchestrationConfigRefByName,
   OrchestrationError,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
