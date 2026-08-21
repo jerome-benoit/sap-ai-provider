@@ -5,7 +5,6 @@ import type {
   ChatCompletionTool,
   ChatMessage,
   OrchestrationClient,
-  OrchestrationConfigRef,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
 } from "@sap-ai-sdk/orchestration";
@@ -68,7 +67,7 @@ type OrchestrationRequest = Record<string, unknown>;
  * @internal
  */
 interface OrchestrationResolvedState {
-  readonly configRef: OrchestrationConfigRef | undefined;
+  readonly configRef: OrchestrationModelSettings["orchestrationConfigRef"];
   readonly promptTemplateRef: PromptTemplateRef | undefined;
   readonly tools: ChatCompletionTool[] | undefined;
 }
@@ -168,12 +167,14 @@ function copyOrchestrationModules(
 }
 
 /**
- * Checks if a value is a valid OrchestrationConfigRef.
+ * Checks if a value is a valid orchestration configuration reference.
  * @param value - The value to check.
- * @returns True if the value is a valid OrchestrationConfigRef.
+ * @returns True if the value is a valid orchestration configuration reference.
  * @internal
  */
-function isOrchestrationConfigRef(value: unknown): value is OrchestrationConfigRef {
+function isOrchestrationConfigRef(
+  value: unknown,
+): value is NonNullable<OrchestrationModelSettings["orchestrationConfigRef"]> {
   return orchestrationConfigRefSchema.safeParse(value).success;
 }
 
@@ -440,7 +441,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
-    _configRef: OrchestrationConfigRef,
+    _configRef: NonNullable<OrchestrationModelSettings["orchestrationConfigRef"]>,
     warnings: SharedV3Warning[],
   ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
     warnings.push(
@@ -739,7 +740,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   private resolveConfigRef(
     sapOptions: Record<string, unknown> | undefined,
     settings: OrchestrationModelSettings,
-  ): OrchestrationConfigRef | undefined {
+  ): OrchestrationModelSettings["orchestrationConfigRef"] {
     const configRefCandidate =
       sapOptions?.orchestrationConfigRef ?? settings.orchestrationConfigRef;
 
