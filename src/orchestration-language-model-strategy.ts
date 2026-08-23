@@ -412,7 +412,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     options: LanguageModelV3CallOptions,
     warnings: SharedV3Warning[],
   ): OrchestrationResolvedState {
-    const configRef = this.resolveConfigRef(sapOptions, settings);
+    const configRef = this.resolveConfigRef(sapOptions, settings, warnings);
     const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
 
     if (configRef === undefined) {
@@ -731,23 +731,35 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   /**
    * Resolves the orchestrationConfigRef from provider options or settings.
-   * Provider options take priority over settings.
+   * Provider options take priority over settings. A present-but-invalid reference is
+   * ignored with a warning instead of failing the request.
    * @param sapOptions - Parsed provider options from commonParts.
    * @param settings - The model settings.
+   * @param warnings - Shared warnings sink for degradation signals.
    * @returns The resolved config reference or undefined.
    * @internal
    */
   private resolveConfigRef(
     sapOptions: Record<string, unknown> | undefined,
     settings: OrchestrationModelSettings,
+    warnings: SharedV3Warning[],
   ): OrchestrationModelSettings["orchestrationConfigRef"] {
     const configRefCandidate =
       sapOptions?.orchestrationConfigRef ?? settings.orchestrationConfigRef;
 
-    if (configRefCandidate && isOrchestrationConfigRef(configRefCandidate)) {
+    if (!configRefCandidate) {
+      return undefined;
+    }
+
+    if (isOrchestrationConfigRef(configRefCandidate)) {
       return configRefCandidate;
     }
 
+    warnings.push({
+      message:
+        "orchestrationConfigRef is invalid and was ignored; falling back to local module settings.",
+      type: "other",
+    });
     return undefined;
   }
 

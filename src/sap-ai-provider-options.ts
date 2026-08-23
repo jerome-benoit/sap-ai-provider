@@ -4,6 +4,7 @@
 
 import type { SharedV3Warning } from "@ai-sdk/provider";
 import type { InferSchema } from "@ai-sdk/provider-utils";
+import type { OrchestrationConfigRefOverride } from "@sap-ai-sdk/orchestration";
 
 import { lazySchema, zodSchema } from "@ai-sdk/provider-utils";
 import { z } from "zod";
@@ -207,14 +208,68 @@ export const promptTemplateRefSchema = z.union([
   promptTemplateRefByScenarioNameVersionSchema,
 ]);
 
+/**
+ * Partial override of a stored orchestration configuration, forwarded verbatim to the
+ * `OrchestrationClient` constructor. Shape is owned by the SAP AI SDK
+ * (`OrchestrationConfigRefOverride`); only the transport-level contract is validated here.
+ * @internal
+ */
+export const orchestrationConfigRefOverrideSchema = z
+  .custom<OrchestrationConfigRefOverride>(
+    (value) => typeof value === "object" && value !== null && !Array.isArray(value),
+    { message: "overrideConfig must be an object" },
+  )
+  .refine(
+    (value) => {
+      let stream: unknown;
+      try {
+        stream = value.stream;
+      } catch {
+        // Hostile input (throwing getter or Proxy trap): treat as invalid shape.
+        return false;
+      }
+      return (
+        stream === undefined ||
+        (Boolean(stream) && typeof stream === "object" && !Array.isArray(stream))
+      );
+    },
+    { message: "overrideConfig.stream must be an object" },
+  )
+  .refine(
+    (value) => {
+      let stream: unknown;
+      try {
+        stream = value.stream;
+      } catch {
+        // Already rejected by the previous refine.
+        return true;
+      }
+      if (stream === undefined || stream === null || typeof stream !== "object") {
+        return true;
+      }
+      try {
+        return !("enabled" in stream);
+      } catch {
+        // Hostile Proxy has-trap: treat as invalid shape.
+        return false;
+      }
+    },
+    {
+      message:
+        "stream.enabled is not allowed in overrideConfig: it is controlled by the call site (stream() or chatCompletion())",
+    },
+  );
+
 /** @internal */
 export const orchestrationConfigRefByIdSchema = z.object({
   id: z.string().min(1, "Config ID cannot be empty"),
+  overrideConfig: orchestrationConfigRefOverrideSchema.optional(),
 });
 
 /** @internal */
 export const orchestrationConfigRefByScenarioNameVersionSchema = z.object({
   name: z.string().min(1, "Config name cannot be empty"),
+  overrideConfig: orchestrationConfigRefOverrideSchema.optional(),
   scenario: z.string().min(1, "Scenario cannot be empty"),
   version: z.string().min(1, "Version cannot be empty"),
 });

@@ -9,6 +9,7 @@ import {
   embeddingModelParamsSchema,
   getProviderName,
   modelParamsSchema,
+  orchestrationConfigRefOverrideSchema,
   orchestrationConfigRefSchema,
   parseSAPPartProviderOptions,
   SAP_AI_PROVIDER_NAME,
@@ -279,6 +280,28 @@ describe("sapAILanguageModelProviderOptions", () => {
       }
     });
 
+    it("should accept orchestrationConfigRef with id and preserve overrideConfig", async () => {
+      const overrideConfig = { promptTemplating: { model: { name: "gpt-4o" } } };
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: {
+            id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            overrideConfig,
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          orchestrationConfigRef: {
+            id: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            overrideConfig,
+          },
+        });
+      }
+    });
+
     it("should accept orchestrationConfigRef with scenario/name/version", async () => {
       const result = await safeValidateTypes({
         schema: sapAILanguageModelProviderOptions,
@@ -295,6 +318,32 @@ describe("sapAILanguageModelProviderOptions", () => {
         expect(result.value).toEqual({
           orchestrationConfigRef: {
             name: "prod-config",
+            scenario: "customer-support",
+            version: "1.0.0",
+          },
+        });
+      }
+    });
+
+    it("should accept orchestrationConfigRef with scenario/name/version and preserve overrideConfig", async () => {
+      const overrideConfig = { filtering: { input: { filters: [] } } };
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: {
+          orchestrationConfigRef: {
+            name: "prod-config",
+            overrideConfig,
+            scenario: "customer-support",
+            version: "1.0.0",
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.value).toEqual({
+          orchestrationConfigRef: {
+            name: "prod-config",
+            overrideConfig,
             scenario: "customer-support",
             version: "1.0.0",
           },
@@ -364,6 +413,27 @@ describe("sapAILanguageModelProviderOptions", () => {
       {
         description: "orchestrationConfigRef with empty version",
         value: { orchestrationConfigRef: { name: "test", scenario: "test", version: "" } },
+      },
+      {
+        description: "orchestrationConfigRef with scalar overrideConfig",
+        value: { orchestrationConfigRef: { id: "test", overrideConfig: "nope" } },
+      },
+      {
+        description: "orchestrationConfigRef with null overrideConfig",
+        value: { orchestrationConfigRef: { id: "test", overrideConfig: null } },
+      },
+      {
+        description: "orchestrationConfigRef with array overrideConfig",
+        value: { orchestrationConfigRef: { id: "test", overrideConfig: [] } },
+      },
+      {
+        description: "orchestrationConfigRef with stream.enabled in overrideConfig",
+        value: {
+          orchestrationConfigRef: {
+            id: "test",
+            overrideConfig: { stream: { enabled: true } },
+          },
+        },
       },
     ])("should reject $description", async ({ value }) => {
       const result = await safeValidateTypes({
@@ -716,6 +786,79 @@ describe("orchestrationConfigRefSchema", () => {
       const result = orchestrationConfigRefSchema.safeParse(value);
       expect(result.success).toBe(false);
     });
+  });
+});
+
+describe("orchestrationConfigRefOverrideSchema", () => {
+  it("should accept a partial configuration object", () => {
+    const result = orchestrationConfigRefOverrideSchema.safeParse({
+      promptTemplating: { model: { name: "gpt-4o" } },
+      stream: { include_usage: true },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each([
+    { description: "string", value: "nope" },
+    { description: "number", value: 42 },
+    { description: "null", value: null },
+    { description: "array", value: [] },
+  ])("should reject $description", ({ value }) => {
+    const result = orchestrationConfigRefOverrideSchema.safeParse(value);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("overrideConfig must be an object");
+    }
+  });
+
+  it.each([
+    { description: "null", value: { stream: null } },
+    { description: "number", value: { stream: 42 } },
+    { description: "string", value: { stream: "yes" } },
+    { description: "boolean", value: { stream: true } },
+    { description: "array", value: { stream: [] } },
+  ])("should reject non-object $description stream with an issue, not a throw", ({ value }) => {
+    const result = orchestrationConfigRefOverrideSchema.safeParse(value);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("overrideConfig.stream must be an object");
+    }
+  });
+
+  it("should reject stream.enabled with the upstream call-site message", () => {
+    const result = orchestrationConfigRefOverrideSchema.safeParse({
+      stream: { enabled: true },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("stream.enabled is not allowed");
+    }
+  });
+
+  it("should reject a throwing stream getter instead of propagating the error", () => {
+    const hostile = {
+      get stream(): never {
+        throw new Error("boom-getter");
+      },
+    };
+    const result = orchestrationConfigRefOverrideSchema.safeParse(hostile);
+    expect(result.success).toBe(false);
+  });
+
+  it("should reject a throwing Proxy has-trap on stream instead of propagating the error", () => {
+    const hostile = {
+      stream: new Proxy(
+        {},
+        {
+          has: (_target, property) => {
+            if (property === "enabled") throw new Error("boom-has");
+            return property in _target;
+          },
+        },
+      ),
+    };
+    const result = orchestrationConfigRefOverrideSchema.safeParse(hostile);
+    expect(result.success).toBe(false);
   });
 });
 

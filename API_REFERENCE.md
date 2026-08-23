@@ -2044,7 +2044,7 @@ its upstream deprecation; new code should use `OrchestrationConfigRefById` or
 **Types:**
 
 ```typescript
-import type { OrchestrationConfigRef, OrchestrationConfigRefById, OrchestrationConfigRefByName } from "@jerome-benoit/sap-ai-provider";
+import type { OrchestrationConfigRef, OrchestrationConfigRefById, OrchestrationConfigRefByName, OrchestrationConfigRefOverride } from "@jerome-benoit/sap-ai-provider";
 ```
 
 **Description:**
@@ -2054,6 +2054,19 @@ configuration stored in SAP AI Core instead of specifying individual modules
 (filtering, masking, grounding, etc.) in your code. When `orchestrationConfigRef`
 is provided, the configuration is fetched from SAP AI Core and used to create
 the `OrchestrationClient`.
+
+Each reference variant accepts an optional `overrideConfig`
+(`OrchestrationConfigRefOverride`, re-exported from `@sap-ai-sdk/orchestration`).
+It is forwarded verbatim to the `OrchestrationClient` constructor and overrides
+parts of the stored configuration per request. It is **not** subject to the
+ignored-local-modules behavior above, since it is part of the reference itself.
+Only its transport shape is validated (plain object; `stream.enabled` is
+rejected because the SAP AI SDK controls it from the call site). See the SAP AI
+SDK type definition for the accepted structure.
+
+An invalid reference (settings path) is ignored with a warning and the request
+falls back to local module settings; via provider options, an invalid `sap-ai`
+block is rejected before the request is sent.
 
 **Important Behavior:** When using `orchestrationConfigRef`, local module
 settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
