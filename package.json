@@ -74,7 +74,6 @@
     "test:node": "vitest --config vitest.node.config.ts --run",
     "test:node:watch": "vitest --config vitest.node.config.ts",
     "test:watch": "vitest",
-    "sandcastle": "tsx .sandcastle/main.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -85,7 +84,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@ai-hero/sandcastle": "^0.12.0",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.5",
