@@ -316,6 +316,7 @@ export type {
   OrchestrationConfigRef,
   OrchestrationConfigRefById,
   OrchestrationConfigRefByName,
+  OrchestrationConfigRefOverride,
   OrchestrationError,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,

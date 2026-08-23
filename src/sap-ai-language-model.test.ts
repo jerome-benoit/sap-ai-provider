@@ -5676,6 +5676,109 @@ describe("SAPAILanguageModel", () => {
         expect(clientConfig).toEqual({ id: "my-config-id" });
       });
 
+      it("should forward overrideConfig from settings to the client", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            id: "my-config-id",
+            overrideConfig: { promptTemplating: { model: { name: "gpt-4o" } } },
+          },
+        });
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expectRequestBodyHasMessagesHistory(result);
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({
+          id: "my-config-id",
+          overrideConfig: { promptTemplating: { model: { name: "gpt-4o" } } },
+        });
+      });
+
+      it("should preserve overrideConfig passed via providerOptions", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        const result = await model.doGenerate({
+          prompt: createPrompt("Hello"),
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: {
+                id: "provider-config-id",
+                overrideConfig: { promptTemplating: { model: { name: "gpt-4o" } } },
+              },
+            },
+          },
+        });
+
+        expectRequestBodyHasMessagesHistory(result);
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({
+          id: "provider-config-id",
+          overrideConfig: { promptTemplating: { model: { name: "gpt-4o" } } },
+        });
+      });
+
+      it("should let providerOptions overrideConfig replace settings overrideConfig", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            id: "settings-config-id",
+            overrideConfig: { promptTemplating: { model: { name: "settings-model" } } },
+          },
+        });
+
+        const result = await model.doGenerate({
+          prompt: createPrompt("Hello"),
+          providerOptions: {
+            "sap-ai": {
+              orchestrationConfigRef: {
+                id: "provider-config-id",
+                overrideConfig: { promptTemplating: { model: { name: "provider-model" } } },
+              },
+            },
+          },
+        });
+
+        expectRequestBodyHasMessagesHistory(result);
+        const clientConfig = await getLastOrchClientConfig();
+        expect(clientConfig).toEqual({
+          id: "provider-config-id",
+          overrideConfig: { promptTemplating: { model: { name: "provider-model" } } },
+        });
+      });
+
+      it("should warn and ignore an invalid orchestrationConfigRef", async () => {
+        const model = createOrchModel("gpt-4o", {
+          orchestrationConfigRef: {
+            id: "broken-config-id",
+            overrideConfig: { stream: 42 },
+          },
+        });
+
+        const result = await model.doGenerate({ prompt: createPrompt("Hello") });
+
+        expectWarningMessageContains(
+          result.warnings,
+          "orchestrationConfigRef is invalid and was ignored",
+        );
+      });
+
+      it("should hard-fail an invalid overrideConfig passed via providerOptions", async () => {
+        const model = createOrchModel("gpt-4o");
+
+        await expect(
+          model.doGenerate({
+            prompt: createPrompt("Hello"),
+            providerOptions: {
+              "sap-ai": {
+                orchestrationConfigRef: {
+                  id: "provider-config-id",
+                  overrideConfig: { stream: 42 },
+                },
+              },
+            },
+          }),
+        ).rejects.toThrow("invalid sap-ai provider options");
+      });
+
       it("should use configRef by scenario/name/version when set in settings", async () => {
         const model = createOrchModel("gpt-4o", {
           orchestrationConfigRef: {
