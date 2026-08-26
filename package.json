@@ -78,7 +78,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.15",
-    "@ai-sdk/provider-utils": "^4.0.46",
+    "@ai-sdk/provider-utils": "^4.0.48",
     "@sap-ai-sdk/foundation-models": "^2.15.0",
     "@sap-ai-sdk/orchestration": "^2.15.0",
     "zod": "^4.4.3"
@@ -89,7 +89,7 @@
     "@types/node": "^25.9.5",
     "@vitest/coverage-v8": "^4.1.11",
     "dotenv": "^17.4.2",
-    "eslint": "^10.9.0",
+    "eslint": "^10.9.1",
     "eslint-plugin-jsdoc": "^64.2.1",
     "eslint-plugin-perfectionist": "^5.10.1",
     "globals": "^17.11.0",
@@ -101,7 +101,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0",
+    "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
   },
   "peerDependencies": {
