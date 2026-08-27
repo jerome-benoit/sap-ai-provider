@@ -27,7 +27,7 @@
   "license": "Apache-2.0",
   "author": "jerome-benoit",
   "volta": {
-    "node": "24.19.0"
+    "node": "24.20.0"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -78,7 +78,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "^3.0.15",
-    "@ai-sdk/provider-utils": "^4.0.48",
+    "@ai-sdk/provider-utils": "^4.0.49",
     "@sap-ai-sdk/foundation-models": "^2.15.0",
     "@sap-ai-sdk/orchestration": "^2.15.0",
     "zod": "^4.4.3"
