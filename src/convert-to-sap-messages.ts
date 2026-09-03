@@ -510,7 +510,15 @@ function buildDataUrl(part: { data: unknown; mediaType: string }): string {
   }
 
   if (isArrayBuffer(data)) {
-    return `data:${mediaType};base64,${base64FromBytes(new Uint8Array(data))}`;
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(data);
+    } catch {
+      throw new UnsupportedFunctionalityError({
+        functionality: "Detached ArrayBuffer file data is unsupported.",
+      });
+    }
+    return `data:${mediaType};base64,${base64FromBytes(bytes)}`;
   }
 
   if (typeof data === "object" && data !== null) {

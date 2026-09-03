@@ -23,4 +23,19 @@ describe("convertToSAPMessages across JavaScript realms", () => {
       },
     ]);
   });
+
+  it("should reject a detached ArrayBuffer with an AI SDK error", () => {
+    const data = new ArrayBuffer(2);
+    structuredClone(data, { transfer: [data] });
+    const prompt: LanguageModelV3Prompt = [
+      {
+        content: [{ data: data as unknown as Uint8Array, mediaType: "image/png", type: "file" }],
+        role: "user",
+      },
+    ];
+
+    expect(() => convertToSAPMessages(prompt)).toThrow(
+      "Detached ArrayBuffer file data is unsupported.",
+    );
+  });
 });
