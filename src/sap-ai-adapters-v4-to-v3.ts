@@ -55,7 +55,7 @@ export function normalizeV4PromptToV3(
     switch (message.role) {
       case "assistant":
         return {
-          content: message.content.flatMap((part) => normalizeAssistantPart(part)),
+          content: message.content.flatMap((part) => normalizeAssistantPart(part, warnings)),
           providerOptions: message.providerOptions,
           role: "assistant",
         };
@@ -86,9 +86,13 @@ export function normalizeV4PromptToV3(
 /**
  * Normalizes a V4 assistant part to V3 content parts.
  * @param part - The V4 assistant content part.
+ * @param warnings
  * @returns The equivalent V3 content parts.
  */
-function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
+function normalizeAssistantPart(
+  part: V4AssistantPart,
+  warnings?: SharedV4Warning[],
+): V3AssistantContent {
   switch (part.type) {
     case "custom":
     case "reasoning-file":
@@ -96,7 +100,7 @@ function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
         functionality: `Assistant content type '${part.type}' has no V3 equivalent.`,
       });
     case "file":
-      return normalizeUserPart(part);
+      return normalizeUserPart(part, warnings);
     case "tool-result":
       return [normalizeToolResultPart(part)];
     default:
