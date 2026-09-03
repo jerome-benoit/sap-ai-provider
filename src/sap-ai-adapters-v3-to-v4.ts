@@ -229,19 +229,29 @@ export function convertUsageToV4(internalUsage: InternalUsage): LanguageModelV4U
 export function convertWarningsToV4(internalWarnings: InternalWarning[]): SharedV4Warning[] {
   return internalWarnings;
 }
-
 /**
  * Transforms an internal stream to a V4 ReadableStream (total conversion).
+ * Entry warnings (e.g. dropped V4-only options) are merged into the leading
+ * `stream-start` part, which the internal stream always emits first.
  * @param internalStream - The internal V3 stream.
+ * @param entryWarnings - Warnings collected during prompt normalization.
  * @returns The equivalent V4 stream.
  */
 export function createV4StreamFromInternal(
   internalStream: ReadableStream<InternalStreamPart>,
+  entryWarnings: SharedV4Warning[] = [],
 ): ReadableStream<LanguageModelV4StreamPart> {
+  let merged = entryWarnings.length === 0;
   return internalStream.pipeThrough(
     new TransformStream<InternalStreamPart, LanguageModelV4StreamPart>({
       transform(internalPart, controller) {
-        controller.enqueue(convertStreamPartToV4(internalPart));
+        const converted = convertStreamPartToV4(internalPart);
+        if (!merged && converted.type === "stream-start") {
+          merged = true;
+          controller.enqueue({ ...converted, warnings: [...entryWarnings, ...converted.warnings] });
+          return;
+        }
+        controller.enqueue(converted);
       },
     }),
   );
