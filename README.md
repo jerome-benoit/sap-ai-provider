@@ -131,7 +131,7 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 20+ and Vercel AI SDK 5.0+ (6.0+ recommended)
+**Requirements:** Node.js 22+ and Vercel AI SDK 5.0+ (7.0+ recommended for the `v4` subpath)
 
 ```bash
 npm install @jerome-benoit/sap-ai-provider ai
@@ -171,6 +171,22 @@ pnpm add @jerome-benoit/sap-ai-provider ai
 >
 > For a detailed understanding of the dual-package architecture, refer to
 > [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2).
+>
+> **AI SDK 7 (spec V4) Supported:** For `LanguageModelV4`/`EmbeddingModelV4` interfaces, import from the `v4` subpath of this package (requires Node.js 22+ and `ai@7`):
+>
+> ```typescript
+> import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+> import { generateText } from "ai";
+>
+> const provider = createSAPAIProvider();
+> const result = await generateText({
+>   model: provider("gpt-4.1"),
+>   prompt: "Hello v4!",
+> });
+> console.log(result.text);
+> ```
+>
+> The V4 facades normalize AI SDK 7 prompts (including tagged file data) onto the same V3 core; provider file references are rejected explicitly and never fetched.
 
 ## Provider Creation
 

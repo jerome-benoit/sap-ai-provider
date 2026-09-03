@@ -132,6 +132,38 @@ describe("SAPAILanguageModelV4", () => {
       });
     });
 
+    it("should surface dropped reasoning effort in stream-start warnings", async () => {
+      const model = new SAPAILanguageModelV4("gpt-4o", {}, defaultConfig);
+
+      const mockInternalStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "stream-start", warnings: [] });
+          controller.close();
+        },
+      });
+
+      const mockDoStream = vi.fn((): Promise<LanguageModelV3StreamResult> =>
+        Promise.resolve({ stream: mockInternalStream }),
+      );
+      internalOf(model).internalModel.doStream = mockDoStream;
+
+      const result = await model.doStream({
+        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
+        reasoning: "high",
+      });
+
+      const reader = result.stream.getReader();
+      const first = await reader.read();
+      expect(first.value).toMatchObject({
+        type: "stream-start",
+        warnings: [
+          {
+            feature: "reasoning effort",
+            type: "unsupported",
+          },
+        ],
+      });
+    });
     it("should delegate doStream and convert parts to V4", async () => {
       const model = new SAPAILanguageModelV4("gpt-4o", {}, defaultConfig);
 
