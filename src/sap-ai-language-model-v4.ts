@@ -81,7 +81,7 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
     }
     const internalOptions: LanguageModelV3CallOptions = {
       ...restOptions,
-      prompt: normalizeV4PromptToV3(prompt, entryWarnings),
+      prompt: normalizeV4PromptToV3(prompt),
     };
     const result = await this.internalModel.doGenerate(internalOptions);
     const converted = convertGenerateResultToV4(result);
@@ -107,7 +107,7 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
     }
     const internalOptions: LanguageModelV3CallOptions = {
       ...restOptions,
-      prompt: normalizeV4PromptToV3(prompt, entryWarnings),
+      prompt: normalizeV4PromptToV3(prompt),
     };
     const result = await this.internalModel.doStream(internalOptions);
     return {

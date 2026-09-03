@@ -7,10 +7,10 @@ import type {
   LanguageModelV3ToolResultOutput,
   LanguageModelV3ToolResultPart,
   LanguageModelV4Prompt,
-  SharedV4Warning,
 } from "@ai-sdk/provider";
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+import { resolveFullMediaType } from "@ai-sdk/provider-utils";
 
 import { base64FromBytes } from "./convert-to-sap-messages.js";
 
@@ -23,7 +23,6 @@ type V3UserPart = LanguageModelV3FilePart | LanguageModelV3TextPart;
 type V4AssistantPart = Extract<V4Message, { role: "assistant" }>["content"][number];
 type V4ContentItem = Extract<V4ToolOutput, { type: "content" }>["value"][number];
 type V4Message = LanguageModelV4Prompt[number];
-
 type V4ToolOutput = Extract<V4ToolPart, { type: "tool-result" }>["output"];
 type V4ToolPart = Extract<V4Message, { role: "tool" }>["content"][number];
 type V4UserPart = Extract<V4Message, { role: "user" }>["content"][number];
@@ -37,25 +36,23 @@ const REFERENCE_ERROR =
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
  *   `URL` object, `text` to a V3 text part. `reference` values are rejected
  *   explicitly (never fetched).
+ * - Bare and wildcard media types are resolved from detectable inline bytes;
+ *   ambiguous inline data and incomplete URL media types are rejected.
  * - `reasoning-file` and `custom` parts are rejected explicitly.
  * - Tool-result outputs are mapped to the V3 output union; nested `content[]`
  *   file items use the legacy `file-data`/`file-url` shapes.
  * - Everything else (text, reasoning, tool calls, approval responses,
  *   provider options) passes through untouched.
  * @param prompt - The V4 prompt received from AI SDK 7.
- * @param warnings - Optional sink for compatibility warnings.
  * @returns The equivalent V3 prompt for the internal core.
  * @throws {UnsupportedFunctionalityError} For V4-only shapes with no V3 equivalent.
  */
-export function normalizeV4PromptToV3(
-  prompt: LanguageModelV4Prompt,
-  warnings?: SharedV4Warning[],
-): LanguageModelV3Prompt {
+export function normalizeV4PromptToV3(prompt: LanguageModelV4Prompt): LanguageModelV3Prompt {
   return prompt.map((message) => {
     switch (message.role) {
       case "assistant":
         return {
-          content: message.content.flatMap((part) => normalizeAssistantPart(part, warnings)),
+          content: message.content.flatMap((part) => normalizeAssistantPart(part)),
           providerOptions: message.providerOptions,
           role: "assistant",
         };
@@ -75,7 +72,7 @@ export function normalizeV4PromptToV3(
         };
       case "user":
         return {
-          content: message.content.flatMap((part) => normalizeUserPart(part, warnings)),
+          content: message.content.flatMap((part) => normalizeUserPart(part)),
           providerOptions: message.providerOptions,
           role: "user",
         };
@@ -86,13 +83,9 @@ export function normalizeV4PromptToV3(
 /**
  * Normalizes a V4 assistant part to V3 content parts.
  * @param part - The V4 assistant content part.
- * @param warnings
  * @returns The equivalent V3 content parts.
  */
-function normalizeAssistantPart(
-  part: V4AssistantPart,
-  warnings?: SharedV4Warning[],
-): V3AssistantContent {
+function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
   switch (part.type) {
     case "custom":
     case "reasoning-file":
@@ -100,7 +93,7 @@ function normalizeAssistantPart(
         functionality: `Assistant content type '${part.type}' has no V3 equivalent.`,
       });
     case "file":
-      return normalizeUserPart(part, warnings);
+      return normalizeUserPart(part);
     case "tool-result":
       return [normalizeToolResultPart(part)];
     default:
@@ -118,12 +111,9 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
   switch (item.data.type) {
     case "data":
       return {
-        data:
-          typeof item.data.data === "string"
-            ? item.data.data
-            : base64FromBytes(new Uint8Array(item.data.data)),
+        data: typeof item.data.data === "string" ? item.data.data : base64FromBytes(item.data.data),
         ...(item.filename ? { filename: item.filename } : {}),
-        mediaType: item.mediaType,
+        mediaType: resolveFullMediaType({ part: item }),
         providerOptions: item.providerOptions,
         type: "file-data",
       };
@@ -142,8 +132,9 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
 }
 
 /**
- *
- * @param output
+ * Normalizes a V4 tool output to its V3 equivalent.
+ * @param output - The V4 tool output.
+ * @returns The equivalent V3 tool output.
  */
 function normalizeToolOutput(output: V4ToolOutput): LanguageModelV3ToolResultOutput {
   switch (output.type) {
@@ -162,47 +153,43 @@ function normalizeToolOutput(output: V4ToolOutput): LanguageModelV3ToolResultOut
 }
 
 /**
- *
- * @param part
+ * Normalizes a V4 tool-result part to its V3 equivalent.
+ * @param part - The V4 tool-result part.
+ * @returns The equivalent V3 tool-result part.
  */
 function normalizeToolResultPart(
   part: Extract<V4ToolPart, { type: "tool-result" }>,
 ): LanguageModelV3ToolResultPart {
   return { ...part, output: normalizeToolOutput(part.output) };
 }
+
 /**
- *
- * @param part
- * @param warnings
+ * Normalizes a V4 user part to V3 content parts.
+ * @param part - The V4 user content part.
+ * @returns The equivalent V3 content parts.
  */
-function normalizeUserPart(part: V4UserPart, warnings?: SharedV4Warning[]): V3UserPart[] {
+function normalizeUserPart(part: V4UserPart): V3UserPart[] {
   if (part.type === "text") return [part];
-  warnOnBareMediaType(part.mediaType, warnings);
   switch (part.data.type) {
     case "data":
-      return [{ ...part, data: part.data.data }];
+      return [
+        {
+          ...part,
+          data: part.data.data,
+          mediaType: resolveFullMediaType({ part }),
+        },
+      ];
     case "text":
       return [{ providerOptions: part.providerOptions, text: part.data.text, type: "text" }];
     case "url":
-      return [{ ...part, data: part.data.url }];
+      return [
+        {
+          ...part,
+          data: part.data.url,
+          mediaType: resolveFullMediaType({ part }),
+        },
+      ];
     case "reference":
       throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
-  }
-}
-
-/**
- *
- * @param mediaType
- * @param warnings
- */
-function warnOnBareMediaType(mediaType: string, warnings?: SharedV4Warning[]): void {
-  if (!warnings || mediaType.includes("/")) return;
-  const feature = "bare top-level media type";
-  if (!warnings.some((w) => "feature" in w && w.feature === feature)) {
-    warnings.push({
-      details: `Media type '${mediaType}' has no subtype; it is passed through as-is for the API to interpret.`,
-      feature,
-      type: "compatibility",
-    });
   }
 }

@@ -21,8 +21,9 @@ interface InternalModel {
 }
 
 /**
- *
- * @param model
+ * Returns the internal V3 model for facade contract tests.
+ * @param model - The V4 language facade.
+ * @returns The wrapped V3 language model.
  */
 function internalOf(model: SAPAILanguageModelV4): { internalModel: InternalModel } {
   return model as unknown as { internalModel: InternalModel };

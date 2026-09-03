@@ -186,7 +186,7 @@ pnpm add @jerome-benoit/sap-ai-provider ai
 > console.log(result.text);
 > ```
 >
-> The V4 facades normalize AI SDK 7 prompts (including tagged file data) onto the same V3 core; provider file references are rejected explicitly and never fetched.
+> The V4 provider retains the root provider's `chat`, `embedding`, `embeddingModel`, and `textEmbeddingModel` methods and re-exports the same version-independent helpers. Full media types are preserved; bare or wildcard types are resolved only from detectable inline bytes. Ambiguous inline data and incomplete URL media types throw. Provider references are never fetched, and text file variants become text parts.
 
 ## Provider Creation
 

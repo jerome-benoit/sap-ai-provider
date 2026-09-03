@@ -17,7 +17,8 @@ import type {
 
 /**
  * Converts an internal finish reason to V4 format (identical shape).
- * @param internalFinishReason
+ * @param internalFinishReason - The internal V3 finish reason.
+ * @returns The equivalent V4 finish reason.
  */
 export function convertFinishReasonToV4(
   internalFinishReason: InternalFinishReason,
@@ -29,7 +30,8 @@ export function convertFinishReasonToV4(
  * Converts an internal generate result to V4 format: content mapped part by
  * part (V3 file content becomes tagged V4 file data), usage by identity,
  * warnings by native passthrough.
- * @param internalResult
+ * @param internalResult - The internal V3 generate result.
+ * @returns The equivalent V4 generate result.
  */
 export function convertGenerateResultToV4(
   internalResult: InternalGenerateResult,
@@ -45,7 +47,8 @@ export function convertGenerateResultToV4(
 
 /**
  * Converts V3 provider metadata to V4 format (identical record shape).
- * @param metadata
+ * @param metadata - The V3 provider metadata.
+ * @returns The equivalent V4 provider metadata.
  */
 export function convertProviderMetadataToV4(
   metadata: SharedV3ProviderMetadata | undefined,
@@ -215,7 +218,8 @@ export function convertStreamPartToV4(internalPart: InternalStreamPart): Languag
 
 /**
  * Converts internal usage (nested format) to V4 usage (identical nested shape).
- * @param internalUsage
+ * @param internalUsage - The internal V3 usage.
+ * @returns The equivalent V4 usage.
  */
 export function convertUsageToV4(internalUsage: InternalUsage): LanguageModelV4Usage {
   return internalUsage;
@@ -224,7 +228,8 @@ export function convertUsageToV4(internalUsage: InternalUsage): LanguageModelV4U
 /**
  * Converts internal warnings to V4 warnings (native passthrough; V4 adds the
  * `deprecated` variant which V3 never produces).
- * @param internalWarnings
+ * @param internalWarnings - The internal V3 warnings.
+ * @returns The equivalent V4 warnings.
  */
 export function convertWarningsToV4(internalWarnings: InternalWarning[]): SharedV4Warning[] {
   return internalWarnings;
@@ -258,8 +263,9 @@ export function createV4StreamFromInternal(
 }
 
 /**
- *
- * @param part
+ * Converts an internal generated content part to V4 format.
+ * @param part - The internal V3 content part.
+ * @returns The equivalent V4 content part.
  */
 function convertContentToV4(
   part: InternalGenerateResult["content"][number],
@@ -273,8 +279,9 @@ function convertContentToV4(
 
 /**
  * Conditionally attaches converted provider metadata to a V4 stream part object.
- * @param obj
- * @param metadata
+ * @param obj - The V4 stream part object.
+ * @param metadata - The internal V3 provider metadata.
+ * @returns The stream part with converted provider metadata when present.
  */
 function withProviderMetadata<T extends object>(
   obj: T,
