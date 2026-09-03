@@ -186,7 +186,7 @@ pnpm add @jerome-benoit/sap-ai-provider ai
 > console.log(result.text);
 > ```
 >
-> The V4 provider retains the root provider's `chat`, `embedding`, `embeddingModel`, and `textEmbeddingModel` methods and re-exports the same version-independent helpers. Full media types are preserved; bare or wildcard types are resolved from detectable inline bytes. Remote image URLs with `image` or `image/*` remain remote and use `image/*`; other incomplete URL media types and ambiguous inline data throw. Provider references are never fetched, and text file variants become text parts.
+> The V4 provider retains the root provider's `chat`, `embedding`, `embeddingModel`, and `textEmbeddingModel` methods and re-exports the same version-independent helpers. Full media types are preserved; bare or wildcard types are resolved from detectable inline bytes. Remote image URLs with `image` or `image/*` remain remote, normalize case-insensitively, and use `image/*`; other incomplete URL media types and ambiguous inline data throw. Provider references are never fetched, and text file variants become text parts.
 
 ## Provider Creation
 

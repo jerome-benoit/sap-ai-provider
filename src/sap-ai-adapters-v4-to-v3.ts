@@ -182,17 +182,19 @@ function normalizeUserPart(part: V4UserPart): V3UserPart[] {
       ];
     case "text":
       return [{ providerOptions: part.providerOptions, text: part.data.text, type: "text" }];
-    case "url":
+    case "url": {
+      const normalizedPart = { ...part, mediaType: part.mediaType.toLowerCase() };
       return [
         {
-          ...part,
+          ...normalizedPart,
           data: part.data.url,
           mediaType:
-            part.mediaType === "image" || part.mediaType === "image/*"
+            normalizedPart.mediaType === "image" || normalizedPart.mediaType === "image/*"
               ? "image/*"
-              : resolveFullMediaType({ part }),
+              : resolveFullMediaType({ part: normalizedPart }),
         },
       ];
+    }
     case "reference":
       throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
   }

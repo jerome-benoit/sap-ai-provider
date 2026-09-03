@@ -144,8 +144,8 @@ V4 tagged file data is normalized before it reaches the shared core:
 - Full media types such as `image/png` are preserved.
 - Bare and wildcard media types such as `image` and `image/*` are resolved
   from detectable inline bytes.
-- Remote image URLs with `image` or `image/*` remain remote and normalize to
-  `image/*`; they are never downloaded for detection.
+- Remote image URLs with `image` or `image/*` remain remote and normalize
+  case-insensitively to lower-case `image/*`; they are never downloaded for detection.
 - Ambiguous inline bytes and other incomplete URL media types throw instead of
   producing an invalid SAP payload.
 - Provider references are rejected explicitly and never fetched.

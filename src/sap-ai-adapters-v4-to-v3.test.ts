@@ -242,27 +242,36 @@ describe("normalizeV4PromptToV3", () => {
     expect(() => normalizeV4PromptToV3(prompt)).toThrow("could not be auto-detected");
   });
 
-  it.each(["image", "image/*"])("should preserve remote image URL media type %s", (mediaType) => {
-    const url = new URL("https://example.com/image");
-    const prompt = [
-      {
-        content: [{ data: { type: "url", url }, mediaType, type: "file" }],
-        role: "user",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    expect(result[0]).toMatchObject({
-      content: [{ data: url, mediaType: "image/*", type: "file" }],
-    });
-    expect(convertToSAPMessages(result)).toEqual([
-      {
-        content: [{ image_url: { url: url.toString() }, type: "image_url" }],
-        role: "user",
-      },
-    ]);
-  });
+  it.each([
+    { expectedMediaType: "image/*", mediaType: "image" },
+    { expectedMediaType: "image/*", mediaType: "image/*" },
+    { expectedMediaType: "image/*", mediaType: "IMAGE" },
+    { expectedMediaType: "image/*", mediaType: "IMAGE/*" },
+    { expectedMediaType: "image/png", mediaType: "IMAGE/PNG" },
+  ])(
+    "should preserve remote image URL media type $mediaType",
+    ({ expectedMediaType, mediaType }) => {
+      const url = new URL("https://example.com/image");
+      const prompt = [
+        {
+          content: [{ data: { type: "url", url }, mediaType, type: "file" }],
+          role: "user",
+        },
+      ] as unknown as LanguageModelV4Prompt;
+      const result = normalizeV4PromptToV3(prompt);
+      expect(result[0]).toMatchObject({
+        content: [{ data: url, mediaType: expectedMediaType, type: "file" }],
+      });
+      expect(convertToSAPMessages(result)).toEqual([
+        {
+          content: [{ image_url: { url: url.toString() }, type: "image_url" }],
+          role: "user",
+        },
+      ]);
+    },
+  );
 
-  it.each(["application", "application/*"])(
+  it.each(["application", "application/*", "APPLICATION", "APPLICATION/*"])(
     "should reject incomplete non-image URL media type %s",
     (mediaType) => {
       const prompt = [
