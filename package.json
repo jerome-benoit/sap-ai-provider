@@ -38,6 +38,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./v2": {
+      "types": "./dist/index-v2.d.ts",
+      "import": "./dist/index-v2.js",
+      "require": "./dist/index-v2.cjs"
+    },
     "./v4": {
       "types": "./dist/index-v4.d.ts",
       "import": "./dist/index-v4.js",

@@ -60,9 +60,11 @@ function updatePackageJson(): void {
   pkg.description = V2_OVERRIDES.description;
   pkg.keywords = [...pkg.keywords, ...V2_OVERRIDES.additionalKeywords];
 
-  // The main build also emits the ./v4 subpath, but the V2 publish build
-  // contains only index-v2.* artifacts: drop the dangling export.
+  // The main build also emits the ./v2 and ./v4 subpaths, but the V2 publish
+  // build renames index-v2.* to index.* and contains no subpath artifacts:
+  // drop the dangling exports.
   if (pkg.exports && typeof pkg.exports === "object") {
+    delete (pkg.exports as Record<string, unknown>)["./v2"];
     delete (pkg.exports as Record<string, unknown>)["./v4"];
   }
 
