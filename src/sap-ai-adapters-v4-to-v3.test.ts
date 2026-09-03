@@ -150,7 +150,35 @@ describe("normalizeV4PromptToV3", () => {
     const message = result[0] as {
       content: { output: { value: unknown } }[];
     };
-    expect(message.content[0]?.output.value).toBeDefined();
+    expect(message.content[0]?.output).toEqual({
+      type: "content",
+      value: [
+        { text: "see attached", type: "text" },
+        { data: "aGVsbG8=", mediaType: "image/png", type: "file-data" },
+      ],
+    });
+  });
+  it("should warn once for bare top-level media types", () => {
+    const warnings: SharedV4Warning[] = [];
+    const prompt = [
+      {
+        content: [
+          { data: "aGVsbG8=", mediaType: "image", type: "file" },
+          { data: "aGVsbG8=", mediaType: "image", type: "file" },
+        ],
+        role: "user",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+    const result = normalizeV4PromptToV3(prompt, warnings);
+    expect(result).toHaveLength(1);
+    expect(warnings).toEqual([
+      {
+        details:
+          "Media type 'image' has no subtype; it is passed through as-is for the API to interpret.",
+        feature: "bare top-level media type",
+        type: "compatibility",
+      },
+    ]);
   });
   it("should preserve message-level providerOptions on all roles", () => {
     const prompt = [
