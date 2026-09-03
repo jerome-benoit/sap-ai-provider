@@ -52,6 +52,10 @@ export interface ConvertToSAPMessagesOptions {
  */
 const ZERO_WIDTH_SPACE = "\u200B";
 
+/** Matches canonical RFC 4648 base64, including the empty encoding. */
+const CANONICAL_BASE64_PATTERN =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/;
+
 /**
  * Safely serializes a value to JSON string, handling edge cases that would cause JSON.stringify to throw.
  *
@@ -425,38 +429,42 @@ function base64FromBytes(bytes: Uint8Array): string {
 /**
  * Builds a data URL from a file part's data and media type.
  *
- * Supports URL, base64 string, Uint8Array, and ArrayBuffer. Any other object
- * (including buffer-like objects or provider references) is rejected with an
- * explicit error instead of being stringified into an invalid payload.
+ * Supports URL, base64 string, Uint8Array, ArrayBuffer, and buffer-like objects
+ * whose custom `toString("base64")` method returns canonical base64. Other
+ * objects are rejected instead of being stringified into an invalid payload.
  * @internal
  * @param part - The file part containing data and mediaType.
- * @param part.data - The file data as URL, base64 string, Uint8Array, or ArrayBuffer.
+ * @param part.data - The file data.
  * @param part.mediaType - The MIME type of the file.
  * @returns The data URL string.
  * @throws {UnsupportedFunctionalityError} If the data type is not supported.
  */
-function buildDataUrl(part: {
-  data: ArrayBuffer | string | Uint8Array | URL;
-  mediaType: string;
-}): string {
-  if (part.data instanceof URL) {
-    return part.data.toString();
+function buildDataUrl(part: { data: unknown; mediaType: string }): string {
+  const { data, mediaType } = part;
+  if (data instanceof URL) return data.toString();
+
+  if (typeof data === "string") return `data:${mediaType};base64,${data}`;
+
+  if (data instanceof Uint8Array) {
+    return `data:${mediaType};base64,${base64FromBytes(data)}`;
   }
 
-  if (typeof part.data === "string") {
-    return `data:${part.mediaType};base64,${part.data}`;
+  if (data instanceof ArrayBuffer) {
+    return `data:${mediaType};base64,${base64FromBytes(new Uint8Array(data))}`;
   }
 
-  if (part.data instanceof Uint8Array) {
-    return `data:${part.mediaType};base64,${base64FromBytes(part.data)}`;
-  }
-
-  if (part.data instanceof ArrayBuffer) {
-    return `data:${part.mediaType};base64,${base64FromBytes(new Uint8Array(part.data))}`;
+  if (typeof data === "object" && data !== null) {
+    const toString = (data as { toString?: unknown }).toString;
+    if (typeof toString === "function" && toString !== Object.prototype.toString) {
+      const encoded: unknown = toString.call(data, "base64");
+      if (typeof encoded === "string" && CANONICAL_BASE64_PATTERN.test(encoded)) {
+        return `data:${mediaType};base64,${encoded}`;
+      }
+    }
   }
 
   throw new UnsupportedFunctionalityError({
     functionality:
-      "Unsupported file data type. Expected base64 string, Uint8Array, ArrayBuffer, or URL.",
+      "Unsupported file data type. Expected base64 string, Uint8Array, ArrayBuffer, URL, or a buffer-like object returning canonical base64.",
   });
 }

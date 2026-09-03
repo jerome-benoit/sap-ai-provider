@@ -732,19 +732,70 @@ describe("convertToSAPMessages", () => {
       expect(content?.image_url.url).toMatch(/^data:image\/png;base64,iVBORw==/);
     });
 
-    it("should throw for buffer-like object with toString instead of corrupting base64", () => {
-      const bufferLike = {
-        toString: (encoding?: string) => (encoding === "base64" ? "aGVsbG8=" : "hello"),
+    describe("buffer-like file data", () => {
+      const convertBufferLike = (data: unknown): string => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [{ data: data as Uint8Array, mediaType: "image/png", type: "file" }],
+            role: "user",
+          },
+        ];
+        const result = convertToSAPMessages(prompt);
+        const message = result[0] as { content: { image_url: { url: string } }[] };
+        return message.content[0]?.image_url.url ?? "";
       };
-      const prompt: LanguageModelV3Prompt = [
-        {
-          content: [
-            { data: bufferLike as unknown as Uint8Array, mediaType: "image/png", type: "file" },
-          ],
-          role: "user",
+
+      it.each([
+        { encoded: "", expected: "" },
+        { encoded: "YQ==", expected: "YQ==" },
+        { encoded: "YWI=", expected: "YWI=" },
+        { encoded: "YWJj", expected: "YWJj" },
+      ])("should accept canonical base64 '$encoded'", ({ encoded, expected }) => {
+        const bufferLike = {
+          toString: (encoding?: string): string => (encoding === "base64" ? encoded : "display"),
+        };
+        expect(convertBufferLike(bufferLike)).toBe(`data:image/png;base64,${expected}`);
+      });
+
+      it("should invoke a custom encoder once with its original receiver", () => {
+        let calls = 0;
+        const bufferLike = {
+          encoded: "aGVsbG8=",
+          toString(this: { encoded: string }, encoding?: string): string {
+            calls++;
+            expect(encoding).toBe("base64");
+            return this.encoded;
+          },
+        };
+        expect(convertBufferLike(bufferLike)).toBe("data:image/png;base64,aGVsbG8=");
+        expect(calls).toBe(1);
+      });
+
+      it.each(["[object Object]", "AB==", "AAB=", "YQ=", "YQ===", "YWI==", "YWJj-"])(
+        "should reject non-canonical encoder result '%s'",
+        (encoded) => {
+          expect(() => convertBufferLike({ toString: () => encoded })).toThrow(
+            "buffer-like object returning canonical base64",
+          );
         },
-      ];
-      expect(() => convertToSAPMessages(prompt)).toThrow("Unsupported file data type");
+      );
+
+      it("should reject a non-string encoder result", () => {
+        expect(() => convertBufferLike({ toString: () => 42 })).toThrow(
+          "buffer-like object returning canonical base64",
+        );
+      });
+
+      it("should propagate a custom encoder error", () => {
+        const error = new Error("encoder failed");
+        expect(() =>
+          convertBufferLike({
+            toString: () => {
+              throw error;
+            },
+          }),
+        ).toThrow(error);
+      });
     });
 
     describe("file data hardening (L1)", () => {

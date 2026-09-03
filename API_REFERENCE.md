@@ -1641,11 +1641,14 @@ sent to SAP AI Core:
 | `filename` on the AI SDK file part       | forwarded as `file.filename`            |
 | `providerOptions['sap-ai'].cacheControl` | forwarded as `cache_control` when valid |
 
-File data may be a `URL`, a base64 string, `Uint8Array`, `Buffer`, or a
-buffer-like object with `toString("base64")`. Non-image file conversion is
-supported by this provider, but SAP AI Core backend and model MIME support varies
-by tenant, deployment, and selected model. If a model rejects a MIME type, choose
-a model or orchestration setup that supports that file type.
+File data may be a `URL`, a base64 string, `Uint8Array`, `Buffer`,
+`ArrayBuffer`, or a buffer-like object whose custom `toString("base64")`
+returns canonical RFC 4648 base64. Plain objects, provider references, and
+invalid buffer-like results are rejected instead of being stringified.
+Non-image file conversion is supported by this provider, but SAP AI Core
+backend and model MIME-type support varies by tenant, deployment, and selected
+model. If a model rejects a MIME type, choose a model or orchestration setup
+that supports that file type.
 
 ```typescript
 const result = await generateText({
