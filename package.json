@@ -70,7 +70,7 @@
     "lint": "npm run lint:md:all && eslint . --cache",
     "lint-fix": "npm run lint:md:fix && eslint . --fix --cache",
     "lint:md": "markdownlint-cli2 '**/*.md'",
-    "lint:md:all": "npm run lint:md && npm run lint:md:toc && npm run lint:md:mermaid",
+    "prepublishOnly": "if [ \"$AI_SDK_VERSION\" = \"v2\" ]; then npm run build:v2 && npm run check-build:v2 && npm run prepare:v2; else npm run build && npm run check-build && npm run check-build:v2 && npm run check-build:v4; fi",
     "lint:md:fix": "markdownlint-cli2 --fix '**/*.md'",
     "lint:md:links": "find . -name '*.md' -not -path './node_modules/*' -exec markdown-link-check -c .markdown-link-check.json {} \\;",
     "lint:md:mermaid": "find . -name '*.md' -not -path './node_modules/*' -exec mermaid-validate validate-md {} \\; 2>&1 | grep -v 'No Mermaid code blocks'",
