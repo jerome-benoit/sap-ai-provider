@@ -67,7 +67,10 @@ describe("convertStreamPartToV4", () => {
       type: "stream-start",
       warnings: [{ feature: "x", type: "unsupported" }],
     } as unknown as LanguageModelV3StreamPart;
-    expect(convertStreamPartToV4(part)).toMatchObject({ type: "stream-start" });
+    expect(convertStreamPartToV4(part)).toEqual({
+      type: "stream-start",
+      warnings: [{ feature: "x", type: "unsupported" }],
+    });
   });
 
   it("should pass tool-approval-request through (native V4 part)", () => {
@@ -98,13 +101,25 @@ describe("convertStreamPartToV4", () => {
 describe("convertGenerateResultToV4", () => {
   it("should convert content, usage, warnings and finish reason", () => {
     const result = {
-      content: [{ text: "hello", type: "text" }],
-      finishReason: { unified: "stop" },
+      content: [
+        { text: "hello", type: "text" },
+        { data: "aGVsbG8=", mediaType: "image/png", type: "file" },
+      ],
+      finishReason: { raw: "stop", unified: "stop" },
       usage,
-      warnings: [],
+      warnings: [{ feature: "y", type: "compatibility" }],
     } as unknown as LanguageModelV3GenerateResult;
     const converted: LanguageModelV4GenerateResult = convertGenerateResultToV4(result);
-    expect(converted.content).toEqual([{ text: "hello", type: "text" }]);
+    expect(converted.content).toEqual([
+      { text: "hello", type: "text" },
+      {
+        data: { data: "aGVsbG8=", type: "data" },
+        mediaType: "image/png",
+        type: "file",
+      },
+    ]);
     expect(converted.usage).toEqual(usage);
+    expect(converted.warnings).toEqual([{ feature: "y", type: "compatibility" }]);
+    expect(converted.finishReason).toEqual({ raw: "stop", unified: "stop" });
   });
 });
