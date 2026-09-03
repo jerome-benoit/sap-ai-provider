@@ -110,14 +110,16 @@ function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
 function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
   if (item.type === "text" || item.type === "custom") return item;
   switch (item.data.type) {
-    case "data":
+    case "data": {
+      const normalizedItem = normalizeMediaType(item);
       return {
         data: typeof item.data.data === "string" ? item.data.data : base64FromBytes(item.data.data),
         ...(item.filename ? { filename: item.filename } : {}),
-        mediaType: resolveFullMediaType({ part: item }),
+        mediaType: resolveFullMediaType({ part: normalizedItem }),
         providerOptions: item.providerOptions,
         type: "file-data",
       };
+    }
     case "text":
       return { providerOptions: item.providerOptions, text: item.data.text, type: "text" };
     case "url":
@@ -130,6 +132,16 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
     case "reference":
       throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
   }
+}
+
+/**
+ * Normalizes a file part's media type at the V4 boundary.
+ * @param part - The V4 file part.
+ * @returns The original part when already normalized, otherwise a shallow copy.
+ */
+function normalizeMediaType<T extends { mediaType: string }>(part: T): T {
+  const mediaType = part.mediaType.toLowerCase();
+  return mediaType === part.mediaType ? part : { ...part, mediaType };
 }
 
 /**
@@ -172,18 +184,20 @@ function normalizeToolResultPart(
 function normalizeUserPart(part: V4UserPart): V3UserPart[] {
   if (part.type === "text") return [part];
   switch (part.data.type) {
-    case "data":
+    case "data": {
+      const normalizedPart = normalizeMediaType(part);
       return [
         {
-          ...part,
+          ...normalizedPart,
           data: part.data.data,
-          mediaType: resolveFullMediaType({ part }),
+          mediaType: resolveFullMediaType({ part: normalizedPart }),
         },
       ];
+    }
     case "text":
       return [{ providerOptions: part.providerOptions, text: part.data.text, type: "text" }];
     case "url": {
-      const normalizedPart = { ...part, mediaType: part.mediaType.toLowerCase() };
+      const normalizedPart = normalizeMediaType(part);
       return [
         {
           ...normalizedPart,

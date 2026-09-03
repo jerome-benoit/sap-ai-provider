@@ -47,7 +47,7 @@ See [package.json](mdc:package.json) for the full script.
 
 ## Node Engine
 
-- Requires Node >= 20 (see `engines` in [package.json](mdc:package.json)).
+- Requires Node >= 22 (see `engines` in [package.json](mdc:package.json)).
 
 ## Verification
 
