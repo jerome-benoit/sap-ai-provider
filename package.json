@@ -34,19 +34,34 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./v2": {
-      "types": "./dist/index-v2.d.ts",
-      "import": "./dist/index-v2.js",
-      "require": "./dist/index-v2.cjs"
+      "import": {
+        "types": "./dist/index-v2.d.ts",
+        "default": "./dist/index-v2.js"
+      },
+      "require": {
+        "types": "./dist/index-v2.d.cts",
+        "default": "./dist/index-v2.cjs"
+      }
     },
     "./v4": {
-      "types": "./dist/index-v4.d.ts",
-      "import": "./dist/index-v4.js",
-      "require": "./dist/index-v4.cjs"
+      "import": {
+        "types": "./dist/index-v4.d.ts",
+        "default": "./dist/index-v4.js"
+      },
+      "require": {
+        "types": "./dist/index-v4.d.cts",
+        "default": "./dist/index-v4.cjs"
+      }
     }
   },
   "directories": {
@@ -63,9 +78,9 @@
     "build:watch": "tsup --watch",
     "build:v2": "tsup --config tsup.config.v2.ts",
     "build:v2:watch": "tsup --config tsup.config.v2.ts --watch",
-    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts",
-    "check-build:v2": "ls -la dist/ && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts",
-    "check-build:v4": "ls -la dist/ && test -f dist/index-v4.js && test -f dist/index-v4.cjs && test -f dist/index-v4.d.ts",
+    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts && test -f dist/index.d.cts && tsx scripts/check-package-exports.ts",
+    "check-build:v2": "ls -la dist/ && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts && test -f dist/index-v2.d.cts",
+    "check-build:v4": "ls -la dist/ && test -f dist/index-v4.js && test -f dist/index-v4.cjs && test -f dist/index-v4.d.ts && test -f dist/index-v4.d.cts",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint . --cache",
     "lint-fix": "npm run lint:md:fix && eslint . --fix --cache",

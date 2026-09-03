@@ -418,7 +418,10 @@ export function convertToSAPMessages(
                   "image/gif",
                   "image/webp",
                 ];
-                if (!supportedFormats.includes(part.mediaType.toLowerCase())) {
+                const normalizedMediaType = part.mediaType.toLowerCase();
+                const isWildcardImageUrl =
+                  part.data instanceof URL && normalizedMediaType === "image/*";
+                if (!isWildcardImageUrl && !supportedFormats.includes(normalizedMediaType)) {
                   console.warn(
                     `Image format ${part.mediaType} may not be supported by all models. ` +
                       `Recommended formats: PNG, JPEG, GIF, WebP`,

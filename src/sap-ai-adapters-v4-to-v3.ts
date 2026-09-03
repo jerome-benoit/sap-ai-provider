@@ -36,8 +36,9 @@ const REFERENCE_ERROR =
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
  *   `URL` object, `text` to a V3 text part. `reference` values are rejected
  *   explicitly (never fetched).
- * - Bare and wildcard media types are resolved from detectable inline bytes;
- *   ambiguous inline data and incomplete URL media types are rejected.
+ * - Bare and wildcard media types are resolved from detectable inline bytes.
+ *   Remote `image` and `image/*` URLs are preserved as `image/*`; other
+ *   incomplete URL media types are rejected.
  * - `reasoning-file` and `custom` parts are rejected explicitly.
  * - Tool-result outputs are mapped to the V3 output union; nested `content[]`
  *   file items use the legacy `file-data`/`file-url` shapes.
@@ -186,7 +187,10 @@ function normalizeUserPart(part: V4UserPart): V3UserPart[] {
         {
           ...part,
           data: part.data.url,
-          mediaType: resolveFullMediaType({ part }),
+          mediaType:
+            part.mediaType === "image" || part.mediaType === "image/*"
+              ? "image/*"
+              : resolveFullMediaType({ part }),
         },
       ];
     case "reference":
