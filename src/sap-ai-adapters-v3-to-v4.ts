@@ -54,14 +54,12 @@ export function convertProviderMetadataToV4(
 }
 
 /**
- * Converts an internal stream part to V4 format. Parts without a V4
- * equivalent (`tool-approval-request`) map to a documented `null` and are
- * dropped by the stream pipe, mirroring the V2 adapter semantics.
- * @param internalPart
+ * Converts an internal stream part to V4 format. Every V3 part has a native
+ * V4 equivalent (including `tool-approval-request`), so conversion is total.
+ * @param internalPart - The internal V3 stream part.
+ * @returns The equivalent V4 stream part.
  */
-export function convertStreamPartToV4(
-  internalPart: InternalStreamPart,
-): LanguageModelV4StreamPart | null {
+export function convertStreamPartToV4(internalPart: InternalStreamPart): LanguageModelV4StreamPart {
   switch (internalPart.type) {
     case "error":
       return { error: internalPart.error, type: "error" };
@@ -233,9 +231,9 @@ export function convertWarningsToV4(internalWarnings: InternalWarning[]): Shared
 }
 
 /**
- * Transforms an internal stream to a V4 ReadableStream, dropping documented
- * `null` parts.
- * @param internalStream
+ * Transforms an internal stream to a V4 ReadableStream (total conversion).
+ * @param internalStream - The internal V3 stream.
+ * @returns The equivalent V4 stream.
  */
 export function createV4StreamFromInternal(
   internalStream: ReadableStream<InternalStreamPart>,
@@ -243,8 +241,7 @@ export function createV4StreamFromInternal(
   return internalStream.pipeThrough(
     new TransformStream<InternalStreamPart, LanguageModelV4StreamPart>({
       transform(internalPart, controller) {
-        const converted = convertStreamPartToV4(internalPart);
-        if (converted !== null) controller.enqueue(converted);
+        controller.enqueue(convertStreamPartToV4(internalPart));
       },
     }),
   );
