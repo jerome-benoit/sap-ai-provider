@@ -242,21 +242,44 @@ describe("normalizeV4PromptToV3", () => {
     expect(() => normalizeV4PromptToV3(prompt)).toThrow("could not be auto-detected");
   });
 
-  it.each(["image", "image/*"])("should reject incomplete URL media type %s", (mediaType) => {
+  it.each(["image", "image/*"])("should preserve remote image URL media type %s", (mediaType) => {
+    const url = new URL("https://example.com/image");
     const prompt = [
       {
-        content: [
-          {
-            data: { type: "url", url: new URL("https://example.com/image") },
-            mediaType,
-            type: "file",
-          },
-        ],
+        content: [{ data: { type: "url", url }, mediaType, type: "file" }],
         role: "user",
       },
     ] as unknown as LanguageModelV4Prompt;
-    expect(() => normalizeV4PromptToV3(prompt)).toThrow("not passed as inline bytes");
+    const result = normalizeV4PromptToV3(prompt);
+    expect(result[0]).toMatchObject({
+      content: [{ data: url, mediaType: "image/*", type: "file" }],
+    });
+    expect(convertToSAPMessages(result)).toEqual([
+      {
+        content: [{ image_url: { url: url.toString() }, type: "image_url" }],
+        role: "user",
+      },
+    ]);
   });
+
+  it.each(["application", "application/*"])(
+    "should reject incomplete non-image URL media type %s",
+    (mediaType) => {
+      const prompt = [
+        {
+          content: [
+            {
+              data: { type: "url", url: new URL("https://example.com/file") },
+              mediaType,
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ] as unknown as LanguageModelV4Prompt;
+      expect(() => normalizeV4PromptToV3(prompt)).toThrow("not passed as inline bytes");
+    },
+  );
   it("should preserve message-level providerOptions on all roles", () => {
     const prompt = [
       { content: "sys", providerOptions: { "test-provider": { a: 1 } }, role: "system" },

@@ -139,6 +139,44 @@ describe("AI SDK 7 public integration", () => {
     expect(result.text).toBe("generated");
   });
 
+  it("should preserve remote image URLs through AI SDK 7 without fetching bytes", async () => {
+    const provider = createSAPAIProviderV4();
+    const model = provider("gpt-4o");
+    const image = new URL("https://example.com/image.png");
+    const download = vi.fn(
+      (requests: { isUrlSupportedByModel: boolean; url: URL }[]): Promise<null[]> =>
+        Promise.resolve(requests.map(() => null)),
+    );
+    const mockDoGenerate = vi.fn((): Promise<LanguageModelV3GenerateResult> =>
+      Promise.resolve({
+        content: [{ text: "analyzed", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        usage: languageUsage,
+        warnings: [],
+      }),
+    );
+    internalLanguageOf(model).internalModel.doGenerate = mockDoGenerate;
+
+    const result = await generateText({
+      experimental_download: download,
+      messages: [{ content: [{ data: image, mediaType: "image", type: "file" }], role: "user" }],
+      model,
+    });
+
+    expect(result.text).toBe("analyzed");
+    expect(download).toHaveBeenCalledWith([{ isUrlSupportedByModel: true, url: image }]);
+    expect(mockDoGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          expect.objectContaining({
+            content: [expect.objectContaining({ data: image, mediaType: "image/*", type: "file" })],
+            role: "user",
+          }),
+        ],
+      }),
+    );
+  });
+
   it("should stream text through AI SDK 7", async () => {
     const provider = createSAPAIProviderV4();
     const model = provider("gpt-4o");
