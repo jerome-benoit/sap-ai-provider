@@ -190,6 +190,37 @@ describe("AI SDK 7 public integration", () => {
     },
   );
 
+  it("should normalize inline MIME casing through AI SDK 7", async () => {
+    const provider = createSAPAIProviderV4();
+    const model = provider("gpt-4o");
+    const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const mockDoGenerate = vi.fn((): Promise<LanguageModelV3GenerateResult> =>
+      Promise.resolve({
+        content: [{ text: "analyzed", type: "text" }],
+        finishReason: { raw: "stop", unified: "stop" },
+        usage: languageUsage,
+        warnings: [],
+      }),
+    );
+    internalLanguageOf(model).internalModel.doGenerate = mockDoGenerate;
+
+    await generateText({
+      messages: [{ content: [{ data, mediaType: "IMAGE/PNG", type: "file" }], role: "user" }],
+      model,
+    });
+
+    expect(mockDoGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          expect.objectContaining({
+            content: [expect.objectContaining({ data, mediaType: "image/png", type: "file" })],
+            role: "user",
+          }),
+        ],
+      }),
+    );
+  });
+
   it("should stream text through AI SDK 7", async () => {
     const provider = createSAPAIProviderV4();
     const model = provider("gpt-4o");

@@ -6,8 +6,8 @@ description: Environment variables, credentials, and configuration guidance
 
 ## Runtime Requirements
 
-- **Node.js**: >= 20 (see `engines` in [package.json](mdc:package.json))
-- **Vercel AI SDK**: 5.0+ (6.0+ recommended)
+- **Node.js**: >= 22 (see `engines` in [package.json](mdc:package.json))
+- **Vercel AI SDK**: 5.0+; use the `/v4` entrypoint with AI SDK 7
 
 ## Credentials
 

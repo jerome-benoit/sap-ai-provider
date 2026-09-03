@@ -151,7 +151,7 @@ describe("normalizeV4PromptToV3", () => {
                 {
                   data: { data: bytes, type: "data" },
                   filename: "image.png",
-                  mediaType: "image",
+                  mediaType: "IMAGE/PNG",
                   providerOptions: { "test-provider": { cached: true } },
                   type: "file",
                 },
@@ -184,7 +184,7 @@ describe("normalizeV4PromptToV3", () => {
     });
   });
 
-  it.each(["image", "image/*"])(
+  it.each(["image", "image/*", "IMAGE", "IMAGE/*", "IMAGE/PNG"])(
     "should resolve inline %s data before SAP image routing",
     (mediaType) => {
       const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
