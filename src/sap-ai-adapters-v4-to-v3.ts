@@ -56,20 +56,27 @@ export function normalizeV4PromptToV3(
       case "assistant":
         return {
           content: message.content.flatMap((part) => normalizeAssistantPart(part)),
+          providerOptions: message.providerOptions,
           role: "assistant",
         };
       case "system":
-        return { content: message.content, role: "system" };
+        return {
+          content: message.content,
+          providerOptions: message.providerOptions,
+          role: "system",
+        };
       case "tool":
         return {
           content: message.content.map((part) =>
             part.type === "tool-result" ? normalizeToolResultPart(part) : part,
           ),
+          providerOptions: message.providerOptions,
           role: "tool",
         };
       case "user":
         return {
           content: message.content.flatMap((part) => normalizeUserPart(part, warnings)),
+          providerOptions: message.providerOptions,
           role: "user",
         };
     }
@@ -77,8 +84,9 @@ export function normalizeV4PromptToV3(
 }
 
 /**
- *
- * @param part
+ * Normalizes a V4 assistant part to V3 content parts.
+ * @param part - The V4 assistant content part.
+ * @returns The equivalent V3 content parts.
  */
 function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
   switch (part.type) {
@@ -97,16 +105,12 @@ function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
 }
 
 /**
- *
- * @param item
+ * Normalizes a V4 tool-output content item to the V3 legacy shape.
+ * @param item - The V4 content item.
+ * @returns The equivalent V3 content item.
  */
 function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
-  if (item.type === "text") return item;
-  if (item.type !== "file") {
-    throw new UnsupportedFunctionalityError({
-      functionality: `Tool content item type '${item.type}' has no V3 equivalent.`,
-    });
-  }
+  if (item.type === "text" || item.type === "custom") return item;
   switch (item.data.type) {
     case "data":
       return {
@@ -116,13 +120,18 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
             : base64FromBytes(new Uint8Array(item.data.data)),
         ...(item.filename ? { filename: item.filename } : {}),
         mediaType: item.mediaType,
+        providerOptions: item.providerOptions,
         type: "file-data",
       };
     case "text":
-      return { text: item.data.text, type: "text" };
+      return { providerOptions: item.providerOptions, text: item.data.text, type: "text" };
     case "url":
       // Legacy V3 file-url carries no media type; the subtype stays in the URL itself.
-      return { type: "file-url", url: item.data.url.toString() };
+      return {
+        providerOptions: item.providerOptions,
+        type: "file-url",
+        url: item.data.url.toString(),
+      };
     case "reference":
       throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
   }
@@ -169,7 +178,7 @@ function normalizeUserPart(part: V4UserPart, warnings?: SharedV4Warning[]): V3Us
     case "data":
       return [{ ...part, data: part.data.data }];
     case "text":
-      return [{ text: part.data.text, type: "text" }];
+      return [{ providerOptions: part.providerOptions, text: part.data.text, type: "text" }];
     case "url":
       return [{ ...part, data: part.data.url }];
     case "reference":

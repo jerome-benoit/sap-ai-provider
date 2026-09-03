@@ -81,6 +81,18 @@ describe("convertStreamPartToV4", () => {
       type: "tool-approval-request",
     });
   });
+  it("should preserve providerMetadata on streamed file parts", () => {
+    const part = {
+      data: "aGVsbG8=",
+      mediaType: "image/png",
+      providerMetadata: { "test-provider": { d: 4 } },
+      type: "file",
+    } as unknown as LanguageModelV3StreamPart;
+    expect(convertStreamPartToV4(part)).toMatchObject({
+      providerMetadata: { "test-provider": { d: 4 } },
+      type: "file",
+    });
+  });
 });
 
 describe("convertGenerateResultToV4", () => {

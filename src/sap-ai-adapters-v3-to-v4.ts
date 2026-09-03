@@ -66,11 +66,14 @@ export function convertStreamPartToV4(
     case "error":
       return { error: internalPart.error, type: "error" };
     case "file":
-      return {
-        data: { data: internalPart.data, type: "data" },
-        mediaType: internalPart.mediaType,
-        type: "file",
-      };
+      return withProviderMetadata(
+        {
+          data: { data: internalPart.data, type: "data" as const },
+          mediaType: internalPart.mediaType,
+          type: "file" as const,
+        },
+        internalPart.providerMetadata,
+      );
     case "finish":
       return withProviderMetadata(
         {

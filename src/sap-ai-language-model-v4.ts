@@ -71,7 +71,14 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
   async doGenerate(options: LanguageModelV4CallOptions): Promise<LanguageModelV4GenerateResult> {
     const { prompt, ...rest } = options;
     const entryWarnings: SharedV4Warning[] = [];
-    const { reasoning: _reasoning, ...restOptions } = rest;
+    const { reasoning, ...restOptions } = rest;
+    if (reasoning !== undefined && reasoning !== "provider-default") {
+      entryWarnings.push({
+        details: `Reasoning effort '${reasoning}' has no SAP mapping and is ignored.`,
+        feature: "reasoning effort",
+        type: "unsupported",
+      });
+    }
     const internalOptions: LanguageModelV3CallOptions = {
       ...restOptions,
       prompt: normalizeV4PromptToV3(prompt, entryWarnings),
@@ -89,9 +96,10 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
 
   async doStream(options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> {
     const { prompt, ...rest } = options;
+    // Note: entry normalization warnings and the dropped reasoning effort have
+    // no stream channel and are dropped; the core surfaces its own warnings
+    // via stream-start.
     const { reasoning: _reasoning, ...restOptions } = rest;
-    // Note: entry normalization warnings have no stream channel and are dropped;
-    // the core surfaces its own warnings via stream-start.
     const internalOptions: LanguageModelV3CallOptions = {
       ...restOptions,
       prompt: normalizeV4PromptToV3(prompt),
