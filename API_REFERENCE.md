@@ -116,8 +116,38 @@ consistently:
 - [Version Information](#version-information)
   - [Dependencies](#dependencies)
   - [`VERSION`](#version)
+- [V4 Facade API (AI SDK 7)](#v4-facade-api-ai-sdk-7)
 - [V2 Facade Package API](#v2-facade-package-api)
 - [Related Documentation](#related-documentation-1)
+
+## V4 Facade API (AI SDK 7)
+
+Import the V4 facade from the main package's `v4` subpath when using AI SDK 7:
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+
+const provider = createSAPAIProvider();
+const languageModel = provider("gpt-4.1");
+const embeddingModel = provider.embedding("text-embedding-3-small");
+```
+
+The subpath exports `SAPAILanguageModel`, `SAPAIEmbeddingModel`, and
+`SAPAIProvider` as V4 facades over the shared V3 core. The provider exposes
+`chat()`, `languageModel()`, `embedding()`, `embeddingModel()`, and the
+deprecated `textEmbeddingModel()` alias. Version-independent settings, SAP SDK
+clients, builders, validation helpers, error types, and `VERSION` match the root
+entrypoint.
+
+V4 tagged file data is normalized before it reaches the shared core:
+
+- Full media types such as `image/png` are preserved.
+- Bare and wildcard media types such as `image` and `image/*` are resolved
+  only from detectable inline bytes.
+- Ambiguous inline bytes and incomplete media types on URL data throw instead
+  of producing an invalid SAP data URL. URLs are never downloaded for detection.
+- Provider references are rejected explicitly and never fetched.
+- Text file variants become V3 text parts and retain provider options.
 
 ## V2 Facade Package API
 

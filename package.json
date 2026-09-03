@@ -99,6 +99,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.5",
     "@vitest/coverage-v8": "^4.1.11",
+    "ai": "^7.0.92",
     "dotenv": "^17.4.2",
     "eslint": "^10.9.1",
     "eslint-plugin-jsdoc": "^64.3.3",

@@ -18,20 +18,6 @@ export {
 } from "./convert-to-sap-messages.js";
 
 /**
- * V4 entry/exit adapters (prompt normalization and result conversion).
- */
-export {
-  convertFinishReasonToV4,
-  convertGenerateResultToV4,
-  convertStreamPartToV4,
-  convertUsageToV4,
-  convertWarningsToV4,
-  createV4StreamFromInternal,
-} from "./sap-ai-adapters-v3-to-v4.js";
-
-export { normalizeV4PromptToV3 } from "./sap-ai-adapters-v4-to-v3.js";
-
-/**
  * Embedding model class implementing EmbeddingModelV4 for SAP AI Core.
  * V4 facade over internal implementation.
  */
@@ -76,6 +62,7 @@ export {
   sapaiV4 as sapai,
 } from "./sap-ai-provider-v4.js";
 export type {
+  DeploymentConfig,
   SAPAIProviderV4 as SAPAIProvider,
   SAPAIProviderSettings,
 } from "./sap-ai-provider-v4.js";
@@ -106,3 +93,83 @@ export type {
   SAPAIModelSettings,
   SAPAISettings,
 } from "./sap-ai-settings.js";
+
+/**
+ * SAP AI SDK types and utilities.
+ *
+ * Re-exported for convenience and advanced usage scenarios.
+ */
+export type {
+  AssistantChatMessage,
+  ChatCompletionRequest,
+  ChatCompletionTool,
+  ChatMessage,
+  ChatMessageContent,
+  ChatMessages,
+  Citation,
+  DeveloperChatMessage,
+  DocumentTranslationApplyToSelector,
+  FileContent,
+  FilteringModule,
+  FunctionObject,
+  GroundingModule,
+  ImageContentUrl,
+  LlmModelDetails,
+  LlmModelParams,
+  MaskingModule,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the upstream deprecated public API.
+  OrchestrationConfigRef,
+  OrchestrationConfigRefById,
+  OrchestrationConfigRefByName,
+  OrchestrationConfigRefOverride,
+  OrchestrationError,
+  OrchestrationModuleConfig,
+  OrchestrationModuleConfigList,
+  PromptTemplatingModule,
+  SystemChatMessage,
+  ToolChatMessage,
+  TranslationApplyToCategory,
+  TranslationInputParameters,
+  TranslationModule,
+  TranslationOutputParameters,
+  TranslationTargetLanguage,
+  UserChatMessage,
+  UserChatMessageContent,
+  UserChatMessageContentItem,
+} from "./sap-ai-settings.js";
+
+/** Helper functions for building SAP AI configurations. */
+export {
+  buildAzureContentSafetyFilter,
+  buildDocumentGroundingConfig,
+  buildDpiMaskingProvider,
+  buildLlamaGuard38BFilter,
+  buildTranslationConfig,
+} from "./sap-ai-settings.js";
+
+/** Response classes from the SAP AI SDK for orchestration results. */
+export {
+  OrchestrationEmbeddingResponse,
+  OrchestrationResponse,
+  OrchestrationStream,
+  OrchestrationStreamChunkResponse,
+  OrchestrationStreamResponse,
+} from "./sap-ai-settings.js";
+
+/** Validation utilities for API selection and feature compatibility. */
+export { resolveApi, validateSettings } from "./sap-ai-validation.js";
+
+/** Package version, injected at build time. */
+export { VERSION } from "./version.js";
+
+/** SAP AI SDK request configuration type. */
+export type { CustomRequestConfig } from "@sap-ai-sdk/core";
+
+/** Error response type from the SAP AI SDK. */
+export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
+
+/** Direct access to SAP AI SDK orchestration clients. */
+export { OrchestrationClient, OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
+
+/** SAP Cloud SDK destination type. */
+export type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";

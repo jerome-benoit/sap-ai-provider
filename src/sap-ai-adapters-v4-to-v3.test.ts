@@ -1,12 +1,9 @@
 /** Tests for the V4-to-V3 prompt normalization (AI SDK 7 entry adapter). */
-import type {
-  LanguageModelV3Prompt,
-  LanguageModelV4Prompt,
-  SharedV4Warning,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3Prompt, LanguageModelV4Prompt } from "@ai-sdk/provider";
 
 import { describe, expect, it } from "vitest";
 
+import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { normalizeV4PromptToV3 } from "./sap-ai-adapters-v4-to-v3.js";
 
 describe("normalizeV4PromptToV3", () => {
@@ -32,12 +29,13 @@ describe("normalizeV4PromptToV3", () => {
     ] satisfies LanguageModelV3Prompt);
   });
 
-  it("should unwrap tagged url file parts to raw URLs", () => {
+  it("should preserve full media type and URL identity", () => {
+    const url = new URL("https://example.com/a.pdf");
     const prompt = [
       {
         content: [
           {
-            data: { type: "url", url: new URL("https://example.com/a.pdf") },
+            data: { type: "url", url },
             mediaType: "application/pdf",
             type: "file",
           },
@@ -46,38 +44,58 @@ describe("normalizeV4PromptToV3", () => {
       },
     ] as unknown as LanguageModelV4Prompt;
     const result = normalizeV4PromptToV3(prompt);
-    const content = (result[0] as { content: { data: unknown }[] }).content[0];
-    expect(content?.data).toEqual(new URL("https://example.com/a.pdf"));
+    const content = (result[0] as { content: { data: unknown; mediaType: string }[] }).content[0];
+    expect(content).toMatchObject({ mediaType: "application/pdf" });
+    expect(content?.data).toBe(url);
   });
 
   it("should convert text-variant file parts to V3 text parts", () => {
     const prompt = [
       {
-        content: [{ data: { text: "inline doc", type: "text" }, mediaType: "text", type: "file" }],
-        role: "user",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    expect(result).toEqual([
-      { content: [{ text: "inline doc", type: "text" }], role: "user" },
-    ] satisfies LanguageModelV3Prompt);
-  });
-
-  it("should throw for reference file parts without fetching", () => {
-    const prompt = [
-      {
         content: [
           {
-            data: { reference: { "test-provider": "file-123" }, type: "reference" },
-            mediaType: "image/png",
+            data: { text: "inline doc", type: "text" },
+            mediaType: "text",
+            providerOptions: { "test-provider": { cached: true } },
             type: "file",
           },
         ],
         role: "user",
       },
     ] as unknown as LanguageModelV4Prompt;
-    expect(() => normalizeV4PromptToV3(prompt)).toThrow("provider reference");
+    const result = normalizeV4PromptToV3(prompt);
+    expect(result).toEqual([
+      {
+        content: [
+          {
+            providerOptions: { "test-provider": { cached: true } },
+            text: "inline doc",
+            type: "text",
+          },
+        ],
+        role: "user",
+      },
+    ] satisfies LanguageModelV3Prompt);
   });
+
+  it.each(["image/png", "image"])(
+    "should reject reference file parts with media type %s without fetching",
+    (mediaType) => {
+      const prompt = [
+        {
+          content: [
+            {
+              data: { reference: { "test-provider": "file-123" }, type: "reference" },
+              mediaType,
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ] as unknown as LanguageModelV4Prompt;
+      expect(() => normalizeV4PromptToV3(prompt)).toThrow("provider reference");
+    },
+  );
 
   it.each([["reasoning-file"], ["custom"]])("should throw for unsupported %s parts", (type) => {
     const prompt = [{ content: [{ type }], role: "user" }] as unknown as LanguageModelV4Prompt;
@@ -96,7 +114,6 @@ describe("normalizeV4PromptToV3", () => {
   });
 
   it("should pass through text and execution-denied tool outputs", () => {
-    const warnings: SharedV4Warning[] = [];
     const prompt = [
       {
         content: [
@@ -116,13 +133,13 @@ describe("normalizeV4PromptToV3", () => {
         role: "tool",
       },
     ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt, warnings);
+    const result = normalizeV4PromptToV3(prompt);
     expect(result).toHaveLength(1);
     expect((result[0] as { content: unknown[] }).content).toHaveLength(2);
-    expect(warnings).toHaveLength(0);
   });
 
-  it("should map content[] file outputs to V3 file-data parts", () => {
+  it("should resolve and encode inline tool-output media without copying input first", () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const prompt = [
       {
         content: [
@@ -132,8 +149,10 @@ describe("normalizeV4PromptToV3", () => {
               value: [
                 { text: "see attached", type: "text" },
                 {
-                  data: { data: "aGVsbG8=", type: "data" },
-                  mediaType: "image/png",
+                  data: { data: bytes, type: "data" },
+                  filename: "image.png",
+                  mediaType: "image",
+                  providerOptions: { "test-provider": { cached: true } },
                   type: "file",
                 },
               ],
@@ -154,31 +173,89 @@ describe("normalizeV4PromptToV3", () => {
       type: "content",
       value: [
         { text: "see attached", type: "text" },
-        { data: "aGVsbG8=", mediaType: "image/png", type: "file-data" },
+        {
+          data: "iVBORw0KGgo=",
+          filename: "image.png",
+          mediaType: "image/png",
+          providerOptions: { "test-provider": { cached: true } },
+          type: "file-data",
+        },
       ],
     });
   });
-  it("should warn once for bare top-level media types", () => {
-    const warnings: SharedV4Warning[] = [];
+
+  it.each(["image", "image/*"])(
+    "should resolve inline %s data before SAP image routing",
+    (mediaType) => {
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const prompt = [
+        {
+          content: [{ data: { data: bytes, type: "data" }, mediaType, type: "file" }],
+          role: "user",
+        },
+      ] as unknown as LanguageModelV4Prompt;
+      const result = normalizeV4PromptToV3(prompt);
+      const file = (result[0] as { content: { data: unknown; mediaType: string }[] }).content[0];
+      expect(file).toMatchObject({ mediaType: "image/png" });
+      expect(file?.data).toBe(bytes);
+
+      const sapMessage = convertToSAPMessages(result)[0] as {
+        content: { image_url: { url: string }; type: string }[];
+      };
+      expect(sapMessage.content[0]).toEqual({
+        image_url: { url: "data:image/png;base64,iVBORw0KGgo=" },
+        type: "image_url",
+      });
+    },
+  );
+
+  it("should resolve wildcard application media from inline base64", () => {
     const prompt = [
       {
         content: [
-          { data: "aGVsbG8=", mediaType: "image", type: "file" },
-          { data: "aGVsbG8=", mediaType: "image", type: "file" },
+          {
+            data: { data: "JVBERi0xLjQ=", type: "data" },
+            mediaType: "application/*",
+            type: "file",
+          },
         ],
         role: "user",
       },
     ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt, warnings);
-    expect(result).toHaveLength(1);
-    expect(warnings).toEqual([
+    const result = normalizeV4PromptToV3(prompt);
+    expect(result[0]).toMatchObject({ content: [{ mediaType: "application/pdf" }] });
+  });
+
+  it("should reject an unresolved inline media type", () => {
+    const prompt = [
       {
-        details:
-          "Media type 'image' has no subtype; it is passed through as-is for the API to interpret.",
-        feature: "bare top-level media type",
-        type: "compatibility",
+        content: [
+          {
+            data: { data: new Uint8Array([1, 2, 3]), type: "data" },
+            mediaType: "image",
+            type: "file",
+          },
+        ],
+        role: "user",
       },
-    ]);
+    ] as unknown as LanguageModelV4Prompt;
+    expect(() => normalizeV4PromptToV3(prompt)).toThrow("could not be auto-detected");
+  });
+
+  it.each(["image", "image/*"])("should reject incomplete URL media type %s", (mediaType) => {
+    const prompt = [
+      {
+        content: [
+          {
+            data: { type: "url", url: new URL("https://example.com/image") },
+            mediaType,
+            type: "file",
+          },
+        ],
+        role: "user",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+    expect(() => normalizeV4PromptToV3(prompt)).toThrow("not passed as inline bytes");
   });
   it("should preserve message-level providerOptions on all roles", () => {
     const prompt = [

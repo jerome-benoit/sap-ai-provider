@@ -12,7 +12,7 @@ import { NoSuchModelError } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
-import type { DeploymentConfig, SAPAIProviderSettings } from "./sap-ai-provider-v2.js";
+import type { DeploymentConfig, SAPAIProviderSettings } from "./sap-ai-provider.js";
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
@@ -25,12 +25,16 @@ import {
 } from "./sap-ai-provider-options.js";
 import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
-export type { SAPAIProviderSettings } from "./sap-ai-provider-v2.js";
+export type { DeploymentConfig, SAPAIProviderSettings } from "./sap-ai-provider.js";
 
 /** SAP AI Provider interface extending Vercel AI SDK ProviderV4. */
 export interface SAPAIProviderV4 extends ProviderV4 {
   (modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV4;
   chat(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV4;
+  embedding(
+    modelId: SAPAIEmbeddingModelId,
+    settings?: SAPAIEmbeddingSettings,
+  ): SAPAIEmbeddingModelV4;
   embeddingModel(
     modelId: SAPAIEmbeddingModelId,
     settings?: SAPAIEmbeddingSettings,
@@ -135,6 +139,7 @@ export function createSAPAIProviderV4(options: SAPAIProviderSettings = {}): SAPA
 
   provider.chat = createModel;
   provider.languageModel = createModel;
+  provider.embedding = createEmbeddingModel;
   provider.embeddingModel = createEmbeddingModel;
   provider.textEmbeddingModel = createEmbeddingModel;
 
