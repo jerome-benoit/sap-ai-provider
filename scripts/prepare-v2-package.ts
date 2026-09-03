@@ -60,6 +60,12 @@ function updatePackageJson(): void {
   pkg.description = V2_OVERRIDES.description;
   pkg.keywords = [...pkg.keywords, ...V2_OVERRIDES.additionalKeywords];
 
+  // The main build also emits the ./v4 subpath, but the V2 publish build
+  // contains only index-v2.* artifacts: drop the dangling export.
+  if (pkg.exports && typeof pkg.exports === "object") {
+    delete (pkg.exports as Record<string, unknown>)["./v4"];
+  }
+
   writeJson(pkgPath, pkg);
   console.log("Updated package.json for V2");
 }

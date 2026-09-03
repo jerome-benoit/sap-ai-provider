@@ -152,4 +152,56 @@ describe("normalizeV4PromptToV3", () => {
     };
     expect(message.content[0]?.output.value).toBeDefined();
   });
+  it("should preserve message-level providerOptions on all roles", () => {
+    const prompt = [
+      { content: "sys", providerOptions: { "test-provider": { a: 1 } }, role: "system" },
+      {
+        content: [{ text: "hi", type: "text" }],
+        providerOptions: { "test-provider": { b: 2 } },
+        role: "user",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+    const result = normalizeV4PromptToV3(prompt);
+    expect(result[0]).toMatchObject({ providerOptions: { "test-provider": { a: 1 } } });
+    expect(result[1]).toMatchObject({ providerOptions: { "test-provider": { b: 2 } } });
+  });
+
+  it("should carry part-level providerOptions through file mappings", () => {
+    const prompt = [
+      {
+        content: [
+          {
+            data: { data: "aGVsbG8=", type: "data" },
+            mediaType: "image/png",
+            providerOptions: { "test-provider": { c: 3 } },
+            type: "file",
+          },
+        ],
+        role: "user",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+    const result = normalizeV4PromptToV3(prompt);
+    expect(result[0]).toMatchObject({
+      content: [{ providerOptions: { "test-provider": { c: 3 } } }],
+    });
+  });
+
+  it("should pass custom tool content through (native V3 variant)", () => {
+    const prompt = [
+      {
+        content: [
+          {
+            output: { type: "content", value: [{ type: "custom" }] },
+            toolCallId: "c1",
+            toolName: "t",
+            type: "tool-result",
+          },
+        ],
+        role: "tool",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+    const result = normalizeV4PromptToV3(prompt);
+    const message = result[0] as { content: { output: { value: unknown[] } }[] };
+    expect(message.content[0]?.output.value).toEqual([{ type: "custom" }]);
+  });
 });
