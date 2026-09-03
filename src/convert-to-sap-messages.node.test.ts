@@ -1,0 +1,26 @@
+/** Node-specific cross-realm tests for SAP message conversion. */
+import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
+
+import { runInNewContext } from "node:vm";
+import { describe, expect, it } from "vitest";
+
+import { convertToSAPMessages } from "./convert-to-sap-messages.js";
+
+describe("convertToSAPMessages across JavaScript realms", () => {
+  it("should convert an ArrayBuffer created in another realm", () => {
+    const data = runInNewContext("new Uint8Array([104, 105]).buffer") as ArrayBuffer;
+    const prompt: LanguageModelV3Prompt = [
+      {
+        content: [{ data: data as unknown as Uint8Array, mediaType: "image/png", type: "file" }],
+        role: "user",
+      },
+    ];
+
+    expect(convertToSAPMessages(prompt)).toEqual([
+      {
+        content: [{ image_url: { url: "data:image/png;base64,aGk=" }, type: "image_url" }],
+        role: "user",
+      },
+    ]);
+  });
+});

@@ -52,9 +52,69 @@ export interface ConvertToSAPMessagesOptions {
  */
 const ZERO_WIDTH_SPACE = "\u200B";
 
-/** Matches canonical RFC 4648 base64, including the empty encoding. */
-const CANONICAL_BASE64_PATTERN =
-  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/;
+/** Native cross-realm ArrayBuffer brand descriptor. */
+const ARRAY_BUFFER_BYTE_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  ArrayBuffer.prototype,
+  "byteLength",
+);
+
+/**
+ * Returns the RFC 4648 value of a base64 character.
+ * @param charCode - The character's UTF-16 code unit.
+ * @returns The base64 sextet value, or -1 when invalid.
+ */
+function base64SextetValue(charCode: number): number {
+  if (charCode >= 0x41 && charCode <= 0x5a) return charCode - 0x41;
+  if (charCode >= 0x61 && charCode <= 0x7a) return charCode - 0x61 + 26;
+  if (charCode >= 0x30 && charCode <= 0x39) return charCode - 0x30 + 52;
+  if (charCode === 0x2b) return 62;
+  if (charCode === 0x2f) return 63;
+  return -1;
+}
+
+/**
+ * Detects genuine ArrayBuffer values across JavaScript realms.
+ * @param value - The value to inspect.
+ * @returns Whether the value has ArrayBuffer internal slots.
+ */
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    ARRAY_BUFFER_BYTE_LENGTH_DESCRIPTOR?.get === undefined
+  ) {
+    return false;
+  }
+  try {
+    ARRAY_BUFFER_BYTE_LENGTH_DESCRIPTOR.get.call(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates canonical RFC 4648 base64 in linear time and constant stack space.
+ * @param value - The candidate base64 value.
+ * @returns Whether the value is canonical RFC 4648 base64.
+ */
+function isCanonicalBase64(value: string): boolean {
+  const length = value.length;
+  if (length % 4 !== 0) return false;
+
+  let padding = 0;
+  if (length > 0 && value.charCodeAt(length - 1) === 0x3d) padding++;
+  if (length > 1 && value.charCodeAt(length - 2) === 0x3d) padding++;
+
+  const payloadLength = length - padding;
+  for (let index = 0; index < payloadLength; index++) {
+    if (base64SextetValue(value.charCodeAt(index)) < 0) return false;
+  }
+
+  if (padding === 0) return true;
+  const lastValue = base64SextetValue(value.charCodeAt(payloadLength - 1));
+  return padding === 1 ? (lastValue & 0x03) === 0 : (lastValue & 0x0f) === 0;
+}
 
 /**
  * Safely serializes a value to JSON string, handling edge cases that would cause JSON.stringify to throw.
@@ -449,7 +509,7 @@ function buildDataUrl(part: { data: unknown; mediaType: string }): string {
     return `data:${mediaType};base64,${base64FromBytes(data)}`;
   }
 
-  if (data instanceof ArrayBuffer) {
+  if (isArrayBuffer(data)) {
     return `data:${mediaType};base64,${base64FromBytes(new Uint8Array(data))}`;
   }
 
@@ -457,7 +517,7 @@ function buildDataUrl(part: { data: unknown; mediaType: string }): string {
     const toString = (data as { toString?: unknown }).toString;
     if (typeof toString === "function" && toString !== Object.prototype.toString) {
       const encoded: unknown = toString.call(data, "base64");
-      if (typeof encoded === "string" && CANONICAL_BASE64_PATTERN.test(encoded)) {
+      if (typeof encoded === "string" && isCanonicalBase64(encoded)) {
         return `data:${mediaType};base64,${encoded}`;
       }
     }

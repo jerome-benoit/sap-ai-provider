@@ -757,6 +757,13 @@ describe("convertToSAPMessages", () => {
         expect(convertBufferLike(bufferLike)).toBe(`data:image/png;base64,${expected}`);
       });
 
+      it("should validate multi-megabyte canonical base64 without overflowing the stack", () => {
+        const encoded = "A".repeat(6000000);
+        const url = convertBufferLike({ toString: () => encoded });
+        expect(url).toHaveLength("data:image/png;base64,".length + encoded.length);
+        expect(url.endsWith(encoded)).toBe(true);
+      });
+
       it("should invoke a custom encoder once with its original receiver", () => {
         let calls = 0;
         const bufferLike = {
@@ -783,6 +790,12 @@ describe("convertToSAPMessages", () => {
       it("should reject a non-string encoder result", () => {
         expect(() => convertBufferLike({ toString: () => 42 })).toThrow(
           "buffer-like object returning canonical base64",
+        );
+      });
+
+      it("should reject an object that only inherits ArrayBuffer.prototype", () => {
+        expect(() => convertBufferLike(Object.create(ArrayBuffer.prototype))).toThrow(
+          "Unsupported file data type",
         );
       });
 
