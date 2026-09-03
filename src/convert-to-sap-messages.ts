@@ -12,7 +12,6 @@ import {
   type SharedV3Warning,
   UnsupportedFunctionalityError,
 } from "@ai-sdk/provider";
-import { Buffer } from "node:buffer";
 
 import type { CacheControl, ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 
@@ -149,6 +148,13 @@ export function convertToSAPMessages(
     ? (providerOptions: unknown) => parser(providerOptions, options.warnings)
     : () => undefined;
 
+  const pushWarningOnce = (feature: string, details: string): void => {
+    if (!options.warnings) return;
+    if (!options.warnings.some((w) => (w as { feature?: string }).feature === feature)) {
+      options.warnings.push({ details, feature, type: "unsupported" });
+    }
+  };
+
   for (const message of prompt) {
     switch (message.role) {
       case "assistant": {
@@ -166,6 +172,13 @@ export function convertToSAPMessages(
 
         for (const part of message.content) {
           switch (part.type) {
+            case "file": {
+              pushWarningOnce(
+                "file content in assistant message",
+                "SAP orchestration assistant messages carry text and tool calls only; file parts are ignored.",
+              );
+              break;
+            }
             case "reasoning": {
               if (includeReasoning && part.text) {
                 const escaped = `<think>${maybeEscape(part.text)}</think>`;
@@ -218,6 +231,13 @@ export function convertToSAPMessages(
               });
               break;
             }
+            default: {
+              pushWarningOnce(
+                "unsupported assistant content",
+                "Unsupported assistant content type; part ignored.",
+              );
+              break;
+            }
           }
         }
 
@@ -259,6 +279,11 @@ export function convertToSAPMessages(
               tool_call_id: part.toolCallId,
             };
             messages.push(toolMessage);
+          } else {
+            pushWarningOnce(
+              "non-tool-result content in tool message",
+              "Only tool-result parts are forwarded to SAP; other tool content is ignored.",
+            );
           }
         }
         break;
@@ -383,17 +408,37 @@ export function unescapeOrchestrationPlaceholders(text: string): string {
 }
 
 /**
+ * Encodes bytes as base64 without the Node.js `Buffer` global (Edge-safe).
+ * @internal
+ * @param bytes - The bytes to encode.
+ * @returns The base64 string (empty string for empty input).
+ */
+function base64FromBytes(bytes: Uint8Array): string {
+  const CHUNK_SIZE = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
+/**
  * Builds a data URL from a file part's data and media type.
  *
- * Supports URL, base64 string, Uint8Array, Buffer, and buffer-like objects.
+ * Supports URL, base64 string, Uint8Array, and ArrayBuffer. Any other object
+ * (including buffer-like objects or provider references) is rejected with an
+ * explicit error instead of being stringified into an invalid payload.
  * @internal
  * @param part - The file part containing data and mediaType.
- * @param part.data - The file data as URL, base64 string, or Uint8Array.
+ * @param part.data - The file data as URL, base64 string, Uint8Array, or ArrayBuffer.
  * @param part.mediaType - The MIME type of the file.
  * @returns The data URL string.
  * @throws {UnsupportedFunctionalityError} If the data type is not supported.
  */
-function buildDataUrl(part: { data: string | Uint8Array | URL; mediaType: string }): string {
+function buildDataUrl(part: {
+  data: ArrayBuffer | string | Uint8Array | URL;
+  mediaType: string;
+}): string {
   if (part.data instanceof URL) {
     return part.data.toString();
   }
@@ -403,31 +448,15 @@ function buildDataUrl(part: { data: string | Uint8Array | URL; mediaType: string
   }
 
   if (part.data instanceof Uint8Array) {
-    const base64Data = Buffer.from(part.data).toString("base64");
-    return `data:${part.mediaType};base64,${base64Data}`;
+    return `data:${part.mediaType};base64,${base64FromBytes(part.data)}`;
   }
 
-  if (Buffer.isBuffer(part.data)) {
-    const base64Data = Buffer.from(part.data).toString("base64");
-    return `data:${part.mediaType};base64,${base64Data}`;
-  }
-
-  const maybeBufferLike = part.data as unknown;
-
-  if (
-    maybeBufferLike !== null &&
-    typeof maybeBufferLike === "object" &&
-    "toString" in (maybeBufferLike as Record<string, unknown>)
-  ) {
-    const base64Data = (
-      maybeBufferLike as {
-        toString: (encoding?: string) => string;
-      }
-    ).toString("base64");
-    return `data:${part.mediaType};base64,${base64Data}`;
+  if (part.data instanceof ArrayBuffer) {
+    return `data:${part.mediaType};base64,${base64FromBytes(new Uint8Array(part.data))}`;
   }
 
   throw new UnsupportedFunctionalityError({
-    functionality: "Unsupported file data type. Expected URL, base64 string, or Uint8Array.",
+    functionality:
+      "Unsupported file data type. Expected base64 string, Uint8Array, ArrayBuffer, or URL.",
   });
 }
