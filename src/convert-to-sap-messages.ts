@@ -64,6 +64,12 @@ const TYPED_ARRAY_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
   "length",
 );
 
+/** Native cross-realm typed array brand descriptor. */
+const TYPED_ARRAY_TAG_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype) as object,
+  Symbol.toStringTag,
+);
+
 /** Native cross-realm URL href descriptor. */
 const URL_HREF_DESCRIPTOR = Object.getOwnPropertyDescriptor(URL.prototype, "href");
 
@@ -140,6 +146,26 @@ function isCanonicalBase64(value: string): boolean {
   if (padding === 0) return true;
   const lastValue = base64SextetValue(value.charCodeAt(payloadLength - 1));
   return padding === 1 ? (lastValue & 0x03) === 0 : (lastValue & 0x0f) === 0;
+}
+
+/**
+ * Detects genuine Uint8Array values across JavaScript realms.
+ * @param value - The value to inspect.
+ * @returns Whether the value has Uint8Array internal slots.
+ */
+function isUint8Array(value: unknown): value is Uint8Array {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    TYPED_ARRAY_TAG_DESCRIPTOR?.get === undefined
+  ) {
+    return false;
+  }
+  try {
+    return TYPED_ARRAY_TAG_DESCRIPTOR.get.call(value) === "Uint8Array";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -558,7 +584,7 @@ function buildDataUrl(part: { data: unknown; mediaType: string }): string {
 
   if (typeof data === "string") return `data:${mediaType};base64,${data}`;
 
-  if (data instanceof Uint8Array) {
+  if (isUint8Array(data)) {
     return `data:${mediaType};base64,${base64FromBytes(data)}`;
   }
 
