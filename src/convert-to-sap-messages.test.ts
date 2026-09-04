@@ -732,23 +732,202 @@ describe("convertToSAPMessages", () => {
       expect(content?.image_url.url).toMatch(/^data:image\/png;base64,iVBORw==/);
     });
 
-    it("should convert buffer-like object with toString", () => {
-      const bufferLike = {
-        toString: (encoding?: string) => (encoding === "base64" ? "aGVsbG8=" : "hello"),
-      };
-      const prompt: LanguageModelV3Prompt = [
-        {
-          content: [
-            { data: bufferLike as unknown as Uint8Array, mediaType: "image/png", type: "file" },
-          ],
-          role: "user",
+    it.each([
+      {
+        configure: (data: Uint8Array): void => {
+          Object.defineProperty(data, "subarray", { value: (): Uint8Array => new Uint8Array() });
         },
+        description: "subarray override",
+      },
+      {
+        configure: (data: Uint8Array): void => {
+          Object.defineProperty(data, Symbol.iterator, {
+            value: function* (): Generator<number> {
+              yield 120;
+            },
+          });
+        },
+        description: "iterator override",
+      },
+      {
+        configure: (data: Uint8Array): void => {
+          Object.defineProperty(data, "length", { get: (): number => 0 });
+        },
+        description: "length override",
+      },
+    ])("should ignore a Uint8Array $description", ({ configure }) => {
+      const data = new Uint8Array([104, 105]);
+      configure(data);
+      const prompt: LanguageModelV3Prompt = [
+        { content: [{ data, mediaType: "image/png", type: "file" }], role: "user" },
       ];
       const result = convertToSAPMessages(prompt);
       const message = result[0] as { content: { image_url: { url: string } }[] };
-      const content = message.content[0];
-      expect(content).toBeDefined();
-      expect(content?.image_url.url).toBe("data:image/png;base64,aGVsbG8=");
+      expect(message.content[0]?.image_url.url).toBe("data:image/png;base64,aGk=");
+    });
+
+    describe("buffer-like file data", () => {
+      const convertBufferLike = (data: unknown): string => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [{ data: data as Uint8Array, mediaType: "image/png", type: "file" }],
+            role: "user",
+          },
+        ];
+        const result = convertToSAPMessages(prompt);
+        const message = result[0] as { content: { image_url: { url: string } }[] };
+        return message.content[0]?.image_url.url ?? "";
+      };
+
+      it.each([
+        { encoded: "", expected: "" },
+        { encoded: "YQ==", expected: "YQ==" },
+        { encoded: "YWI=", expected: "YWI=" },
+        { encoded: "YWJj", expected: "YWJj" },
+      ])("should accept canonical base64 '$encoded'", ({ encoded, expected }) => {
+        const bufferLike = {
+          toString: (encoding?: string): string => (encoding === "base64" ? encoded : "display"),
+        };
+        expect(convertBufferLike(bufferLike)).toBe(`data:image/png;base64,${expected}`);
+      });
+
+      it("should validate multi-megabyte canonical base64 without overflowing the stack", () => {
+        const encoded = "A".repeat(6000000);
+        const url = convertBufferLike({ toString: () => encoded });
+        expect(url).toHaveLength("data:image/png;base64,".length + encoded.length);
+        expect(url.endsWith(encoded)).toBe(true);
+      });
+
+      it("should invoke a custom encoder once with its original receiver", () => {
+        let calls = 0;
+        const bufferLike = {
+          encoded: "aGVsbG8=",
+          toString(this: { encoded: string }, encoding?: string): string {
+            calls++;
+            expect(encoding).toBe("base64");
+            return this.encoded;
+          },
+        };
+        expect(convertBufferLike(bufferLike)).toBe("data:image/png;base64,aGVsbG8=");
+        expect(calls).toBe(1);
+      });
+
+      it.each(["[object Object]", "AB==", "AAB=", "YQ=", "YQ===", "YWI==", "YWJj-"])(
+        "should reject non-canonical encoder result '%s'",
+        (encoded) => {
+          expect(() => convertBufferLike({ toString: () => encoded })).toThrow(
+            "buffer-like object returning canonical base64",
+          );
+        },
+      );
+
+      it("should reject a non-string encoder result", () => {
+        expect(() => convertBufferLike({ toString: () => 42 })).toThrow(
+          "buffer-like object returning canonical base64",
+        );
+      });
+
+      it("should reject an object that only inherits ArrayBuffer.prototype", () => {
+        expect(() => convertBufferLike(Object.create(ArrayBuffer.prototype))).toThrow(
+          "Unsupported file data type",
+        );
+      });
+
+      it("should propagate a custom encoder error", () => {
+        const error = new Error("encoder failed");
+        expect(() =>
+          convertBufferLike({
+            toString: () => {
+              throw error;
+            },
+          }),
+        ).toThrow(error);
+      });
+    });
+
+    describe("file data hardening (L1)", () => {
+      it("should convert ArrayBuffer image data to base64 without [object Object]", () => {
+        const buffer = new Uint8Array([137, 80, 78, 71]).buffer;
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [
+              { data: buffer as unknown as Uint8Array, mediaType: "image/png", type: "file" },
+            ],
+            role: "user",
+          },
+        ];
+        const result = convertToSAPMessages(prompt);
+        const message = result[0] as { content: { image_url: { url: string } }[] };
+        const content = message.content[0];
+        expect(content).toBeDefined();
+        expect(content?.image_url.url).toBe("data:image/png;base64,iVBORw==");
+        expect(content?.image_url.url).not.toContain("[object Object]");
+      });
+
+      it("should pass through empty Uint8Array as empty base64 payload", () => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [{ data: new Uint8Array([]), mediaType: "image/png", type: "file" }],
+            role: "user",
+          },
+        ];
+        const result = convertToSAPMessages(prompt);
+        const message = result[0] as { content: { image_url: { url: string } }[] };
+        expect(message.content[0]?.image_url.url).toBe("data:image/png;base64,");
+      });
+
+      it("should never emit [object Object] for binary image data", () => {
+        const prompt: LanguageModelV3Prompt = [
+          {
+            content: [{ data: new Uint8Array([104, 105]), mediaType: "image/jpeg", type: "file" }],
+            role: "user",
+          },
+        ];
+        const result = convertToSAPMessages(prompt);
+        const message = result[0] as { content: { image_url: { url: string } }[] };
+        expect(message.content[0]?.image_url.url).not.toContain("[object Object]");
+      });
+
+      it("should warn and drop file parts in assistant messages", () => {
+        const warnings: SharedV3Warning[] = [];
+        const prompt = [
+          {
+            content: [
+              {
+                data: "aGVsbG8=",
+                mediaType: "image/png",
+                type: "file",
+              },
+            ],
+            role: "assistant",
+          },
+        ] as unknown as LanguageModelV3Prompt;
+        const result = convertToSAPMessages(prompt, { warnings });
+        expect(result).toHaveLength(0);
+        expect(warnings).toContainEqual({
+          details:
+            "SAP orchestration assistant messages carry text and tool calls only; file parts are ignored.",
+          feature: "file content in assistant message",
+          type: "unsupported",
+        });
+      });
+
+      it("should warn and drop non-tool-result parts in tool messages", () => {
+        const warnings: SharedV3Warning[] = [];
+        const prompt = [
+          {
+            content: [{ text: "stray", type: "text" }],
+            role: "tool",
+          },
+        ] as unknown as LanguageModelV3Prompt;
+        const result = convertToSAPMessages(prompt, { warnings });
+        expect(result).toHaveLength(0);
+        expect(warnings).toContainEqual({
+          details: "Only tool-result parts are forwarded to SAP; other tool content is ignored.",
+          feature: "non-tool-result content in tool message",
+          type: "unsupported",
+        });
+      });
     });
 
     it("should handle large base64 image data without truncation (1MB+)", () => {
