@@ -14,11 +14,19 @@ SDK. Use these anchors to navigate the codebase quickly.
 src/
 ├── index.ts                                        # V3 public API exports
 ├── index-v2.ts                                     # V2 public API exports (facade)
+├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
 │
 │   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
 ├── sap-ai-provider.ts                              # V3 provider factory
 ├── sap-ai-language-model.ts                        # V3 language model
 ├── sap-ai-embedding-model.ts                       # V3 embedding model
+│
+│   # V4 Facade Layer (LanguageModelV4/EmbeddingModelV4)
+├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
+├── sap-ai-language-model-v4.ts                     # V4 language model (wraps V3)
+├── sap-ai-embedding-model-v4.ts                    # V4 embedding model (wraps V3)
+├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
+├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
 │
 │   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
 ├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
@@ -56,6 +64,20 @@ src/
   - Implements `LanguageModelV3` contract.
 - Embedding model: [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
   - Implements `EmbeddingModelV3` contract.
+
+### V4 Entrypoint (`@jerome-benoit/sap-ai-provider/v4`)
+
+- Entry: [src/index-v4.ts](mdc:src/index-v4.ts)
+- Provider: [src/sap-ai-provider-v4.ts](mdc:src/sap-ai-provider-v4.ts)
+  - `createSAPAIProvider(options)` returns `ProviderV4`.
+  - Methods: `chat()`, `languageModel()`, `embedding()`, `embeddingModel()`,
+    `textEmbeddingModel()`.
+- Language model: [src/sap-ai-language-model-v4.ts](mdc:src/sap-ai-language-model-v4.ts)
+  - Implements `LanguageModelV4`, wrapping V3 internally.
+- Embedding model: [src/sap-ai-embedding-model-v4.ts](mdc:src/sap-ai-embedding-model-v4.ts)
+  - Implements `EmbeddingModelV4`, wrapping V3 internally.
+- Adapters: [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
+  and [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts).
 
 ### V2 Package (`@jerome-benoit/sap-ai-provider-v2`)
 
@@ -98,21 +120,21 @@ src/
 ## Build, Types, and Distribution
 
 - TypeScript config: [tsconfig.json](mdc:tsconfig.json)
-- V3 build config: [tsup.config.ts](mdc:tsup.config.ts)
+- Main-package build config: [tsup.config.ts](mdc:tsup.config.ts)
 - V2 build config: [tsup.config.v2.ts](mdc:tsup.config.v2.ts)
 - V2 publish script: [scripts/prepare-v2-package.ts](mdc:scripts/prepare-v2-package.ts)
 - ESLint config: [eslint.config.js](mdc:eslint.config.js)
-- Output: [dist/](mdc:dist/) produces V3 (`index.js`, `index.cjs`, `index.d.ts`,
-  `index.d.cts`) and V2 (`index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`,
-  `index-v2.d.cts`) with sourcemaps.
+- Output: [dist/](mdc:dist/) produces V3 root (`index.*`), V2 (`index-v2.*`),
+  and V4 (`index-v4.*`) CommonJS, ESM, declaration, and sourcemap artifacts.
 - `package.json` exports are aligned for Node and ESM:
   [package.json](mdc:package.json)
 
 ### Build Commands
 
-- `npm run build` — Build V3 package
-- `npm run build:v2` — Build V2 package
-- `npm run prepare:v2` — Prepare V2 for publishing (renames files)
+- `npm run build` — Build the main package's V3, V2, and V4 entrypoints
+- `npm run build:v2` — Build the standalone V2 package
+- `npm run prepare:v2` — Prepare standalone V2 for publishing
+- `npm run check-build:v4` — Verify V4 build outputs explicitly
 
 ## Testing
 

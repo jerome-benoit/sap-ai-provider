@@ -27,15 +27,16 @@ type V4ToolOutput = Extract<V4ToolPart, { type: "tool-result" }>["output"];
 type V4ToolPart = Extract<V4Message, { role: "tool" }>["content"][number];
 type V4UserPart = Extract<V4Message, { role: "user" }>["content"][number];
 
-const REFERENCE_ERROR =
-  "V4 provider reference file data has no V3 equivalent and is not fetched. Resolve the reference before calling the model.";
+const TOP_LEVEL_REFERENCE_ERROR =
+  "V4 provider reference file data has no top-level V3 prompt equivalent and is not fetched. Resolve the reference before calling the model.";
 
 /**
  * Normalizes an AI SDK 7 (spec V4) prompt to the internal V3 prompt format.
  *
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
- *   `URL` object, `text` to a V3 text part. `reference` values are rejected
- *   explicitly (never fetched).
+ *   `URL` object, `text` to a V3 text part. Top-level `reference` values are
+ *   rejected explicitly (never fetched); tool-output references map to the
+ *   equivalent V3 `file-id` shape.
  * - Bare and wildcard media types are resolved from detectable inline bytes.
  *   Remote `image` and `image/*` URLs are preserved as `image/*`; other
  *   incomplete URL media types are rejected.
@@ -120,6 +121,12 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
         type: "file-data",
       };
     }
+    case "reference":
+      return {
+        fileId: item.data.reference,
+        providerOptions: item.providerOptions,
+        type: "file-id",
+      };
     case "text":
       return { providerOptions: item.providerOptions, text: item.data.text, type: "text" };
     case "url": {
@@ -136,8 +143,6 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
         url,
       };
     }
-    case "reference":
-      throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
   }
 }
 
@@ -201,6 +206,8 @@ function normalizeUserPart(part: V4UserPart): V3UserPart[] {
         },
       ];
     }
+    case "reference":
+      throw new UnsupportedFunctionalityError({ functionality: TOP_LEVEL_REFERENCE_ERROR });
     case "text":
       return [{ providerOptions: part.providerOptions, text: part.data.text, type: "text" }];
     case "url": {
@@ -216,7 +223,5 @@ function normalizeUserPart(part: V4UserPart): V3UserPart[] {
         },
       ];
     }
-    case "reference":
-      throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
   }
 }

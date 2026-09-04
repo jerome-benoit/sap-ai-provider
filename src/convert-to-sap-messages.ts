@@ -466,7 +466,7 @@ export function convertToSAPMessages(
                 ];
                 const normalizedMediaType = part.mediaType.toLowerCase();
                 const isWildcardImageUrl =
-                  part.data instanceof URL && normalizedMediaType === "image/*";
+                  getURLHref(part.data) !== undefined && normalizedMediaType === "image/*";
                 if (!isWildcardImageUrl && !supportedFormats.includes(normalizedMediaType)) {
                   console.warn(
                     `Image format ${part.mediaType} may not be supported by all models. ` +

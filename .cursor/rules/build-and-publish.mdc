@@ -15,12 +15,13 @@ description: Build, type-check, test, and publish workflow for the package
 
 ### Build Commands
 
-- Build V3: `npm run build`
-- Watch V3 build: `npm run build:watch`
-- Build V2: `npm run build:v2`
-- Watch V2 build: `npm run build:v2:watch`
-- Prepare V2 for npm publish: `npm run prepare:v2` (renames files for package)
-- Check build outputs: `npm run check-build`
+- Build the main package (V3 root, `/v2`, and `/v4`): `npm run build`
+- Watch the main package build: `npm run build:watch`
+- Build the standalone V2 package: `npm run build:v2`
+- Watch the standalone V2 build: `npm run build:v2:watch`
+- Prepare standalone V2 for npm publish: `npm run prepare:v2`
+- Check all main-package entrypoints: `npm run check-build`
+- Check one facade explicitly: `npm run check-build:v2` or `npm run check-build:v4`
 
 ### Quality Checks
 
@@ -31,17 +32,18 @@ description: Build, type-check, test, and publish workflow for the package
 - Prettier-fix: `npm run prettier-fix`
 - Test: `npm test`
 
-### Dual-Package Architecture
+### Versioned Entrypoints and Packages
 
 This repository publishes two npm packages from the same codebase:
 
-- `@jerome-benoit/sap-ai-provider` (V3) — Built from `src/index.ts`, uses `LanguageModelV3`/`EmbeddingModelV3`
-- `@jerome-benoit/sap-ai-provider-v2` (V2) — Built from `src/index-v2.ts`, wraps V3 internally to expose `LanguageModelV2`/`EmbeddingModelV2`
+- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2` and `/v4` subpaths
+- `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade
 
 `prepublishOnly` runs the appropriate build and verification before publish:
 
-- V3 (default): `build && check-build`
-- V2 (when `AI_SDK_VERSION=v2`): `build:v2 && check-build:v2 && prepare:v2`
+- Main package: `build && check-build`
+- Standalone V2 (when `AI_SDK_VERSION=v2`):
+  `build:v2 && check-build:v2 && prepare:v2`
 
 See [package.json](mdc:package.json) for the full script.
 
@@ -51,4 +53,6 @@ See [package.json](mdc:package.json) for the full script.
 
 ## Verification
 
-- Verify distribution artifacts exist: `npm run check-build`.
+- Verify all main-package artifacts exist: `npm run check-build`.
+- Verify one facade build explicitly with `npm run check-build:v2` or
+  `npm run check-build:v4`.

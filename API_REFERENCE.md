@@ -152,7 +152,9 @@ V4 tagged file data is normalized before it reaches the shared core:
   case-insensitively to lower-case `image/*`; they are never downloaded for detection.
 - Ambiguous inline bytes and other incomplete URL media types throw instead of
   producing an invalid SAP payload.
-- Provider references are rejected explicitly and never fetched.
+- Top-level provider references are rejected explicitly and never fetched.
+  References nested in tool-result content map to the equivalent V3 `file-id`
+  representation.
 - Text file variants become V3 text parts and retain provider options.
 
 ## V2 Facade Package API

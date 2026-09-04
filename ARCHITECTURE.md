@@ -11,7 +11,7 @@ see [API Reference](./API_REFERENCE.md).
 **3-layer architecture** bridging your application to SAP AI services:
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
-- Implements Vercel AI SDK's `ProviderV3` interface
+- Implements Vercel AI SDK's V3 core with V2 and V4 compatibility facades
 - Uses SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`) for API communication
 - Transforms messages bidirectionally (AI SDK ↔ SAP format)
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
@@ -66,7 +66,9 @@ Handler → SAP AI Core API
   - [Memory Management](#memory-management)
   - [Monitoring and Observability](#monitoring-and-observability)
   - [Scalability Patterns](#scalability-patterns)
-- [Dual-Package Architecture (V3 + V2)](#dual-package-architecture-v3--v2)
+- [Versioned Package Architecture (V4 + V3 + V2)](#versioned-package-architecture-v4--v3--v2)
+  - [V4 Facade Layer](#v4-facade-layer)
+  - [V4 Source Files](#v4-source-files)
   - [V2 Facade Layer](#v2-facade-layer)
   - [V2 Source Files](#v2-source-files)
   - [Type Adapters](#type-adapters)
@@ -77,9 +79,9 @@ Handler → SAP AI Core API
 ## Overview
 
 The SAP AI Provider is designed as a bridge between the Vercel AI SDK and
-SAP AI Core services. It implements the Vercel AI SDK's `ProviderV3` interface
-while handling the complexities of SAP AI Core's API, authentication, and data
-formats.
+SAP AI Core services. Its shared core implements `ProviderV3`; thin V2 and V4
+facades expose the contracts required by AI SDK 5, 6, and 7 while preserving
+the same SAP authentication, validation, and request strategies.
 
 ### High-Level Architecture
 
@@ -288,6 +290,14 @@ src/
 ├── sap-ai-provider.ts                              # V3 provider factory
 ├── sap-ai-language-model.ts                        # V3 language model (API-agnostic)
 ├── sap-ai-embedding-model.ts                       # V3 embedding model (API-agnostic)
+│
+│   # V4 Facade Layer (LanguageModelV4/EmbeddingModelV4)
+├── index-v4.ts                                     # V4 public API exports
+├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
+├── sap-ai-language-model-v4.ts                     # V4 language model facade
+├── sap-ai-embedding-model-v4.ts                    # V4 embedding model facade
+├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
+├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
 │
 │   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
 ├── index-v2.ts                                     # V2 public API exports (facade)
@@ -1374,14 +1384,36 @@ AI SDK.
 
 ---
 
-## Dual-Package Architecture (V3 + V2)
+## Versioned Package Architecture (V4 + V3 + V2)
 
-This repository publishes **two separate npm packages** from a single codebase:
+This repository publishes **two npm packages** from a single codebase. The main
+package exposes three versioned entrypoints; the standalone V2 package preserves
+the existing package name for consumers that cannot use subpath exports.
 
-| Package                             | Interface                              | Target Users                                       |
-| ----------------------------------- | -------------------------------------- | -------------------------------------------------- |
-| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | Users on AI SDK 5.0+ preferring V3 interfaces      |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Users on AI SDK 5.0+ requiring V2 model interfaces |
+| Package export                      | Interface                              | Target users                    |
+| ----------------------------------- | -------------------------------------- | ------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                        |
+| `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5                        |
+| `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                        |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Standalone V2 package consumers |
+
+### V4 Facade Layer
+
+The V4 facade normalizes AI SDK 7 prompts into the shared V3 core and converts
+generated and streamed V3 results back to V4 shapes. V4-only content with no V3
+equivalent is rejected explicitly rather than silently discarded.
+
+### V4 Source Files
+
+```text
+src/
+├── index-v4.ts                    # V4 public API exports
+├── sap-ai-provider-v4.ts          # V4 provider factory
+├── sap-ai-language-model-v4.ts    # V4 language model facade
+├── sap-ai-embedding-model-v4.ts   # V4 embedding model facade
+├── sap-ai-adapters-v4-to-v3.ts    # Prompt normalization
+└── sap-ai-adapters-v3-to-v4.ts    # Result and stream conversion
+```
 
 ### V2 Facade Layer
 
@@ -1457,7 +1489,7 @@ The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 
 The builds are **sequential** to the same `dist/` directory:
 
 ```bash
-# V3 build (primary package)
+# Main package build: V3 root plus /v2 and /v4 entrypoints
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
 
@@ -1471,10 +1503,11 @@ npm publish                # @jerome-benoit/sap-ai-provider-v2
 
 ### Key Design Decisions
 
-1. **Single source of truth**: All SAP AI Core logic lives in V3 implementation
-2. **Thin facade**: V2 layer only handles interface translation, no business logic
-3. **No code duplication**: V2 delegates to V3 for actual API calls
-4. **Adapter isolation**: Type conversions centralized in one file for maintainability
+1. **Single source of truth**: All SAP AI Core logic lives in the V3 implementation
+2. **Thin facades**: V2 and V4 translate interface contracts without duplicating business logic
+3. **Versioned entrypoints**: One main package supports AI SDK 5–7 without mixing model contracts
+4. **Standalone V2 publication**: Existing V2 consumers retain their dedicated package
+5. **Adapter isolation**: Version conversions remain centralized and independently testable
 
 ---
 

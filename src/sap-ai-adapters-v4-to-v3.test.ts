@@ -1,7 +1,7 @@
 /** Tests for the V4-to-V3 prompt normalization (AI SDK 7 entry adapter). */
 import type { LanguageModelV3Prompt, LanguageModelV4Prompt } from "@ai-sdk/provider";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { normalizeV4PromptToV3 } from "./sap-ai-adapters-v4-to-v3.js";
@@ -184,6 +184,52 @@ describe("normalizeV4PromptToV3", () => {
     });
   });
 
+  it("should map tool-output provider references to V3 file ids", () => {
+    const reference = { "sap-ai": "file-123" };
+    const prompt = [
+      {
+        content: [
+          {
+            output: {
+              type: "content",
+              value: [
+                {
+                  data: { reference, type: "reference" },
+                  mediaType: "application/pdf",
+                  providerOptions: { "sap-ai": { cached: true } },
+                  type: "file",
+                },
+              ],
+            },
+            toolCallId: "c1",
+            toolName: "t",
+            type: "tool-result",
+          },
+        ],
+        role: "tool",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+
+    expect(normalizeV4PromptToV3(prompt)).toMatchObject([
+      {
+        content: [
+          {
+            output: {
+              type: "content",
+              value: [
+                {
+                  fileId: reference,
+                  providerOptions: { "sap-ai": { cached: true } },
+                  type: "file-id",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
   it("should preserve a genuine URL after its prototype is replaced", () => {
     const url = new URL("https://example.com/result.pdf");
     Object.setPrototypeOf(url, {});
@@ -329,6 +375,30 @@ describe("normalizeV4PromptToV3", () => {
       expect(() => normalizeV4PromptToV3(prompt)).toThrow("not passed as inline bytes");
     },
   );
+  it("should not warn for genuine wildcard image URLs with replaced prototypes", () => {
+    const url = new URL("https://example.com/image");
+    Object.setPrototypeOf(url, {});
+    const prompt = [
+      {
+        content: [{ data: { type: "url", url }, mediaType: "image", type: "file" }],
+        role: "user",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      expect(convertToSAPMessages(normalizeV4PromptToV3(prompt))).toEqual([
+        {
+          content: [{ image_url: { url: "https://example.com/image" }, type: "image_url" }],
+          role: "user",
+        },
+      ]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("should preserve message-level providerOptions on all roles", () => {
     const prompt = [
       { content: "sys", providerOptions: { "test-provider": { a: 1 } }, role: "system" },
