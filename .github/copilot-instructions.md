@@ -15,7 +15,7 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Bootstrap and Install Dependencies
 
-- **Prerequisites**: Node.js 22+ and npm are required
+- **Prerequisites**: Node.js 22.12+ and npm are required
 - **Fresh install**: `npm install` -- takes ~25 seconds. NEVER CANCEL. Set timeout to 60+ seconds.
   - Use `npm install` when no package-lock.json exists (fresh clone)
   - This automatically triggers the build via the prepare script
@@ -228,7 +228,7 @@ This should complete in approximately 15 seconds total and all commands should p
 - **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
 - **Peer**: `ai` (Vercel AI SDK `^5.0.0 || ^6.0.0 || ^7.0.0`)
 - **Dev**: TypeScript, Vitest, tsup, ESLint, Prettier, dotenv
-- **Node requirement**: Node.js 22+
+- **Node requirement**: Node.js 22.12+
 
 ### Common Commands Quick Reference
 
