@@ -82,12 +82,12 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 ## Quick Start
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai@^7
+npm install @jerome-benoit/sap-ai-provider ai@^6
 ```
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 import { generateText } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
@@ -119,7 +119,7 @@ try {
 
 | Task                | Code Pattern                                                     | Documentation                                                 |
 | ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai@^7`               | [Installation](#installation)                                 |
+| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai@^6`               | [Installation](#installation)                                 |
 | **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                               | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
 | **Create Provider** | `createSAPAIProvider()` or use `sapai`                           | [Provider Creation](#provider-creation)                       |
 | **Text Generation** | `generateText({ model: provider("gpt-4.1"), prompt })`           | [Basic Usage](#text-generation)                               |
@@ -137,29 +137,28 @@ AI SDK major.
 | AI SDK | Install                                            | Provider import                     |
 | ------ | -------------------------------------------------- | ----------------------------------- |
 | 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
-| 5 or 6 | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
+| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
+| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
 
-AI SDK 7 is recommended for new integrations:
+The Quick Start and examples below use AI SDK 6 with the root V3 entrypoint.
+For AI SDK 7, install `ai@^7` and import `createSAPAIProvider` or `sapai`
+from `@jerome-benoit/sap-ai-provider/v4`:
 
 ```bash
 npm install @jerome-benoit/sap-ai-provider ai@^7
-# Yarn: yarn add @jerome-benoit/sap-ai-provider ai@^7
-# pnpm: pnpm add @jerome-benoit/sap-ai-provider ai@^7
 ```
 
-Import `createSAPAIProvider` and `sapai` from
-`@jerome-benoit/sap-ai-provider/v4`. The V4 entrypoint exposes the same
-provider aliases and version-independent helpers as the root V3 entrypoint.
-See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for its
-media normalization contract.
+The V4 entrypoint exposes the same provider aliases and version-independent
+helpers as the root V3 entrypoint. See the
+[V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for its media
+normalization contract.
 
-**V2 facade:** Integrations requiring
-`LanguageModelV2`/`EmbeddingModelV2` can use the main package's `v2`
-subpath or the dedicated V2 package with AI SDK 5 or 6:
+**V2 facade:** AI SDK 5 and other `LanguageModelV2`/`EmbeddingModelV2`
+consumers can use the main package's `v2` subpath or the dedicated V2 package:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai@^6
-# Alternatively: npm install @jerome-benoit/sap-ai-provider-v2 ai@^6
+npm install @jerome-benoit/sap-ai-provider ai@^5
+# Alternatively: npm install @jerome-benoit/sap-ai-provider-v2 ai@^5
 ```
 
 Both entrypoints expose the same V2 facade:
