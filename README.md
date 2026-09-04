@@ -131,7 +131,7 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 22+. The provider entrypoint must match the installed
+**Requirements:** Node.js 22.12+. The provider entrypoint must match the installed
 AI SDK major.
 
 | AI SDK | Install                                            | Provider import                     |

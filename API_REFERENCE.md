@@ -3567,7 +3567,7 @@ For the current package version, see [package.json](./package.json).
 
 - **Vercel AI SDK:** v5.0+, including v7 through the `/v4` entrypoint (`ai` package)
 - **SAP AI SDK:** ^2.8.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
-- **Node.js:** >= 22
+- **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the
 > repository root.
