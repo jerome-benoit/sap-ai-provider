@@ -24,6 +24,27 @@ describe("convertToSAPMessages across JavaScript realms", () => {
     ]);
   });
 
+  it("should convert a genuine URL with a foreign prototype", () => {
+    const data = new URL("https://example.com/image.jpg");
+    const foreignPrototype = runInNewContext("({})") as object;
+    Object.setPrototypeOf(data, foreignPrototype);
+    expect(data).not.toBeInstanceOf(URL);
+
+    const prompt: LanguageModelV3Prompt = [
+      {
+        content: [{ data, mediaType: "image/jpeg", type: "file" }],
+        role: "user",
+      },
+    ];
+
+    expect(convertToSAPMessages(prompt)).toEqual([
+      {
+        content: [{ image_url: { url: "https://example.com/image.jpg" }, type: "image_url" }],
+        role: "user",
+      },
+    ]);
+  });
+
   it("should reject a detached ArrayBuffer with an AI SDK error", () => {
     const data = new ArrayBuffer(2);
     structuredClone(data, { transfer: [data] });

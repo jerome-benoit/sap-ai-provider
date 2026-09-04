@@ -64,6 +64,9 @@ const TYPED_ARRAY_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
   "length",
 );
 
+/** Native cross-realm URL href descriptor. */
+const URL_HREF_DESCRIPTOR = Object.getOwnPropertyDescriptor(URL.prototype, "href");
+
 /**
  * Returns the RFC 4648 value of a base64 character.
  * @param charCode - The character's UTF-16 code unit.
@@ -76,6 +79,23 @@ function base64SextetValue(charCode: number): number {
   if (charCode === 0x2b) return 62;
   if (charCode === 0x2f) return 63;
   return -1;
+}
+
+/**
+ * Returns the canonical href for genuine URL values across JavaScript realms.
+ * @param value - The value to inspect.
+ * @returns The URL href, or undefined when the value lacks URL internal slots.
+ */
+function getURLHref(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || URL_HREF_DESCRIPTOR?.get === undefined) {
+    return undefined;
+  }
+  try {
+    const href: unknown = URL_HREF_DESCRIPTOR.get.call(value);
+    return typeof href === "string" ? href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -533,7 +553,8 @@ function base64FromBytes(bytes: Uint8Array): string {
  */
 function buildDataUrl(part: { data: unknown; mediaType: string }): string {
   const { data, mediaType } = part;
-  if (data instanceof URL) return data.toString();
+  const href = getURLHref(data);
+  if (href !== undefined) return href;
 
   if (typeof data === "string") return `data:${mediaType};base64,${data}`;
 
