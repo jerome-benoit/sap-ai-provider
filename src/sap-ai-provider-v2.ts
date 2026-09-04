@@ -3,7 +3,7 @@ import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
-import { NoSuchModelError } from "@ai-sdk/provider-v2";
+import { NoSuchModelError } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
@@ -152,7 +152,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     );
   }
 
-  if (!process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
+  if (typeof process === "undefined" || !process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
     const logLevel = options.logLevel ?? "warn";
     setGlobalLogLevel(logLevel);
   }

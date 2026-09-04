@@ -112,6 +112,18 @@ describe("createSAPAIProviderV4", () => {
 
     expect(() => provider.imageModel("dall-e-3")).toThrow("does not support image generation");
   });
+
+  it("should create a provider when the Node process global is unavailable", () => {
+    const processDescriptor = Object.getOwnPropertyDescriptor(globalThis, "process");
+    Reflect.deleteProperty(globalThis, "process");
+    try {
+      expect(() => createSAPAIProviderV4()).not.toThrow();
+    } finally {
+      if (processDescriptor !== undefined) {
+        Object.defineProperty(globalThis, "process", processDescriptor);
+      }
+    }
+  });
 });
 
 describe("AI SDK 7 public integration", () => {

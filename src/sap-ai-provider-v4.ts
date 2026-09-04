@@ -74,7 +74,7 @@ export function createSAPAIProviderV4(options: SAPAIProviderSettings = {}): SAPA
     );
   }
 
-  if (!process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
+  if (typeof process === "undefined" || !process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
     const logLevel = options.logLevel ?? "warn";
     setGlobalLogLevel(logLevel);
   }
