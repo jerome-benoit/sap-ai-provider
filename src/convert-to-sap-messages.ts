@@ -58,6 +58,12 @@ const ARRAY_BUFFER_BYTE_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
   "byteLength",
 );
 
+/** Native Uint8Array length descriptor, immune to subclass overrides. */
+const TYPED_ARRAY_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype) as object,
+  "length",
+);
+
 /**
  * Returns the RFC 4648 value of a base64 character.
  * @param charCode - The character's UTF-16 code unit.
@@ -479,9 +485,35 @@ export function unescapeOrchestrationPlaceholders(text: string): string {
  */
 function base64FromBytes(bytes: Uint8Array): string {
   const CHUNK_SIZE = 0x8000;
+  let byteLength: unknown;
+  try {
+    byteLength = TYPED_ARRAY_LENGTH_DESCRIPTOR?.get?.call(bytes);
+  } catch {
+    throw new UnsupportedFunctionalityError({
+      functionality: "Invalid Uint8Array file data.",
+    });
+  }
+  if (typeof byteLength !== "number") {
+    throw new UnsupportedFunctionalityError({
+      functionality: "Invalid Uint8Array file data.",
+    });
+  }
+
+  const codeUnits = new Array<number>(Math.min(CHUNK_SIZE, byteLength));
   let binary = "";
-  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
+  for (let offset = 0; offset < byteLength; offset += CHUNK_SIZE) {
+    const chunkLength = Math.min(CHUNK_SIZE, byteLength - offset);
+    codeUnits.length = chunkLength;
+    for (let index = 0; index < chunkLength; index++) {
+      const byte = bytes[offset + index];
+      if (byte === undefined) {
+        throw new UnsupportedFunctionalityError({
+          functionality: "Invalid Uint8Array file data.",
+        });
+      }
+      codeUnits[index] = byte;
+    }
+    binary += String.fromCharCode(...codeUnits);
   }
   return btoa(binary);
 }

@@ -732,6 +732,40 @@ describe("convertToSAPMessages", () => {
       expect(content?.image_url.url).toMatch(/^data:image\/png;base64,iVBORw==/);
     });
 
+    it.each([
+      {
+        configure: (data: Uint8Array): void => {
+          Object.defineProperty(data, "subarray", { value: (): Uint8Array => new Uint8Array() });
+        },
+        description: "subarray override",
+      },
+      {
+        configure: (data: Uint8Array): void => {
+          Object.defineProperty(data, Symbol.iterator, {
+            value: function* (): Generator<number> {
+              yield 120;
+            },
+          });
+        },
+        description: "iterator override",
+      },
+      {
+        configure: (data: Uint8Array): void => {
+          Object.defineProperty(data, "length", { get: (): number => 0 });
+        },
+        description: "length override",
+      },
+    ])("should ignore a Uint8Array $description", ({ configure }) => {
+      const data = new Uint8Array([104, 105]);
+      configure(data);
+      const prompt: LanguageModelV3Prompt = [
+        { content: [{ data, mediaType: "image/png", type: "file" }], role: "user" },
+      ];
+      const result = convertToSAPMessages(prompt);
+      const message = result[0] as { content: { image_url: { url: string } }[] };
+      expect(message.content[0]?.image_url.url).toBe("data:image/png;base64,aGk=");
+    });
+
     describe("buffer-like file data", () => {
       const convertBufferLike = (data: unknown): string => {
         const prompt: LanguageModelV3Prompt = [
