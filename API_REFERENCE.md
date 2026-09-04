@@ -153,7 +153,7 @@ V4 tagged file data is normalized before it reaches the shared core:
 
 ## V2 Facade Package API
 
-This section documents the API for the `@jerome-benoit/sap-ai-provider-v2` facade package. This package wraps the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for projects requiring V2-compatible models.
+The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provider/v2` subpath and from the standalone `@jerome-benoit/sap-ai-provider-v2` package. Both wrap the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for AI SDK 5/6 or other V2-compatible consumers. AI SDK 7 integrations must use the [V4 facade](#v4-facade-api-ai-sdk-7) instead.
 
 ### Export Aliases
 
@@ -168,9 +168,10 @@ The V2 package exports classes with simplified names for convenience:
 **Example:**
 
 ```typescript
-// Both imports work:
-import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider-v2"; // Recommended
-import type { SAPAILanguageModelV2 } from "@jerome-benoit/sap-ai-provider-v2"; // Type-only (internal name)
+// Main-package subpath:
+import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider/v2";
+// Standalone-package alternative:
+// import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider-v2";
 ```
 
 ---
@@ -195,7 +196,7 @@ function createSAPAIProvider(options?: SAPAIProviderSettings): SAPAIProviderV2;
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 import { generateText, embed } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
