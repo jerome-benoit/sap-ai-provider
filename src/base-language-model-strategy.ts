@@ -99,6 +99,7 @@ export abstract class BaseLanguageModelStrategy<
       outputKey: "presence_penalty",
     },
     { camelCaseKey: "seed", optionKey: "seed", outputKey: "seed" },
+    { optionKey: "reasoning", outputKey: "reasoning_effort" },
     { camelCaseKey: "parallel_tool_calls", outputKey: "parallel_tool_calls" },
   ] as const;
 

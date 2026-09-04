@@ -13,7 +13,6 @@ import type {
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamResult,
-  SharedV4Warning,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
@@ -28,6 +27,13 @@ import {
 import { normalizeV4PromptToV3 } from "./sap-ai-adapters-v4-to-v3.js";
 import { SAPAILanguageModel as SAPAILanguageModelInternal } from "./sap-ai-language-model.js";
 
+type InternalLanguageModelCallOptions = LanguageModelV3CallOptions & {
+  readonly reasoning?: Exclude<
+    LanguageModelV4CallOptions["reasoning"],
+    "provider-default" | undefined
+  >;
+};
+
 /** @internal */
 interface SAPAILanguageModelV4Config {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
@@ -36,6 +42,7 @@ interface SAPAILanguageModelV4Config {
   readonly providerApi?: SAPAIApiType;
   readonly requestConfig?: CustomRequestConfig;
 }
+
 /**
  * SAP AI Language Model implementing Vercel AI SDK LanguageModelV4.
  *
@@ -69,51 +76,39 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
   }
 
   async doGenerate(options: LanguageModelV4CallOptions): Promise<LanguageModelV4GenerateResult> {
-    const { prompt, ...rest } = options;
-    const entryWarnings: SharedV4Warning[] = [];
-    const { reasoning, ...restOptions } = rest;
-    if (reasoning !== undefined && reasoning !== "provider-default") {
-      entryWarnings.push({
-        details: `Reasoning effort '${reasoning}' has no SAP mapping and is ignored.`,
-        feature: "reasoning effort",
-        type: "unsupported",
-      });
-    }
-    const internalOptions: LanguageModelV3CallOptions = {
-      ...restOptions,
-      prompt: normalizeV4PromptToV3(prompt),
-    };
-    const result = await this.internalModel.doGenerate(internalOptions);
+    const result = await this.internalModel.doGenerate(normalizeCallOptions(options));
     const converted = convertGenerateResultToV4(result);
     return {
       ...converted,
       providerMetadata: result.providerMetadata,
       request: result.request,
       response: result.response,
-      warnings: [...entryWarnings, ...converted.warnings],
+      warnings: converted.warnings,
     };
   }
 
   async doStream(options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> {
-    const { prompt, ...rest } = options;
-    const entryWarnings: SharedV4Warning[] = [];
-    const { reasoning, ...restOptions } = rest;
-    if (reasoning !== undefined && reasoning !== "provider-default") {
-      entryWarnings.push({
-        details: `Reasoning effort '${reasoning}' has no SAP mapping and is ignored.`,
-        feature: "reasoning effort",
-        type: "unsupported",
-      });
-    }
-    const internalOptions: LanguageModelV3CallOptions = {
-      ...restOptions,
-      prompt: normalizeV4PromptToV3(prompt),
-    };
-    const result = await this.internalModel.doStream(internalOptions);
+    const result = await this.internalModel.doStream(normalizeCallOptions(options));
     return {
       request: result.request,
       response: result.response,
-      stream: createV4StreamFromInternal(result.stream, entryWarnings),
+      stream: createV4StreamFromInternal(result.stream),
     };
   }
+}
+
+/**
+ * Normalizes V4 call options to the internal V3-compatible shape.
+ * @param options - V4 model call options.
+ * @returns Internal call options with V4 reasoning available to the SAP strategies.
+ */
+function normalizeCallOptions(
+  options: LanguageModelV4CallOptions,
+): InternalLanguageModelCallOptions {
+  const { prompt, reasoning, ...rest } = options;
+  return {
+    ...rest,
+    ...(reasoning !== undefined && reasoning !== "provider-default" ? { reasoning } : {}),
+    prompt: normalizeV4PromptToV3(prompt),
+  };
 }

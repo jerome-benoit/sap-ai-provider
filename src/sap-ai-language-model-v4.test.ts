@@ -99,72 +99,7 @@ describe("SAPAILanguageModelV4", () => {
       });
       expect(result.warnings).toEqual([]);
     });
-    it("should warn when a non-default reasoning effort is dropped", async () => {
-      const model = new SAPAILanguageModelV4("gpt-4o", {}, defaultConfig);
 
-      let captured: LanguageModelV3CallOptions | undefined;
-      const mockDoGenerate = vi.fn(
-        (options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> =>
-          Promise.resolve({
-            content: [{ text: "Test", type: "text" as const }],
-            finishReason: { raw: "stop", unified: "stop" as const },
-            usage: {
-              inputTokens: { cacheRead: 0, cacheWrite: 0, noCache: 1, total: 1 },
-              outputTokens: { reasoning: 0, text: 1, total: 1 },
-            },
-            warnings: [],
-          }).then((result) => {
-            captured = options;
-            return result;
-          }),
-      );
-      internalOf(model).internalModel.doGenerate = mockDoGenerate;
-
-      const result = await model.doGenerate({
-        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
-        reasoning: "high",
-      });
-
-      expect(captured).toBeDefined();
-      expect(result.warnings).toContainEqual({
-        details: "Reasoning effort 'high' has no SAP mapping and is ignored.",
-        feature: "reasoning effort",
-        type: "unsupported",
-      });
-    });
-
-    it("should surface dropped reasoning effort in stream-start warnings", async () => {
-      const model = new SAPAILanguageModelV4("gpt-4o", {}, defaultConfig);
-
-      const mockInternalStream = new ReadableStream({
-        start(controller) {
-          controller.enqueue({ type: "stream-start", warnings: [] });
-          controller.close();
-        },
-      });
-
-      const mockDoStream = vi.fn((): Promise<LanguageModelV3StreamResult> =>
-        Promise.resolve({ stream: mockInternalStream }),
-      );
-      internalOf(model).internalModel.doStream = mockDoStream;
-
-      const result = await model.doStream({
-        prompt: [{ content: [{ text: "Test", type: "text" }], role: "user" }],
-        reasoning: "high",
-      });
-
-      const reader = result.stream.getReader();
-      const first = await reader.read();
-      expect(first.value).toMatchObject({
-        type: "stream-start",
-        warnings: [
-          {
-            feature: "reasoning effort",
-            type: "unsupported",
-          },
-        ],
-      });
-    });
     it("should delegate doStream and convert parts to V4", async () => {
       const model = new SAPAILanguageModelV4("gpt-4o", {}, defaultConfig);
 

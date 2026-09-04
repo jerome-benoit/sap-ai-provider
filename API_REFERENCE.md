@@ -139,6 +139,10 @@ deprecated `textEmbeddingModel()` alias. Version-independent settings, SAP SDK
 clients, builders, validation helpers, error types, and `VERSION` match the root
 entrypoint.
 
+The standardized V4 `reasoning` option is forwarded as SAP's harmonized
+`reasoning_effort` model parameter. `provider-default` leaves the parameter unset;
+supported explicit levels are forwarded to the selected model.
+
 V4 tagged file data is normalized before it reaches the shared core:
 
 - Full media types such as `image/png` are preserved.

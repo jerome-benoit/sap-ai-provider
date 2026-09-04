@@ -149,8 +149,9 @@ npm install @jerome-benoit/sap-ai-provider ai@^7
 ```
 
 The V4 entrypoint exposes the same provider aliases and version-independent
-helpers as the root V3 entrypoint. See the
-[V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for its media
+helpers as the root V3 entrypoint. Its standardized `reasoning` option maps to
+SAP's `reasoning_effort` model parameter. See the
+[V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for the full V4
 normalization contract.
 
 **V2 facade:** AI SDK 5 and other `LanguageModelV2`/`EmbeddingModelV2`

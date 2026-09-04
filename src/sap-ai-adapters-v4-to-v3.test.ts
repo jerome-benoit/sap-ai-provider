@@ -184,6 +184,46 @@ describe("normalizeV4PromptToV3", () => {
     });
   });
 
+  it("should preserve a genuine URL after its prototype is replaced", () => {
+    const url = new URL("https://example.com/result.pdf");
+    Object.setPrototypeOf(url, {});
+    const prompt = [
+      {
+        content: [
+          {
+            output: {
+              type: "content",
+              value: [
+                {
+                  data: { type: "url", url },
+                  mediaType: "application/pdf",
+                  type: "file",
+                },
+              ],
+            },
+            toolCallId: "c1",
+            toolName: "t",
+            type: "tool-result",
+          },
+        ],
+        role: "tool",
+      },
+    ] as unknown as LanguageModelV4Prompt;
+
+    expect(normalizeV4PromptToV3(prompt)).toMatchObject([
+      {
+        content: [
+          {
+            output: {
+              type: "content",
+              value: [{ type: "file-url", url: "https://example.com/result.pdf" }],
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
   it.each(["image", "image/*", "IMAGE", "IMAGE/*", "IMAGE/PNG"])(
     "should resolve inline %s data before SAP image routing",
     (mediaType) => {

@@ -18,7 +18,7 @@ import type {
   LanguageModelV2Usage,
   SharedV2Headers,
   SharedV2ProviderMetadata,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v2";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";

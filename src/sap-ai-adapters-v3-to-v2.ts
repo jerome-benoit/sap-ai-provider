@@ -5,13 +5,15 @@ import type {
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
   SharedV3Warning as InternalWarning,
+  SharedV3ProviderMetadata,
+} from "@ai-sdk/provider";
+import type {
   LanguageModelV2CallWarning,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
   LanguageModelV2Usage,
   SharedV2ProviderMetadata,
-  SharedV3ProviderMetadata,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v2";
 
 /**
  * Converts internal finish reason to V2 format.

@@ -12,7 +12,7 @@ import type {
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { resolveFullMediaType } from "@ai-sdk/provider-utils";
 
-import { base64FromBytes } from "./convert-to-sap-messages.js";
+import { base64FromBytes, getURLHref } from "./convert-to-sap-messages.js";
 
 type V3AssistantContent = Extract<LanguageModelV3Prompt[number], { role: "assistant" }>["content"];
 type V3ToolContentItem = Extract<
@@ -122,13 +122,20 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
     }
     case "text":
       return { providerOptions: item.providerOptions, text: item.data.text, type: "text" };
-    case "url":
+    case "url": {
       // Legacy V3 file-url carries no media type; the subtype stays in the URL itself.
+      const url = getURLHref(item.data.url);
+      if (url === undefined) {
+        throw new UnsupportedFunctionalityError({
+          functionality: "V4 tool-result URL data is not a genuine URL.",
+        });
+      }
       return {
         providerOptions: item.providerOptions,
         type: "file-url",
-        url: item.data.url.toString(),
+        url,
       };
+    }
     case "reference":
       throw new UnsupportedFunctionalityError({ functionality: REFERENCE_ERROR });
   }
