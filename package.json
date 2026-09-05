@@ -34,9 +34,34 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./v2": {
+      "import": {
+        "types": "./dist/index-v2.d.ts",
+        "default": "./dist/index-v2.js"
+      },
+      "require": {
+        "types": "./dist/index-v2.d.cts",
+        "default": "./dist/index-v2.cjs"
+      }
+    },
+    "./v4": {
+      "import": {
+        "types": "./dist/index-v4.d.ts",
+        "default": "./dist/index-v4.js"
+      },
+      "require": {
+        "types": "./dist/index-v4.d.cts",
+        "default": "./dist/index-v4.cjs"
+      }
     }
   },
   "directories": {
@@ -53,8 +78,9 @@
     "build:watch": "tsup --watch",
     "build:v2": "tsup --config tsup.config.v2.ts",
     "build:v2:watch": "tsup --config tsup.config.v2.ts --watch",
-    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts",
-    "check-build:v2": "ls -la dist/ && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts",
+    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts && test -f dist/index.d.cts && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts && test -f dist/index-v2.d.cts && test -f dist/index-v4.js && test -f dist/index-v4.cjs && test -f dist/index-v4.d.ts && test -f dist/index-v4.d.cts && tsx scripts/check-package-exports.ts",
+    "check-build:v2": "ls -la dist/ && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts && test -f dist/index-v2.d.cts",
+    "check-build:v4": "ls -la dist/ && test -f dist/index-v4.js && test -f dist/index-v4.cjs && test -f dist/index-v4.d.ts && test -f dist/index-v4.d.cts",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint . --cache",
     "lint-fix": "npm run lint:md:fix && eslint . --fix --cache",
@@ -65,7 +91,7 @@
     "lint:md:mermaid": "find . -name '*.md' -not -path './node_modules/*' -exec mermaid-validate validate-md {} \\; 2>&1 | grep -v 'No Mermaid code blocks'",
     "lint:md:toc": "tsx scripts/check-toc.ts",
     "prepare:v2": "tsx scripts/prepare-v2-package.ts",
-    "prepublishOnly": "if [ \"$AI_SDK_VERSION\" = \"v2\" ]; then npm run build:v2 && npm run check-build:v2 && npm run prepare:v2; else npm run build && npm run check-build; fi",
+    "prepublishOnly": "if [ \"$AI_SDK_VERSION\" = \"v2\" ]; then npm run build:v2 && npm run check-build:v2 && npm run prepare:v2; else npm run build && npm run check-build && npm run check-build:v2 && npm run check-build:v4; fi",
     "prettier-check": "prettier --cache --check .",
     "prettier-fix": "prettier --cache --write .",
     "test": "vitest run",
@@ -77,8 +103,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.15",
-    "@ai-sdk/provider-utils": "^4.0.50",
+    "@ai-sdk/provider": "^4.0.10",
+    "@ai-sdk/provider-utils": "^5.0.36",
+    "@ai-sdk/provider-v2": "npm:@ai-sdk/provider@^2.0.3",
     "@sap-ai-sdk/foundation-models": "^2.15.0",
     "@sap-ai-sdk/orchestration": "^2.15.0",
     "zod": "^4.5.4"
@@ -88,6 +115,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.5",
     "@vitest/coverage-v8": "^4.1.11",
+    "ai": "^7.0.92",
     "dotenv": "^17.4.2",
     "eslint": "^10.10.0",
     "eslint-plugin-jsdoc": "^64.3.5",
@@ -105,10 +133,10 @@
     "vitest": "^4.1.11"
   },
   "peerDependencies": {
-    "ai": "^5.0.0 || ^6.0.0"
+    "ai": "^5.0.0 || ^6.0.0 || ^7.0.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "publishConfig": {
     "access": "public"

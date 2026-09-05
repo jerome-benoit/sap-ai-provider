@@ -4,12 +4,13 @@ description: Guidance for integrating with the Vercel AI SDK
 
 # AI SDK Integration
 
-This repository publishes two npm packages for Vercel AI SDK integration:
+This repository publishes two npm packages with versioned Vercel AI SDK entrypoints:
 
-- **`@jerome-benoit/sap-ai-provider`** (V3) — `LanguageModelV3`/`EmbeddingModelV3`
-- **`@jerome-benoit/sap-ai-provider-v2`** (V2) — `LanguageModelV2`/`EmbeddingModelV2` facade
+- **`@jerome-benoit/sap-ai-provider`** — V3 root, `/v2`, and `/v4` entrypoints
+- **`@jerome-benoit/sap-ai-provider-v2`** — standalone V2 facade
 
-Both packages are designed to work with Vercel AI SDK 5.0+ (6.0+ recommended).
+Use `/v2` with AI SDK 5, the root V3 entrypoint with AI SDK 6, and `/v4`
+with AI SDK 7.
 
 ## V3 Package (Primary)
 
@@ -28,6 +29,21 @@ The V3 package implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingModelV3
 - [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
 - [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
 - [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
+
+## V4 Facade Entrypoint
+
+The `/v4` subpath wraps the V3 core and implements `ProviderV4`,
+`LanguageModelV4`, and `EmbeddingModelV4` for AI SDK 7. Prompt and result
+shape differences are isolated in the V4 adapters.
+
+**Source files:**
+
+- [src/index-v4.ts](mdc:src/index-v4.ts)
+- [src/sap-ai-provider-v4.ts](mdc:src/sap-ai-provider-v4.ts)
+- [src/sap-ai-language-model-v4.ts](mdc:src/sap-ai-language-model-v4.ts)
+- [src/sap-ai-embedding-model-v4.ts](mdc:src/sap-ai-embedding-model-v4.ts)
+- [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
+- [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts)
 
 ## V2 Facade Package
 
@@ -61,7 +77,7 @@ and `EmbeddingModelV2` interfaces.
 
 ## Recommended API Usage
 
-**V3 Package:**
+**V3 entrypoint (AI SDK 6):**
 ```typescript
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 const provider = createSAPAIProvider();
@@ -69,9 +85,17 @@ const model = provider("gpt-4.1");
 const embeddingModel = provider.embedding("text-embedding-3-small");
 ```
 
-**V2 Package:**
+**V4 entrypoint (AI SDK 7):**
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+const provider = createSAPAIProvider();
+const model = provider("gpt-4.1");
+const embeddingModel = provider.embedding("text-embedding-3-small");
+```
+
+**V2 entrypoint or standalone package (AI SDK 5):**
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 const provider = createSAPAIProvider();
 const model = provider("gpt-4.1");
 const embeddingModel = provider.textEmbeddingModel("text-embedding-3-small");

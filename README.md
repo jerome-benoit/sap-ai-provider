@@ -70,8 +70,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 - 🛡️ **Content Filtering** - Azure Content Safety and Llama Guard support
 - 🔧 **TypeScript Support** - Full type safety and IntelliSense
 - 🎨 **Multiple Models** - Support for OpenAI, Claude, Gemini, Nova, and more
-- ⚡ **Language Model V3** - Latest Vercel AI SDK specification with enhanced
-  streaming
+- 🔄 **AI SDK 5–7 Compatibility** - Versioned V2, V3, and V4 entrypoints
+  preserve the matching Vercel AI SDK provider specification
 - 📊 **Text Embeddings** - Generate vector embeddings for RAG and semantic
   search
 - 🔀 **Dual API Support** - Choose between Orchestration or Foundation Models
@@ -82,7 +82,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 ## Quick Start
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai@^6
 ```
 
 ```typescript
@@ -119,7 +119,7 @@ try {
 
 | Task                | Code Pattern                                                     | Documentation                                                 |
 | ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai`                  | [Installation](#installation)                                 |
+| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai@^6`               | [Installation](#installation)                                 |
 | **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                               | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
 | **Create Provider** | `createSAPAIProvider()` or use `sapai`                           | [Provider Creation](#provider-creation)                       |
 | **Text Generation** | `generateText({ model: provider("gpt-4.1"), prompt })`           | [Basic Usage](#text-generation)                               |
@@ -131,46 +131,47 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 20+ and Vercel AI SDK 5.0+ (6.0+ recommended)
+**Requirements:** Node.js 22.12+. The provider entrypoint must match the installed
+AI SDK major.
+
+| AI SDK | Install                                            | Provider import                     |
+| ------ | -------------------------------------------------- | ----------------------------------- |
+| 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
+| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
+| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
+
+The Quick Start and examples below use AI SDK 6 with the root V3 entrypoint.
+For AI SDK 7, install `ai@^7` and import `createSAPAIProvider` or `sapai`
+from `@jerome-benoit/sap-ai-provider/v4`:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai@^7
 ```
 
-Or with other package managers:
+The V4 entrypoint exposes the same provider aliases and version-independent
+helpers as the root V3 entrypoint. Its standardized `reasoning` option maps to
+SAP's `reasoning_effort` model parameter. See the
+[V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for the full V4
+normalization contract.
+
+**V2 facade:** AI SDK 5 and other `LanguageModelV2`/`EmbeddingModelV2`
+consumers can use the main package's `v2` subpath or the dedicated V2 package:
 
 ```bash
-# Yarn
-yarn add @jerome-benoit/sap-ai-provider ai
-
-# pnpm
-pnpm add @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai@^5
+# Alternatively: npm install @jerome-benoit/sap-ai-provider-v2 ai@^5
 ```
 
-> **V2 Facade Package Available:** For users requiring `LanguageModelV2`/`EmbeddingModelV2` interfaces, install the dedicated V2 facade package:
->
-> ```bash
-> npm install @jerome-benoit/sap-ai-provider-v2 ai
-> ```
->
-> This package provides a V2-compatible facade over the internal V3 implementation.
->
-> Basic Usage Example:
->
-> ```typescript
-> import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
-> import { generateText } from "ai";
->
-> const provider = createSAPAIProvider();
-> const result = await generateText({
->   model: provider("gpt-4.1"),
->   prompt: "Hello V2!",
-> });
-> console.log(result.text);
-> ```
->
-> For a detailed understanding of the dual-package architecture, refer to
-> [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2).
+Both entrypoints expose the same V2 facade:
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
+// Dedicated-package alternative:
+// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+```
+
+See [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
+for the V2/V3 packaging model.
 
 ## Provider Creation
 

@@ -116,12 +116,50 @@ consistently:
 - [Version Information](#version-information)
   - [Dependencies](#dependencies)
   - [`VERSION`](#version)
+- [V4 Facade API (AI SDK 7)](#v4-facade-api-ai-sdk-7)
 - [V2 Facade Package API](#v2-facade-package-api)
 - [Related Documentation](#related-documentation-1)
 
+## V4 Facade API (AI SDK 7)
+
+Import the V4 facade from the main package's `v4` subpath when using AI SDK 7:
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+
+const provider = createSAPAIProvider();
+const languageModel = provider("gpt-4.1");
+const embeddingModel = provider.embedding("text-embedding-3-small");
+```
+
+The subpath exports `SAPAILanguageModel`, `SAPAIEmbeddingModel`, and
+`SAPAIProvider` as V4 facades over the shared V3 core. The provider exposes
+`chat()`, `languageModel()`, `embedding()`, `embeddingModel()`, and the
+deprecated `textEmbeddingModel()` alias. Version-independent settings, SAP SDK
+clients, builders, validation helpers, error types, and `VERSION` match the root
+entrypoint.
+
+The standardized V4 `reasoning` option is forwarded as SAP's harmonized
+`reasoning_effort` model parameter. `provider-default` leaves the parameter unset;
+supported explicit levels are forwarded to the selected model.
+
+V4 tagged file data is normalized before it reaches the shared core:
+
+- Full media types such as `image/png` are preserved.
+- Bare and wildcard media types such as `image` and `image/*` are resolved
+  from detectable inline bytes.
+- Remote image URLs with `image` or `image/*` remain remote and normalize
+  case-insensitively to lower-case `image/*`; they are never downloaded for detection.
+- Ambiguous inline bytes and other incomplete URL media types throw instead of
+  producing an invalid SAP payload.
+- Top-level provider references are rejected explicitly and never fetched.
+  References nested in tool-result content map to the equivalent V3 `file-id`
+  representation.
+- Text file variants become V3 text parts and retain provider options.
+
 ## V2 Facade Package API
 
-This section documents the API for the `@jerome-benoit/sap-ai-provider-v2` facade package. This package wraps the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for projects requiring V2-compatible models.
+The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provider/v2` subpath and from the standalone `@jerome-benoit/sap-ai-provider-v2` package. Both wrap the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for AI SDK 5/6 or other V2-compatible consumers. AI SDK 7 integrations must use the [V4 facade](#v4-facade-api-ai-sdk-7) instead.
 
 ### Export Aliases
 
@@ -136,9 +174,10 @@ The V2 package exports classes with simplified names for convenience:
 **Example:**
 
 ```typescript
-// Both imports work:
-import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider-v2"; // Recommended
-import type { SAPAILanguageModelV2 } from "@jerome-benoit/sap-ai-provider-v2"; // Type-only (internal name)
+// Main-package subpath:
+import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider/v2";
+// Standalone-package alternative:
+// import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider-v2";
 ```
 
 ---
@@ -163,7 +202,7 @@ function createSAPAIProvider(options?: SAPAIProviderSettings): SAPAIProviderV2;
 
 ```typescript
 import "dotenv/config"; // Load environment variables
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 import { generateText, embed } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
@@ -3532,9 +3571,9 @@ For the current package version, see [package.json](./package.json).
 
 ### Dependencies
 
-- **Vercel AI SDK:** v5.0+ (v6.0+ recommended) (`ai` package)
+- **Vercel AI SDK:** v5.0+, including v7 through the `/v4` entrypoint (`ai` package)
 - **SAP AI SDK:** ^2.8.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
-- **Node.js:** >= 20
+- **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the
 > repository root.

@@ -25,7 +25,7 @@ export default defineConfig([
         ...(isTsV6 ? { ignoreDeprecations: "6.0" } : {}),
       },
     },
-    entry: ["src/index.ts"],
+    entry: ["src/index.ts", "src/index-v2.ts", "src/index-v4.ts"],
     format: ["cjs", "esm"],
     sourcemap: true,
   },

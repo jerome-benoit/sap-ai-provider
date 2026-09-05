@@ -5,10 +5,12 @@ import type {
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
   SharedV3Warning as InternalWarning,
+} from "@ai-sdk/provider";
+import type {
   LanguageModelV2CallWarning,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v2";
 
 import { describe, expect, it } from "vitest";
 

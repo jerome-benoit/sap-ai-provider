@@ -15,7 +15,7 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Bootstrap and Install Dependencies
 
-- **Prerequisites**: Node.js 20+ and npm are required
+- **Prerequisites**: Node.js 22.12+ and npm are required
 - **Fresh install**: `npm install` -- takes ~25 seconds. NEVER CANCEL. Set timeout to 60+ seconds.
   - Use `npm install` when no package-lock.json exists (fresh clone)
   - This automatically triggers the build via the prepare script
@@ -26,23 +26,23 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Building
 
-- **Build V3 library**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
-  - Uses tsup to create CommonJS, ESM, and TypeScript declaration files
-  - Outputs to `dist/` directory: `index.js`, `index.cjs`, `index.d.ts`, `index.d.cts`
-- **Build V2 library**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
-  - Builds V2 facade from `src/index-v2.ts`
-  - Outputs to `dist/` directory: `index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`, `index-v2.d.cts`
-- **Watch V2 build**: `npm run build:v2:watch` -- continuous rebuild on file changes
-- **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 files for npm package
-- **Check build outputs**: `npm run check-build` -- takes <1 second. Set timeout to 10+ seconds.
-  - Verifies all expected files exist and lists directory contents
+- **Build main package**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
+  - Builds the V3 root, V2 subpath, and V4 subpath entrypoints.
+  - Produces CommonJS, ESM, declaration files, and sourcemaps for all three entrypoints.
+- **Build standalone V2 package**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
+  - Builds only the V2 facade from `src/index-v2.ts`.
+- **Watch main build**: `npm run build:watch` -- continuous rebuild of all main entrypoints.
+- **Watch standalone V2 build**: `npm run build:v2:watch` -- continuous V2 rebuild.
+- **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 files for npm package.
+- **Check main build outputs**: `npm run check-build` -- verifies V3, V2, and V4 artifacts.
+- **Check one facade explicitly**: `npm run check-build:v2` or `npm run check-build:v4`.
 
-**Dual-Package Architecture:**
+**Versioned Entrypoint Architecture:**
 
 This repository publishes two npm packages from the same codebase:
 
-- `@jerome-benoit/sap-ai-provider` (V3) - Built from `src/index.ts`, uses `LanguageModelV3`/`EmbeddingModelV3`
-- `@jerome-benoit/sap-ai-provider-v2` (V2) - Built from `src/index-v2.ts`, wraps V3 internally to expose `LanguageModelV2`/`EmbeddingModelV2`
+- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2` and `/v4` subpaths.
+- `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade wrapping the V3 core.
 
 ### Testing
 
@@ -137,6 +137,14 @@ This should complete in approximately 15 seconds total and all commands should p
 │   ├── sap-ai-language-model.ts                      # V3 language model
 │   ├── sap-ai-embedding-model.ts                     # V3 embedding model
 │   │
+│   │   # V4 Facade Layer (LanguageModelV4/EmbeddingModelV4)
+│   ├── index-v4.ts                                   # V4 public API exports
+│   ├── sap-ai-provider-v4.ts                         # V4 provider factory
+│   ├── sap-ai-language-model-v4.ts                   # V4 language model facade
+│   ├── sap-ai-embedding-model-v4.ts                  # V4 embedding model facade
+│   ├── sap-ai-adapters-v4-to-v3.ts                   # V4 prompt normalization
+│   ├── sap-ai-adapters-v3-to-v4.ts                   # V4 result conversion
+│   │
 │   │   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
 │   ├── index-v2.ts                                   # V2 public API exports (facade)
 │   ├── sap-ai-provider-v2.ts                         # V2 provider factory (wraps V3)
@@ -160,12 +168,12 @@ This should complete in approximately 15 seconds total and all commands should p
 │   ├── convert-to-sap-messages.ts                   # Message format conversion
 │   ├── deep-merge.ts                                 # Deep merge utility
 │   ├── version.ts                                    # Package version constant
-│   └── *.test.ts                                     # Co-located unit tests (13 files)
+│   └── *.test.ts                                     # Co-located unit tests
 ├── dist/                  # Build outputs (gitignored)
 ├── eslint.config.js      # ESLint flat configuration
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
-├── tsup.config.ts        # V3 build configuration
+├── tsup.config.ts        # Main V3/V2/V4 build configuration
 ├── tsup.config.v2.ts     # V2 build configuration
 ├── vitest.node.config.ts # Node.js test configuration
 ├── vitest.edge.config.ts # Edge runtime test configuration
@@ -189,6 +197,15 @@ This should complete in approximately 15 seconds total and all commands should p
 - **`src/sap-ai-language-model.ts`**: V3 language model (`LanguageModelV3`)
 - **`src/sap-ai-embedding-model.ts`**: V3 embedding model (`EmbeddingModelV3`)
 
+**V4 Facade Layer (AI SDK 7 interfaces, wraps V3 internally):**
+
+- **`src/index-v4.ts`**: V4 public API exports
+- **`src/sap-ai-provider-v4.ts`**: V4 provider factory (`ProviderV4`)
+- **`src/sap-ai-language-model-v4.ts`**: V4 language model facade
+- **`src/sap-ai-embedding-model-v4.ts`**: V4 embedding model facade
+- **`src/sap-ai-adapters-v4-to-v3.ts`**: V4 prompt normalization
+- **`src/sap-ai-adapters-v3-to-v4.ts`**: V4 result and stream conversion
+
 **V2 Facade Layer (LanguageModelV2/EmbeddingModelV2 interfaces, wraps V3 internally):**
 
 - **`src/index-v2.ts`**: V2 public API exports
@@ -200,7 +217,7 @@ This should complete in approximately 15 seconds total and all commands should p
 **Build and Scripts:**
 
 - **`package.json`**: All available npm scripts and dependencies
-- **`tsup.config.ts`**: V3 build configuration
+- **`tsup.config.ts`**: Main V3/V2/V4 build configuration
 - **`tsup.config.v2.ts`**: V2 build configuration
 - **`scripts/prepare-v2-package.ts`**: Renames V2 build files for npm publish
 - **`examples/`**: Working examples of how to use the library
@@ -226,9 +243,9 @@ This should complete in approximately 15 seconds total and all commands should p
 ### Package Dependencies
 
 - **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
-- **Peer**: `ai` (Vercel AI SDK `^5.0.0 || ^6.0.0`)
+- **Peer**: `ai` (Vercel AI SDK `^5.0.0 || ^6.0.0 || ^7.0.0`)
 - **Dev**: TypeScript, Vitest, tsup, ESLint, Prettier, dotenv
-- **Node requirement**: Node.js 20+
+- **Node requirement**: Node.js 22.12+
 
 ### Common Commands Quick Reference
 
@@ -243,13 +260,14 @@ npm run type-check        # ~2s - TypeScript validation
 npm run test             # ~1s - Run all tests
 npm run test:node        # ~1s - Node.js environment tests
 npm run test:edge        # ~1s - Edge runtime tests
-npm run build            # ~3s - Build V3 library
-npm run build:watch      # Continuous V3 rebuild
-npm run build:v2         # ~3s - Build V2 library
-npm run build:v2:watch   # Continuous V2 rebuild
-npm run prepare:v2       # Rename V2 files for publish
-npm run check-build      # <1s - Verify V3 build outputs
-npm run check-build:v2   # <1s - Verify V2 build outputs
+npm run build            # ~3s - Build main V3/V2/V4 entrypoints
+npm run build:watch      # Continuous main-package rebuild
+npm run build:v2         # ~3s - Build standalone V2 package
+npm run build:v2:watch   # Continuous standalone V2 rebuild
+npm run prepare:v2       # Rename V2 files for standalone publish
+npm run check-build      # <1s - Verify all main-package outputs
+npm run check-build:v2   # <1s - Verify V2 outputs explicitly
+npm run check-build:v4   # <1s - Verify V4 outputs explicitly
 npm run prettier-check   # ~1s - Check formatting
 npm run lint             # ~2s - Markdown lint + TOC + Mermaid + ESLint
 npm run lint-fix         # Auto-fix lint issues

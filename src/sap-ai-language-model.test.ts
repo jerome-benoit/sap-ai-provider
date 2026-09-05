@@ -4922,6 +4922,16 @@ describe("SAPAILanguageModel", () => {
           testName: "topP",
         },
         {
+          apis: ["orchestration", "foundation-models"] as APIType[],
+          expectedKey: "reasoning_effort",
+          expectedValue: "high",
+          optionKey: "reasoning",
+          optionValue: "high",
+          settingsKey: "reasoning_effort",
+          settingsValue: "low",
+          testName: "reasoning",
+        },
+        {
           apis: ["orchestration"] as APIType[],
           camelCaseKey: "topK",
           expectedKey: "top_k",

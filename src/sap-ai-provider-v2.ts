@@ -1,4 +1,4 @@
-import type { ImageModelV2, ProviderV2 } from "@ai-sdk/provider";
+import type { ImageModelV2, ProviderV2 } from "@ai-sdk/provider-v2";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -152,7 +152,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     );
   }
 
-  if (!process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
+  if (typeof process === "undefined" || !process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
     const logLevel = options.logLevel ?? "warn";
     setGlobalLogLevel(logLevel);
   }
