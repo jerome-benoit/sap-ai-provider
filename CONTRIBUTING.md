@@ -309,12 +309,13 @@ authentication setup.
 
 **4. Example Code Guidelines**
 
-- Use relative imports (`../src/index`) for repo examples
+- Use relative imports (`../src/index-v4`) for repo examples to match the
+  installed AI SDK 7 dependency.
 - Add comment explaining production import path:
 
   ```typescript
   // NOTE: This example uses relative imports for local development
-  // In your project, use: import { ... } from "@jerome-benoit/sap-ai-provider"
+  // In your AI SDK 7 project, use: import { ... } from "@jerome-benoit/sap-ai-provider/v4"
   ```
 
 **5. Documentation Verification**

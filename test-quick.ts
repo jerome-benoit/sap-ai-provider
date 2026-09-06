@@ -10,7 +10,7 @@
 import "dotenv/config";
 import { generateText } from "ai";
 
-import { createSAPAIProvider } from "./src/index";
+import { createSAPAIProvider } from "./src/index-v4";
 
 /**
  *

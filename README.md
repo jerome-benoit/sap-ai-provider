@@ -140,7 +140,9 @@ AI SDK major.
 | 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
 | 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
 
-The Quick Start and examples below use AI SDK 6 with the root V3 entrypoint.
+The Quick Start and inline snippets on this page use AI SDK 6 with the root V3
+entrypoint. The runnable files in `examples/` use the repository's installed
+AI SDK 7 with the V4 entrypoint.
 For AI SDK 7, install `ai@^7` and import `createSAPAIProvider` or `sapai`
 from `@jerome-benoit/sap-ai-provider/v4`:
 
@@ -170,8 +172,8 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 ```
 
-See [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
-for the V2/V3 packaging model.
+See [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)
+for the V4/V3/V2 packaging model.
 
 ## Provider Creation
 
@@ -720,8 +722,10 @@ deployment.
 
 ## Examples
 
-The `examples/` directory contains complete, runnable examples demonstrating key
-features:
+The `examples/` directory contains complete, runnable examples using the
+repository's AI SDK 7 dependency and the local `../src/index-v4` entrypoint.
+In an AI SDK 7 application, import from `@jerome-benoit/sap-ai-provider/v4`.
+See [Installation](#installation) for other AI SDK versions.
 
 | Example                             | Description                 | Key Features                            |
 | ----------------------------------- | --------------------------- | --------------------------------------- |

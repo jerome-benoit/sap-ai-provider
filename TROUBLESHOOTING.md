@@ -645,7 +645,7 @@ configuration.
 
 **Solution:** Use `provider.textEmbeddingModel()`, or switch to the V3 package.
 
-**Reference:** [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2)
+**Reference:** [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)
 
 ### Problem: Type mismatch with AI SDK
 

@@ -24,8 +24,8 @@ import { embed, embedMany } from "ai";
 
 // This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-import { createSAPAIProvider } from "../src/index";
+// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+import { createSAPAIProvider } from "../src/index-v4";
 
 /**
  * Demonstrates single and batch embedding generation

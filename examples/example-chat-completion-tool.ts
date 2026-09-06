@@ -20,12 +20,12 @@ import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provide
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 
-import type { ChatCompletionTool } from "../src/index";
+import type { ChatCompletionTool } from "../src/index-v4";
 
 // This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider, ChatCompletionTool } from "@jerome-benoit/sap-ai-provider";
-import { createSAPAIProvider } from "../src/index";
+// import { createSAPAIProvider, ChatCompletionTool } from "@jerome-benoit/sap-ai-provider/v4";
+import { createSAPAIProvider } from "../src/index-v4";
 
 // Define tool schemas in SAP AI SDK format (proper JSON Schema)
 // These are passed via provider settings to bypass AI SDK conversion issues
