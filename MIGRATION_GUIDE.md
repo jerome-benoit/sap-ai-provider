@@ -90,6 +90,80 @@ If you need to downgrade your Vercel AI SDK version or require strict
 
 ---
 
+## Version 4.x to 5.x (Breaking Changes)
+
+Package version **5.0.0** adds AI SDK 7 support through the V4 facade while
+retaining the V3 root entrypoint and V2 compatibility. Package version 5 does
+**not** mean provider specification V5 or a requirement to use AI SDK 5.
+
+### Runtime Requirement
+
+Both published packages now require **Node.js 22.12 or newer**, up from Node.js 20. Upgrade local development, CI and deployment runtimes before installing
+5.x. Node.js 22.12 is also the minimum supported CommonJS runtime for loading
+the ESM-only AI SDK provider dependencies without experimental flags.
+
+### Choose the Entrypoint for Your AI SDK
+
+| AI SDK | Installation                                          | Import                              |
+| ------ | ----------------------------------------------------- | ----------------------------------- |
+| 7      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
+| 6      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^6` | `@jerome-benoit/sap-ai-provider`    |
+| 5      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
+
+**Existing AI SDK 6 users keep the root import and V3 model contracts.**
+Upgrading the provider package alone does not require switching to AI SDK 7
+or to `/v4`. The root entrypoint does not become V4 in this release.
+
+The standalone V2 package remains available:
+
+```bash
+npm install @jerome-benoit/sap-ai-provider-v2@^5 ai@^5
+```
+
+Its import remains `@jerome-benoit/sap-ai-provider-v2`. The main package's
+`/v2` entrypoint is an alternative, not a required migration. For V2 with
+AI SDK 6, use a current 6.x patch: the initial 6.0.0 embedding compatibility
+adapter has a warning-handling failure absent in 6.0.280. Do not pair the
+standalone V2 package with AI SDK 7.
+
+### AI SDK 7 Files and Reasoning
+
+When adopting AI SDK 7, use `/v4`. Its facade normalizes tagged file data
+before passing prompts to the shared V3 implementation, fixing the JPEG/PDF
+serialization reported in [#177](https://github.com/jerome-benoit/sap-ai-provider/issues/177).
+Do not pass V4 tagged file objects directly to the internal V3 message converter.
+Provider-specific top-level file references remain unsupported and are rejected
+explicitly; see the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7).
+
+The standardized `reasoning` option controls the outgoing model parameters.
+It does not add extraction of reasoning tokens from SAP response streams or
+resolve the separate reasoning-output feature requests.
+
+### Stricter Binary Input Handling
+
+The shared message converter no longer silently stringifies arbitrary file
+objects. It rejects unsupported objects and detached `ArrayBuffer` values
+with `UnsupportedFunctionalityError`. Buffer-like objects with a custom
+`toString("base64")` must return canonical base64; generic
+`[object Object]` output is not accepted.
+
+Use the selected AI SDK's documented file input forms. For direct V3 provider
+calls, prefer base64 strings, genuine `Uint8Array` values (including Node
+`Buffer`) or `URL` objects. Base64 strings are still forwarded as supplied;
+the stricter buffer-like-object validation is not a general validation of file
+contents or of caller-supplied base64 strings.
+
+### Migration Checklist
+
+- [ ] Upgrade every Node.js runtime to 22.12 or newer.
+- [ ] Install provider 5.x alongside the intended AI SDK major.
+- [ ] Select the matching entrypoint; preserve the root import for SDK 6.
+- [ ] Replace arbitrary file wrappers with supported file input forms.
+- [ ] Exercise generation, streaming, tool calls and embeddings used by your app.
+- [ ] Verify multimodal inputs against your selected SAP models when applicable.
+
+---
+
 ## Version 3.x to 4.x (Breaking Changes)
 
 **Package version 4.0 migrates the root entrypoint from LanguageModelV2 to
