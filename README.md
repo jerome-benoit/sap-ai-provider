@@ -2,9 +2,9 @@
 
 [![npm](https://img.shields.io/npm/v/@jerome-benoit/sap-ai-provider/latest?label=npm&color=blue)](https://www.npmjs.com/package/@jerome-benoit/sap-ai-provider)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5.0+-black.svg)](https://sdk.vercel.ai/docs)
-[![Language Model](https://img.shields.io/badge/Language%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
-[![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5%20%7C%206%20%7C%207-black.svg)](https://sdk.vercel.ai/docs)
+[![Language Model](https://img.shields.io/badge/Language%20Model-V2%20%7C%20V3%20%7C%20V4-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
+[![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V2%20%7C%20V3%20%7C%20V4-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
 
 A community provider for SAP AI Core that integrates seamlessly with the Vercel
 AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** and
@@ -156,7 +156,7 @@ SAP's `reasoning_effort` model parameter. See the
 [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for the full V4
 normalization contract.
 
-**V2 facade:** AI SDK 5 and other `LanguageModelV2`/`EmbeddingModelV2`
+**V2 facade:** AI SDK 5, AI SDK 6 through its V2 compatibility layer, and other `LanguageModelV2`/`EmbeddingModelV2`
 consumers can use the main package's `v2` subpath or the dedicated V2 package:
 
 ```bash
@@ -278,11 +278,11 @@ const embeddingModel = provider.embedding("text-embedding-3-small");
 | `provider.textEmbeddingModel(modelId)` | Creates embedding model (alias)               |
 
 > `embedding()` and `embeddingModel()` are identical. `textEmbeddingModel()` is
-> deprecated in the V3 package — use `embeddingModel()` instead.
+> deprecated in the V3 and V4 entrypoints — use `embeddingModel()` instead.
 >
 > **Note:** The V2 facade package (`@jerome-benoit/sap-ai-provider-v2`) only exposes
 > `textEmbeddingModel()` for embeddings per the `ProviderV2` specification. Use the
-> V3 package if you need `embedding()` or `embeddingModel()` aliases.
+> V3 root with AI SDK 6 or V4 subpath with AI SDK 7 if you need these aliases.
 
 ## Authentication
 
@@ -464,7 +464,7 @@ modules.
 [examples/example-chat-completion-tool.ts](./examples/example-chat-completion-tool.ts)
 
 ```typescript
-import { generateText, tool } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
@@ -472,7 +472,7 @@ const provider = createSAPAIProvider();
 
 const weatherTool = tool({
   description: "Get weather for a location",
-  parameters: z.object({ location: z.string() }),
+  inputSchema: z.object({ location: z.string() }),
   execute: async (args) => `Weather in ${args.location}: sunny, 72°F`,
 });
 
@@ -480,7 +480,7 @@ const result = await generateText({
   model: provider("gpt-4.1"),
   prompt: "What's the weather in Tokyo?",
   tools: { getWeather: weatherTool },
-  maxSteps: 3,
+  stopWhen: stepCountIs(3),
 });
 ```
 
@@ -755,24 +755,25 @@ npx tsx examples/example-generate-text.ts
 ### Upgrading from v3.x to v4.x
 
 Version 4.0 migrates from **LanguageModelV2** to **LanguageModelV3**
-specification (AI SDK 5.0+). **See the
+specification (AI SDK 6). Package release 4.x is not the V4 provider
+specification used by AI SDK 7. **See the
 [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for
 complete upgrade instructions.**
 
-**Key changes:**
+**Key changes in direct provider results (`doGenerate`/`doStream`):**
 
 - **Finish Reason**: Changed from string to object
   (`result.finishReason.unified`)
 - **Usage Structure**: Nested format with detailed token breakdown
   (`result.usage.inputTokens.total`)
-- **Stream Events**: Structured blocks (`text-start`, `text-delta`, `text-end`)
-  instead of simple deltas
+- **Stream Events**: Text blocks retain `text-start`, `text-delta`, and
+  `text-end`; finish and warning payloads use the V3 format
 - **Warning Types**: Updated format with `feature` field for categorization
 
 **Impact by user type:**
 
-- High-level API users (`generateText`/`streamText`): ✅ Minimal impact (likely
-  no changes)
+- High-level API users (`generateText`/`streamText`): use AI SDK 6 with the root
+  entrypoint. High-level token totals remain flat numbers.
 - Direct provider users: ⚠️ Update type imports (`LanguageModelV2` →
   `LanguageModelV3`)
 - Custom stream parsers: ⚠️ Update parsing logic for V3 structure

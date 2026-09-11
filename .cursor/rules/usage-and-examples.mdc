@@ -9,6 +9,11 @@ Start with the README’s Quick Start and Advanced Features sections:
 
 ## Examples
 
+Repository examples use the V4 entrypoint (`src/index-v4.ts`) with the
+AI SDK 7 development dependency. Consumers use `@jerome-benoit/sap-ai-provider/v4`
+for AI SDK 7, the package root for AI SDK 6, or `/v2` / the standalone `-v2`
+package for AI SDK 5 (also supported for AI SDK 6 compatibility).
+
 - Simple chat completion:
   [examples/example-simple-chat-completion.ts](mdc:examples/example-simple-chat-completion.ts)
 - Tool calling:
@@ -32,11 +37,12 @@ Start with the README’s Quick Start and Advanced Features sections:
 
 ## Common Patterns
 
-- Create provider: `createSAPAIProvider()` (auto-detects AICORE_SERVICE_KEY from
-  environment)
+- Create provider: `createSAPAIProvider()` (SAP AI SDK resolves authentication
+  from `AICORE_SERVICE_KEY` or SAP BTP service bindings when making requests)
 - With options:
   `createSAPAIProvider({ resourceGroup: 'production', deploymentId: 'abc123' })`
 - Default instance: `sapai("gpt-4.1")` (uses default configuration)
 - Use with Vercel AI SDK: `generateText`, `streamText`, `generateObject`
 
-See exported APIs: [src/index.ts](mdc:src/index.ts)
+See exported APIs: [src/index.ts](mdc:src/index.ts),
+[src/index-v2.ts](mdc:src/index-v2.ts), and [src/index-v4.ts](mdc:src/index-v4.ts).

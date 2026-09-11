@@ -51,7 +51,7 @@ export function convertProviderMetadataToV2(
  * - `tool-approval-request`: V3-only, returns `null`
  * - `tool-call`: removes V3-only `dynamic`
  * - `tool-input-start`: removes V3-only `dynamic`, `title`
- * - `tool-result`: maps `dynamic` → `providerExecuted`, removes `preliminary`
+ * - `tool-result`: marks provider execution, removes `dynamic` and `preliminary`
  * - `source`: casts `providerMetadata`
  * - `response-metadata`: identical structure, passthrough
  * - `text-*`, `reasoning-*`, `tool-input-delta`, `tool-input-end`: casts `providerMetadata`
@@ -213,12 +213,13 @@ export function convertStreamPartToV2(
     case "tool-result":
       return withProviderMetadata(
         {
+          // V3 tool results are provider-executed, independent of dynamic tool classification.
+          providerExecuted: true,
           result: internalPart.result,
           toolCallId: internalPart.toolCallId,
           toolName: internalPart.toolName,
           type: "tool-result" as const,
           ...(internalPart.isError !== undefined && { isError: internalPart.isError }),
-          ...(internalPart.dynamic !== undefined && { providerExecuted: internalPart.dynamic }),
         },
         internalPart.providerMetadata,
       );

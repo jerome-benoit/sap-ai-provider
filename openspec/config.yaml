@@ -14,19 +14,28 @@ context: |
   - Formatting: Prettier + ESLint
 
   ### Key Dependencies
-  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models, zod
-  - Peer: ai (Vercel AI SDK ^5.0.0 || ^6.0.0 || ^7.0.0)
+  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, @ai-sdk/provider-v2 (npm alias for provider v2), @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models, zod
+  - Peer: ai (main package: ^5.0.0 || ^6.0.0 || ^7.0.0; standalone V2: ^5.0.0 || ^6.0.0)
+  - Development: ai 7; ai is not a direct runtime dependency
 
   ### Architecture Patterns
-  - Implements Vercel AI SDK ProviderV3 interface
+  - Two published packages: main package with root (V3 / AI SDK 6), /v2 (V2 / AI SDK 5), /v4 (V4 / AI SDK 7), plus standalone -v2
+  - V2 also supports AI SDK 6 compatibility; both facades share the V3 implementation
+  - Package release versions (4.x), provider specifications (V2/V3/V4), and AI SDK majors (5/6/7) are independent
   - Uses zod schemas for validation
-  - Lazy loading for optional dependencies
+  - Lazy loading of SAP SDK strategies (the SDK packages are runtime dependencies)
   - Strategy Pattern for API abstraction
   - Must work in both Node.js and Edge runtimes
 
   ### Source Structure
-  - src/index.ts - V3 public API exports (main entry)
-  - src/index-v2.ts - V2 public API exports (facade entry)
+  - src/index.ts - V3 public API exports (AI SDK 6 root entry)
+  - src/index-v2.ts - V2 public API exports (AI SDK 5 facade; also AI SDK 6 compatibility)
+  - src/index-v4.ts - V4 public API exports (AI SDK 7 facade)
+  - src/sap-ai-provider-v4.ts - V4 provider factory (shared V3 settings and implementation)
+  - src/sap-ai-language-model-v4.ts - V4 language model (wraps V3)
+  - src/sap-ai-embedding-model-v4.ts - V4 embedding model (wraps V3)
+  - src/sap-ai-adapters-v4-to-v3.ts - V4 prompt normalization
+  - src/sap-ai-adapters-v3-to-v4.ts - V4 result and stream conversion
   - src/sap-ai-provider.ts - V3 provider factory
   - src/sap-ai-provider-v2.ts - V2 provider factory (wraps V3)
   - src/sap-ai-language-model.ts - V3 language model (LanguageModelV3)
@@ -55,6 +64,13 @@ context: |
   - Use Vercel AI SDK standard errors
   - Follow existing patterns in codebase
   - Tests mirror source file structure (*.test.ts)
+
+  ### Build and CI
+  - npm ci installs dependencies and Lefthook hooks; build artifacts require npm run build
+  - Main build emits V3/V2/V4 ESM, CommonJS, declarations, and sourcemaps; check-build verifies all artifacts and declaration routing
+  - build:v2 cleans dist and replaces main outputs with V2-only artifacts; prepare:v2 rewrites manifests and renames artifacts for standalone publishing
+  - PR CI runs on Node.js 24: lint/format, type-check, default/Node/Edge suites, main build/check, standalone V2 build/check
+  - Edge excludes *.node.test.ts; CI has no Node-version or AI SDK-major matrix
 
   ### Validation Command
   npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2

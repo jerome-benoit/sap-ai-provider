@@ -1,8 +1,8 @@
 /**
- * `@jerome-benoit/sap-ai-provider`
+ * `@jerome-benoit/sap-ai-provider` AI SDK 6 (spec V3) root entrypoint.
  *
- * Vercel AI SDK provider for SAP AI Core.
- * Wraps the SAP AI SDK to provide Vercel AI SDK-compatible interfaces.
+ * Exposes the shared V3 implementation for SAP AI Core. Use the `v2` subpath
+ * for AI SDK 5 and the `v4` subpath for AI SDK 7.
  */
 
 /**

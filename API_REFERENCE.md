@@ -4,6 +4,11 @@ Complete API documentation for the SAP AI Provider.
 
 ## Terminology
 
+Unless a section specifies a facade, examples use the root V3 entrypoint with
+AI SDK 6. Use `/v2` for AI SDK 5 (also supported by AI SDK 6 compatibility),
+and `/v4` for AI SDK 7. Package release major 4.x is independent of these
+provider specification versions.
+
 To avoid confusion, this documentation uses the following terminology
 consistently:
 
@@ -24,7 +29,7 @@ consistently:
 
 - [Terminology](#terminology)
 - [Provider Factory Functions](#provider-factory-functions)
-  - [`createSAPAIProvider(options?)`](#createsapaiprovideroptions)
+  - [`createSAPAIProvider(options?)`](#createsapaiprovideroptions-1)
   - [`sapai`](#sapai)
 - [Models](#models)
   - [Supported Models](#supported-models)
@@ -49,13 +54,13 @@ consistently:
   - [SAPAIEmbeddingModelId](#sapaiembeddingmodelid)
 - [Interfaces](#interfaces)
   - [`SAPAIProvider`](#sapaiprovider)
-    - [`provider(modelId, settings?)`](#providermodelid-settings)
-    - [`provider.chat(modelId, settings?)`](#providerchatmodelid-settings)
+    - [`provider(modelId, settings?)`](#providermodelid-settings-1)
+    - [`provider.chat(modelId, settings?)`](#providerchatmodelid-settings-1)
     - [`provider.embedding(modelId, settings?)`](#providerembeddingmodelid-settings)
-    - [`provider.textEmbeddingModel(modelId, settings?)`](#providertextembeddingmodelmodelid-settings)
-    - [`provider.languageModel(modelId, settings?)`](#providerlanguagemodelmodelid-settings)
+    - [`provider.textEmbeddingModel(modelId, settings?)`](#providertextembeddingmodelmodelid-settings-1)
+    - [`provider.languageModel(modelId, settings?)`](#providerlanguagemodelmodelid-settings-1)
     - [`provider.embeddingModel(modelId, settings?)`](#providerembeddingmodelmodelid-settings)
-    - [`provider.imageModel(modelId)`](#providerimagemodelmodelid)
+    - [`provider.imageModel(modelId)`](#providerimagemodelmodelid-1)
     - [`provider.specificationVersion`](#providerspecificationversion)
   - [API Comparison: Orchestration vs Foundation Models](#api-comparison-orchestration-vs-foundation-models)
   - [`SAPAIProviderSettings`](#sapaiprovidersettings)
@@ -247,7 +252,7 @@ This interface extends Vercel AI SDK's `ProviderV2`. It wraps the V3 internal im
 
 **Properties:**
 
-- **Note**: `SAPAIProviderV2` does NOT expose `specificationVersion` as it is a V3-specific property.
+- **Note**: `SAPAIProviderV2` does NOT expose `specificationVersion` because it is not part of `ProviderV2` (V3 and V4 providers expose it).
 
 **Methods:**
 
@@ -300,7 +305,7 @@ textEmbeddingModel(modelId: SAPAIEmbeddingModelId, settings?: SAPAIEmbeddingSett
 
 **Returns:** `SAPAIEmbeddingModelV2` - An embedding model instance implementing `EmbeddingModelV2`.
 
-**Note**: The `SAPAIProviderV2` only exposes `textEmbeddingModel()` for embeddings. It does NOT have `embedding()` or `embeddingModel()` methods, as these are V3-specific.
+**Note**: The `SAPAIProviderV2` only exposes `textEmbeddingModel()` for embeddings. It does NOT have `embedding()` or `embeddingModel()` methods, as these belong to the V3 and V4 provider surfaces.
 
 #### `provider.imageModel(modelId)`
 
@@ -488,7 +493,7 @@ based on the conversation context. The provider handles:
 ### Basic Tool Calling Example
 
 ```typescript
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 import { z } from "zod";
 
@@ -497,32 +502,29 @@ const provider = createSAPAIProvider();
 const result = await generateText({
   model: provider("gpt-4.1"),
   prompt: "What's the weather in Tokyo and 5+3?",
+  stopWhen: stepCountIs(3),
   tools: {
     getWeather: {
       description: "Get weather for a city",
-      parameters: z.object({
+      inputSchema: z.object({
         city: z.string().describe("City name"),
       }),
       execute: async ({ city }) => {
-        // Your implementation
+        // Demonstration data only; this does not call a weather service.
         return { temp: 72, conditions: "sunny" };
       },
     },
     calculator: {
-      description: "Perform calculations",
-      parameters: z.object({
-        expression: z.string().describe("Math expression"),
-      }),
-      execute: async ({ expression }) => {
-        return { result: eval(expression) };
-      },
+      description: "Add two numbers",
+      inputSchema: z.object({ a: z.number(), b: z.number() }),
+      execute: async ({ a, b }) => ({ result: a + b }),
     },
   },
 });
 
 console.log(result.text); // "It's sunny and 72°F in Tokyo. 5+3 equals 8."
-console.log(result.toolCalls); // Array of tool invocations
-console.log(result.toolResults); // Array of tool results
+console.log(result.steps.flatMap((step) => step.toolCalls)); // All tool invocations
+console.log(result.steps.flatMap((step) => step.toolResults)); // All tool results
 ```
 
 ### Model-Specific Tool Limitations
@@ -539,44 +541,35 @@ Consult the official documentation for current tool calling support:
 
 ### Tool Definition Format
 
-Tools are defined using Zod schemas (recommended) or JSON Schema:
+Tools passed to `generateText` or `streamText` use `inputSchema`. Use Zod
+or wrap JSON Schema with the AI SDK's `jsonSchema` helper; raw SAP/OpenAI
+`{ type: "function", function: { parameters: ... } }` definitions belong to
+the provider's model-level `tools` setting, not the AI SDK `tools` map.
 
 ```typescript
+import { jsonSchema, tool } from "ai";
 import { z } from "zod";
 
-// Zod schema (recommended)
-const weatherTool = {
+// Zod schema (recommended); execution is handled by your application.
+const weatherTool = tool({
   description: "Get current weather for a location",
-  parameters: z.object({
+  inputSchema: z.object({
     city: z.string().describe("City name"),
     units: z.enum(["celsius", "fahrenheit"]).optional(),
   }),
-  execute: async ({ city, units }) => {
-    // Implementation
-  },
-};
+});
 
 // JSON Schema (alternative)
-const calculatorTool = {
-  type: "function",
-  function: {
-    name: "calculator",
-    description: "Perform mathematical calculations",
-    parameters: {
-      type: "object",
-      properties: {
-        expression: {
-          type: "string",
-          description: "Math expression to evaluate",
-        },
-      },
-      required: ["expression"],
-    },
-  },
-  execute: async (params) => {
-    // Implementation
-  },
-};
+const calculatorTool = tool({
+  description: "Add two numbers",
+  inputSchema: jsonSchema<{ a: number; b: number }>({
+    type: "object",
+    properties: { a: { type: "number" }, b: { type: "number" } },
+    required: ["a", "b"],
+    additionalProperties: false,
+  }),
+  execute: async ({ a, b }) => ({ result: a + b }),
+});
 ```
 
 ### Parallel Tool Calls
@@ -589,8 +582,10 @@ const result = await generateText({
   model: provider("gpt-4.1"),
   prompt: "What's the weather in Tokyo, London, and Paris?",
   tools: { getWeather },
-  modelParams: {
-    parallel_tool_calls: true, // Enable parallel execution
+  providerOptions: {
+    "sap-ai": {
+      modelParams: { parallel_tool_calls: true },
+    },
   },
 });
 
@@ -602,45 +597,36 @@ when tool execution order matters.
 
 ### Multi-Turn Tool Conversations
 
-The AI SDK automatically handles multi-turn conversations when tools are
-involved:
+The AI SDK executes tools with an `execute` function. Enable subsequent model
+steps with `stopWhen` to let the model consume tool results:
 
 ```typescript
+import { generateText, stepCountIs } from "ai";
+import { z } from "zod";
+
+const operands = z.object({ a: z.number(), b: z.number() });
 const result = await generateText({
   model: provider("gpt-4.1"),
-  messages: [
-    { role: "user", content: "Book a flight to Paris" },
-  ],
+  stopWhen: stepCountIs(3),
+  prompt: "Add 5 and 3, then multiply the result by 7.",
   tools: {
-    searchFlights: {
-      description: "Search for available flights",
-      parameters: z.object({
-        destination: z.string(),
-        date: z.string(),
-      }),
-      execute: async ({ destination, date }) => {
-        return { flights: [...] };
-      },
+    add: {
+      description: "Add two numbers",
+      inputSchema: operands,
+      execute: async ({ a, b }) => a + b,
     },
-    bookFlight: {
-      description: "Book a specific flight",
-      parameters: z.object({
-        flightId: z.string(),
-      }),
-      execute: async ({ flightId }) => {
-        return { confirmation: "ABC123" };
-      },
+    multiply: {
+      description: "Multiply two numbers",
+      inputSchema: operands,
+      execute: async ({ a, b }) => a * b,
     },
   },
 });
 
-// Conversation flow:
-// 1. User: "Book a flight to Paris"
-// 2. Model calls: searchFlights({ destination: "Paris", date: "..." })
-// 3. Model receives: { flights: [...] }
-// 4. Model calls: bookFlight({ flightId: "..." })
-// 5. Model receives: { confirmation: "ABC123" }
-// 6. Model responds: "Your flight is booked. Confirmation: ABC123"
+// The model can request add(5, 3), receive 8, then request multiply(8, 7).
+// stepCountIs(3) permits two tool steps and a final response; it does not
+// guarantee which tools a model will choose.
+console.log(result.text);
 ```
 
 ### Error Handling with Tools
@@ -654,7 +640,7 @@ const result = await generateText({
   tools: {
     getWeather: {
       description: "Get weather",
-      parameters: z.object({ city: z.string() }),
+      inputSchema: z.object({ city: z.string() }),
       execute: async ({ city }) => {
         try {
           const response = await fetch(`https://api.weather.com/${city}`);
@@ -690,7 +676,7 @@ for await (const part of result.textStream) {
   process.stdout.write(part); // Stream text as it's generated
 }
 
-console.log(result.toolCalls); // Available after stream completes
+console.log(await result.toolCalls); // Resolves after stream completes
 ```
 
 ### Advanced: Tool Choice Control
@@ -719,8 +705,8 @@ const result = await generateText({
    throw exceptions
 5. **Tool Naming:** Use camelCase names (e.g., `getWeather`, not `get_weather`)
 6. **Parallel Calls:** Enable only when tool execution order doesn't matter
-7. **Testing:** Test with Gemini to ensure your app works with the 1-tool
-   limitation
+7. **Testing:** Verify tool support and parallel-call behavior for the exact
+   model and deployment you use
 
 ### Related Documentation
 
@@ -855,12 +841,7 @@ Generate embeddings for an array of values.
 **Signature:**
 
 ```typescript
-async doEmbed(options: {
-  values: string[];
-  abortSignal?: AbortSignal;
-}): Promise<{
-  embeddings: number[][];
-}>
+async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result>
 ```
 
 **Parameters:**
@@ -895,14 +876,14 @@ Configuration options for embedding models.
 
 **Properties:**
 
-| Property               | Type                   | Default           | Description                                               |
-| ---------------------- | ---------------------- | ----------------- | --------------------------------------------------------- |
-| `api`                  | `SAPAIApiType`         | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
-| `maxEmbeddingsPerCall` | `number`               | `2048`            | Maximum values per API call                               |
-| `modelVersion`         | `string`               | -                 | Specific version of the model                             |
-| `type`                 | `EmbeddingType`        | `'text'`          | Embedding type                                            |
-| `modelParams`          | `EmbeddingModelParams` | -                 | Model-specific parameters                                 |
-| `masking`              | `MaskingModule`        | -                 | Data masking configuration (DPI) - Orchestration API only |
+| Property               | Type                                                         | Default           | Description                                               |
+| ---------------------- | ------------------------------------------------------------ | ----------------- | --------------------------------------------------------- |
+| `api`                  | `SAPAIApiType`                                               | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
+| `maxEmbeddingsPerCall` | `number`                                                     | `2048`            | Maximum values per API call                               |
+| `modelVersion`         | `string`                                                     | -                 | Specific version of the model                             |
+| `type`                 | `"document" \| "query" \| "text"`                            | `'text'`          | Embedding type                                            |
+| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>` | -                 | Model-specific parameters                                 |
+| `masking`              | `MaskingModule`                                              | -                 | Data masking configuration (DPI) - Orchestration API only |
 
 **Embedding response metadata (`doEmbed` result):**
 
@@ -943,7 +924,7 @@ Main provider interface extending Vercel AI SDK's `ProviderV3`.
 
 **Properties:**
 
-- None (function-based interface)
+- `specificationVersion`: `"v3"` on the root provider
 
 **Methods:**
 
@@ -1223,26 +1204,30 @@ the right API for your use case.
 
 #### Feature Matrix
 
-| Feature                         | Orchestration | Foundation Models | Notes                                                 |
-| ------------------------------- | :-----------: | :---------------: | ----------------------------------------------------- |
-| **Chat Completions**            |      ✅       |        ✅         | Both APIs support chat completions                    |
-| **Streaming**                   |      ✅       |        ✅         | Both APIs support streaming responses                 |
-| **Tool Calling**                |      ✅       |        ✅         | Both APIs support tool calling                        |
-| **Embeddings**                  |      ✅       |        ✅         | Both APIs support embeddings                          |
-| **Structured Output (JSON)**    |      ✅       |        ✅         | Both APIs support JSON mode and schemas               |
-| **Data Masking (DPI)**          |      ✅       |        ❌         | Anonymize/pseudonymize PII via SAP DPI                |
-| **Content Filtering**           |      ✅       |        ❌         | Azure Content Safety, Llama Guard filters             |
-| **Document Grounding (RAG)**    |      ✅       |        ❌         | SAP AI Core vector store integration                  |
-| **Translation**                 |      ✅       |        ❌         | SAP Document Translation service                      |
-| **Template Escaping**           |      ✅       |        ❌         | `escapeTemplatePlaceholders` for SAP template safety  |
-| **SAP-format Tool Definitions** |      ✅       |        ❌         | `tools` property in settings                          |
-| **Azure On Your Data**          |      ❌       |        ✅         | `dataSources` for Azure AI Search, Cosmos DB          |
-| **Log Probabilities**           |      ❌       |        ✅         | `logprobs`, `top_logprobs` parameters                 |
-| **Deterministic Sampling**      |      ❌       |        ✅         | `seed` parameter for reproducible outputs             |
-| **Stop Sequences**              |      ❌       |        ✅         | `stop` parameter to control generation                |
-| **Token Bias**                  |      ❌       |        ✅         | `logit_bias` to adjust token probabilities            |
-| **User Tracking**               |      ❌       |        ✅         | `user` parameter for abuse monitoring                 |
-| **Tool Choice Control**         |      ✅       |        ✅         | `toolChoice` for `required`, `none`, or specific tool |
+| Feature                         |  Orchestration  | Foundation Models | Notes                                                 |
+| ------------------------------- | :-------------: | :---------------: | ----------------------------------------------------- |
+| **Chat Completions**            |       ✅        |        ✅         | Both APIs support chat completions                    |
+| **Streaming**                   |       ✅        |        ✅         | Both APIs support streaming responses                 |
+| **Tool Calling**                |       ✅        |        ✅         | Both APIs support tool calling                        |
+| **Embeddings**                  |       ✅        |        ✅         | Both APIs support embeddings                          |
+| **Structured Output (JSON)**    |       ✅        |        ✅         | Both APIs support JSON mode and schemas               |
+| **Data Masking (DPI)**          |       ✅        |        ❌         | Anonymize/pseudonymize PII via SAP DPI                |
+| **Content Filtering**           |       ✅        |        ❌         | Azure Content Safety, Llama Guard filters             |
+| **Document Grounding (RAG)**    |       ✅        |        ❌         | SAP AI Core vector store integration                  |
+| **Translation**                 |       ✅        |        ❌         | SAP Document Translation service                      |
+| **Template Escaping**           |       ✅        |        ❌         | `escapeTemplatePlaceholders` for SAP template safety  |
+| **SAP-format Tool Definitions** |       ✅        |        ❌         | `tools` property in settings                          |
+| **Azure On Your Data**          |       ❌        |        ✅         | `dataSources` for Azure AI Search, Cosmos DB          |
+| **Log Probabilities**           | Model-dependent |        ✅         | `logprobs`, `top_logprobs` parameters                 |
+| **Deterministic Sampling**      | Model-dependent |        ✅         | `seed` parameter for reproducible outputs             |
+| **Stop Sequences**              | Model-dependent |        ✅         | `stop` parameter to control generation                |
+| **Token Bias**                  | Model-dependent |        ✅         | `logit_bias` to adjust token probabilities            |
+| **User Tracking**               | Model-dependent |        ✅         | `user` parameter for abuse monitoring                 |
+| **Tool Choice Control**         |       ✅        |        ✅         | `toolChoice` for `required`, `none`, or specific tool |
+
+The matrix describes provider support, not a guarantee for every model. Both
+strategies forward `seed` and stop sequences; additional orchestration
+`modelParams` are backend/model-dependent.
 
 #### When to Use Each API
 
@@ -1301,7 +1286,7 @@ Model-specific configuration options.
 | `modelVersion`               | `string`                      | -       | Specific model version                                              |
 | `includeReasoning`           | `boolean`                     | `false` | Include reasoning parts in SAP prompt conversion                    |
 | `escapeTemplatePlaceholders` | `boolean`                     | `true`  | Escape template delimiters to prevent conflicts                     |
-| `modelParams`                | `ModelParams`                 | -       | Model generation parameters                                         |
+| `modelParams`                | `CommonModelParams`           | -       | Model generation parameters                                         |
 | `masking`                    | `MaskingModule`               | -       | Data masking configuration (DPI)                                    |
 | `filtering`                  | `FilteringModule`             | -       | Content filtering configuration                                     |
 | `grounding`                  | `GroundingModule`             | -       | Document grounding configuration                                    |
@@ -1381,7 +1366,10 @@ const fmSettings: FoundationModelsModelSettings = {
 
 ### `ModelParams`
 
-Fine-grained model behavior parameters.
+Fine-grained model behavior parameters. The exported types are
+`CommonModelParams`, `OrchestrationModelParams`, and `FoundationModelsModelParams`;
+`ModelParams` is a descriptive heading, not an exported type. Omitted values
+are left to the backend rather than filled with provider defaults.
 
 > **Note:** Many parameters are model/provider-specific. Some models may ignore
 > or only partially support certain options (e.g., Gemini tool calls
@@ -1390,21 +1378,23 @@ Fine-grained model behavior parameters.
 
 **Properties:**
 
-| Property              | Type      | Range   | Default        | Description                                            |
-| --------------------- | --------- | ------- | -------------- | ------------------------------------------------------ |
-| `maxTokens`           | `number`  | 1-4096+ | `1000`         | Maximum tokens to generate                             |
-| `temperature`         | `number`  | 0-2     | Model-specific | Sampling temperature                                   |
-| `topP`                | `number`  | 0-1     | `1`            | Nucleus sampling parameter                             |
-| `frequencyPenalty`    | `number`  | -2 to 2 | `0`            | Frequency penalty                                      |
-| `presencePenalty`     | `number`  | -2 to 2 | `0`            | Presence penalty                                       |
-| `n`                   | `number`  | 1-10    | `1`            | Number of completions (not supported by Amazon models) |
-| `parallel_tool_calls` | `boolean` | -       | Model-specific | Enable parallel tool execution (OpenAI models)         |
+| Property              | Type      | Range                         | Default        | Description                                            |
+| --------------------- | --------- | ----------------------------- | -------------- | ------------------------------------------------------ |
+| `maxTokens`           | `number`  | Positive integer; model limit | Model-specific | Maximum tokens to generate                             |
+| `temperature`         | `number`  | 0-2                           | Model-specific | Sampling temperature                                   |
+| `topP`                | `number`  | 0-1                           | Model-specific | Nucleus sampling parameter                             |
+| `frequencyPenalty`    | `number`  | -2 to 2                       | Model-specific | Frequency penalty                                      |
+| `presencePenalty`     | `number`  | -2 to 2                       | Model-specific | Presence penalty                                       |
+| `n`                   | `number`  | Positive integer; model limit | Model-specific | Number of completions (not supported by Amazon models) |
+| `parallel_tool_calls` | `boolean` | -                             | Model-specific | Enable parallel tool execution (OpenAI models)         |
 
 #### Foundation Models-Only Parameters
 
-The following parameters are only available when using the Foundation Models API
-(`api: "foundation-models"`). They provide advanced control over model behavior
-not exposed through the Orchestration API.
+These parameters have explicit types in `FoundationModelsModelParams` for
+Azure OpenAI-compatible deployments. They are not all exclusive to that API:
+`seed` and stop sequences are mapped by both strategies, and additional
+orchestration model parameters are passed through when provided. Backend/model
+support determines which values can be used.
 
 | Property       | Type                     | Default | Description                                                   |
 | -------------- | ------------------------ | ------- | ------------------------------------------------------------- |
@@ -1444,8 +1434,9 @@ console.log("Response:", result.text);
 ```
 
 > **Note:** Using these parameters with Orchestration API (`api: "orchestration"`)
-> will have no effect as they are passed through but ignored by the Orchestration
-> service.
+> is backend/model-dependent: additional model parameters are passed through,
+> not universally rejected or ignored. `seed` and stop sequences are also mapped
+> by the shared strategy for both APIs. Verify support on the selected model.
 
 ---
 
@@ -1495,7 +1486,8 @@ const result = await streamText({
 
 ### `SAPAIServiceKey`
 
-SAP BTP service key structure.
+SAP BTP service key JSON structure (descriptive name, not an exported
+TypeScript type).
 
 > **Note:** In v2.0+, the service key is provided via the `AICORE_SERVICE_KEY`
 > environment variable (as a JSON string), not as a parameter to
@@ -1521,7 +1513,9 @@ SAP BTP service key structure.
 
 ### `MaskingModuleConfig`
 
-Data masking configuration using SAP Data Privacy Integration (DPI).
+Data masking configuration using SAP Data Privacy Integration (DPI). The
+exported TypeScript type is `MaskingModule`; `MaskingModuleConfig` is a
+descriptive heading, not an exported type.
 
 **Properties:**
 
@@ -1533,7 +1527,9 @@ Data masking configuration using SAP Data Privacy Integration (DPI).
 
 ### `DpiConfig`
 
-SAP Data Privacy Integration masking configuration.
+SAP Data Privacy Integration masking configuration. This is a descriptive
+heading, not an exported type; use `MaskingModule["masking_providers"][number]`
+or the `buildDpiMaskingProvider` builder to type configuration.
 
 **Properties:**
 
@@ -1548,7 +1544,9 @@ SAP Data Privacy Integration masking configuration.
 **Example:**
 
 ```typescript
-const masking: MaskingModuleConfig = {
+import type { MaskingModule } from "@jerome-benoit/sap-ai-provider";
+
+const masking: MaskingModule = {
   masking_providers: [
     {
       type: "sap_data_privacy_integration",
@@ -2357,7 +2355,9 @@ export interface FoundationModelsDefaultSettings {
 
 #### `SAPAIDefaultSettingsConfig`
 
-Union type for provider `defaultSettings`:
+Union type for grouping an API selector and its settings. Pass `config.api`
+as the provider `api` and `config.settings` as `defaultSettings`, not the wrapper
+object itself:
 
 ```typescript
 export type SAPAIDefaultSettingsConfig = OrchestrationDefaultSettings | FoundationModelsDefaultSettings;
@@ -2388,7 +2388,9 @@ const provider = createSAPAIProvider({
 
 ### `DpiEntities`
 
-Standard entity types recognized by SAP DPI.
+Standard entity types recognized by SAP DPI. `DpiEntities` is an upstream SAP
+schema type, not a type re-exported by this provider. Use the
+`buildDpiMaskingProvider` builder for checked entity values.
 
 **Available Types:**
 
@@ -2436,21 +2438,7 @@ Generate a single completion (non-streaming).
 ```typescript
 async doGenerate(
   options: LanguageModelV3CallOptions
-): Promise<{
-  content: LanguageModelV3Content[];
-  finishReason: LanguageModelV3FinishReason;
-  usage: LanguageModelV3Usage;
-  providerMetadata: Record<string, Record<string, unknown>>;
-  request: { body: unknown };
-  response: {
-    body: unknown;
-    headers: Record<string, string> | undefined;
-    id: string;
-    modelId: string;
-    timestamp: Date;
-  };
-  warnings: LanguageModelV3CallWarning[];
-}>
+): Promise<LanguageModelV3GenerateResult>
 ```
 
 **Example:**
@@ -2470,11 +2458,7 @@ Generate a streaming completion.
 ```typescript
 async doStream(
   options: LanguageModelV3CallOptions
-): Promise<{
-  stream: ReadableStream<LanguageModelV3StreamPart>;
-  request: { body: unknown };
-  response: { headers: Record<string, string> | undefined };
-}>
+): Promise<LanguageModelV3StreamResult>
 ```
 
 **Stream Events:**
@@ -2798,9 +2782,10 @@ Complete reference for status codes returned by SAP AI Core:
 
 #### Error Handling Strategy
 
-The provider automatically handles retryable errors (408, 409, 429, 5xx) with
-exponential backoff. For non-retryable errors, your application should handle
-them appropriately.
+The provider marks transient HTTP errors (408, 409, 429, 5xx) as retryable.
+High-level AI SDK calls perform retries with exponential backoff, bounded by
+`maxRetries`; direct `doGenerate`, `doStream`, and `doEmbed` calls do not add a
+retry loop. Errors after streaming has started require application handling.
 
 **See also:** [Troubleshooting Guide](./TROUBLESHOOTING.md) for detailed solutions
 to each error type.
@@ -3571,8 +3556,10 @@ For the current package version, see [package.json](./package.json).
 
 ### Dependencies
 
-- **Vercel AI SDK:** v5.0+, including v7 through the `/v4` entrypoint (`ai` package)
-- **SAP AI SDK:** ^2.8.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
+- **Vercel AI SDK peer dependency:** `ai` supports majors 5, 6, and 7 through
+  their matching entrypoints. It is not a direct runtime dependency. The
+  repository uses AI SDK 7 as a development dependency.
+- **SAP AI SDK:** ^2.15.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
 - **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

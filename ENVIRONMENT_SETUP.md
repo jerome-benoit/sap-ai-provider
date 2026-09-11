@@ -8,10 +8,11 @@ the SAP AI Provider.
 > configuration options, see
 > [API Reference - SAPAIProviderSettings](./API_REFERENCE.md#sapaiprovidersettings).
 >
-> **Note:** This environment setup applies to both the V3 package
-> (`@jerome-benoit/sap-ai-provider`) and the V2 package
-> (`@jerome-benoit/sap-ai-provider-v2`). Authentication configuration is
-> identical.
+> **Note:** Authentication is identical for all three main-package entrypoints
+> (root V3 for AI SDK 6, `/v2` for AI SDK 5 with AI SDK 6 compatibility,
+> `/v4` for AI SDK 7) and the standalone `@jerome-benoit/sap-ai-provider-v2`
+> package. Examples below use the AI SDK 6 root; select the matching import
+> from [Installation](./README.md#installation).
 
 ## Table of Contents
 
@@ -98,16 +99,16 @@ automatic** via `VCAP_SERVICES`:
 ```typescript
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
-// No environment variables needed - uses VCAP_SERVICES binding
+// No manually configured service key needed - uses VCAP_SERVICES binding
 const provider = createSAPAIProvider();
 const model = provider("gpt-4.1");
 ```
 
 **Authentication priority:** The SAP AI SDK checks credentials in this order:
 
-1. `AICORE_SERVICE_KEY` environment variable
-2. `VCAP_SERVICES` (SAP BTP service binding)
-3. Custom destination configuration
+1. Explicit `destination` configuration, when provided
+2. `AICORE_SERVICE_KEY` environment variable
+3. `VCAP_SERVICES` (SAP BTP service binding)
 
 ---
 
@@ -169,7 +170,8 @@ const provider = createSAPAIProvider({
 
 **Solutions:**
 
-1. Verify `AICORE_SERVICE_KEY` is set: `echo $AICORE_SERVICE_KEY`
+1. Check presence without printing credentials:
+   `node -e 'console.log("Service key loaded:", !!process.env.AICORE_SERVICE_KEY)'`
 2. Validate JSON syntax (use a JSON validator)
 3. Check service key hasn't expired in SAP BTP Cockpit
 4. Ensure `import "dotenv/config";` is at the top of your entry file

@@ -285,22 +285,22 @@ graph TB
 
 ```text
 src/
-│   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
-├── index.ts                                        # V3 public API exports
+│   # V3 Implementation (AI SDK 6; LanguageModelV3/EmbeddingModelV3)
+├── index.ts                                        # V3 public API exports (AI SDK 6)
 ├── sap-ai-provider.ts                              # V3 provider factory
 ├── sap-ai-language-model.ts                        # V3 language model (API-agnostic)
 ├── sap-ai-embedding-model.ts                       # V3 embedding model (API-agnostic)
 │
-│   # V4 Facade Layer (LanguageModelV4/EmbeddingModelV4)
-├── index-v4.ts                                     # V4 public API exports
+│   # V4 Facade Layer (AI SDK 7; LanguageModelV4/EmbeddingModelV4)
+├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
 ├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
 ├── sap-ai-language-model-v4.ts                     # V4 language model facade
 ├── sap-ai-embedding-model-v4.ts                    # V4 embedding model facade
 ├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
 ├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
 │
-│   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
-├── index-v2.ts                                     # V2 public API exports (facade)
+│   # V2 Facade Layer (AI SDK 5; AI SDK 6 compatibility)
+├── index-v2.ts                                     # V2 public API exports (AI SDK 5 facade)
 ├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
 ├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
 ├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
@@ -439,7 +439,7 @@ sequenceDiagram
             Provider->>Provider: Use module_results.llm
         end
 
-        Provider-->>SDK: {<br/>  content: [...],<br/>  usage: {...},<br/>  finishReason: "stop",<br/>  warnings: []<br/>}
+        Provider-->>SDK: {<br/>  content: [...],<br/>  usage: {...},<br/>  finishReason: {unified: "stop", raw: "stop"},<br/>  warnings: []<br/>}
     end
 
     rect rgb(230, 255, 240)
@@ -488,7 +488,7 @@ sequenceDiagram
             alt First Chunk
                 Provider-->>SDK: {type: "stream-start"}
                 Provider-->>SDK: {type: "response-metadata"}
-                Provider-->>SDK: {type: "text-start"}
+                Provider-->>SDK: {type: "text-start", id: "0"}
             end
 
             Provider-->>SDK: {<br/>  type: "text-delta",<br/>  id: "0",<br/>  delta: "token"<br/>}
@@ -501,8 +501,8 @@ sequenceDiagram
         Note over Model,App: Stream Completion
         Model->>SAP: Generation complete
         SAP-->>Provider: data: {<br/>  final_result: {<br/>    choices: [{<br/>      finish_reason: "stop"<br/>    }],<br/>    usage: {...}<br/>  }<br/>}
-        Provider-->>SDK: {type: "text-end"}
-        Provider-->>SDK: {<br/>  type: "finish",<br/>  finishReason: "stop",<br/>  usage: {...}<br/>}
+        Provider-->>SDK: {type: "text-end", id: "0"}
+        Provider-->>SDK: {<br/>  type: "finish",<br/>  finishReason: {unified: "stop", raw: "stop"},<br/>  usage: {...}<br/>}
         SDK-->>App: Stream end
     end
 ```
@@ -995,7 +995,8 @@ Key types for model configuration:
 - **`SAPAIModelId`**: String union of supported models (e.g., "gpt-4.1",
   "anthropic--claude-4.5-sonnet", "gemini-2.5-pro") with flexibility for custom models
 - **`SAPAISettings`**: Interface with `modelVersion`, `modelParams` (maxTokens,
-  temperature, topP, etc.), `safePrompt`, and `structuredOutputs` options
+  temperature, topP, etc.), `responseFormat`, `includeReasoning`, and
+  API-specific masking, filtering, grounding, and translation options
 
 See `src/sap-ai-settings.ts` for complete type definitions.
 
@@ -1337,11 +1338,13 @@ const result = await generateText({
 The validation layer ensures features are compatible with the resolved API:
 
 - **Orchestration-only features**: masking, filtering, grounding, templating, translation
-- **Foundation Models-only features**: logprobs, seed, logit_bias, user, dataSources
-- **Common features**: temperature, maxTokens, topP, tools, streaming
+- **Foundation Models-only feature**: `dataSources`
+- **Common features**: temperature, maxTokens, topP, seed, stop sequences, tools, streaming
 
 Incompatible feature combinations throw `UnsupportedFeatureError` with helpful
-suggestions for which API to use instead.
+suggestions for which API to use instead. Additional `modelParams` such as
+`logprobs` and `logit_bias` are passed through; their support is determined by
+the SAP backend/model rather than these API-feature checks.
 
 ## Performance Considerations
 
@@ -1390,12 +1393,12 @@ This repository publishes **two npm packages** from a single codebase. The main
 package exposes three versioned entrypoints; the standalone V2 package preserves
 the existing package name for consumers that cannot use subpath exports.
 
-| Package export                      | Interface                              | Target users                    |
-| ----------------------------------- | -------------------------------------- | ------------------------------- |
-| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                        |
-| `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5                        |
-| `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                        |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Standalone V2 package consumers |
+| Package export                      | Interface                              | Target users                     |
+| ----------------------------------- | -------------------------------------- | -------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
+| `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
 
 ### V4 Facade Layer
 
@@ -1407,7 +1410,7 @@ equivalent is rejected explicitly rather than silently discarded.
 
 ```text
 src/
-├── index-v4.ts                    # V4 public API exports
+├── index-v4.ts                    # V4 public API exports (AI SDK 7 facade)
 ├── sap-ai-provider-v4.ts          # V4 provider factory
 ├── sap-ai-language-model-v4.ts    # V4 language model facade
 ├── sap-ai-embedding-model-v4.ts   # V4 embedding model facade
@@ -1468,7 +1471,7 @@ graph TB
 
 ```text
 src/
-├── index-v2.ts                    # V2 public API exports
+├── index-v2.ts                    # V2 public API exports (AI SDK 5 facade)
 ├── sap-ai-provider-v2.ts          # V2 provider factory (facade)
 ├── sap-ai-language-model-v2.ts    # V2 language model (delegates to V3)
 ├── sap-ai-embedding-model-v2.ts   # V2 embedding model (delegates to V3)
@@ -1479,10 +1482,12 @@ src/
 
 The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 and V2 interfaces:
 
-- **Finish Reason**: `{ type, unified }` object → string (`"stop"`, `"tool-calls"`, etc.)
+- **Finish Reason**: `{ unified, raw? }` object → string (`"stop"`, `"tool-calls"`, etc.)
 - **Usage**: Nested structure with `inputTokens.total` → flat `{ inputTokens, outputTokens, totalTokens }`
-- **Stream Parts**: V3 structured blocks → V2 simple deltas
-- **Warnings**: V3 `{ feature, ... }` format → V2 `{ type, ... }` format
+- **Stream Parts**: Preserves text/reasoning block lifecycle and deltas; converts
+  finish/warning payloads and drops unsupported V3-only content
+- **Warnings**: V3 `unsupported`/`compatibility` warnings → V2 `other` warnings
+  with descriptive messages
 
 ### Build Process
 
@@ -1493,13 +1498,14 @@ The builds are **sequential** to the same `dist/` directory:
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
 
-# V2 build (secondary package)
-npm run build:v2           # tsup.config.v2.ts → dist/
-npm run prepare:v2         # Renames files, updates package.json
-npm publish                # @jerome-benoit/sap-ai-provider-v2
+# V2 publication (run from a separate clean checkout)
+AI_SDK_VERSION=v2 npm publish # prepublishOnly builds, checks, and prepares V2
 ```
 
-**Why sequential?** This avoids managing different output directories and simplifies the CI/CD pipeline. Each build completely replaces the `dist/` contents.
+**Why sequential?** Both builds use `clean: true` and replace `dist/`. The
+standalone publication also rewrites `package.json` and `package-lock.json`, so
+run it in a separate clean checkout. Do not run `prepare:v2` manually before
+`npm publish`: the publication lifecycle performs preparation after building.
 
 ### Key Design Decisions
 

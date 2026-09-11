@@ -199,7 +199,8 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 **Solutions:**
 
-1. Provider has automatic retry with exponential backoff
+1. High-level AI SDK calls retry eligible errors with exponential backoff,
+   bounded by `maxRetries`; direct provider calls do not retry automatically
 2. Use `streamText` instead of `generateText` for long outputs
 3. Batch requests, cache responses, reduce `maxTokens`
 
@@ -207,7 +208,8 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 **Solutions:**
 
-1. Provider automatically retries with exponential backoff
+1. High-level AI SDK calls retry eligible errors with exponential backoff
+   before a stream starts; handle failures after streaming begins in your app
 2. Check SAP AI Core service status
 3. Reduce request complexity: simplify prompts, remove optional features
 
@@ -440,7 +442,7 @@ complete error details.
    ```typescript
    const weatherTool = tool({
      description: "Get current weather for a specific location",
-     parameters: z.object({
+     inputSchema: z.object({
        location: z.string().describe("City name, e.g., 'Tokyo'"),
      }),
    });
@@ -641,9 +643,10 @@ configuration.
 
 **Symptoms:** Calls to `provider.embedding()` or `provider.embeddingModel()` fail with V2.
 
-**Cause:** V2 only exposes `textEmbeddingModel()` per LanguageModelV2 spec.
+**Cause:** V2 only exposes `textEmbeddingModel()` per the `ProviderV2` spec.
 
-**Solution:** Use `provider.textEmbeddingModel()`, or switch to the V3 package.
+**Solution:** Use `provider.textEmbeddingModel()`, or use the V3 root with
+AI SDK 6 / V4 subpath with AI SDK 7.
 
 **Reference:** [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)
 
@@ -651,9 +654,13 @@ configuration.
 
 **Symptoms:** TypeScript errors related to `LanguageModelV2` or `EmbeddingModelV2` types when using `@jerome-benoit/sap-ai-provider-v2`.
 
-**Cause:** The V2 package is designed for AI SDK 5.0+ (6.0+ recommended).
+**Cause:** The selected provider specification does not match the installed
+AI SDK major. V2 targets AI SDK 5 and is also supported by AI SDK 6 through its
+V2 compatibility layer, but not by AI SDK 7.
 
-**Solution:** Ensure your project is using AI SDK version 5.0+ (6.0+ recommended).
+**Solution:** Use `/v2` or the standalone `-v2` package with AI SDK 5; use the
+root V3 entrypoint (or V2 compatibility) with AI SDK 6; use `/v4` with AI SDK 7.
+See [Installation](./README.md#installation) for matching install commands.
 
 **Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for V2/V3 compatibility.
 

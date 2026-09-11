@@ -42,7 +42,7 @@ Complete OAuth2 authentication → API call → Tool calling flow.
 
 - SAP AI Core instance + service key (from BTP cockpit) - see
   [Environment Setup](./ENVIRONMENT_SETUP.md) for credential configuration
-- `curl` and `base64` utilities
+- Bash, `curl`, `base64`, and `jq` utilities
 
 ---
 
@@ -88,19 +88,9 @@ echo "Auth URL: $AUTH_URL"
 echo "API URL: $AI_API_URL"
 ```
 
-**Alternative: Extract using grep/sed (no jq required):**
-
-```bash
-# Extract values without jq (less robust but works in minimal environments)
-CLIENT_ID=$(echo "$AICORE_SERVICE_KEY" | grep -o '"clientid":"[^"]*' | cut -d'"' -f4)
-CLIENT_SECRET=$(echo "$AICORE_SERVICE_KEY" | grep -o '"clientsecret":"[^"]*' | cut -d'"' -f4)
-AUTH_URL=$(echo "$AICORE_SERVICE_KEY" | grep -o '"url":"[^"]*' | cut -d'"' -f4)
-AI_API_URL=$(echo "$AICORE_SERVICE_KEY" | grep -o '"AI_API_URL":"[^"]*' | cut -d'"' -f4)
-```
-
-> **Tip:** The `jq` approach is more reliable, especially when credentials
-> contain special characters like `+`, `=`, or `|`. Install jq via
-> `apt install jq`, `brew install jq`, or your package manager.
+Use a JSON parser rather than extracting credentials with regular expressions:
+service keys may contain whitespace and JSON-escaped characters. Install `jq`
+via `apt install jq`, `brew install jq`, or your package manager.
 
 ### Step 2: Get OAuth Token
 
@@ -126,7 +116,7 @@ TOKEN_RESPONSE=$(curl -s --request POST \
 ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
 
 # Verify token was obtained
-if [ -z "$ACCESS_TOKEN" ]; then
+if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
   echo "❌ Failed to get OAuth token"
   echo "Response: $TOKEN_RESPONSE"
   exit 1
@@ -135,12 +125,14 @@ fi
 echo "✅ OAuth token obtained"
 ```
 
-**Key Points:** Tokens expire after 12h.
+**Key Points:** Use the token response's `expires_in` field (seconds) rather
+than assuming a fixed token lifetime.
 
 ### Step 3: Call SAP AI Core API
 
 **Endpoint:**
-`https://{AI_API_URL}/v2/inference/deployments/{DEPLOYMENT_ID}/v2/completion`
+`{AI_API_URL}/v2/inference/deployments/{DEPLOYMENT_ID}/v2/completion`
+(`AI_API_URL` already includes `https://`)
 
 > **Note:** The `/v2` appears **twice** (base path + completion endpoint).
 
@@ -250,7 +242,7 @@ RESOURCE_GROUP="default"
 
 echo "🔐 Getting OAuth token..."
 
-CREDENTIALS=$(printf '%s:%s' "$CLIENT_ID" "$CLIENT_SECRET" | base64)
+CREDENTIALS=$(printf '%s:%s' "$CLIENT_ID" "$CLIENT_SECRET" | base64 | tr -d '\n')
 
 TOKEN_RESPONSE=$(curl -s --request POST \
   --url "${AUTH_URL}/oauth/token" \
@@ -258,9 +250,9 @@ TOKEN_RESPONSE=$(curl -s --request POST \
   --header "Content-Type: application/x-www-form-urlencoded" \
   --data "grant_type=client_credentials")
 
-ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
 
-if [ -z "$ACCESS_TOKEN" ]; then
+if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
   echo "❌ Failed to get OAuth token"
   exit 1
 fi
@@ -448,7 +440,8 @@ like `logprobs`, `seed`, and `logit_bias`. Use a different endpoint path.
 ${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions
 ```
 
-Note: Replace `completion` (Orchestration) with `chat/completions` (Foundation Models).
+Note: Replace the deployment-relative `/v2/completion` path (Orchestration)
+with `/chat/completions` (Foundation Models); keep the base `/v2/inference` path.
 
 ### Basic Request
 

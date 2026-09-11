@@ -1,11 +1,10 @@
 /**
- * `@jerome-benoit/sap-ai-provider-v2`
+ * `@jerome-benoit/sap-ai-provider/v2` AI SDK 5 (spec V2) entrypoint.
  *
- * Vercel AI SDK V2 provider for SAP AI Core.
- *
- * This package provides LanguageModelV2 and EmbeddingModelV2 interfaces
- * for compatibility with Vercel AI SDK. Internally uses the provider's
- * implementation with automatic format transformation to V2.
+ * Exposes the V2 facades (`LanguageModelV2` / `EmbeddingModelV2` /
+ * `ProviderV2`) over the shared V3 core. Also available from the standalone
+ * `@jerome-benoit/sap-ai-provider-v2` package. AI SDK 6 can consume these V2
+ * interfaces through its compatibility layer; use `v4` with AI SDK 7.
  * @see {@link https://sdk.vercel.ai/} Vercel AI SDK documentation
  */
 

@@ -4,31 +4,38 @@
 
 ## Choosing Between V3 and V2 Packages
 
-This library offers two distinct packages to support different integration
-needs with the Vercel AI SDK:
+This library publishes two npm packages. The main package exposes three
+entrypoints; choose the provider specification that matches your AI SDK major.
+Package release numbers (such as 4.x) are independent of provider specification
+versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
 
 - **`@jerome-benoit/sap-ai-provider` (V3 Package)**:
-  - **When to Use**: This is the default and recommended package for all new
-    projects and for existing projects that can upgrade to Vercel AI SDK 5.0+
-    (which supports `LanguageModelV3`/`EmbeddingModelV3` interfaces).
-    It provides access to the latest AI SDK features, including enhanced
-    streaming capabilities, improved type safety, and new token usage
-    metadata.
+  - **When to Use**: Use the root entrypoint with Vercel AI SDK 6, which
+    supports `LanguageModelV3`/`EmbeddingModelV3` interfaces. AI SDK 5 cannot
+    consume V3 models; AI SDK 7 integrations must use the V4 subpath below.
   - **Key Features**: Implements Vercel AI SDK `LanguageModelV3` and `EmbeddingModelV3` interfaces.
 
 - **`@jerome-benoit/sap-ai-provider-v2` (V2 Facade Package)**:
   - **When to Use**: Use this package if your project requires
     `LanguageModelV2`/`EmbeddingModelV2` interfaces (e.g., for libraries,
     frameworks, or tools that haven't migrated to V3 interfaces yet).
-    It works with Vercel AI SDK 5.0+ (6.0+ recommended) but exposes V2-compatible interfaces.
+    It targets Vercel AI SDK 5 and is also supported by AI SDK 6 through its
+    V2 compatibility layer. The same facade is available from
+    `@jerome-benoit/sap-ai-provider/v2`.
     It acts as a facade, wrapping the V3 implementation to provide a V2-compatible
     API surface.
   - **Key Features**: Implements Vercel AI SDK `LanguageModelV2` and `EmbeddingModelV2` interfaces.
 
+- **`@jerome-benoit/sap-ai-provider/v4` (V4 Facade)**:
+  - **When to Use**: Use this main-package subpath with Vercel AI SDK 7.
+  - **Key Features**: Exposes `LanguageModelV4` and `EmbeddingModelV4` over
+    the shared V3 core. See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7)
+    for reasoning options and file normalization.
+
 ### Migrating from V2 to V3 (`@jerome-benoit/sap-ai-provider-v2` → `@jerome-benoit/sap-ai-provider`)
 
-If you're upgrading your Vercel AI SDK version to 5.0+ and want to use the
-latest features of this provider, follow these steps:
+If you are upgrading to Vercel AI SDK 6 and want to use the native V3
+interfaces, install `ai@^6` and follow these steps:
 
 1. **Change Package Import**:
 
@@ -46,10 +53,10 @@ latest features of this provider, follow these steps:
 
    ```typescript
    // Before (V2)
-   import type { LanguageModelV2 } from "@ai-sdk/provider"; // Vercel AI SDK V2 type
+   import type { LanguageModelV2 } from "@ai-sdk/provider"; // Provider spec V2 (AI SDK 5)
    const model: LanguageModelV2 = createSAPAIProvider()("gpt-4.1");
    // After (V3)
-   import type { LanguageModelV3 } from "@ai-sdk/provider"; // Vercel AI SDK V3 type
+   import type { LanguageModelV3 } from "@ai-sdk/provider"; // Provider spec V3 (AI SDK 6)
    const model: LanguageModelV3 = createSAPAIProvider()("gpt-4.1");
    ```
 
@@ -73,7 +80,7 @@ If you need to downgrade your Vercel AI SDK version or require strict
 
 2. **Provider Method Differences**: The V2 package's provider
    (`@jerome-benoit/sap-ai-provider-v2`) only exposes the `textEmbeddingModel()`
-   method, aligning with the `EmbeddingModelV2` specification.
+   method, aligning with the `ProviderV2` specification.
    The `embedding()` method is not available.
 
    ```typescript
@@ -85,7 +92,9 @@ If you need to downgrade your Vercel AI SDK version or require strict
 
 ## Version 3.x to 4.x (Breaking Changes)
 
-**Version 4.0 migrates from LanguageModelV2 to LanguageModelV3 specification.**
+**Package version 4.0 migrates the root entrypoint from LanguageModelV2 to
+LanguageModelV3 (AI SDK 6).** The direct provider result examples below are
+not the high-level `generateText`/`streamText` result format.
 
 ### Summary of Changes
 
@@ -95,14 +104,14 @@ If you need to downgrade your Vercel AI SDK version or require strict
 - Finish reason changed from `string` to `{ unified: string, raw?: string }`
 - Usage structure now nested with detailed token breakdown
 - Warning types updated to V3 format with `feature` field
-- Stream structure uses explicit text block lifecycle events
+- Stream finish and warning payloads use V3 shapes; text block lifecycle is preserved
 
 **Benefits:**
 
-- Future-proof compatibility with Vercel AI SDK 6+
+- Native compatibility with Vercel AI SDK 6
 - Access to new V3 capabilities (agents, advanced streaming)
 - Better type safety with structured result types
-- Richer streaming with explicit block lifecycle
+- Structured finish and usage data in streamed responses
 - Enhanced token usage metadata
 - **New:** Text embeddings support (`EmbeddingModelV3`) for RAG and semantic search
 
@@ -119,7 +128,7 @@ If you need to downgrade your Vercel AI SDK version or require strict
 #### 1. Update Package
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@^4.0.0
+npm install @jerome-benoit/sap-ai-provider@^4.0.0 ai@^6
 ```
 
 #### 2. Update Type Imports (If Using Direct Provider Access)
@@ -147,7 +156,7 @@ const model: LanguageModelV3 = provider("gpt-4.1");
 ```typescript
 for await (const chunk of stream) {
   if (chunk.type === "text-delta") {
-    process.stdout.write(chunk.textDelta); // Old property name
+    process.stdout.write(chunk.delta); // V2 also uses delta
   }
 }
 ```
@@ -157,16 +166,16 @@ for await (const chunk of stream) {
 ```typescript
 for await (const chunk of stream) {
   if (chunk.type === "text-delta") {
-    process.stdout.write(chunk.delta); // New property name
+    process.stdout.write(chunk.delta); // Text deltas retain the same property
   }
 
-  // V3 adds structured block lifecycle
+  // V3 preserves the structured text block lifecycle
   if (chunk.type === "text-start") {
     console.log("Text block started:", chunk.id);
   }
 
   if (chunk.type === "text-end") {
-    console.log("Text block ended:", chunk.id, chunk.text);
+    console.log("Text block ended:", chunk.id);
   }
 }
 ```
@@ -197,7 +206,7 @@ if (result.finishReason.unified === "stop") {
 **Before (v3.x):**
 
 ```typescript
-const result = await generateText({ model, prompt });
+const result = await model.doGenerate(options);
 console.log("Input tokens:", result.usage.inputTokens);
 console.log("Output tokens:", result.usage.outputTokens);
 ```
@@ -205,8 +214,8 @@ console.log("Output tokens:", result.usage.outputTokens);
 **After (v4.x):**
 
 ```typescript
-const result = await generateText({ model, prompt });
-// V3 has nested structure
+const result = await model.doGenerate(options);
+// Direct V3 results have nested usage; generateText totals remain numbers.
 console.log("Input tokens:", result.usage.inputTokens?.total);
 console.log("Output tokens:", result.usage.outputTokens?.total);
 ```
@@ -240,15 +249,16 @@ if (result.warnings) {
 
 ### V3 Features Not Supported
 
-The following V3 capabilities are not currently supported by SAP AI Core:
+Current support for these capabilities depends on the provider and selected
+SAP model (this table describes the current implementation, not only 4.0):
 
-| Feature                      | Status           | Behavior                                              |
-| ---------------------------- | ---------------- | ----------------------------------------------------- |
-| **File content generation**  | ❌ Not supported | Warnings emitted if requested                         |
-| **Reasoning mode**           | ❌ Not supported | Ignored with warning                                  |
-| **Source attribution**       | ❌ Not supported | Not available in responses                            |
-| **Tool approval requests**   | ❌ Not supported | Not applicable                                        |
-| **Detailed token breakdown** | ⚠️ Partial       | Nested structure present but details may be undefined |
+| Feature                      | Status           | Behavior                                                                          |
+| ---------------------------- | ---------------- | --------------------------------------------------------------------------------- |
+| **File content generation**  | ❌ Not supported | The provider does not generate file content                                       |
+| **Reasoning effort**         | Model-dependent  | Pass `modelParams.reasoning_effort`; V4 also maps the standard `reasoning` option |
+| **Source attribution**       | Model-dependent  | Orchestration citations are exposed when returned by SAP                          |
+| **Tool approval requests**   | ❌ Not supported | Not applicable                                                                    |
+| **Detailed token breakdown** | ⚠️ Partial       | Nested structure present but details may be undefined                             |
 
 ### New in v4.x: Foundation Models API Support
 
@@ -263,8 +273,11 @@ the Orchestration API, providing access to additional model parameters.
 | Content filtering                | ✅                          | ❌                    |
 | Document grounding               | ✅                          | ❌                    |
 | Translation                      | ✅                          | ❌                    |
-| `logprobs`, `seed`, `logit_bias` | ❌                          | ✅                    |
+| `logprobs`, `seed`, `logit_bias` | Model-dependent             | ✅                    |
 | Azure OpenAI `dataSources`       | ❌                          | ✅                    |
+
+`seed` and stop sequences are mapped by both strategies. Other model
+parameters are passed through and depend on the selected SAP model.
 
 #### Using Foundation Models API
 
@@ -350,7 +363,7 @@ Version 3.x will receive security updates for 6 months after v4.0.0 release.
 
 #### Issue: "Property 'textDelta' does not exist"
 
-**Cause**: Accessing old V2 property name in stream chunks.
+**Cause**: Mixing the old V1 `textDelta` field with V2/V3 direct stream parts.
 
 **Fix**: Change `textDelta` to `delta`:
 
@@ -367,11 +380,16 @@ chunk.delta;
 **Cause**: Trying to access nested usage structure that doesn't exist in your
 version.
 
-**Fix**: Optional chaining or fallback:
+**Fix**: Use the result shape of the API you called; do not mix formats:
 
 ```typescript
-// ✅ Safe access
-const inputTokens = result.usage.inputTokens?.total ?? result.usage.inputTokens;
+// Direct V3 provider result:
+const directResult = await model.doGenerate(options);
+const directInputTokens = directResult.usage.inputTokens.total;
+
+// High-level AI SDK result:
+const sdkResult = await generateText({ model, prompt });
+const inputTokens = sdkResult.usage.inputTokens;
 ```
 
 #### Issue: TypeScript errors on LanguageModelV2 types
@@ -393,8 +411,9 @@ import type { LanguageModelV3 } from "@ai-sdk/provider";
 **Q: Do I need to change my code if I only use `generateText()` and
 `streamText()`?**
 
-A: Probably not! The high-level APIs abstract most V2/V3 differences. Test your
-code to confirm.
+A: High-level APIs abstract most V2/V3 differences, but the root V3 entrypoint
+requires AI SDK 6. AI SDK 5 users must select the V2 facade; AI SDK 7 users
+must select `/v4`. See [Installation](./README.md#installation).
 
 **Q: Why did the finish reason become an object?**
 
@@ -403,8 +422,9 @@ provider-specific values (`raw`), improving consistency across providers.
 
 **Q: Will SAP AI Core support file generation or reasoning mode in the future?**
 
-A: We don't have information about SAP's roadmap. The provider is designed to
-add support when SAP AI Core makes these features available.
+A: The provider does not generate files. Reasoning effort is already forwarded
+to compatible models (see the capability table above). Model support must be
+checked against your deployment; this guide does not predict SAP's roadmap.
 
 **Q: Can I use v3.x and v4.x in the same project?**
 
@@ -508,7 +528,7 @@ catch (error) {
 
 #### 4. Automatic Retries
 
-V3 now leverages AI SDK's built-in retry mechanism for transient errors (429,
+Package version 3.x leverages the AI SDK's built-in retry mechanism for transient errors (429,
 500, 503). No code changes needed - retries happen automatically with
 exponential backoff.
 
@@ -527,7 +547,7 @@ exponential backoff.
 - Authentication via `AICORE_SERVICE_KEY` environment variable (no more
   `serviceKey` option)
 - Uses official SAP AI SDK for authentication and API communication
-- Requires Vercel AI SDK v5.0+ (v6.0+ recommended)
+- Targeted Vercel AI SDK 5 and its V2 provider specification at release time
 
 **New Features:**
 
@@ -553,7 +573,7 @@ exponential backoff.
 #### 1. Update Package
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@2.x.x ai@latest
+npm install @jerome-benoit/sap-ai-provider@^2 ai@^5
 ```
 
 #### 2. Update Authentication
@@ -846,7 +866,7 @@ createSAPAIProvider({
 
 ### Upgrading from 1.x to 2.x
 
-- [ ] Update packages: `npm install @jerome-benoit/sap-ai-provider@2.x.x ai@latest`
+- [ ] Update packages: `npm install @jerome-benoit/sap-ai-provider@^2 ai@^5`
 - [ ] Set `AICORE_SERVICE_KEY` environment variable (remove `serviceKey` from
       code)
 - [ ] Remove `await` from `createSAPAIProvider()` calls (now synchronous)

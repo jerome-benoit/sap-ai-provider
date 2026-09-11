@@ -44,12 +44,32 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;
 }
 
-/** Renames `index-v2.*` to `index.*` in dist. */
+/** Renames V2 artifacts and keeps source-map references aligned with their new names. */
 function renameDistFiles(): void {
   for (const file of readdirSync(DIST)) {
     if (file.startsWith("index-v2")) {
       const newName = file.replace("index-v2", "index");
-      renameSync(resolve(DIST, file), resolve(DIST, newName));
+      const oldPath = resolve(DIST, file);
+      const newPath = resolve(DIST, newName);
+
+      if (file === "index-v2.js" || file === "index-v2.cjs") {
+        const content = readFileSync(oldPath, "utf-8");
+        writeFileSync(
+          oldPath,
+          content.replace(
+            /\/\/# sourceMappingURL=index-v2\.(c?js)\.map(\r?\n)?$/,
+            "//# sourceMappingURL=index.$1.map$2",
+          ),
+        );
+      } else if (file.endsWith(".map")) {
+        const sourceMap = readJson<{ file?: string }>(oldPath);
+        if (sourceMap.file === file.slice(0, -4)) {
+          sourceMap.file = newName.slice(0, -4);
+          writeFileSync(oldPath, JSON.stringify(sourceMap) + "\n");
+        }
+      }
+
+      renameSync(oldPath, newPath);
       console.log(`Renamed ${file} -> ${newName}`);
     }
   }

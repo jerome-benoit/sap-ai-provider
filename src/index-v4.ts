@@ -1,5 +1,5 @@
 /**
- * `@jerome-benoit/sap-ai-provider` AI SDK 7 (spec V4) entrypoint.
+ * `@jerome-benoit/sap-ai-provider/v4` AI SDK 7 (spec V4) entrypoint.
  *
  * Exposes the V4 facades (`LanguageModelV4` / `EmbeddingModelV4` /
  * `ProviderV4`) over the internal V3 core. Import via the `v4` subpath:

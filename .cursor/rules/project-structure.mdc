@@ -12,23 +12,23 @@ SDK. Use these anchors to navigate the codebase quickly.
 
 ```text
 src/
-├── index.ts                                        # V3 public API exports
-├── index-v2.ts                                     # V2 public API exports (facade)
+├── index.ts                                        # V3 public API exports (AI SDK 6 root)
+├── index-v2.ts                                     # V2 public API exports (AI SDK 5 facade)
 ├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
 │
-│   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
+│   # V3 Implementation (AI SDK 6: LanguageModelV3/EmbeddingModelV3)
 ├── sap-ai-provider.ts                              # V3 provider factory
 ├── sap-ai-language-model.ts                        # V3 language model
 ├── sap-ai-embedding-model.ts                       # V3 embedding model
 │
-│   # V4 Facade Layer (LanguageModelV4/EmbeddingModelV4)
+│   # V4 Facade Layer (AI SDK 7: LanguageModelV4/EmbeddingModelV4)
 ├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
 ├── sap-ai-language-model-v4.ts                     # V4 language model (wraps V3)
 ├── sap-ai-embedding-model-v4.ts                    # V4 embedding model (wraps V3)
 ├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
 ├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
 │
-│   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
+│   # V2 Facade Layer (AI SDK 5: LanguageModelV2/EmbeddingModelV2)
 ├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
 ├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
 ├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
@@ -54,7 +54,11 @@ src/
 
 ## Entry Points and Core Modules
 
-### V3 Package (`@jerome-benoit/sap-ai-provider`)
+### V3 Root Entrypoint (`@jerome-benoit/sap-ai-provider`)
+
+The main package has three entrypoints sharing the V3 core: root for AI SDK 6,
+`/v2` for AI SDK 5 (also AI SDK 6 compatibility), and `/v4` for AI SDK 7.
+Package release versions (4.x) are independent of provider specification versions.
 
 - Entry: [src/index.ts](mdc:src/index.ts)
 - Provider: [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
@@ -67,6 +71,7 @@ src/
 
 ### V4 Entrypoint (`@jerome-benoit/sap-ai-provider/v4`)
 
+- Target: AI SDK 7.
 - Entry: [src/index-v4.ts](mdc:src/index-v4.ts)
 - Provider: [src/sap-ai-provider-v4.ts](mdc:src/sap-ai-provider-v4.ts)
   - `createSAPAIProvider(options)` returns `ProviderV4`.
@@ -79,7 +84,10 @@ src/
 - Adapters: [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
   and [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts).
 
-### V2 Package (`@jerome-benoit/sap-ai-provider-v2`)
+### V2 Entrypoint and Standalone Package
+
+`@jerome-benoit/sap-ai-provider/v2` and `@jerome-benoit/sap-ai-provider-v2`
+expose the same V2 facade for AI SDK 5 and AI SDK 6 compatibility.
 
 - Entry: [src/index-v2.ts](mdc:src/index-v2.ts)
 - Provider: [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
@@ -133,7 +141,7 @@ src/
 
 - `npm run build` — Build the main package's V3, V2, and V4 entrypoints
 - `npm run build:v2` — Build the standalone V2 package
-- `npm run prepare:v2` — Prepare standalone V2 for publishing
+- `npm run prepare:v2` — Prepare standalone V2 for publishing (mutates manifests and outputs)
 - `npm run check-build:v4` — Verify V4 build outputs explicitly
 
 ## Testing

@@ -99,7 +99,8 @@ export interface SAPAIProviderV2 extends ProviderV2 {
 }
 
 /**
- * Creates an SAP AI Provider instance for use with the Vercel AI SDK.
+ * Creates an SAP AI Provider V2 instance for use with AI SDK 5.
+ * AI SDK 6 can also consume this provider through its V2 compatibility layer.
  *
  * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
  * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
