@@ -11,7 +11,7 @@
  * This file does NOT duplicate the conversion tests - it only verifies delegation.
  */
 
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV2StreamPart } from "@ai-sdk/provider-v2";
 
 import { describe, expect, it, vi } from "vitest";
 

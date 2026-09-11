@@ -27,12 +27,12 @@ import { generateText } from "ai";
 
 // This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider, buildDocumentGroundingConfig } from "@jerome-benoit/sap-ai-provider";
+// import { createSAPAIProvider, buildDocumentGroundingConfig } from "@jerome-benoit/sap-ai-provider/v4";
 import {
   buildDocumentGroundingConfig,
   createSAPAIProvider,
   SAP_AI_PROVIDER_NAME,
-} from "../src/index";
+} from "../src/index-v4";
 
 interface SAPErrorResponseBody {
   error?: {

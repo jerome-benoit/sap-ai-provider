@@ -3,21 +3,22 @@
  *
  * Test Strategy:
  * V2 is a thin facade that delegates to V3 and converts response formats.
- * These tests verify ONLY V2-specific behavior:
+ * These tests verify V2-specific behavior:
  * - specificationVersion === 'v2' for all models
  * - Delegation to V3 provider (configuration passes through)
+ * - Public NoSuchModelError constructor identity
  *
  * Tests NOT included here (covered by V3 tests in sap-ai-provider.test.ts):
  * - Configuration handling (resourceGroup, deploymentId, destination, modelParams validation)
  * - Log level configuration
  * - Custom provider name
- * - imageModel error handling (NoSuchModelError)
  * - Provider factory behavior
  * - sapai default provider methods
  * @see sap-ai-provider.test.ts for comprehensive V3 provider tests
  * @see SAPAIProviderV2
  */
 
+import { NoSuchModelError } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { createSAPAIProvider, sapai } from "./sap-ai-provider-v2.js";
@@ -41,6 +42,12 @@ describe("createSAPAIProvider (V2)", () => {
       expect(embeddingModel.modelId).toBe("text-embedding-ada-002");
       expect(embeddingModel.provider).toBe("sap-ai.embedding");
     });
+  });
+
+  it("should throw the public provider NoSuchModelError for image models", () => {
+    const provider = createSAPAIProvider();
+
+    expect(() => provider.imageModel("dall-e-3")).toThrow(NoSuchModelError);
   });
 
   describe("V2-specific: delegation to V3", () => {

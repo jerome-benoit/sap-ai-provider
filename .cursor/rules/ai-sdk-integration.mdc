@@ -4,48 +4,72 @@ description: Guidance for integrating with the Vercel AI SDK
 
 # AI SDK Integration
 
-This repository publishes two npm packages for Vercel AI SDK integration:
+This repository publishes two npm packages with versioned Vercel AI SDK entrypoints:
 
-- **`@jerome-benoit/sap-ai-provider`** (V3) — `LanguageModelV3`/`EmbeddingModelV3`
-- **`@jerome-benoit/sap-ai-provider-v2`** (V2) — `LanguageModelV2`/`EmbeddingModelV2` facade
+- **`@jerome-benoit/sap-ai-provider`** — V3 root, `/v2`, and `/v4` entrypoints
+- **`@jerome-benoit/sap-ai-provider-v2`** — standalone V2 facade
 
-Both packages are designed to work with Vercel AI SDK 5.0+ (6.0+ recommended).
+Use `/v2` with AI SDK 5, the root V3 entrypoint with AI SDK 6, and `/v4`
+with AI SDK 7. The V2 facade also supports AI SDK 6 compatibility. Package
+release versions (4.x), provider specifications (V2/V3/V4), and AI SDK majors
+(5/6/7) are separate version axes.
 
-## V3 Package (Primary)
+## V3 Root Entrypoint (AI SDK 6)
 
-The V3 package implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingModelV3` contracts.
+The root entrypoint implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingModelV3` contracts.
 
-| Method | Description |
-|--------|-------------|
-| `provider(modelId)` | Create a language model |
-| `provider.chat(modelId)` | Create a language model (alias) |
-| `provider.languageModel(modelId)` | Create a language model (explicit) |
-| `provider.embedding(modelId)` | Create an embedding model |
-| `provider.embeddingModel(modelId)` | Create an embedding model (alias) |
-| `provider.textEmbeddingModel(modelId)` | Create an embedding model (alias) |
+| Method                                 | Description                        |
+| -------------------------------------- | ---------------------------------- |
+| `provider(modelId)`                    | Create a language model            |
+| `provider.chat(modelId)`               | Create a language model (alias)    |
+| `provider.languageModel(modelId)`      | Create a language model (explicit) |
+| `provider.embedding(modelId)`          | Create an embedding model          |
+| `provider.embeddingModel(modelId)`     | Create an embedding model (alias)  |
+| `provider.textEmbeddingModel(modelId)` | Create an embedding model (alias)  |
 
 **Source files:**
+
 - [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)
 - [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)
 - [src/sap-ai-embedding-model.ts](mdc:src/sap-ai-embedding-model.ts)
 
-## V2 Facade Package
+## V4 Facade Entrypoint
 
-The V2 package wraps V3 internally and exposes `ProviderV2`, `LanguageModelV2`,
-and `EmbeddingModelV2` interfaces.
+The `/v4` subpath wraps the V3 core and implements `ProviderV4`,
+`LanguageModelV4`, and `EmbeddingModelV4` for AI SDK 7. Prompt and result
+shape differences are isolated in the V4 adapters. It exposes the same callable,
+chat, language-model, and embedding methods listed for V3 above. Unsupported
+V4 prompt parts are rejected explicitly; see the adapters for supported conversions.
 
-| Method | Description |
-|--------|-------------|
-| `provider(modelId)` | Create a language model |
-| `provider.chat(modelId)` | Create a language model (alias) |
-| `provider.languageModel(modelId)` | Create a language model (explicit) |
+**Source files:**
+
+- [src/index-v4.ts](mdc:src/index-v4.ts)
+- [src/sap-ai-provider-v4.ts](mdc:src/sap-ai-provider-v4.ts)
+- [src/sap-ai-language-model-v4.ts](mdc:src/sap-ai-language-model-v4.ts)
+- [src/sap-ai-embedding-model-v4.ts](mdc:src/sap-ai-embedding-model-v4.ts)
+- [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
+- [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts)
+
+## V2 Facade Entrypoint and Standalone Package
+
+The `/v2` subpath and standalone `@jerome-benoit/sap-ai-provider-v2` package
+wrap V3 internally and expose `ProviderV2`, `LanguageModelV2`, and
+`EmbeddingModelV2` interfaces for AI SDK 5 and AI SDK 6 compatibility.
+
+| Method                                 | Description                                 |
+| -------------------------------------- | ------------------------------------------- |
+| `provider(modelId)`                    | Create a language model                     |
+| `provider.chat(modelId)`               | Create a language model (alias)             |
+| `provider.languageModel(modelId)`      | Create a language model (explicit)          |
 | `provider.textEmbeddingModel(modelId)` | Create an embedding model (**V2 standard**) |
 
 **Important V2 vs V3 difference:**
+
 - **V2**: Only `textEmbeddingModel()` for embeddings (per ProviderV2 spec)
 - **V3**: Has `embedding()`, `embeddingModel()`, `textEmbeddingModel()`
 
 **Source files:**
+
 - [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
 - [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)
 - [src/sap-ai-embedding-model-v2.ts](mdc:src/sap-ai-embedding-model-v2.ts)
@@ -55,13 +79,15 @@ and `EmbeddingModelV2` interfaces.
 
 - Supported operations: `doGenerate` and `doStream` for language models, `doEmbed` for embeddings.
 - Tool calling is supported by passing `tools` in call options.
-- Structured outputs (JSON schema response_format) are enabled for most models
-  except Anthropic and Amazon families.
-- `n` (multi-choice) is disabled for Amazon models.
+- Structured-output formats and model parameters such as `n` are forwarded
+  to SAP without model-family filtering. Actual support depends on the
+  selected SAP API and deployed model.
+- Image generation is unsupported: `imageModel()` throws `NoSuchModelError`.
 
 ## Recommended API Usage
 
-**V3 Package:**
+**V3 entrypoint (AI SDK 6):**
+
 ```typescript
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 const provider = createSAPAIProvider();
@@ -69,9 +95,19 @@ const model = provider("gpt-4.1");
 const embeddingModel = provider.embedding("text-embedding-3-small");
 ```
 
-**V2 Package:**
+**V4 entrypoint (AI SDK 7):**
+
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+const provider = createSAPAIProvider();
+const model = provider("gpt-4.1");
+const embeddingModel = provider.embedding("text-embedding-3-small");
+```
+
+**V2 entrypoint or standalone package (AI SDK 5; also AI SDK 6 compatibility):**
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 const provider = createSAPAIProvider();
 const model = provider("gpt-4.1");
 const embeddingModel = provider.textEmbeddingModel("text-embedding-3-small");

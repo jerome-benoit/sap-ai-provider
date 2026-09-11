@@ -5,10 +5,12 @@ import type {
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
   SharedV3Warning as InternalWarning,
+} from "@ai-sdk/provider";
+import type {
   LanguageModelV2CallWarning,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v2";
 
 import { describe, expect, it } from "vitest";
 
@@ -517,20 +519,18 @@ describe("convertStreamPartToV2", () => {
     expect(convertStreamPartToV2({ id: "1", type: "tool-input-end" })?.type).toBe("tool-input-end");
   });
 
-  it("should map V3 dynamic to V2 providerExecuted in tool-result", () => {
-    const v2Part = convertStreamPartToV2({
-      dynamic: true,
-      result: {},
-      toolCallId: "call-1",
-      toolName: "tool",
-      type: "tool-result",
-    });
+  it("should preserve provider-side execution regardless of dynamic tool classification", () => {
+    for (const dynamic of [undefined, false, true]) {
+      const v2Part = convertStreamPartToV2({
+        dynamic,
+        result: { answer: 42 },
+        toolCallId: "call-1",
+        toolName: "search",
+        type: "tool-result",
+      });
 
-    expect(v2Part?.type).toBe("tool-result");
-    if (v2Part?.type === "tool-result") {
-      expect(v2Part.providerExecuted).toBe(true);
+      expect(v2Part).toMatchObject({ providerExecuted: true, type: "tool-result" });
     }
-    expect(v2Part).not.toHaveProperty("dynamic");
   });
 
   it("should remove V3-only preliminary field from tool-result", () => {
@@ -557,20 +557,6 @@ describe("convertStreamPartToV2", () => {
     if (v2Part?.type === "tool-result") {
       expect(v2Part.isError).toBe(true);
     }
-  });
-
-  it("should not include undefined optional properties on tool-result", () => {
-    const v2Part = convertStreamPartToV2({
-      result: {},
-      toolCallId: "call-1",
-      toolName: "tool",
-      type: "tool-result",
-    });
-
-    expect(v2Part?.type).toBe("tool-result");
-    expect(v2Part).not.toHaveProperty("isError");
-    expect(v2Part).not.toHaveProperty("providerExecuted");
-    expect(v2Part).not.toHaveProperty("providerMetadata");
   });
 
   it("should pass through error and raw events unchanged", () => {

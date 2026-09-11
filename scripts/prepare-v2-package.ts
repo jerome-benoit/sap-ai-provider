@@ -6,6 +6,7 @@ const DIST = resolve(ROOT, "dist");
 
 const V2_OVERRIDES = {
   additionalKeywords: ["v2", "LanguageModelV2", "EmbeddingModelV2"],
+  aiPeerDependency: "^5.0.0 || ^6.0.0",
   description: "SAP AI Provider for Vercel AI SDK (LanguageModelV2/EmbeddingModelV2 interfaces)",
   name: "@jerome-benoit/sap-ai-provider-v2",
 } as const;
@@ -15,11 +16,14 @@ interface PackageJson {
   description: string;
   keywords: string[];
   name: string;
+  peerDependencies: Record<string, string>;
 }
 
 interface PackageLockJson {
   name: string;
-  packages: { "": { name: string } };
+  packages: {
+    "": { name: string; peerDependencies?: Record<string, string> };
+  };
 }
 
 /** Prepares V2 package for publishing. */
@@ -40,12 +44,32 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;
 }
 
-/** Renames `index-v2.*` to `index.*` in dist. */
+/** Renames V2 artifacts and keeps source-map references aligned with their new names. */
 function renameDistFiles(): void {
   for (const file of readdirSync(DIST)) {
     if (file.startsWith("index-v2")) {
       const newName = file.replace("index-v2", "index");
-      renameSync(resolve(DIST, file), resolve(DIST, newName));
+      const oldPath = resolve(DIST, file);
+      const newPath = resolve(DIST, newName);
+
+      if (file === "index-v2.js" || file === "index-v2.cjs") {
+        const content = readFileSync(oldPath, "utf-8");
+        writeFileSync(
+          oldPath,
+          content.replace(
+            /\/\/# sourceMappingURL=index-v2\.(c?js)\.map(\r?\n)?$/,
+            "//# sourceMappingURL=index.$1.map$2",
+          ),
+        );
+      } else if (file.endsWith(".map")) {
+        const sourceMap = readJson<{ file?: string }>(oldPath);
+        if (sourceMap.file === file.slice(0, -4)) {
+          sourceMap.file = newName.slice(0, -4);
+          writeFileSync(oldPath, JSON.stringify(sourceMap) + "\n");
+        }
+      }
+
+      renameSync(oldPath, newPath);
       console.log(`Renamed ${file} -> ${newName}`);
     }
   }
@@ -59,6 +83,15 @@ function updatePackageJson(): void {
   pkg.name = V2_OVERRIDES.name;
   pkg.description = V2_OVERRIDES.description;
   pkg.keywords = [...pkg.keywords, ...V2_OVERRIDES.additionalKeywords];
+  pkg.peerDependencies.ai = V2_OVERRIDES.aiPeerDependency;
+
+  // The main build also emits the ./v2 and ./v4 subpaths, but the V2 publish
+  // build renames index-v2.* to index.* and contains no subpath artifacts:
+  // drop the dangling exports.
+  if (pkg.exports && typeof pkg.exports === "object") {
+    delete (pkg.exports as Record<string, unknown>)["./v2"];
+    delete (pkg.exports as Record<string, unknown>)["./v4"];
+  }
 
   writeJson(pkgPath, pkg);
   console.log("Updated package.json for V2");
@@ -73,6 +106,10 @@ function updatePackageLockJson(): void {
 
   const lock = readJson<PackageLockJson>(lockPath);
 
+  const rootPackage = lock.packages[""];
+  if (rootPackage.peerDependencies) {
+    rootPackage.peerDependencies.ai = V2_OVERRIDES.aiPeerDependency;
+  }
   lock.name = V2_OVERRIDES.name;
   lock.packages[""].name = V2_OVERRIDES.name;
 

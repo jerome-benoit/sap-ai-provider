@@ -6,8 +6,10 @@ description: Environment variables, credentials, and configuration guidance
 
 ## Runtime Requirements
 
-- **Node.js**: >= 20 (see `engines` in [package.json](mdc:package.json))
-- **Vercel AI SDK**: 5.0+ (6.0+ recommended)
+- **Node.js**: >= 22.12 (see `engines` in [package.json](mdc:package.json))
+- **Vercel AI SDK**: AI SDK 5 uses `/v2` (also supported for AI SDK 6 compatibility);
+  AI SDK 6 targets the V3 root; AI SDK 7 uses `/v4`. The standalone `-v2` package
+  supports AI SDK 5 and 6.
 
 ## Credentials
 
@@ -25,21 +27,24 @@ Configure the provider using `createSAPAIProvider(options)`. See
 
 ### Configuration Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `resourceGroup` | `string` | SAP AI Core resource group (default: `'default'`) |
-| `deploymentId` | `string` | Specific deployment ID (auto-resolved if not set) |
-| `api` | `'orchestration' \| 'foundation-models'` | Default API type (default: `'orchestration'`) |
-| `defaultSettings` | `SAPAISettings` | Default model settings applied to all calls |
-| `destination` | `HttpDestinationOrFetchOptions` | Custom destination configuration |
-| `logLevel` | `'debug' \| 'info' \| 'warn' \| 'error'` | Logging verbosity for SAP AI SDK |
-| `name` | `string` | Provider name used as key in `providerOptions` (default: `'sap-ai'`) |
-| `warnOnAmbiguousConfig` | `boolean` | Warn when both deploymentId and resourceGroup are set (default: `true`) |
+| Option                  | Type                                     | Description                                                                                       |
+| ----------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `resourceGroup`         | `string`                                 | SAP AI Core resource group (default: `'default'`)                                                 |
+| `deploymentId`          | `string`                                 | Specific deployment ID (auto-resolved if not set)                                                 |
+| `api`                   | `'orchestration' \| 'foundation-models'` | Default API type (default: `'orchestration'`)                                                     |
+| `defaultSettings`       | `SAPAISettings`                          | Default model settings applied to all calls                                                       |
+| `destination`           | `HttpDestinationOrFetchOptions`          | Custom destination configuration                                                                  |
+| `requestConfig`         | `CustomRequestConfig`                    | Provider-level SAP request configuration; see the API reference for abort and runtime constraints |
+| `logLevel`              | `'debug' \| 'info' \| 'warn' \| 'error'` | Logging verbosity for SAP AI SDK                                                                  |
+| `name`                  | `string`                                 | Provider name used as key in `providerOptions` (default: `'sap-ai'`)                              |
+| `warnOnAmbiguousConfig` | `boolean`                                | Warn when both deploymentId and resourceGroup are set (default: `true`)                           |
 
 ### Examples
 
+For AI SDK 7 (use the root import for AI SDK 6, or `/v2` for AI SDK 5):
+
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
 
 // Default configuration (auto-detects authentication)
 const provider = createSAPAIProvider();
@@ -70,6 +75,8 @@ const provider = createSAPAIProvider({
 
 - `AICORE_SERVICE_KEY` — Full JSON string of your SAP AI Core service key (used
   by SAP AI SDK)
+- `VCAP_SERVICES` — SAP BTP service bindings used by SAP AI SDK.
+- `SAP_CLOUD_SDK_LOG_LEVEL` — Takes precedence over the provider `logLevel` setting.
 
 Do not commit secrets. Prefer local `.env` and CI secrets. `dotenv` is available
 for local development.

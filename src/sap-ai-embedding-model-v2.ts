@@ -7,13 +7,13 @@
  * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/embed-many | Vercel AI SDK embedMany()}
  */
 
+import type { EmbeddingModelV3CallOptions as InternalCallOptions } from "@ai-sdk/provider";
 import type {
   EmbeddingModelV2,
-  EmbeddingModelV3CallOptions as InternalCallOptions,
   SharedV2Headers,
   SharedV2ProviderMetadata,
   SharedV2ProviderOptions,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v2";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -127,9 +127,7 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
       const warnings = convertWarningsToV2(result.warnings);
       // Log warnings - convertWarningsToV2 normalizes all warnings to type "other" with message
       for (const warning of warnings) {
-        if (warning.type === "other") {
-          console.warn(`[SAP AI Embedding] ${warning.message}`);
-        }
+        console.warn(`[SAP AI Embedding] ${warning.message}`);
       }
     }
 

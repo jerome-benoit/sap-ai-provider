@@ -29,8 +29,12 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { embed, generateText, streamText } from "ai";
 
-// NOTE: In production, use: import { createSAPAIProvider, SAP_AI_PROVIDER_NAME, UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider";
-import { createSAPAIProvider, SAP_AI_PROVIDER_NAME, UnsupportedFeatureError } from "../src/index";
+// NOTE: In production, use: import { createSAPAIProvider, SAP_AI_PROVIDER_NAME, UnsupportedFeatureError } from "@jerome-benoit/sap-ai-provider/v4";
+import {
+  createSAPAIProvider,
+  SAP_AI_PROVIDER_NAME,
+  UnsupportedFeatureError,
+} from "../src/index-v4";
 
 /**
  * Demonstrates Foundation Models API features

@@ -1,11 +1,12 @@
 /**
- * `@jerome-benoit/sap-ai-provider/v2` AI SDK 5 (spec V2) entrypoint.
+ * `@jerome-benoit/sap-ai-provider/v4` AI SDK 7 (spec V4) entrypoint.
  *
- * Exposes the V2 facades (`LanguageModelV2` / `EmbeddingModelV2` /
- * `ProviderV2`) over the shared V3 core. Also available from the standalone
- * `@jerome-benoit/sap-ai-provider-v2` package. AI SDK 6 can consume these V2
- * interfaces through its compatibility layer; use `v4` with AI SDK 7.
- * @see {@link https://sdk.vercel.ai/} Vercel AI SDK documentation
+ * Exposes the V4 facades (`LanguageModelV4` / `EmbeddingModelV4` /
+ * `ProviderV4`) over the internal V3 core. Import via the `v4` subpath:
+ * @example
+ * ```typescript
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+ * ```
  */
 
 /**
@@ -17,10 +18,10 @@ export {
 } from "./convert-to-sap-messages.js";
 
 /**
- * Embedding model class implementing EmbeddingModelV2 for SAP AI Core.
- * V2 facade over internal implementation.
+ * Embedding model class implementing EmbeddingModelV4 for SAP AI Core.
+ * V4 facade over internal implementation.
  */
-export { SAPAIEmbeddingModelV2 as SAPAIEmbeddingModel } from "./sap-ai-embedding-model-v2.js";
+export { SAPAIEmbeddingModelV4 as SAPAIEmbeddingModel } from "./sap-ai-embedding-model-v4.js";
 
 export type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 
@@ -32,16 +33,13 @@ export type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
 export { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
- * Language model class implementing LanguageModelV2 for SAP AI Core.
- * V2 facade over internal implementation.
+ * Language model class implementing LanguageModelV4 for SAP AI Core.
+ * V4 facade over internal implementation.
  */
-export { SAPAILanguageModelV2 as SAPAILanguageModel } from "./sap-ai-language-model-v2.js";
+export { SAPAILanguageModelV4 as SAPAILanguageModel } from "./sap-ai-language-model-v4.js";
 
 /**
  * Provider options for per-call configuration.
- *
- * These schemas and types enable runtime validation of provider options
- * passed via `providerOptions['sap-ai']` in Vercel AI SDK calls.
  */
 export {
   getProviderName,
@@ -56,16 +54,18 @@ export type {
 } from "./sap-ai-provider-options.js";
 
 /**
- * Provider factory function implementing ProviderV2 interface.
+ * Provider factory function implementing ProviderV4 interface.
  * Creates language and embedding model instances for SAP AI Core.
  */
-export { createSAPAIProvider, sapai } from "./sap-ai-provider-v2.js";
-
+export {
+  createSAPAIProviderV4 as createSAPAIProvider,
+  sapaiV4 as sapai,
+} from "./sap-ai-provider-v4.js";
 export type {
   DeploymentConfig,
-  SAPAIProviderV2 as SAPAIProvider,
+  SAPAIProviderV4 as SAPAIProvider,
   SAPAIProviderSettings,
-} from "./sap-ai-provider-v2.js";
+} from "./sap-ai-provider-v4.js";
 
 /**
  * Model settings types and model identifier type definitions.
@@ -138,9 +138,7 @@ export type {
   UserChatMessageContentItem,
 } from "./sap-ai-settings.js";
 
-/**
- * Helper functions for building configurations.
- */
+/** Helper functions for building SAP AI configurations. */
 export {
   buildAzureContentSafetyFilter,
   buildDocumentGroundingConfig,
@@ -149,9 +147,7 @@ export {
   buildTranslationConfig,
 } from "./sap-ai-settings.js";
 
-/**
- * Response classes from the SAP AI SDK for orchestration results.
- */
+/** Response classes from the SAP AI SDK for orchestration results. */
 export {
   OrchestrationEmbeddingResponse,
   OrchestrationResponse,
@@ -160,45 +156,20 @@ export {
   OrchestrationStreamResponse,
 } from "./sap-ai-settings.js";
 
-/**
- * Validation utilities for API selection and feature compatibility.
- * - `resolveApi`: Resolves API type from provider/model/invocation precedence chain.
- * - `validateSettings`: Validates settings are compatible with the selected API.
- */
+/** Validation utilities for API selection and feature compatibility. */
 export { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
-/**
- * Package version, injected at build time.
- */
+/** Package version, injected at build time. */
 export { VERSION } from "./version.js";
 
-/**
- * SAP AI SDK request configuration type for {@link SAPAIProviderSettings.requestConfig}.
- *
- * Re-exported so consumers can type provider options without a direct dependency on
- * `@sap-ai-sdk/core`. The shape tracks `@sap-ai-sdk/core` versioning and is inherited
- * transitively; upstream changes to `CustomRequestConfig` propagate here without a
- * release of this package.
- */
+/** SAP AI SDK request configuration type. */
 export type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
-/**
- * Error handling types and classes for SAP AI Core error responses.
- */
+/** Error response type from the SAP AI SDK. */
 export type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
-/**
- * Direct access to SAP AI SDK OrchestrationClient.
- *
- * For advanced users who need to use the SAP AI SDK directly.
- */
+/** Direct access to SAP AI SDK orchestration clients. */
 export { OrchestrationClient, OrchestrationEmbeddingClient } from "@sap-ai-sdk/orchestration";
 
-/**
- * SAP Cloud SDK destination type for {@link SAPAIProviderSettings.destination}.
- *
- * Re-exported so consumers can type provider options without a direct dependency on
- * `@sap-cloud-sdk/connectivity`. The shape tracks `@sap-cloud-sdk/connectivity`
- * versioning and is inherited transitively.
- */
+/** SAP Cloud SDK destination type. */
 export type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";

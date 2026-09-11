@@ -74,6 +74,23 @@ const TYPED_ARRAY_TAG_DESCRIPTOR = Object.getOwnPropertyDescriptor(
 const URL_HREF_DESCRIPTOR = Object.getOwnPropertyDescriptor(URL.prototype, "href");
 
 /**
+ * Returns the canonical href for genuine URL values across JavaScript realms.
+ * @param value - The value to inspect.
+ * @returns The URL href, or undefined when the value lacks URL internal slots.
+ */
+export function getURLHref(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || URL_HREF_DESCRIPTOR?.get === undefined) {
+    return undefined;
+  }
+  try {
+    const href: unknown = URL_HREF_DESCRIPTOR.get.call(value);
+    return typeof href === "string" ? href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Returns the RFC 4648 value of a base64 character.
  * @param charCode - The character's UTF-16 code unit.
  * @returns The base64 sextet value, or -1 when invalid.
@@ -85,23 +102,6 @@ function base64SextetValue(charCode: number): number {
   if (charCode === 0x2b) return 62;
   if (charCode === 0x2f) return 63;
   return -1;
-}
-
-/**
- * Returns the canonical href for genuine URL values across JavaScript realms.
- * @param value - The value to inspect.
- * @returns The URL href, or undefined when the value lacks URL internal slots.
- */
-function getURLHref(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null || URL_HREF_DESCRIPTOR?.get === undefined) {
-    return undefined;
-  }
-  try {
-    const href: unknown = URL_HREF_DESCRIPTOR.get.call(value);
-    return typeof href === "string" ? href : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -228,6 +228,47 @@ interface UserContentItem {
   };
   readonly text?: string;
   readonly type: "file" | "image_url" | "text";
+}
+
+/**
+ * Encodes bytes as base64 without the Node.js `Buffer` global (Edge-safe).
+ * @internal
+ * @param bytes - The bytes to encode.
+ * @returns The base64 string (empty string for empty input).
+ */
+export function base64FromBytes(bytes: Uint8Array): string {
+  const CHUNK_SIZE = 0x8000;
+  let byteLength: unknown;
+  try {
+    byteLength = TYPED_ARRAY_LENGTH_DESCRIPTOR?.get?.call(bytes);
+  } catch {
+    throw new UnsupportedFunctionalityError({
+      functionality: "Invalid Uint8Array file data.",
+    });
+  }
+  if (typeof byteLength !== "number") {
+    throw new UnsupportedFunctionalityError({
+      functionality: "Invalid Uint8Array file data.",
+    });
+  }
+
+  const codeUnits = new Array<number>(Math.min(CHUNK_SIZE, byteLength));
+  let binary = "";
+  for (let offset = 0; offset < byteLength; offset += CHUNK_SIZE) {
+    const chunkLength = Math.min(CHUNK_SIZE, byteLength - offset);
+    codeUnits.length = chunkLength;
+    for (let index = 0; index < chunkLength; index++) {
+      const byte = bytes[offset + index];
+      if (byte === undefined) {
+        throw new UnsupportedFunctionalityError({
+          functionality: "Invalid Uint8Array file data.",
+        });
+      }
+      codeUnits[index] = byte;
+    }
+    binary += String.fromCharCode(...codeUnits);
+  }
+  return btoa(binary);
 }
 
 /**
@@ -423,7 +464,10 @@ export function convertToSAPMessages(
                   "image/gif",
                   "image/webp",
                 ];
-                if (!supportedFormats.includes(part.mediaType.toLowerCase())) {
+                const normalizedMediaType = part.mediaType.toLowerCase();
+                const isWildcardImageUrl =
+                  getURLHref(part.data) !== undefined && normalizedMediaType === "image/*";
+                if (!isWildcardImageUrl && !supportedFormats.includes(normalizedMediaType)) {
                   console.warn(
                     `Image format ${part.mediaType} may not be supported by all models. ` +
                       `Recommended formats: PNG, JPEG, GIF, WebP`,
@@ -512,7 +556,6 @@ export function escapeOrchestrationPlaceholders(text: string): string {
 
 /**
  * Reverses escaping by removing zero-width spaces from template delimiters.
- *
  * Useful for processing model responses that may contain escaped delimiters.
  * @param text - The text to unescape.
  * @returns The unescaped text with zero-width spaces removed.
@@ -521,47 +564,6 @@ export function escapeOrchestrationPlaceholders(text: string): string {
 export function unescapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
   return text.replaceAll(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
-}
-
-/**
- * Encodes bytes as base64 without the Node.js `Buffer` global (Edge-safe).
- * @internal
- * @param bytes - The bytes to encode.
- * @returns The base64 string (empty string for empty input).
- */
-function base64FromBytes(bytes: Uint8Array): string {
-  const CHUNK_SIZE = 0x8000;
-  let byteLength: unknown;
-  try {
-    byteLength = TYPED_ARRAY_LENGTH_DESCRIPTOR?.get?.call(bytes);
-  } catch {
-    throw new UnsupportedFunctionalityError({
-      functionality: "Invalid Uint8Array file data.",
-    });
-  }
-  if (typeof byteLength !== "number") {
-    throw new UnsupportedFunctionalityError({
-      functionality: "Invalid Uint8Array file data.",
-    });
-  }
-
-  const codeUnits = new Array<number>(Math.min(CHUNK_SIZE, byteLength));
-  let binary = "";
-  for (let offset = 0; offset < byteLength; offset += CHUNK_SIZE) {
-    const chunkLength = Math.min(CHUNK_SIZE, byteLength - offset);
-    codeUnits.length = chunkLength;
-    for (let index = 0; index < chunkLength; index++) {
-      const byte = bytes[offset + index];
-      if (byte === undefined) {
-        throw new UnsupportedFunctionalityError({
-          functionality: "Invalid Uint8Array file data.",
-        });
-      }
-      codeUnits[index] = byte;
-    }
-    binary += String.fromCharCode(...codeUnits);
-  }
-  return btoa(binary);
 }
 
 /**

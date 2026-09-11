@@ -2,9 +2,9 @@
 
 [![npm](https://img.shields.io/npm/v/@jerome-benoit/sap-ai-provider/latest?label=npm&color=blue)](https://www.npmjs.com/package/@jerome-benoit/sap-ai-provider)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5.0+-black.svg)](https://sdk.vercel.ai/docs)
-[![Language Model](https://img.shields.io/badge/Language%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
-[![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V3-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
+[![Vercel AI SDK](https://img.shields.io/badge/Vercel%20AI%20SDK-5%20%7C%206%20%7C%207-black.svg)](https://sdk.vercel.ai/docs)
+[![Language Model](https://img.shields.io/badge/Language%20Model-V2%20%7C%20V3%20%7C%20V4-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/provider-management)
+[![Embedding Model](https://img.shields.io/badge/Embedding%20Model-V2%20%7C%20V3%20%7C%20V4-green.svg)](https://sdk.vercel.ai/docs/ai-sdk-core/embeddings)
 
 A community provider for SAP AI Core that integrates seamlessly with the Vercel
 AI SDK. Built on top of the official **@sap-ai-sdk/orchestration** and
@@ -70,8 +70,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 - 🛡️ **Content Filtering** - Azure Content Safety and Llama Guard support
 - 🔧 **TypeScript Support** - Full type safety and IntelliSense
 - 🎨 **Multiple Models** - Support for OpenAI, Claude, Gemini, Nova, and more
-- ⚡ **Language Model V3** - Latest Vercel AI SDK specification with enhanced
-  streaming
+- 🔄 **AI SDK 5–7 Compatibility** - Versioned V2, V3, and V4 entrypoints
+  preserve the matching Vercel AI SDK provider specification
 - 📊 **Text Embeddings** - Generate vector embeddings for RAG and semantic
   search
 - 🔀 **Dual API Support** - Choose between Orchestration or Foundation Models
@@ -82,7 +82,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 ## Quick Start
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai@^6
 ```
 
 ```typescript
@@ -119,7 +119,7 @@ try {
 
 | Task                | Code Pattern                                                     | Documentation                                                 |
 | ------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai`                  | [Installation](#installation)                                 |
+| **Install**         | `npm install @jerome-benoit/sap-ai-provider ai@^6`               | [Installation](#installation)                                 |
 | **Auth Setup**      | Add `AICORE_SERVICE_KEY` to `.env`                               | [Environment Setup](./ENVIRONMENT_SETUP.md)                   |
 | **Create Provider** | `createSAPAIProvider()` or use `sapai`                           | [Provider Creation](#provider-creation)                       |
 | **Text Generation** | `generateText({ model: provider("gpt-4.1"), prompt })`           | [Basic Usage](#text-generation)                               |
@@ -131,46 +131,56 @@ try {
 
 ## Installation
 
-**Requirements:** Node.js 20+ and Vercel AI SDK 5.0+ (6.0+ recommended)
+**Requirements:** Node.js 22.12+. The provider entrypoint must match the installed
+AI SDK major.
+
+| AI SDK | Install                                            | Provider import                     |
+| ------ | -------------------------------------------------- | ----------------------------------- |
+| 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
+| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
+| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
+
+The Quick Start and inline snippets on this page use AI SDK 6 with the root V3
+entrypoint. The runnable files in `examples/` use the repository's installed
+AI SDK 7 with the V4 entrypoint.
+For AI SDK 7, install `ai@^7` and import `createSAPAIProvider` or `sapai`
+from `@jerome-benoit/sap-ai-provider/v4`:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai@^7
 ```
 
-Or with other package managers:
+The V4 entrypoint exposes the same provider aliases and version-independent
+helpers as the root V3 entrypoint. Its standardized `reasoning` option maps to
+SAP's `reasoning_effort` model parameter. `provider-default` preserves an
+explicit `modelParams.reasoning_effort`; a stored `orchestrationConfigRef` owns
+the model configuration and ignores local reasoning options with a warning.
+See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for the
+full normalization and precedence contract.
+
+**V2 facade:** AI SDK 5, AI SDK 6 through its V2 compatibility layer, and other `LanguageModelV2`/`EmbeddingModelV2`
+consumers can use the main package's `v2` subpath or the dedicated V2 package:
 
 ```bash
-# Yarn
-yarn add @jerome-benoit/sap-ai-provider ai
-
-# pnpm
-pnpm add @jerome-benoit/sap-ai-provider ai
+npm install @jerome-benoit/sap-ai-provider ai@^5
+# Alternatively: npm install @jerome-benoit/sap-ai-provider-v2 ai@^5
 ```
 
-> **V2 Facade Package Available:** For users requiring `LanguageModelV2`/`EmbeddingModelV2` interfaces, install the dedicated V2 facade package:
->
-> ```bash
-> npm install @jerome-benoit/sap-ai-provider-v2 ai
-> ```
->
-> This package provides a V2-compatible facade over the internal V3 implementation.
->
-> Basic Usage Example:
->
-> ```typescript
-> import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
-> import { generateText } from "ai";
->
-> const provider = createSAPAIProvider();
-> const result = await generateText({
->   model: provider("gpt-4.1"),
->   prompt: "Hello V2!",
-> });
-> console.log(result.text);
-> ```
->
-> For a detailed understanding of the dual-package architecture, refer to
-> [Architecture - Dual-Package](./ARCHITECTURE.md#dual-package-architecture-v3--v2).
+Both entrypoints expose the same V2 facade:
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
+// Dedicated-package alternative:
+// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+```
+
+The V2 type contracts are bundled at build time; neither package installs a second
+provider package through the `@ai-sdk/provider-v2` alias. When using V2 with AI SDK 6,
+use the latest 6.x patch: the initial 6.0.0 embedding compatibility adapter has an
+upstream warning-handling failure that is absent in 6.0.280.
+
+See [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)
+for the V4/V3/V2 packaging model.
 
 ## Provider Creation
 
@@ -275,11 +285,11 @@ const embeddingModel = provider.embedding("text-embedding-3-small");
 | `provider.textEmbeddingModel(modelId)` | Creates embedding model (alias)               |
 
 > `embedding()` and `embeddingModel()` are identical. `textEmbeddingModel()` is
-> deprecated in the V3 package — use `embeddingModel()` instead.
+> deprecated in the V3 and V4 entrypoints — use `embeddingModel()` instead.
 >
 > **Note:** The V2 facade package (`@jerome-benoit/sap-ai-provider-v2`) only exposes
 > `textEmbeddingModel()` for embeddings per the `ProviderV2` specification. Use the
-> V3 package if you need `embedding()` or `embeddingModel()` aliases.
+> V3 root with AI SDK 6 or V4 subpath with AI SDK 7 if you need these aliases.
 
 ## Authentication
 
@@ -461,7 +471,7 @@ modules.
 [examples/example-chat-completion-tool.ts](./examples/example-chat-completion-tool.ts)
 
 ```typescript
-import { generateText, tool } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
 
@@ -469,7 +479,7 @@ const provider = createSAPAIProvider();
 
 const weatherTool = tool({
   description: "Get weather for a location",
-  parameters: z.object({ location: z.string() }),
+  inputSchema: z.object({ location: z.string() }),
   execute: async (args) => `Weather in ${args.location}: sunny, 72°F`,
 });
 
@@ -477,7 +487,7 @@ const result = await generateText({
   model: provider("gpt-4.1"),
   prompt: "What's the weather in Tokyo?",
   tools: { getWeather: weatherTool },
-  maxSteps: 3,
+  stopWhen: stepCountIs(3),
 });
 ```
 
@@ -719,8 +729,10 @@ deployment.
 
 ## Examples
 
-The `examples/` directory contains complete, runnable examples demonstrating key
-features:
+The `examples/` directory contains complete, runnable examples using the
+repository's AI SDK 7 dependency and the local `../src/index-v4` entrypoint.
+In an AI SDK 7 application, import from `@jerome-benoit/sap-ai-provider/v4`.
+See [Installation](#installation) for other AI SDK versions.
 
 | Example                             | Description                 | Key Features                            |
 | ----------------------------------- | --------------------------- | --------------------------------------- |
@@ -750,24 +762,25 @@ npx tsx examples/example-generate-text.ts
 ### Upgrading from v3.x to v4.x
 
 Version 4.0 migrates from **LanguageModelV2** to **LanguageModelV3**
-specification (AI SDK 5.0+). **See the
+specification (AI SDK 6). Package release 4.x is not the V4 provider
+specification used by AI SDK 7. **See the
 [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for
 complete upgrade instructions.**
 
-**Key changes:**
+**Key changes in direct provider results (`doGenerate`/`doStream`):**
 
 - **Finish Reason**: Changed from string to object
   (`result.finishReason.unified`)
 - **Usage Structure**: Nested format with detailed token breakdown
   (`result.usage.inputTokens.total`)
-- **Stream Events**: Structured blocks (`text-start`, `text-delta`, `text-end`)
-  instead of simple deltas
+- **Stream Events**: Text blocks retain `text-start`, `text-delta`, and
+  `text-end`; finish and warning payloads use the V3 format
 - **Warning Types**: Updated format with `feature` field for categorization
 
 **Impact by user type:**
 
-- High-level API users (`generateText`/`streamText`): ✅ Minimal impact (likely
-  no changes)
+- High-level API users (`generateText`/`streamText`): use AI SDK 6 with the root
+  entrypoint. High-level token totals remain flat numbers.
 - Direct provider users: ⚠️ Update type imports (`LanguageModelV2` →
   `LanguageModelV3`)
 - Custom stream parsers: ⚠️ Update parsing logic for V3 structure

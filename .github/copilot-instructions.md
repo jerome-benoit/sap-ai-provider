@@ -15,34 +15,40 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Bootstrap and Install Dependencies
 
-- **Prerequisites**: Node.js 20+ and npm are required
+- **Prerequisites**: Node.js 22.12+ and npm are required
 - **Fresh install**: `npm install` -- takes ~25 seconds. NEVER CANCEL. Set timeout to 60+ seconds.
   - Use `npm install` when no package-lock.json exists (fresh clone)
-  - This automatically triggers the build via the prepare script
-  - Creates `dist/` directory with built artifacts
+  - The prepare script installs Lefthook hooks; it does not build the package
+  - Run `npm run build` explicitly to create `dist/` artifacts
 - **Existing install**: `npm ci` -- takes ~15 seconds. NEVER CANCEL. Set timeout to 30+ seconds.
   - Use when package-lock.json already exists
   - Faster than `npm install` for CI/existing setups
 
 ### Building
 
-- **Build V3 library**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
-  - Uses tsup to create CommonJS, ESM, and TypeScript declaration files
-  - Outputs to `dist/` directory: `index.js`, `index.cjs`, `index.d.ts`, `index.d.cts`
-- **Build V2 library**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
-  - Builds V2 facade from `src/index-v2.ts`
-  - Outputs to `dist/` directory: `index-v2.js`, `index-v2.cjs`, `index-v2.d.ts`, `index-v2.d.cts`
-- **Watch V2 build**: `npm run build:v2:watch` -- continuous rebuild on file changes
-- **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 files for npm package
-- **Check build outputs**: `npm run check-build` -- takes <1 second. Set timeout to 10+ seconds.
-  - Verifies all expected files exist and lists directory contents
+- **Build main package**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
+  - Builds the V3 root, V2 subpath, and V4 subpath entrypoints.
+  - Produces CommonJS, ESM, declaration files, and sourcemaps for all three entrypoints.
+- **Build standalone V2 package**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
+  - Builds only the V2 facade from `src/index-v2.ts`.
+- **Watch main build**: `npm run build:watch` -- continuous rebuild of all main entrypoints.
+- **Watch standalone V2 build**: `npm run build:v2:watch` -- continuous V2 rebuild.
+- **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 artifacts and rewrites manifests for the standalone package; use a disposable publishing checkout.
+- **Check main build outputs**: `npm run check-build` -- verifies V3, V2, and V4 artifacts.
+- **Check one facade explicitly**: `npm run check-build:v2` or `npm run check-build:v4`.
 
-**Dual-Package Architecture:**
+**Versioned Entrypoint Architecture:**
 
 This repository publishes two npm packages from the same codebase:
 
-- `@jerome-benoit/sap-ai-provider` (V3) - Built from `src/index.ts`, uses `LanguageModelV3`/`EmbeddingModelV3`
-- `@jerome-benoit/sap-ai-provider-v2` (V2) - Built from `src/index-v2.ts`, wraps V3 internally to expose `LanguageModelV2`/`EmbeddingModelV2`
+- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2` and `/v4` subpaths.
+- `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade wrapping the V3 core.
+
+Use the root V3 entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the V2 facade
+(`/v2` or standalone `-v2`) for AI SDK 5 and AI SDK 6 compatibility. Package
+release versions (4.x), provider specifications (V2/V3/V4), and AI SDK majors
+(5/6/7) are independent. Both build configurations clean `dist/`, so `build:v2`
+replaces the main build outputs with V2-only artifacts.
 
 ### Testing
 
@@ -92,11 +98,11 @@ npm run type-check && npm run test && npm run test:node && npm run test:edge && 
 
 **For environment setup and authentication**, see [Environment Setup](../ENVIRONMENT_SETUP.md)
 
-- **Examples location**: `/examples` directory contains 10 example files
+- **Examples location**: `/examples`; examples target the V4 entrypoint with the AI SDK 7 development dependency
 - **Running examples**: `npx tsx examples/example-simple-chat-completion.ts`
-  ⚠️ **Important:** Examples require `AICORE_SERVICE_KEY` environment variable to work
-- **Without service key**: Examples will fail with clear error message about missing environment variable
-- **With service key**: Create `.env` file with `AICORE_SERVICE_KEY=<your-service-key-json>`
+- **Authentication**: Examples use `AICORE_SERVICE_KEY` locally or `VCAP_SERVICES` on SAP BTP
+- **Without credentials**: The simple example warns before making a request; authentication errors are reported by SAP AI SDK
+- **Local setup**: Create `.env` with `AICORE_SERVICE_KEY=<your-service-key-json>`
 
 ### Complete End-to-End Validation Scenario
 
@@ -108,7 +114,7 @@ Since full example testing requires SAP credentials, validate changes using this
 4. **Type check passes**: `npm run type-check`
 5. **Formatting is correct**: `npm run prettier-check`
 6. **Try running an example**: `npx tsx examples/example-simple-chat-completion.ts`
-7. **Expected result**: Clear error message about missing `AICORE_SERVICE_KEY`
+7. **Expected result without credentials**: A warning followed by a SAP authentication/configuration error; successful requests require valid credentials
 
 **Complete CI-like validation command:**
 
@@ -116,7 +122,7 @@ Since full example testing requires SAP credentials, validate changes using this
 npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
-This should complete in approximately 15 seconds total and all commands should pass.
+All commands should pass; execution time depends on the environment.
 
 ## Common Tasks
 
@@ -125,20 +131,29 @@ This should complete in approximately 15 seconds total and all commands should p
 ```text
 .
 ├── .github/               # GitHub Actions workflows and configs
-├── examples/              # Example usage files (10 examples)
+├── examples/              # Example usage files (AI SDK 7 / V4)
 ├── scripts/               # Build and publish scripts
 │   ├── check-toc.ts                                  # Markdown TOC validation (used by lint:md:toc)
 │   ├── check-toc.test.ts                              # Tests for check-toc
+│   ├── check-package-exports.ts                       # ESM/CommonJS declaration routing validation
 │   └── prepare-v2-package.ts                         # V2 publish preparation script
 ├── src/                   # TypeScript source code
-│   │   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
-│   ├── index.ts                                      # V3 public API exports
+│   │   # V3 Implementation (AI SDK 6: LanguageModelV3/EmbeddingModelV3)
+│   ├── index.ts                                      # V3 public API exports (AI SDK 6 root)
 │   ├── sap-ai-provider.ts                            # V3 provider factory
 │   ├── sap-ai-language-model.ts                      # V3 language model
 │   ├── sap-ai-embedding-model.ts                     # V3 embedding model
 │   │
-│   │   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
-│   ├── index-v2.ts                                   # V2 public API exports (facade)
+│   │   # V4 Facade Layer (AI SDK 7: LanguageModelV4/EmbeddingModelV4)
+│   ├── index-v4.ts                                   # V4 public API exports (AI SDK 7 facade)
+│   ├── sap-ai-provider-v4.ts                         # V4 provider factory
+│   ├── sap-ai-language-model-v4.ts                   # V4 language model facade
+│   ├── sap-ai-embedding-model-v4.ts                  # V4 embedding model facade
+│   ├── sap-ai-adapters-v4-to-v3.ts                   # V4 prompt normalization
+│   ├── sap-ai-adapters-v3-to-v4.ts                   # V4 result conversion
+│   │
+│   │   # V2 Facade Layer (AI SDK 5: LanguageModelV2/EmbeddingModelV2)
+│   ├── index-v2.ts                                   # V2 public API exports (AI SDK 5 facade)
 │   ├── sap-ai-provider-v2.ts                         # V2 provider factory (wraps V3)
 │   ├── sap-ai-language-model-v2.ts                   # V2 language model (wraps V3)
 │   ├── sap-ai-embedding-model-v2.ts                  # V2 embedding model (wraps V3)
@@ -160,12 +175,12 @@ This should complete in approximately 15 seconds total and all commands should p
 │   ├── convert-to-sap-messages.ts                   # Message format conversion
 │   ├── deep-merge.ts                                 # Deep merge utility
 │   ├── version.ts                                    # Package version constant
-│   └── *.test.ts                                     # Co-located unit tests (13 files)
+│   └── *.test.ts                                     # Co-located unit tests
 ├── dist/                  # Build outputs (gitignored)
 ├── eslint.config.js      # ESLint flat configuration
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
-├── tsup.config.ts        # V3 build configuration
+├── tsup.config.ts        # Main V3/V2/V4 build configuration
 ├── tsup.config.v2.ts     # V2 build configuration
 ├── vitest.node.config.ts # Node.js test configuration
 ├── vitest.edge.config.ts # Edge runtime test configuration
@@ -182,17 +197,26 @@ This should complete in approximately 15 seconds total and all commands should p
 
 ### Key Files to Understand
 
-**Core Source Code (V3 - Primary):**
+**Core Source Code (V3 - AI SDK 6 root and shared implementation):**
 
-- **`src/index.ts`**: V3 public API exports - start here for the main package
+- **`src/index.ts`**: V3 public API exports - main package root for AI SDK 6
 - **`src/sap-ai-provider.ts`**: V3 provider factory (`ProviderV3`)
 - **`src/sap-ai-language-model.ts`**: V3 language model (`LanguageModelV3`)
 - **`src/sap-ai-embedding-model.ts`**: V3 embedding model (`EmbeddingModelV3`)
 
-**V2 Facade Layer (LanguageModelV2/EmbeddingModelV2 interfaces, wraps V3 internally):**
+**V4 Facade Layer (AI SDK 7 interfaces, wraps V3 internally):**
 
-- **`src/index-v2.ts`**: V2 public API exports
-- **`src/sap-ai-provider-v2.ts`**: V2 provider factory (`ProviderV2`, only `textEmbeddingModel()`)
+- **`src/index-v4.ts`**: V4 public API exports
+- **`src/sap-ai-provider-v4.ts`**: V4 provider factory (`ProviderV4`)
+- **`src/sap-ai-language-model-v4.ts`**: V4 language model facade
+- **`src/sap-ai-embedding-model-v4.ts`**: V4 embedding model facade
+- **`src/sap-ai-adapters-v4-to-v3.ts`**: V4 prompt normalization
+- **`src/sap-ai-adapters-v3-to-v4.ts`**: V4 result and stream conversion
+
+**V2 Facade Layer (AI SDK 5; also AI SDK 6 compatibility, wraps V3 internally):**
+
+- **`src/index-v2.ts`**: V2 public API exports for `/v2` and the standalone `-v2` package
+- **`src/sap-ai-provider-v2.ts`**: V2 provider factory (`ProviderV2`, only `textEmbeddingModel()` for embeddings)
 - **`src/sap-ai-language-model-v2.ts`**: V2 language model (wraps V3)
 - **`src/sap-ai-embedding-model-v2.ts`**: V2 embedding model (wraps V3)
 - **`src/sap-ai-adapters-v3-to-v2.ts`**: V3→V2 format conversion
@@ -200,9 +224,9 @@ This should complete in approximately 15 seconds total and all commands should p
 **Build and Scripts:**
 
 - **`package.json`**: All available npm scripts and dependencies
-- **`tsup.config.ts`**: V3 build configuration
+- **`tsup.config.ts`**: Main V3/V2/V4 build configuration
 - **`tsup.config.v2.ts`**: V2 build configuration
-- **`scripts/prepare-v2-package.ts`**: Renames V2 build files for npm publish
+- **`scripts/prepare-v2-package.ts`**: Renames V2 build files and rewrites manifests for standalone npm publish
 - **`examples/`**: Working examples of how to use the library
 
 **Documentation:**
@@ -218,38 +242,40 @@ This should complete in approximately 15 seconds total and all commands should p
 
 ### CI/CD Pipeline
 
-- **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs and pushes
-- **CI checks**: format-check, type-check, test, build
-- **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes on releases
-- **Build matrix**: Tests run in both Node.js and Edge runtime environments
+- **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
+- **CI checks**: lint/format, type-check, default/Node/Edge tests, and builds, all using Node.js 24
+- **Build coverage**: `build && check-build` validates all three main entrypoints and ESM/CommonJS declaration routing; `build:v2 && check-build:v2` then validates the standalone build
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes both packages on created releases; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
+- **Runtime coverage**: Node and Edge suites run sequentially, not in a Node-version or AI SDK-major matrix; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies
 
 - **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
-- **Peer**: `ai` (Vercel AI SDK `^5.0.0 || ^6.0.0`)
-- **Dev**: TypeScript, Vitest, tsup, ESLint, Prettier, dotenv
-- **Node requirement**: Node.js 20+
+- **Peer**: `ai` (main package: `^5.0.0 || ^6.0.0 || ^7.0.0`; standalone V2: `^5.0.0 || ^6.0.0`)
+- **Dev**: `@ai-sdk/provider-v2` (official V2 types bundled into declarations, never a consumer dependency), `ai` 7, TypeScript, Vitest, tsup, ESLint, Prettier, dotenv; `ai` is not a direct runtime dependency
+- **Node requirement**: Node.js 22.12+
 
 ### Common Commands Quick Reference
 
 ```bash
 # Fresh setup (no package-lock.json)
-npm install               # ~25s - Install deps + auto-build
+npm install               # Install deps + Lefthook hooks (no build)
 # or existing setup (with package-lock.json)
-npm ci                    # ~15s - Clean install + auto-build
+npm ci                    # Clean install + Lefthook hooks (no build)
 
 # Development
 npm run type-check        # ~2s - TypeScript validation
 npm run test             # ~1s - Run all tests
 npm run test:node        # ~1s - Node.js environment tests
 npm run test:edge        # ~1s - Edge runtime tests
-npm run build            # ~3s - Build V3 library
-npm run build:watch      # Continuous V3 rebuild
-npm run build:v2         # ~3s - Build V2 library
-npm run build:v2:watch   # Continuous V2 rebuild
-npm run prepare:v2       # Rename V2 files for publish
-npm run check-build      # <1s - Verify V3 build outputs
-npm run check-build:v2   # <1s - Verify V2 build outputs
+npm run build            # ~3s - Build main V3/V2/V4 entrypoints
+npm run build:watch      # Continuous main-package rebuild
+npm run build:v2         # ~3s - Build standalone V2 package
+npm run build:v2:watch   # Continuous standalone V2 rebuild
+npm run prepare:v2       # Rename V2 files for standalone publish
+npm run check-build      # <1s - Verify all main-package outputs
+npm run check-build:v2   # <1s - Verify V2 outputs explicitly
+npm run check-build:v4   # <1s - Verify V4 outputs explicitly
 npm run prettier-check   # ~1s - Check formatting
 npm run lint             # ~2s - Markdown lint + TOC + Mermaid + ESLint
 npm run lint-fix         # Auto-fix lint issues
@@ -258,7 +284,7 @@ npm run clean            # Remove dist/ directory
 
 # Complete validation
 npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
-# Total time: ~20s
+# Run npm run build again if main-package artifacts are needed after build:v2
 
 # Examples (requires SAP service key)
 npx tsx examples/example-generate-text.ts
@@ -276,7 +302,6 @@ npx tsx examples/example-foundation-models.ts
 ### Known Issues
 
 - **Examples**: Cannot be fully tested without valid SAP AI service key credentials
-- **Deprecation warning**: Vitest shows CJS Node API deprecation warning (non-blocking)
 
 ### Troubleshooting
 
@@ -287,7 +312,7 @@ npx tsx examples/example-foundation-models.ts
 - **Build fails**: Check TypeScript errors with `npm run type-check`
 - **Tests fail**: Run `npm run test:watch` for detailed test output
 - **Formatting issues**: Use `npm run prettier-fix` to auto-fix
-- **Missing dependencies**: Delete `node_modules` and `package-lock.json`, then run `npm install`
+- **Missing dependencies**: Run `npm ci` to restore the locked dependency tree; do not delete `package-lock.json` as routine troubleshooting
 - **Example errors**: Verify `.env` file exists with valid `AICORE_SERVICE_KEY`
 
 ## Pull Request Review Guidelines
@@ -305,7 +330,7 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
    - `README.md` - Quick start and usage patterns
    - `CONTRIBUTING.md` - Development workflow and coding standards
    - `API_REFERENCE.md` - Complete API documentation
-2. **Understand the API surface**: Start with `src/index.ts` to see public exports
+2. **Understand the API surface**: Check `src/index.ts`, `src/index-v2.ts`, and `src/index-v4.ts` for their corresponding public contracts
 3. **Study key components**: Review `src/sap-ai-provider.ts` and `src/sap-ai-language-model.ts`
 4. **Check existing patterns**: Look at test files (`*.test.ts`) to understand testing patterns
 5. **Review examples**: Check `/examples` directory for usage patterns
@@ -328,7 +353,7 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
 
 **Key patterns to follow:**
 
-- Implement Vercel AI SDK interfaces correctly (`ProviderV3`, etc.)
+- Implement Vercel AI SDK interfaces correctly (V3 / AI SDK 6 core, V2 / AI SDK 5 facade with AI SDK 6 compatibility, V4 / AI SDK 7 facade)
 - Maintain Node.js and Edge runtime compatibility
 - Keep components focused and single-purpose
 - Follow existing authentication and caching patterns

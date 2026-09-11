@@ -11,7 +11,7 @@ see [API Reference](./API_REFERENCE.md).
 **3-layer architecture** bridging your application to SAP AI services:
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
-- Implements Vercel AI SDK's `ProviderV3` interface
+- Implements Vercel AI SDK's V3 core with V2 and V4 compatibility facades
 - Uses SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`) for API communication
 - Transforms messages bidirectionally (AI SDK ↔ SAP format)
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
@@ -66,7 +66,9 @@ Handler → SAP AI Core API
   - [Memory Management](#memory-management)
   - [Monitoring and Observability](#monitoring-and-observability)
   - [Scalability Patterns](#scalability-patterns)
-- [Dual-Package Architecture (V3 + V2)](#dual-package-architecture-v3--v2)
+- [Versioned Package Architecture (V4 + V3 + V2)](#versioned-package-architecture-v4--v3--v2)
+  - [V4 Facade Layer](#v4-facade-layer)
+  - [V4 Source Files](#v4-source-files)
   - [V2 Facade Layer](#v2-facade-layer)
   - [V2 Source Files](#v2-source-files)
   - [Type Adapters](#type-adapters)
@@ -77,9 +79,9 @@ Handler → SAP AI Core API
 ## Overview
 
 The SAP AI Provider is designed as a bridge between the Vercel AI SDK and
-SAP AI Core services. It implements the Vercel AI SDK's `ProviderV3` interface
-while handling the complexities of SAP AI Core's API, authentication, and data
-formats.
+SAP AI Core services. Its shared core implements `ProviderV3`; thin V2 and V4
+facades expose the contracts required by AI SDK 5, 6, and 7 while preserving
+the same SAP authentication, validation, and request strategies.
 
 ### High-Level Architecture
 
@@ -283,14 +285,22 @@ graph TB
 
 ```text
 src/
-│   # V3 Implementation (LanguageModelV3/EmbeddingModelV3)
-├── index.ts                                        # V3 public API exports
+│   # V3 Implementation (AI SDK 6; LanguageModelV3/EmbeddingModelV3)
+├── index.ts                                        # V3 public API exports (AI SDK 6)
 ├── sap-ai-provider.ts                              # V3 provider factory
 ├── sap-ai-language-model.ts                        # V3 language model (API-agnostic)
 ├── sap-ai-embedding-model.ts                       # V3 embedding model (API-agnostic)
 │
-│   # V2 Facade Layer (LanguageModelV2/EmbeddingModelV2)
-├── index-v2.ts                                     # V2 public API exports (facade)
+│   # V4 Facade Layer (AI SDK 7; LanguageModelV4/EmbeddingModelV4)
+├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
+├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
+├── sap-ai-language-model-v4.ts                     # V4 language model facade
+├── sap-ai-embedding-model-v4.ts                    # V4 embedding model facade
+├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
+├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
+│
+│   # V2 Facade Layer (AI SDK 5; AI SDK 6 compatibility)
+├── index-v2.ts                                     # V2 public API exports (AI SDK 5 facade)
 ├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
 ├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
 ├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
@@ -429,7 +439,7 @@ sequenceDiagram
             Provider->>Provider: Use module_results.llm
         end
 
-        Provider-->>SDK: {<br/>  content: [...],<br/>  usage: {...},<br/>  finishReason: "stop",<br/>  warnings: []<br/>}
+        Provider-->>SDK: {<br/>  content: [...],<br/>  usage: {...},<br/>  finishReason: {unified: "stop", raw: "stop"},<br/>  warnings: []<br/>}
     end
 
     rect rgb(230, 255, 240)
@@ -478,7 +488,7 @@ sequenceDiagram
             alt First Chunk
                 Provider-->>SDK: {type: "stream-start"}
                 Provider-->>SDK: {type: "response-metadata"}
-                Provider-->>SDK: {type: "text-start"}
+                Provider-->>SDK: {type: "text-start", id: "0"}
             end
 
             Provider-->>SDK: {<br/>  type: "text-delta",<br/>  id: "0",<br/>  delta: "token"<br/>}
@@ -491,8 +501,8 @@ sequenceDiagram
         Note over Model,App: Stream Completion
         Model->>SAP: Generation complete
         SAP-->>Provider: data: {<br/>  final_result: {<br/>    choices: [{<br/>      finish_reason: "stop"<br/>    }],<br/>    usage: {...}<br/>  }<br/>}
-        Provider-->>SDK: {type: "text-end"}
-        Provider-->>SDK: {<br/>  type: "finish",<br/>  finishReason: "stop",<br/>  usage: {...}<br/>}
+        Provider-->>SDK: {type: "text-end", id: "0"}
+        Provider-->>SDK: {<br/>  type: "finish",<br/>  finishReason: {unified: "stop", raw: "stop"},<br/>  usage: {...}<br/>}
         SDK-->>App: Stream end
     end
 ```
@@ -985,7 +995,8 @@ Key types for model configuration:
 - **`SAPAIModelId`**: String union of supported models (e.g., "gpt-4.1",
   "anthropic--claude-4.5-sonnet", "gemini-2.5-pro") with flexibility for custom models
 - **`SAPAISettings`**: Interface with `modelVersion`, `modelParams` (maxTokens,
-  temperature, topP, etc.), `safePrompt`, and `structuredOutputs` options
+  temperature, topP, etc.), `responseFormat`, `includeReasoning`, and
+  API-specific masking, filtering, grounding, and translation options
 
 See `src/sap-ai-settings.ts` for complete type definitions.
 
@@ -1327,11 +1338,13 @@ const result = await generateText({
 The validation layer ensures features are compatible with the resolved API:
 
 - **Orchestration-only features**: masking, filtering, grounding, templating, translation
-- **Foundation Models-only features**: logprobs, seed, logit_bias, user, dataSources
-- **Common features**: temperature, maxTokens, topP, tools, streaming
+- **Foundation Models-only feature**: `dataSources`
+- **Common features**: temperature, maxTokens, topP, seed, stop sequences, tools, streaming
 
 Incompatible feature combinations throw `UnsupportedFeatureError` with helpful
-suggestions for which API to use instead.
+suggestions for which API to use instead. Additional `modelParams` such as
+`logprobs` and `logit_bias` are passed through; their support is determined by
+the SAP backend/model rather than these API-feature checks.
 
 ## Performance Considerations
 
@@ -1374,18 +1387,52 @@ AI SDK.
 
 ---
 
-## Dual-Package Architecture (V3 + V2)
+## Versioned Package Architecture (V4 + V3 + V2)
 
-This repository publishes **two separate npm packages** from a single codebase:
+This repository publishes **two npm packages** from a single codebase. The main
+package exposes three versioned entrypoints; the standalone V2 package preserves
+the existing package name for consumers that cannot use subpath exports.
 
-| Package                             | Interface                              | Target Users                                       |
-| ----------------------------------- | -------------------------------------- | -------------------------------------------------- |
-| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | Users on AI SDK 5.0+ preferring V3 interfaces      |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | Users on AI SDK 5.0+ requiring V2 model interfaces |
+| Package export                      | Interface                              | Target users                     |
+| ----------------------------------- | -------------------------------------- | -------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
+| `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+
+### V4 Facade Layer
+
+The V4 facade normalizes AI SDK 7 prompts into the shared V3 core and converts
+generated and streamed V3 results back to V4 shapes. V4-only content with no V3
+equivalent is rejected explicitly rather than silently discarded.
+
+### V4 Source Files
+
+```text
+src/
+├── index-v4.ts                    # V4 public API exports (AI SDK 7 facade)
+├── sap-ai-provider-v4.ts          # V4 provider factory
+├── sap-ai-language-model-v4.ts    # V4 language model facade
+├── sap-ai-embedding-model-v4.ts   # V4 embedding model facade
+├── sap-ai-adapters-v4-to-v3.ts    # Prompt normalization
+└── sap-ai-adapters-v3-to-v4.ts    # Result and stream conversion
+```
 
 ### V2 Facade Layer
 
-The V2 package uses a **facade pattern** that wraps the internal V3 implementation:
+The V2 package uses a **facade pattern** that wraps the internal V3 implementation.
+The official provider v2 result types are a development-only dependency: both builds
+inline them and their JSON Schema types into the published declarations. Consumers
+do not install the `@ai-sdk/provider-v2` alias. This preserves AI SDK 5 result
+compatibility without copying upstream definitions into our source.
+
+V2 language-model inputs use the current upstream contracts, accepting both
+provider-tool discriminators shipped with AI SDK 5 and 6. Warning declarations
+reflect the `other` warnings that the adapters actually return. These are type-only
+compatibility measures, not an additional runtime implementation.
+
+The JSON type divergence remains in provider 2.0.4 and 4.0.13; see
+[upstream PR #8537](https://github.com/vercel/ai/pull/8537).
 
 ```mermaid
 graph TB
@@ -1436,7 +1483,7 @@ graph TB
 
 ```text
 src/
-├── index-v2.ts                    # V2 public API exports
+├── index-v2.ts                    # V2 public API exports (AI SDK 5 facade)
 ├── sap-ai-provider-v2.ts          # V2 provider factory (facade)
 ├── sap-ai-language-model-v2.ts    # V2 language model (delegates to V3)
 ├── sap-ai-embedding-model-v2.ts   # V2 embedding model (delegates to V3)
@@ -1447,34 +1494,38 @@ src/
 
 The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 and V2 interfaces:
 
-- **Finish Reason**: `{ type, unified }` object → string (`"stop"`, `"tool-calls"`, etc.)
+- **Finish Reason**: `{ unified, raw? }` object → string (`"stop"`, `"tool-calls"`, etc.)
 - **Usage**: Nested structure with `inputTokens.total` → flat `{ inputTokens, outputTokens, totalTokens }`
-- **Stream Parts**: V3 structured blocks → V2 simple deltas
-- **Warnings**: V3 `{ feature, ... }` format → V2 `{ type, ... }` format
+- **Stream Parts**: Preserves text/reasoning block lifecycle and deltas; converts
+  finish/warning payloads and drops unsupported V3-only content
+- **Warnings**: V3 `unsupported`/`compatibility` warnings → V2 `other` warnings
+  with descriptive messages
 
 ### Build Process
 
 The builds are **sequential** to the same `dist/` directory:
 
 ```bash
-# V3 build (primary package)
+# Main package build: V3 root plus /v2 and /v4 entrypoints
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
 
-# V2 build (secondary package)
-npm run build:v2           # tsup.config.v2.ts → dist/
-npm run prepare:v2         # Renames files, updates package.json
-npm publish                # @jerome-benoit/sap-ai-provider-v2
+# V2 publication (run from a separate clean checkout)
+AI_SDK_VERSION=v2 npm publish # prepublishOnly builds, checks, and prepares V2
 ```
 
-**Why sequential?** This avoids managing different output directories and simplifies the CI/CD pipeline. Each build completely replaces the `dist/` contents.
+**Why sequential?** Both builds use `clean: true` and replace `dist/`. The
+standalone publication also rewrites `package.json` and `package-lock.json`, so
+run it in a separate clean checkout. Do not run `prepare:v2` manually before
+`npm publish`: the publication lifecycle performs preparation after building.
 
 ### Key Design Decisions
 
-1. **Single source of truth**: All SAP AI Core logic lives in V3 implementation
-2. **Thin facade**: V2 layer only handles interface translation, no business logic
-3. **No code duplication**: V2 delegates to V3 for actual API calls
-4. **Adapter isolation**: Type conversions centralized in one file for maintainability
+1. **Single source of truth**: All SAP AI Core logic lives in the V3 implementation
+2. **Thin facades**: V2 and V4 translate interface contracts without duplicating business logic
+3. **Versioned entrypoints**: One main package supports AI SDK 5–7 without mixing model contracts
+4. **Standalone V2 publication**: Existing V2 consumers retain their dedicated package
+5. **Adapter isolation**: Version conversions remain centralized and independently testable
 
 ---
 

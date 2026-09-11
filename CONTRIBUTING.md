@@ -60,7 +60,7 @@ accept pull requests.
 
 ### Prerequisites
 
-- Node.js 20 or higher
+- Node.js 22.12 or higher
 - npm or yarn
 - Git
 - SAP AI Core service key (for testing with real API)
@@ -309,12 +309,14 @@ authentication setup.
 
 **4. Example Code Guidelines**
 
-- Use relative imports (`../src/index`) for repo examples
+- Use relative imports (`../src/index-v4`) for repo examples to match the
+  installed AI SDK 7 development dependency. The root V3 import targets
+  AI SDK 6; `/v2` targets AI SDK 5 and also supports AI SDK 6 compatibility.
 - Add comment explaining production import path:
 
   ```typescript
   // NOTE: This example uses relative imports for local development
-  // In your project, use: import { ... } from "@jerome-benoit/sap-ai-provider"
+  // In your AI SDK 7 project, use: import { ... } from "@jerome-benoit/sap-ai-provider/v4"
   ```
 
 **5. Documentation Verification**
@@ -322,7 +324,7 @@ authentication setup.
 Before submitting a PR, run:
 
 ```bash
-npm run build         # Ensures TypeScript compiles
+npm run build         # Builds V3 root, /v2, and /v4 with declarations
 npm test             # Runs test suite
 ```
 
@@ -353,7 +355,9 @@ npm test             # Runs test suite
 
 ### Provider Integration
 
-- Implement Vercel AI SDK interfaces correctly
+- Implement the matching Vercel AI SDK contracts: root V3 for SDK 6, V2 facade
+  for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades share
+  the V3 core; the main package exposes all three entrypoints.
 - Follow the separation: provider factory → language model
 - Maintain compatibility with Node.js and Edge runtimes
 - Use existing authentication patterns

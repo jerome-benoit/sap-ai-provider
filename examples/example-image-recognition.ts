@@ -18,8 +18,8 @@ import { generateText } from "ai";
 
 // This example uses relative imports for local development within this repo.
 // In YOUR production project, use the published package instead:
-// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
-import { createSAPAIProvider } from "../src/index";
+// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
+import { createSAPAIProvider } from "../src/index-v4";
 
 /**
  *
@@ -49,10 +49,14 @@ async function imageRecognitionExample() {
               type: "text",
             },
             {
-              image: new URL(
-                "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png",
-              ),
-              type: "image",
+              data: {
+                type: "url",
+                url: new URL(
+                  "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png",
+                ),
+              },
+              mediaType: "image/png",
+              type: "file",
             },
           ],
           role: "user",
@@ -81,8 +85,9 @@ async function imageRecognitionExample() {
               type: "text",
             },
             {
-              image: `data:image/png;base64,${base64Image}`,
-              type: "image",
+              data: { data: base64Image, type: "data" },
+              mediaType: "image/png",
+              type: "file",
             },
           ],
           role: "user",
@@ -107,14 +112,19 @@ async function imageRecognitionExample() {
               type: "text",
             },
             {
-              image: new URL(
-                "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png",
-              ),
-              type: "image",
+              data: {
+                type: "url",
+                url: new URL(
+                  "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png",
+                ),
+              },
+              mediaType: "image/png",
+              type: "file",
             },
             {
-              image: `data:image/png;base64,${base64Image}`,
-              type: "image",
+              data: { data: base64Image, type: "data" },
+              mediaType: "image/png",
+              type: "file",
             },
           ],
           role: "user",

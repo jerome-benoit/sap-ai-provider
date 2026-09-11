@@ -1,4 +1,4 @@
-import type { ImageModelV2, ProviderV2 } from "@ai-sdk/provider";
+import type { ImageModelV2, ProviderV2 } from "@ai-sdk/provider-v2";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -99,7 +99,8 @@ export interface SAPAIProviderV2 extends ProviderV2 {
 }
 
 /**
- * Creates an SAP AI Provider instance for use with the Vercel AI SDK.
+ * Creates an SAP AI Provider V2 instance for use with AI SDK 5.
+ * AI SDK 6 can also consume this provider through its V2 compatibility layer.
  *
  * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
  * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
@@ -152,7 +153,7 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     );
   }
 
-  if (!process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
+  if (typeof process === "undefined" || !process.env.SAP_CLOUD_SDK_LOG_LEVEL) {
     const logLevel = options.logLevel ?? "warn";
     setGlobalLogLevel(logLevel);
   }

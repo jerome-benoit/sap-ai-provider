@@ -18,13 +18,17 @@ configuration and code style.
 ## Modules and Imports
 
 - ESM modules by default (see `module` in [tsconfig.json](mdc:tsconfig.json)).
-- Keep public exports centralized in [src/index.ts](mdc:src/index.ts).
+- Keep public exports centralized in the matching entrypoint:
+  [src/index.ts](mdc:src/index.ts) (V3 / AI SDK 6),
+  [src/index-v2.ts](mdc:src/index-v2.ts) (V2 / AI SDK 5; also AI SDK 6 compatibility),
+  or [src/index-v4.ts](mdc:src/index-v4.ts) (V4 / AI SDK 7).
 
 ## Errors and Handling
 
 - Do not swallow errors. Propagate or wrap with context using Vercel AI SDK
   standard errors (`APICallError`, `LoadAPIKeyError`, `NoSuchModelError`,
-  `UnsupportedFeatureError` from `@ai-sdk/provider`).
+  `UnsupportedFunctionalityError` from `@ai-sdk/provider`). Provider-specific
+  `UnsupportedFeatureError` is defined in [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts).
 - Only use `try/catch` where meaningful recovery or re-throw with context is
   performed.
 
@@ -45,3 +49,6 @@ configuration and code style.
 - The V2 facade wraps V3 internally — when modifying V2 files, ensure V3→V2
   adapters transform types correctly (see
   [src/sap-ai-adapters-v3-to-v2.ts](mdc:src/sap-ai-adapters-v3-to-v2.ts)).
+- The V4 facade also wraps V3; preserve prompt normalization and result/stream
+  conversion in [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
+  and [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts).

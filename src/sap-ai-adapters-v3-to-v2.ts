@@ -5,13 +5,19 @@ import type {
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
   SharedV3Warning as InternalWarning,
+  SharedV3ProviderMetadata,
+} from "@ai-sdk/provider";
+import type {
   LanguageModelV2CallWarning,
   LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
   LanguageModelV2Usage,
   SharedV2ProviderMetadata,
-  SharedV3ProviderMetadata,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v2";
+
+type ConvertedV2StreamPart =
+  | Exclude<LanguageModelV2StreamPart, { type: "stream-start" }>
+  | { type: "stream-start"; warnings: ReturnType<typeof convertWarningsToV2> };
 
 /**
  * Converts internal finish reason to V2 format.
@@ -49,7 +55,7 @@ export function convertProviderMetadataToV2(
  * - `tool-approval-request`: V3-only, returns `null`
  * - `tool-call`: removes V3-only `dynamic`
  * - `tool-input-start`: removes V3-only `dynamic`, `title`
- * - `tool-result`: maps `dynamic` → `providerExecuted`, removes `preliminary`
+ * - `tool-result`: marks provider execution, removes `dynamic` and `preliminary`
  * - `source`: casts `providerMetadata`
  * - `response-metadata`: identical structure, passthrough
  * - `text-*`, `reasoning-*`, `tool-input-delta`, `tool-input-end`: casts `providerMetadata`
@@ -60,7 +66,7 @@ export function convertProviderMetadataToV2(
  */
 export function convertStreamPartToV2(
   internalPart: InternalStreamPart,
-): LanguageModelV2StreamPart | null {
+): ConvertedV2StreamPart | null {
   switch (internalPart.type) {
     case "error":
       return {
@@ -211,12 +217,13 @@ export function convertStreamPartToV2(
     case "tool-result":
       return withProviderMetadata(
         {
+          // V3 tool results are provider-executed, independent of dynamic tool classification.
+          providerExecuted: true,
           result: internalPart.result,
           toolCallId: internalPart.toolCallId,
           toolName: internalPart.toolName,
           type: "tool-result" as const,
           ...(internalPart.isError !== undefined && { isError: internalPart.isError }),
-          ...(internalPart.dynamic !== undefined && { providerExecuted: internalPart.dynamic }),
         },
         internalPart.providerMetadata,
       );
@@ -251,7 +258,7 @@ export function convertUsageToV2(internalUsage: InternalUsage): LanguageModelV2U
  */
 export function convertWarningsToV2(
   internalWarnings: InternalWarning[],
-): LanguageModelV2CallWarning[] {
+): ReturnType<typeof convertWarningToV2>[] {
   return internalWarnings.map(convertWarningToV2);
 }
 
@@ -263,7 +270,9 @@ export function convertWarningsToV2(
  * @returns V2 warning object.
  * @internal
  */
-export function convertWarningToV2(internalWarning: InternalWarning): LanguageModelV2CallWarning {
+export function convertWarningToV2(
+  internalWarning: InternalWarning,
+): Extract<LanguageModelV2CallWarning, { type: "other" }> {
   if (internalWarning.type === "unsupported") {
     return {
       message: internalWarning.details
@@ -296,9 +305,9 @@ export function convertWarningToV2(internalWarning: InternalWarning): LanguageMo
  */
 export function createV2StreamFromInternal(
   internalStream: ReadableStream<InternalStreamPart>,
-): ReadableStream<LanguageModelV2StreamPart> {
+): ReadableStream<ConvertedV2StreamPart> {
   return internalStream.pipeThrough(
-    new TransformStream<InternalStreamPart, LanguageModelV2StreamPart>({
+    new TransformStream<InternalStreamPart, ConvertedV2StreamPart>({
       transform(chunk, controller) {
         const converted = convertStreamPartToV2(chunk);
         if (converted != null) {

@@ -9,8 +9,9 @@ globs: **/*.test.ts,**/*.test.tsx
 - Node tests: [vitest.node.config.ts](mdc:vitest.node.config.ts)
 - Edge runtime tests: [vitest.edge.config.ts](mdc:vitest.edge.config.ts)
 
-Use Node environment for most unit tests. Use Edge runtime when covering
-streaming or runtime-specific behaviors.
+Use Node for Node-specific behavior (`*.node.test.ts` is excluded from Edge).
+The Edge configuration runs the other `*.test.ts` files, including shared
+model and adapter tests.
 
 ## Commands
 
@@ -21,13 +22,16 @@ streaming or runtime-specific behaviors.
 
 ## Stubbing Network
 
-- Prefer injecting a custom `fetch` via provider settings for deterministic
-  tests (see [src/sap-ai-provider.ts](mdc:src/sap-ai-provider.ts)).
+- Mock SAP SDK clients using the existing `vi.mock` patterns in
+  [src/sap-ai-language-model.test.ts](mdc:src/sap-ai-language-model.test.ts).
+  Provider settings do not expose a custom `fetch` option.
 - For V3 streaming flows, assert `LanguageModelV3StreamPart` events via the
   `doStream` pipeline (see
   [src/sap-ai-language-model.ts](mdc:src/sap-ai-language-model.ts)).
 - For V2 facade tests, assert `LanguageModelV2StreamPart` events via the
   V2 adapters (see [src/sap-ai-language-model-v2.ts](mdc:src/sap-ai-language-model-v2.ts)).
+- For V4 facade tests, assert `LanguageModelV4StreamPart` events and V4 prompt
+  normalization (see [src/sap-ai-language-model-v4.test.ts](mdc:src/sap-ai-language-model-v4.test.ts)).
 
 ## Test Patterns
 
@@ -35,8 +39,8 @@ streaming or runtime-specific behaviors.
   [src/convert-to-sap-messages.ts](mdc:src/convert-to-sap-messages.ts).
 - Validate error propagation using helpers in
   [src/sap-ai-error.ts](mdc:src/sap-ai-error.ts).
-- Assert structured output behavior varies by model family (Anthropic/Amazon do
-  not support JSON schema formatting).
+- Validate structured-output conversion and backend errors without assuming
+  model-family filtering: schema formats and `n` are forwarded to SAP.
 
 ## V2 Facade Test Files
 
@@ -51,4 +55,6 @@ The V2 facade layer has dedicated test files:
 - [src/sap-ai-adapters-v3-to-v2.test.ts](mdc:src/sap-ai-adapters-v3-to-v2.test.ts) —
   Tests for V3→V2 type adapter functions.
 
-When modifying V2 facade files, ensure corresponding test files are updated.
+When modifying facade files, cover affected V2/V3/V4 observable contracts.
+The V4 facade has corresponding provider, language-model, embedding-model,
+and adapter tests alongside its source files.
