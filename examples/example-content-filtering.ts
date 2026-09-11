@@ -21,14 +21,7 @@ import { generateText } from "ai";
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider, buildAzureContentSafetyFilter } from "@jerome-benoit/sap-ai-provider/v4";
 import { buildAzureContentSafetyFilter, createSAPAIProvider } from "../src/index-v4";
-
-interface SAPErrorResponseBody {
-  error?: {
-    code?: string;
-    message?: string;
-    request_id?: string;
-  };
-}
+import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
 /**
  * Runs the content filtering example.
@@ -100,7 +93,7 @@ async function contentFilteringExample() {
       console.error("❌ API Call Error:", error.statusCode, error.message);
 
       const sapError = parseSAPErrorResponseBody(error.responseBody);
-      if (sapError?.error?.request_id) {
+      if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
         console.error("   SAP Error Code:", sapError.error.code);
         console.error("   SAP Error Message:", sapError.error.message);
@@ -115,55 +108,6 @@ async function contentFilteringExample() {
     console.error("   - Confirm you are using the Orchestration API");
     console.error("   - Verify content filtering is available in your SAP AI Core tenant");
     console.error("   - Check that the selected model is available in your deployment");
-  }
-}
-
-/**
- * Checks whether a value is a non-null object record.
- * @param value - Value to inspect.
- * @returns True when the value can be accessed as a record.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-/**
- * Parses SAP AI Core error details from an API response body.
- * @param responseBody - Raw API response body from APICallError.
- * @returns Parsed SAP error details when the body matches the expected shape.
- */
-function parseSAPErrorResponseBody(
-  responseBody: string | undefined,
-): SAPErrorResponseBody | undefined {
-  if (!responseBody) {
-    return undefined;
-  }
-
-  try {
-    const parsedResponseBody: unknown = JSON.parse(responseBody);
-
-    if (!isRecord(parsedResponseBody) || !isRecord(parsedResponseBody.error)) {
-      return undefined;
-    }
-
-    return {
-      error: {
-        code:
-          typeof parsedResponseBody.error.code === "string"
-            ? parsedResponseBody.error.code
-            : undefined,
-        message:
-          typeof parsedResponseBody.error.message === "string"
-            ? parsedResponseBody.error.message
-            : undefined,
-        request_id:
-          typeof parsedResponseBody.error.request_id === "string"
-            ? parsedResponseBody.error.request_id
-            : undefined,
-      },
-    };
-  } catch {
-    return undefined;
   }
 }
 

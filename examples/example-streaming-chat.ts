@@ -20,6 +20,7 @@ import { streamText } from "ai";
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
 import { createSAPAIProvider } from "../src/index-v4";
+import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
 /**
  *
@@ -41,22 +42,33 @@ async function streamingChatExample() {
 
     console.log("📡 Starting streaming response...\n");
 
-    const { textStream, usage } = streamText({
+    let streamError: unknown;
+    const result = streamText({
       model,
+      onError: ({ error }) => {
+        streamError = error;
+      },
       prompt: "Write a short story about a cat who learns to code.",
     });
 
     let aggregated = "";
-    for await (const textPart of textStream) {
+    for await (const textPart of result.textStream) {
       process.stdout.write(textPart);
       aggregated += textPart;
+    }
+
+    // textStream omits error events; preserve the original error for the handler below.
+    if (streamError !== undefined) {
+      throw streamError instanceof Error
+        ? streamError
+        : new Error("Streaming failed", { cause: streamError });
     }
 
     console.log("\n\n✅ Stream finished");
     console.log("📄 Total characters:", aggregated.length);
 
     // Get usage after stream completes
-    const finalUsage = await usage;
+    const finalUsage = await result.usage;
     console.log(
       "📊 Usage:",
       `${String(finalUsage.inputTokens)} prompt + ${String(finalUsage.outputTokens)} completion tokens`,
@@ -70,10 +82,8 @@ async function streamingChatExample() {
       console.error("❌ API Call Error:", error.statusCode, error.message);
 
       // Parse SAP-specific metadata
-      const sapError = JSON.parse(error.responseBody ?? "{}") as {
-        error?: { code?: string; request_id?: string };
-      };
-      if (sapError.error?.request_id) {
+      const sapError = parseSAPErrorResponseBody(error.responseBody);
+      if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
         console.error("   SAP Error Code:", sapError.error.code);
       }

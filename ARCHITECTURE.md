@@ -336,7 +336,7 @@ src/
   - SAP AI SDK client configuration
   - Configuration validation
   - Model instance creation (language and embedding)
-  - Base URL and deployment management
+  - Deployment selection and destination configuration passed to SAP SDK clients
 
 #### `SAPAILanguageModel`
 
@@ -354,7 +354,7 @@ src/
   - Embedding generation via `doEmbed()`
   - Batch size validation (`maxEmbeddingsPerCall`)
   - AbortSignal handling for request cancellation
-  - Uses `OrchestrationEmbeddingClient` from SAP AI SDK
+  - Uses Orchestration or Foundation Models embedding clients via strategies
 
 #### `SAP SDK Client Configuration`
 
@@ -515,10 +515,12 @@ capabilities:
 **Default Path:**
 
 ```text
-${baseURL}/inference/deployments/{deploymentId}/v2/completion
+${AI_API_URL}/v2/inference/deployments/{deploymentId}/v2/completion
 ```
 
-**Top-level v2 endpoint:**
+`AI_API_URL` is the service key's `serviceurls.AI_API_URL` value.
+
+**Deployment-relative v2 endpoint:**
 
 ```http
 POST /v2/completion
@@ -530,14 +532,13 @@ POST /v2/completion
 
 ```typescript
 // Default configuration
-const provider = createSAPAIProvider({
+const automaticProvider = createSAPAIProvider({
   resourceGroup: "default",
 });
 
-// With specific deployment
-const provider = createSAPAIProvider({
+// With a specific deployment (resourceGroup is ignored when deploymentId is set)
+const deployedProvider = createSAPAIProvider({
   deploymentId: "d65d81e7c077e583",
-  resourceGroup: "production",
 });
 ```
 
@@ -738,7 +739,8 @@ or the deployed model stops server-side processing.
 This diagram shows how tool calling (function calling) works. When the AI model
 needs to call a tool, it returns structured tool call requests. Your application
 executes the tools and provides results back, which the model uses to generate
-the final response.
+the final response. The tools below provide `execute` functions, and
+`stopWhen: stepCountIs(2)` allows the second model call after tool execution.
 
 ```mermaid
 sequenceDiagram
@@ -751,13 +753,13 @@ sequenceDiagram
 
     rect rgb(230, 240, 255)
         Note over App,SDK: 1. Initial Request with Tools
-        App->>SDK: generateText({<br/>  model: provider('gpt-4.1'),<br/>  prompt: 'What is 5+3 and weather in Tokyo?',<br/>  tools: {<br/>    calculate: calculatorTool,<br/>    getWeather: weatherTool<br/>  }<br/>})
+        App->>SDK: generateText({<br/>  model: provider('gpt-4.1'),<br/>  prompt: 'What is 5+3 and weather in Tokyo?',<br/>  stopWhen: stepCountIs(2),<br/>  tools: {<br/>    calculate: calculatorTool,<br/>    getWeather: weatherTool<br/>  }<br/>})
     end
 
     rect rgb(255, 240, 230)
         Note over SDK,Provider: 2. Tool Registration
         SDK->>Provider: doGenerate({<br/>  prompt: [...],<br/>  tools: [<br/>    {type: "function", name: "calculate", ...},<br/>    {type: "function", name: "getWeather", ...}<br/>  ]<br/>})
-        Provider->>Provider: Build request with tools<br/>{<br/>  config: {<br/>    modules: {<br/>      prompt_templating: {<br/>        prompt: {<br/>          tools: [{<br/>            type: "function",<br/>            function: {<br/>              name: "calculate",<br/>              parameters: {...}<br/>            }<br/>          }]<br/>        },<br/>        model: {<br/>          params: {<br/>            parallel_tool_calls: true<br/>          }<br/>        }<br/>      }<br/>    }<br/>  }<br/>}
+        Provider->>Provider: Build orchestration configuration<br/>{config: {modules: {prompt_templating: {<br/>  prompt: {tools: [{type: "function", function: {name: "calculate", parameters: {...}}}, ...]},<br/>  model: {name: "gpt-4.1", version: "latest", params: {...}}<br/>}}}}
     end
 
     rect rgb(240, 255, 240)
@@ -772,7 +774,7 @@ sequenceDiagram
     rect rgb(255, 245, 230)
         Note over Provider,SDK: 4. Tool Call Extraction
         Provider->>Provider: Parse tool calls<br/>Extract: name, id, arguments
-        Provider-->>SDK: {<br/>  content: [<br/>    {type: "tool-call", toolCallId: "call_1", ...},<br/>    {type: "tool-call", toolCallId: "call_2", ...}<br/>  ],<br/>  finishReason: "tool-calls"<br/>}
+        Provider-->>SDK: {<br/>  content: [<br/>    {type: "tool-call", toolCallId: "call_1", ...},<br/>    {type: "tool-call", toolCallId: "call_2", ...}<br/>  ],<br/>  finishReason: {unified: "tool-calls", raw: "tool_calls"}<br/>}
     end
 
     rect rgb(240, 240, 255)
@@ -792,8 +794,9 @@ sequenceDiagram
 
     rect rgb(255, 240, 255)
         Note over SDK,Model: 6. Continue with Tool Results
-        SDK->>Provider: doGenerate({<br/>  prompt: [<br/>    ...previousMessages,<br/>    {role: "assistant", tool_calls: [...]},<br/>    {role: "tool", tool_call_id: "call_1", content: "8"},<br/>    {role: "tool", tool_call_id: "call_2", content: "sunny, 72°F"}<br/>  ]<br/>})
-        Provider->>SAP: POST with tool results
+        SDK->>Provider: doGenerate with prior prompt,<br/>assistant tool-call content parts,<br/>and tool tool-result content parts
+        Provider->>Provider: Convert toolCallId / input / output<br/>to SAP tool_calls / tool_call_id / content
+        Provider->>SAP: POST with converted tool calls and results
         SAP->>Model: Continue generation
         Model->>Model: Process tool results<br/>Generate final response
         Model-->>SAP: Final answer
@@ -802,8 +805,8 @@ sequenceDiagram
 
     rect rgb(230, 255, 240)
         Note over Provider,App: 7. Final Response
-        Provider-->>SDK: {<br/>  content: [{type: "text", text: "..."}],<br/>  finishReason: "stop"<br/>}
-        SDK-->>App: {<br/>  text: "5+3=8. Tokyo weather: sunny, 72°F",<br/>  toolCalls: [...],<br/>  toolResults: [...]<br/>}
+        Provider-->>SDK: {<br/>  content: [{type: "text", text: "..."}],<br/>  finishReason: {unified: "stop", raw: "stop"}<br/>}
+        SDK-->>App: {<br/>  text: "5+3=8. Tokyo weather: sunny, 72°F",<br/>  steps: [tool-call step, final-answer step]<br/>}
     end
 ```
 

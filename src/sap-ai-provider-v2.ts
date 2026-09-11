@@ -109,12 +109,12 @@ export interface SAPAIProviderV2 extends ProviderV2 {
  * @param options - Provider configuration options.
  * @param options.api - Default API type: `'orchestration'` (default) or `'foundation-models'`.
  * @param options.defaultSettings - Default model settings applied to every model instance.
- * @param options.deploymentId - SAP AI Core deployment ID for automatic deployment resolution.
+ * @param options.deploymentId - Explicit SAP AI Core deployment ID; omit for automatic deployment resolution.
  * @param options.destination - Custom SAP Cloud SDK destination configuration.
  * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
  * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
  * @param options.requestConfig - Provider-level custom request configuration. See {@link SAPAIProviderSettings.requestConfig} for scope, portability, and abort semantics.
- * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`).
+ * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`); ignored when deploymentId is set.
  * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.
  * @returns A configured SAP AI provider instance that can be used as a callable or via methods.
  * @example

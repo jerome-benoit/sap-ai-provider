@@ -172,6 +172,10 @@ V4 tagged file data is normalized before it reaches the shared core:
   they do not trigger native file lookup.
 - Text file variants become V3 text parts and retain provider options.
 
+V4 assistant `reasoning-file` and `custom` parts throw
+`UnsupportedFunctionalityError`. Custom items nested in tool-result content
+are instead preserved and serialized as JSON by the shared SAP converter.
+
 ## V2 Facade Package API
 
 The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provider/v2` subpath and from the standalone `@jerome-benoit/sap-ai-provider-v2` package. Both wrap the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for AI SDK 5/6 or other V2-compatible consumers. AI SDK 7 integrations must use the [V4 facade](#v4-facade-api-ai-sdk-7) instead.
@@ -333,11 +337,20 @@ imageModel(modelId: string): ImageModelV2
 
 This class implements the Vercel AI SDK's `LanguageModelV2` interface, wrapping the internal V3 language model implementation.
 
+Direct generation results and stream `finish` events expose a string
+`finishReason` and flat `usage.inputTokens`, `usage.outputTokens`, and
+`usage.totalTokens`. SAP provider metadata is preserved, including the V3-shaped
+`finishReasonMapped` object; it does not become a V2 finish-reason string.
+
 ---
 
 ### `SAPAIEmbeddingModelV2`
 
 This class implements the Vercel AI SDK's `EmbeddingModelV2` interface, wrapping the internal V3 embedding model implementation.
+
+Unlike V3/V4, its `doEmbed` result has no `warnings` property. Warnings from the
+shared core are logged with `console.warn`; embeddings, usage, response headers,
+and SAP provider metadata are returned.
 
 ---
 
@@ -1320,7 +1333,7 @@ Model-specific configuration options.
 | `translation`                | `TranslationModule`           | -       | Translation configuration (Orchestration only)                      |
 | `placeholderValues`          | `Record<string, string>`      | -       | Default values for template placeholders                            |
 | `promptTemplateRef`          | `PromptTemplateRef`           | -       | Reference to a Prompt Registry template                             |
-| `responseFormat`             | `ResponseFormatConfig`        | -       | Response format specification                                       |
+| `responseFormat`             | `ResponseFormat`              | -       | Response format specification                                       |
 | `streamOptions`              | `OrchestrationStreamOptions`  | -       | Stream options for post-LLM modules (Orchestration only)            |
 | `tools`                      | `ChatCompletionTool[]`        | -       | Tool definitions in SAP AI SDK format                               |
 | `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]` | -       | Ordered fallback prompt module configurations for Orchestration API |
@@ -2595,7 +2608,7 @@ for await (const part of stream) {
 ```
 
 > **Note:** Streaming response IDs (`response-metadata.id`) are extracted from
-> the server's completion response when available. `providerMetadata.requestId`
+> the server's completion response when available. `providerMetadata[providerName].requestId`
 > exposes the SAP request correlation id — see
 > [Provider Metadata](#provider-metadata-in-responses).
 
@@ -2697,7 +2710,7 @@ handling across providers.
 Properties:
 
 - `message`: Error description with helpful context
-- `statusCode`: HTTP status code (401, 403, 429, 500, etc.)
+- `statusCode`: Status derived from the SDK error; may be a fallback `500` when the original HTTP status is unavailable
 - `url`: Request context identifier (for example, `sap-ai:orchestration`), not necessarily an HTTP URL
 - `requestBodyValues`: Provider request summary, not necessarily the complete request body
 - `responseHeaders`: Response headers, when available
@@ -2856,6 +2869,11 @@ non-retryable `APICallError`, while authentication-keyword matches produce
 `LoadAPIKeyError`. Auto-Retry means eligible for high-level AI SDK retries
 subject to `maxRetries`, not a guarantee that the request succeeds.
 
+The SDK can lose the original status and body before the provider receives an
+error. In particular, a non-JSON streaming error response can become a JSON
+parsing error in the SAP SDK. The provider then reports a non-retryable
+`APICallError` with fallback status `500`, not the original HTTP status.
+
 | Code | Description           | Error Type         | Auto-Retry | Common Causes                  | Recommended Action                              | Guide                                                                       |
 | :--: | :-------------------- | :----------------- | :--------: | :----------------------------- | :---------------------------------------------- | :-------------------------------------------------------------------------- |
 | 400  | Bad Request           | `APICallError`     |     ❌     | Invalid parameters             | Validate configuration against TypeScript types | [→ Guide](./TROUBLESHOOTING.md#problem-400-bad-request)                     |
@@ -3012,12 +3030,16 @@ import type { OrchestrationModuleConfigList } from "@jerome-benoit/sap-ai-provid
 
 const configWithFallbacks: OrchestrationModuleConfigList = [
   {
-    templating: [/* primary template */],
-    llm: {/* ... */},
+    promptTemplating: {
+      model: { name: "gpt-4.1" },
+      prompt: { template: [{ role: "user", content: "Explain quantum computing." }] },
+    },
   },
   {
-    templating: [/* fallback template */],
-    llm: {/* ... */},
+    promptTemplating: {
+      model: { name: "gpt-4.1-mini" },
+      prompt: { template: [{ role: "user", content: "Explain quantum computing." }] },
+    },
   },
 ];
 ```
@@ -3029,30 +3051,25 @@ const configWithFallbacks: OrchestrationModuleConfigList = [
 
 ### `DeploymentConfig`
 
-Type for configuring deployment resolution behavior.
+SAP SDK deployment configuration: a deployment ID or an optional resource group.
 
 **Type:**
 
 ```typescript
-type DeploymentConfig = {
-  deploymentId?: string;
-  resourceGroup?: string;
-  scenario?: string;
-};
+type DeploymentConfig = { deploymentId: string } | { resourceGroup?: string };
 ```
 
 **Properties:**
 
-| Property        | Type     | Description                                         |
-| --------------- | -------- | --------------------------------------------------- |
-| `deploymentId`  | `string` | Specific deployment ID (skips auto-resolution)      |
-| `resourceGroup` | `string` | SAP AI Core resource group (default: `"default"`)   |
-| `scenario`      | `string` | Deployment scenario for filtering (default: varies) |
+| Property        | Type     | Description                                                   |
+| --------------- | -------- | ------------------------------------------------------------- |
+| `deploymentId`  | `string` | Required in the deployment-ID variant (skips auto-resolution) |
+| `resourceGroup` | `string` | Optional in the resource-group variant (default: `"default"`) |
 
 **Example:**
 
 ```typescript
-import { createSAPAIProvider, DeploymentConfig } from "@jerome-benoit/sap-ai-provider";
+import { createSAPAIProvider, type DeploymentConfig } from "@jerome-benoit/sap-ai-provider";
 
 const deploymentConfig: DeploymentConfig = {
   deploymentId: "d1234567-89ab-cdef-0123-456789abcdef",
@@ -3068,6 +3085,11 @@ const provider = createSAPAIProvider(deploymentConfig);
 
 > **Architecture Context:** For message transformation flow and format details,
 > see [Architecture - Message Conversion](./ARCHITECTURE.md#message-conversion).
+
+SAP builder signatures below use upstream SAP SDK type names. Those parameter
+and return types are not all re-exported by this provider; prefer inferred
+builder results or `Parameters<typeof builder>` / `ReturnType<typeof builder>`
+when a named type is not listed in this reference's re-export tables.
 
 ### `getProviderName(providerIdentifier)`
 
@@ -3269,7 +3291,7 @@ filtering.
 **Signature:**
 
 ```typescript
-function buildAzureContentSafetyFilter(type: "input" | "output", config?: AzureContentSafetyFilterParameters): AzureContentSafetyFilterReturnType;
+function buildAzureContentSafetyFilter<T extends "input" | "output">(type: T, config?: AzureContentSafetyFilterParameters<T>): AzureContentSafetyFilterReturnType<T>;
 ```
 
 **Parameters:**
@@ -3325,7 +3347,7 @@ Creates a Llama Guard 3 8B filter configuration for content safety filtering.
 **Signature:**
 
 ```typescript
-function buildLlamaGuard38BFilter(type: "input" | "output", categories: [LlamaGuard38BCategory, ...LlamaGuard38BCategory[]]): LlamaGuard38BFilterReturnType;
+function buildLlamaGuard38BFilter<T extends "input" | "output">(type: T, categories: [LlamaGuard38BCategory, ...LlamaGuard38BCategory[]]): LlamaGuard38BFilterReturnType<T>;
 ```
 
 **Parameters:**
@@ -3427,7 +3449,7 @@ Document Translation service.
 **Signature:**
 
 ```typescript
-function buildTranslationConfig(type: "input" | "output", config: TranslationConfigParams): TranslationReturnType;
+function buildTranslationConfig<T extends "input" | "output">(type: T, config: TranslationConfigParams<T>): TranslationReturnType<T>;
 ```
 
 **Parameters:**
@@ -3436,8 +3458,9 @@ function buildTranslationConfig(type: "input" | "output", config: TranslationCon
   model)
 - `config`: Translation configuration
   - `sourceLanguage`: Source language code (auto-detected if omitted)
-  - `targetLanguage`: Target language code (required)
-  - `translateMessagesHistory`: Whether to translate message history (optional)
+  - `targetLanguage`: Required language code for input; output also accepts a
+    `DocumentTranslationApplyToSelector`
+  - `translateMessagesHistory`: Whether to translate message history (input only, optional)
 
 **Returns:** SAP Document Translation configuration
 

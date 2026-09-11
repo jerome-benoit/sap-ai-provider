@@ -35,6 +35,7 @@ import {
   SAP_AI_PROVIDER_NAME,
   UnsupportedFeatureError,
 } from "../src/index-v4";
+import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
 /**
  * Demonstrates Foundation Models API features
@@ -148,17 +149,27 @@ async function foundationModelsExample() {
 
     console.log("\n📌 6. Streaming with Foundation Models\n");
 
+    let streamError: unknown;
     const stream = streamText({
       model: provider("gpt-4.1", {
         api: "foundation-models",
         modelParams: { max_tokens: 50 },
       }),
+      onError: ({ error }) => {
+        streamError = error;
+      },
       prompt: "Count from 1 to 5, one number per line.",
     });
 
     process.stdout.write("   📡 Streaming: ");
     for await (const chunk of stream.textStream) {
       process.stdout.write(chunk);
+    }
+    // textStream omits error events; let the common handler report the original error.
+    if (streamError !== undefined) {
+      throw streamError instanceof Error
+        ? streamError
+        : new Error("Streaming failed", { cause: streamError });
     }
     console.log("\n");
 
@@ -222,10 +233,8 @@ async function foundationModelsExample() {
       console.error("❌ API Call Error:", error.statusCode, error.message);
 
       // Parse SAP-specific metadata
-      const sapError = JSON.parse(error.responseBody ?? "{}") as {
-        error?: { code?: string; request_id?: string };
-      };
-      if (sapError.error?.request_id) {
+      const sapError = parseSAPErrorResponseBody(error.responseBody);
+      if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
         console.error("   SAP Error Code:", sapError.error.code);
       }

@@ -57,11 +57,14 @@ tests does not establish pure Edge runtime support.
 
 ### 2️⃣ Configure Environment
 
-Create a `.env` file in your project root:
+Create a `.env` file in your application root and install the loader used below:
 
 ```bash
-cp .env.example .env
+npm install dotenv
 ```
+
+If you cloned this repository, you can start with `cp .env.example .env`.
+The npm packages do not include `.env.example` or the `examples/` directory.
 
 Add your service key:
 
@@ -86,7 +89,7 @@ const model = provider("gpt-4.1");
 
 ### Running Examples
 
-All examples in `examples/` use this authentication method:
+From a repository checkout after installing its dependencies, run:
 
 ```bash
 npx tsx examples/example-generate-text.ts
@@ -154,15 +157,19 @@ const provider = createSAPAIProvider({
 
 ### Destination Configuration
 
-For advanced scenarios with custom HTTP destinations:
+To use an existing SAP BTP Destination service entry configured for AI Core:
 
 ```typescript
 const provider = createSAPAIProvider({
   destination: {
-    // Custom destination configuration
+    destinationName: "my-ai-core-destination",
   },
 });
 ```
+
+The destination must already exist and be resolvable by SAP Cloud SDK in your
+environment. An empty destination object does not enable automatic credential
+discovery; omit `destination` to use `AICORE_SERVICE_KEY` or `VCAP_SERVICES`.
 
 ---
 
@@ -175,7 +182,7 @@ const provider = createSAPAIProvider({
 **Solutions:**
 
 1. Check presence without printing credentials:
-   `node -e 'console.log("Service key loaded:", !!process.env.AICORE_SERVICE_KEY)'`
+   `node --import dotenv/config -e 'console.log("Service key loaded:", !!process.env.AICORE_SERVICE_KEY)'`
 2. Validate JSON syntax (use a JSON validator)
 3. Check service key hasn't expired in SAP BTP Cockpit
 4. Ensure `import "dotenv/config";` is at the top of your entry file

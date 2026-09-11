@@ -31,6 +31,7 @@ import { generateText } from "ai";
 // In YOUR production project, use the published package instead:
 // import { createSAPAIProvider, buildTranslationConfig } from "@jerome-benoit/sap-ai-provider/v4";
 import { buildTranslationConfig, createSAPAIProvider } from "../src/index-v4";
+import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
 /**
  *
@@ -226,10 +227,8 @@ async function translationExample() {
       console.error("❌ API Call Error:", error.statusCode, error.message);
 
       // Parse SAP-specific metadata
-      const sapError = JSON.parse(error.responseBody ?? "{}") as {
-        error?: { code?: string; message?: string; request_id?: string };
-      };
-      if (sapError.error?.request_id) {
+      const sapError = parseSAPErrorResponseBody(error.responseBody);
+      if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
         console.error("   SAP Error Code:", sapError.error.code);
         console.error("   SAP Error Message:", sapError.error.message);

@@ -126,7 +126,7 @@ try {
 | **Text Generation** | `generateText({ model: provider("gpt-4.1"), prompt })`           | [Basic Usage](#text-generation)                               |
 | **Streaming**       | `streamText({ model: provider("gpt-4.1"), prompt })`             | [Streaming](#streaming-responses)                             |
 | **Tool Calling**    | `generateText({ tools: { myTool: tool({...}) } })`               | [Tool Calling](#tool-calling)                                 |
-| **Error Handling**  | `catch (error instanceof APICallError)`                          | [API Reference](./API_REFERENCE.md#error-handling--reference) |
+| **Error Handling**  | `if (APICallError.isInstance(error)) { /* handle error */ }`     | [API Reference](./API_REFERENCE.md#error-handling--reference) |
 | **Choose Model**    | See 80+ models (GPT, Claude, Gemini, Llama)                      | [Models](./API_REFERENCE.md#models)                           |
 | **Embeddings**      | `embed({ model: provider.embedding("text-embedding-3-small") })` | [Embeddings](#embeddings)                                     |
 
@@ -356,19 +356,26 @@ import { streamText } from "ai";
 import { APICallError } from "@ai-sdk/provider";
 
 try {
+  let streamError: unknown;
   const result = streamText({
     model: provider("gpt-4.1"),
     prompt: "Explain machine learning concepts.",
+    onError({ error }) {
+      streamError = error;
+    },
   });
 
   for await (const delta of result.textStream) {
     process.stdout.write(delta);
   }
 
+  // textStream does not throw stream errors; preserve the original API error.
+  if (streamError !== undefined) throw streamError;
+
   // streamText returns a result object; its usage property is a promise.
   console.log("\n\nUsage:", await result.usage);
 } catch (error) {
-  if (error instanceof APICallError) {
+  if (APICallError.isInstance(error)) {
     console.error("API Error:", error.message);
     // See Error Handling section for complete error type reference
   }

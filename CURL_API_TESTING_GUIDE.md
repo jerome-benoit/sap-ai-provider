@@ -34,7 +34,9 @@ testing and debugging. For production code, use the SAP AI SDK with
 
 ## Overview
 
-Complete OAuth2 authentication → API call → Tool calling flow.
+OAuth2 authentication and an initial API request, including a tool definition.
+If the response requests a tool call, your application must execute it and
+submit the tool result in a subsequent request; curl does not execute tools.
 
 ---
 
@@ -42,7 +44,7 @@ Complete OAuth2 authentication → API call → Tool calling flow.
 
 - SAP AI Core instance + service key (from BTP cockpit) - see
   [Environment Setup](./ENVIRONMENT_SETUP.md) for credential configuration
-- Bash, `curl`, `base64`, and `jq` utilities
+- Bash, `curl` 7.76+ (for `--fail-with-body`), `base64`, and `jq` utilities
 
 ---
 
@@ -146,7 +148,7 @@ RESOURCE_GROUP="default"
 API_ENDPOINT="${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/v2/completion"
 
 # Make API call
-curl --request POST \
+curl --fail-with-body --show-error --request POST \
   --url "${API_ENDPOINT}" \
   --header "Authorization: Bearer ${ACCESS_TOKEN}" \
   --header "AI-Resource-Group: ${RESOURCE_GROUP}" \
@@ -224,6 +226,7 @@ For complete model capabilities and tool calling support, see
 
 ```bash
 #!/bin/bash
+set -e
 
 # ============================================
 # Configuration (REPLACE WITH YOUR VALUES)
@@ -267,7 +270,7 @@ echo "🚀 Calling SAP AI Core..."
 
 API_ENDPOINT="${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/v2/completion"
 
-curl --request POST \
+curl --fail-with-body --show-error --request POST \
   --url "${API_ENDPOINT}" \
   --header "Authorization: Bearer ${ACCESS_TOKEN}" \
   --header "AI-Resource-Group: ${RESOURCE_GROUP}" \
@@ -449,7 +452,7 @@ with `/chat/completions` (Foundation Models); keep the base `/v2/inference` path
 ### Basic Request
 
 ```bash
-curl --request POST \
+curl --fail-with-body --show-error --request POST \
   --url "${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions" \
   --header "Authorization: Bearer ${ACCESS_TOKEN}" \
   --header "AI-Resource-Group: ${RESOURCE_GROUP}" \

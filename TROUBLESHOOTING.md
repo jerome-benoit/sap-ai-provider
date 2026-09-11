@@ -2,6 +2,9 @@
 
 This guide helps diagnose and resolve common issues when using the SAP AI Core
 Provider.
+Examples below use AI SDK 6 and the V3 root entrypoint. For AI SDK 7, use
+`@jerome-benoit/sap-ai-provider/v4`; for AI SDK 5, use `/v2` and
+`textEmbeddingModel()` instead of `embedding()`.
 
 ## Quick Reference
 
@@ -204,8 +207,10 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 1. High-level AI SDK calls retry eligible errors with exponential backoff,
    bounded by `maxRetries`; direct provider calls do not retry automatically
-2. Use `streamText` instead of `generateText` for long outputs
-3. Batch requests, cache responses, reduce `maxTokens`
+2. Reduce request concurrency and honor service quota limits
+3. Cache reusable results and reduce `maxOutputTokens` (or provider
+   `modelParams.maxTokens`) where output-token quotas apply; streaming alone
+   does not reduce request volume or token usage
 
 ### Problem: 500/502/503/504 Server Errors
 
@@ -399,7 +404,7 @@ complete error details.
 
    const provider = createSAPAIProvider();
 
-   const result = await streamText({
+   const result = streamText({
      model: provider("gpt-4.1"),
      prompt: "Write a story",
    });
@@ -420,15 +425,21 @@ complete error details.
    "Connection": "keep-alive"
    ```
 
-4. **Handle errors:**
+4. **Handle errors:** Use `onError` for generation and stream failures.
+   Iterating `textStream` does not expose error parts, so a surrounding
+   `try/catch` alone can miss these failures.
 
    ```typescript
-   try {
-     for await (const chunk of result.textStream) {
-       process.stdout.write(chunk);
-     }
-   } catch (error) {
-     console.error("Stream error:", error);
+   const result = streamText({
+     model: provider("gpt-4.1"),
+     prompt: "Write a story",
+     onError({ error }) {
+       console.error("Stream error:", error);
+     },
+   });
+
+   for await (const chunk of result.textStream) {
+     process.stdout.write(chunk);
    }
    ```
 
@@ -475,8 +486,8 @@ complete error details.
 **Solutions:**
 
 1. Use `streamText` for long outputs (faster perceived performance)
-2. Optimize params: Set `maxTokens` to expected size, lower `temperature`, use
-   smaller models (`gpt-4.1-mini`)
+2. Limit output with AI SDK `maxOutputTokens` (or provider
+   `modelParams.maxTokens`) and choose a smaller model (`gpt-4.1-mini`)
 3. Reduce prompt size: Concise history, remove unnecessary context, summarize
    periodically
 
@@ -484,7 +495,7 @@ complete error details.
 
 **Solutions:**
 
-1. Set appropriate `maxTokens` (estimate actual response length)
+1. Set appropriate `maxOutputTokens` (estimate actual response length)
 2. Optimize prompts: Be concise, remove redundancy, use system messages
    effectively
 3. Monitor usage: `console.log(result.usage)`
@@ -587,56 +598,44 @@ If issues persist:
 
 ### Problem: Too many embedding values (TooManyEmbeddingValuesForCallError)
 
-**Symptoms:** `TooManyEmbeddingValuesForCallError` thrown when calling `embed()` or
-`embedMany()` with a large number of values.
+**Symptoms:** `TooManyEmbeddingValuesForCallError` from a direct
+`embeddingModel.doEmbed({ values })` call exceeding the configured limit.
 
-**Cause:** You're passing more values than `maxEmbeddingsPerCall` allows. This
-limit varies by model and prevents excessive API calls.
+**Cause:** Direct provider calls do not split input arrays. The provider defaults
+to 2048 values per call for every model; this is configurable with the model's
+`maxEmbeddingsPerCall` setting, not discovered from SAP model capabilities.
+Choose a value supported by your deployment.
 
 **Solutions:**
 
-1. **Check the limit for your model:**
+1. **Configure the per-call limit:**
 
    ```typescript
-   const embeddingModel = provider.embedding("text-embedding-3-small");
+   const embeddingModel = provider.embedding("text-embedding-3-small", {
+     maxEmbeddingsPerCall: 128, // Example limit; match your deployment
+   });
    console.log("Max per call:", embeddingModel.maxEmbeddingsPerCall);
-   // Typically 2048 for OpenAI models
    ```
 
-2. **Batch your requests:**
+2. **Use automatic batching in the high-level API:**
 
    ```typescript
    import { embedMany } from "ai";
 
-   const values = [/* large array of texts */];
-   const batchSize = 2048;
-
-   const allEmbeddings = [];
-   for (let i = 0; i < values.length; i += batchSize) {
-     const batch = values.slice(i, i + batchSize);
-     const { embeddings } = await embedMany({
-       model: provider.embedding("text-embedding-3-small"),
-       values: batch,
-     });
-     allEmbeddings.push(...embeddings);
-   }
+   const { embeddings } = await embedMany({
+     model: embeddingModel,
+     values: largeArray,
+     maxParallelCalls: 1, // Bound concurrency independently of batch size
+   });
    ```
 
-3. **Handle the error gracefully:**
+   `embedMany()` splits values according to `maxEmbeddingsPerCall` and returns
+   embeddings in input order. Manual batching around it is not required.
+   `embed()` submits one value.
 
-   ```typescript
-   import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
-
-   try {
-     await embedMany({ model: embeddingModel, values: largeArray });
-   } catch (error) {
-     if (error instanceof TooManyEmbeddingValuesForCallError) {
-       console.error("Too many values:", error.values.length);
-       console.error("Max allowed:", error.maxEmbeddingsPerCall);
-       // Implement batching logic
-     }
-   }
-   ```
+3. **If calling `doEmbed()` directly**, split inputs into batches no larger
+   than `embeddingModel.maxEmbeddingsPerCall`, or handle
+   `TooManyEmbeddingValuesForCallError` and retry with smaller batches.
 
 **Reference:** See
 [API Reference - Embeddings](./API_REFERENCE.md#embeddings) for embedding model
