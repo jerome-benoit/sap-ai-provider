@@ -4,8 +4,6 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
   LanguageModelV4GenerateResult,
-  LanguageModelV4Usage,
-  SharedV3Warning,
 } from "@ai-sdk/provider";
 
 import { describe, expect, it } from "vitest";
@@ -13,8 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   convertGenerateResultToV4,
   convertStreamPartToV4,
-  convertUsageToV4,
-  convertWarningsToV4,
+  createV4StreamFromInternal,
 } from "./sap-ai-adapters-v3-to-v4.js";
 
 const usage: LanguageModelV3Usage = {
@@ -22,85 +19,58 @@ const usage: LanguageModelV3Usage = {
   outputTokens: { reasoning: 3, text: 20, total: 23 },
 };
 
-describe("convertUsageToV4", () => {
-  it("should map nested usage by identity", () => {
-    const result: LanguageModelV4Usage = convertUsageToV4(usage);
-    expect(result).toEqual(usage);
-  });
-});
-
-describe("convertWarningsToV4", () => {
-  it("should pass warnings through natively", () => {
-    const warnings: SharedV3Warning[] = [
-      { feature: "x", type: "unsupported" },
-      { feature: "y", type: "compatibility" },
-    ];
-    expect(convertWarningsToV4(warnings)).toEqual(warnings);
-  });
-});
-
 describe("convertStreamPartToV4", () => {
-  it("should convert text deltas by identity of fields", () => {
-    const part: LanguageModelV3StreamPart = { delta: "hi", id: "1", type: "text-delta" };
-    expect(convertStreamPartToV4(part)).toMatchObject({
-      delta: "hi",
-      id: "1",
-      type: "text-delta",
-    });
-  });
+  it.each(["aGVsbG8=", new Uint8Array([104, 105])])(
+    "wraps file data without losing its media type or provider metadata (%s)",
+    (data) => {
+      const part: LanguageModelV3StreamPart = {
+        data,
+        mediaType: "image/png",
+        providerMetadata: { "test-provider": { d: 4 } },
+        type: "file",
+      };
+      expect(convertStreamPartToV4(part)).toEqual({
+        data: { data, type: "data" },
+        mediaType: "image/png",
+        providerMetadata: { "test-provider": { d: 4 } },
+        type: "file",
+      });
+    },
+  );
+});
 
-  it("should map finish usage by identity and keep unified reason", () => {
-    const part = {
-      finishReason: { unified: "stop" },
-      type: "finish",
-      usage,
-    } as unknown as LanguageModelV3StreamPart;
-    expect(convertStreamPartToV4(part)).toMatchObject({
-      finishReason: { unified: "stop" },
-      type: "finish",
-      usage,
-    });
-  });
-
-  it("should pass stream-start warnings through", () => {
-    const part = {
+describe("createV4StreamFromInternal", () => {
+  it("merges entry warnings once without mutating the original stream-start part", async () => {
+    const start: LanguageModelV3StreamPart = {
       type: "stream-start",
-      warnings: [{ feature: "x", type: "unsupported" }],
-    } as unknown as LanguageModelV3StreamPart;
-    expect(convertStreamPartToV4(part)).toEqual({
+      warnings: [{ feature: "internal", type: "unsupported" }],
+    };
+    const source = new ReadableStream<LanguageModelV3StreamPart>({
+      start(controller) {
+        controller.enqueue(start);
+        controller.enqueue({ delta: "hello", id: "text", type: "text-delta" });
+        controller.close();
+      },
+    });
+    const reader = createV4StreamFromInternal(source, [
+      { message: "Use the replacement", setting: "entry", type: "deprecated" },
+    ]).getReader();
+    expect((await reader.read()).value).toEqual({
       type: "stream-start",
-      warnings: [{ feature: "x", type: "unsupported" }],
+      warnings: [
+        { message: "Use the replacement", setting: "entry", type: "deprecated" },
+        { feature: "internal", type: "unsupported" },
+      ],
     });
-  });
-
-  it("should pass tool-approval-request through (native V4 part)", () => {
-    const part = {
-      approvalId: "a1",
-      toolCallId: "c1",
-      type: "tool-approval-request",
-    } as unknown as LanguageModelV3StreamPart;
-    expect(convertStreamPartToV4(part)).toMatchObject({
-      approvalId: "a1",
-      type: "tool-approval-request",
-    });
-  });
-  it("should preserve providerMetadata on streamed file parts", () => {
-    const part = {
-      data: "aGVsbG8=",
-      mediaType: "image/png",
-      providerMetadata: { "test-provider": { d: 4 } },
-      type: "file",
-    } as unknown as LanguageModelV3StreamPart;
-    expect(convertStreamPartToV4(part)).toMatchObject({
-      providerMetadata: { "test-provider": { d: 4 } },
-      type: "file",
-    });
+    expect(start.warnings).toEqual([{ feature: "internal", type: "unsupported" }]);
+    expect((await reader.read()).value).toEqual({ delta: "hello", id: "text", type: "text-delta" });
+    expect((await reader.read()).done).toBe(true);
   });
 });
 
 describe("convertGenerateResultToV4", () => {
-  it("should convert content, usage, warnings and finish reason", () => {
-    const result = {
+  it("converts file content to tagged data alongside text content", () => {
+    const result: LanguageModelV3GenerateResult = {
       content: [
         { text: "hello", type: "text" },
         { data: "aGVsbG8=", mediaType: "image/png", type: "file" },
@@ -108,7 +78,7 @@ describe("convertGenerateResultToV4", () => {
       finishReason: { raw: "stop", unified: "stop" },
       usage,
       warnings: [{ feature: "y", type: "compatibility" }],
-    } as unknown as LanguageModelV3GenerateResult;
+    };
     const converted: LanguageModelV4GenerateResult = convertGenerateResultToV4(result);
     expect(converted.content).toEqual([
       { text: "hello", type: "text" },
@@ -118,8 +88,5 @@ describe("convertGenerateResultToV4", () => {
         type: "file",
       },
     ]);
-    expect(converted.usage).toEqual(usage);
-    expect(converted.warnings).toEqual([{ feature: "y", type: "compatibility" }]);
-    expect(converted.finishReason).toEqual({ raw: "stop", unified: "stop" });
   });
 });

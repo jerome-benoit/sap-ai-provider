@@ -2,6 +2,7 @@
 import type { LanguageModelV3CallOptions, SharedV3Warning } from "@ai-sdk/provider";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type {
+  ChatCompletionRequest,
   ChatCompletionTool,
   ChatMessage,
   OrchestrationClient,
@@ -34,33 +35,15 @@ import {
   hasKeys,
   mergeRequestConfig,
   type ParamMapping,
+  type SAPResponseFormat,
   type SAPToolChoice,
   type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
 
-/**
- * Extended prompt templating interface for type-safe access.
- * @internal
- */
-interface ExtendedPromptTemplating {
-  prompt: {
-    response_format?: unknown;
-    template?: unknown[];
-    template_ref?: unknown;
-    tools?: unknown;
-  };
-}
-
 /** @internal */
 type OrchestrationClientInstance = InstanceType<typeof OrchestrationClient>;
-
-/**
- * Orchestration request body type.
- * @internal
- */
-type OrchestrationRequest = Record<string, unknown>;
 
 /**
  * Typed resolved state for values computed in buildCommonParts and consumed in buildRequest/createClient.
@@ -69,6 +52,7 @@ type OrchestrationRequest = Record<string, unknown>;
 interface OrchestrationResolvedState {
   readonly configRef: OrchestrationModelSettings["orchestrationConfigRef"];
   readonly promptTemplateRef: PromptTemplateRef | undefined;
+  readonly responseFormat: SAPResponseFormat | undefined;
   readonly tools: ChatCompletionTool[] | undefined;
 }
 
@@ -201,7 +185,7 @@ const ORCHESTRATION_PARAM_MAPPINGS: readonly ParamMapping[] = [
  */
 export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrategy<
   OrchestrationClientInstance,
-  OrchestrationRequest,
+  ChatCompletionRequest,
   OrchestrationModelSettings
 > {
   private readonly ClientClass: typeof OrchestrationClient;
@@ -212,20 +196,20 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   }
 
   protected buildRequest(
-    config: LanguageModelStrategyConfig,
+    _config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
-  ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
+  ): { readonly request: ChatCompletionRequest; readonly warnings: SharedV3Warning[] } {
     const warnings: SharedV3Warning[] = [];
 
     const { configRef } = commonParts.resolvedState as OrchestrationResolvedState;
 
     if (configRef) {
-      return this.buildConfigRefRequest(settings, options, commonParts, configRef, warnings);
+      return this.buildConfigRefRequest(settings, options, commonParts, warnings);
     }
 
-    return this.buildStandardRequest(config, settings, options, commonParts, warnings);
+    return this.buildStandardRequest(settings, commonParts, warnings);
   }
 
   /**
@@ -269,26 +253,20 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): OrchestrationClientInstance {
-    const { configRef, promptTemplateRef, tools } =
+    const { configRef, promptTemplateRef, responseFormat, tools } =
       commonParts.resolvedState as OrchestrationResolvedState;
 
     if (configRef) {
       return new this.ClientClass(configRef, config.deploymentConfig, config.destination);
     }
 
-    const promptConfig = promptTemplateRef
-      ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools)
-      : this.buildInlineTemplateConfig(tools, undefined);
-
-    const clientConfig: OrchestrationModuleConfig = {
-      promptTemplating: {
-        model: {
-          name: config.modelId,
-          ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
-        },
-        prompt: promptConfig,
-      },
-    };
+    const clientConfig = this.buildOrchestrationModuleConfig(config, settings, {
+      modelParams: commonParts.modelParams,
+      promptTemplateRef,
+      responseFormat,
+      toolChoice: commonParts.toolChoice,
+      tools,
+    });
 
     if (settings.fallbackModuleConfigs && settings.fallbackModuleConfigs.length > 0) {
       const configList = [
@@ -303,7 +281,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   protected async executeApiCall(
     client: OrchestrationClientInstance,
-    request: OrchestrationRequest,
+    request: ChatCompletionRequest,
     abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
@@ -334,7 +312,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   protected async executeStreamCall(
     client: OrchestrationClientInstance,
-    request: OrchestrationRequest,
+    request: ChatCompletionRequest,
     abortSignal: AbortSignal | undefined,
     settings: OrchestrationModelSettings,
     requestConfig: CustomRequestConfig | undefined,
@@ -415,13 +393,17 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const configRef = this.resolveConfigRef(sapOptions, settings, warnings);
     const promptTemplateRef = this.resolvePromptTemplateRef(sapOptions, settings);
 
+    let responseFormat: SAPResponseFormat | undefined;
     if (configRef === undefined) {
       validateMaskingProvidersDeprecation(settings, warnings);
+      const converted = convertResponseFormat(options.responseFormat, settings.responseFormat);
+      responseFormat = converted.responseFormat;
+      if (converted.warning) warnings.push(converted.warning);
     }
 
     const tools = this.resolveTools(settings, options, warnings);
 
-    return { configRef, promptTemplateRef, tools };
+    return { configRef, promptTemplateRef, responseFormat, tools };
   }
 
   /**
@@ -432,7 +414,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * @param settings - Model settings.
    * @param options - Call options.
    * @param commonParts - Common build result.
-   * @param _configRef - The config reference (unused, passed for signature consistency).
    * @param warnings - Warnings array to populate.
    * @returns Request body and warnings.
    * @internal
@@ -441,9 +422,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     options: LanguageModelV3CallOptions,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
-    _configRef: NonNullable<OrchestrationModelSettings["orchestrationConfigRef"]>,
     warnings: SharedV3Warning[],
-  ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
+  ): { readonly request: ChatCompletionRequest; readonly warnings: SharedV3Warning[] } {
     warnings.push(
       ...this.collectConfigRefIgnoredWarnings(settings, options, commonParts.sapOptions),
     );
@@ -451,7 +431,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const placeholderValues = resolvePlaceholderValues(settings, commonParts.sapOptions);
 
     // In configRef mode, SDK uses messagesHistory (not messages)
-    const request: OrchestrationRequest = {
+    const request: ChatCompletionRequest = {
       messagesHistory: commonParts.messages,
       ...(placeholderValues ? { placeholderValues } : {}),
     };
@@ -507,9 +487,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools, responseFormat)
       : this.buildInlineTemplateConfig(tools, responseFormat);
 
-    // Include tool_choice in model.params because the SDK filters request-level options.
-    // Workaround for SAP AI SDK issue (may be fixed in future SDK versions).
-    // See: https://github.com/SAP/ai-sdk-js/issues/1500
+    // The SDK accepts model-specific options such as tool_choice only in model.params.
     const effectiveModelParams = toolChoice
       ? { ...modelParams, tool_choice: toolChoice }
       : modelParams;
@@ -531,50 +509,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     );
 
     return moduleConfig;
-  }
-
-  /**
-   * Builds the final request body for the orchestration API.
-   * @param messages - Chat messages.
-   * @param orchestrationConfig - Module configuration.
-   * @param placeholderValues - Optional placeholder values.
-   * @param hasTemplateRef - Whether template_ref mode is active.
-   * @returns Request body.
-   * @internal
-   */
-  private buildRequestBody(
-    messages: ChatMessage[],
-    orchestrationConfig: OrchestrationModuleConfig,
-    placeholderValues: Record<string, string> | undefined,
-    hasTemplateRef: boolean,
-  ): Record<string, unknown> {
-    const promptTemplating = orchestrationConfig.promptTemplating as ExtendedPromptTemplating;
-
-    // In template_ref mode, SDK uses messagesHistory (not messages)
-    // In inline template mode, SDK adds messages to the template array
-    const messagesField = hasTemplateRef ? { messagesHistory: messages } : { messages };
-
-    // Note: tool_choice is passed via model.params (not request level) because the SDK
-    // filters out request-level options. Workaround may be removed when SDK is fixed.
-    // See: https://github.com/SAP/ai-sdk-js/issues/1500
-    const requestBody: Record<string, unknown> = {
-      ...messagesField,
-      model: {
-        ...orchestrationConfig.promptTemplating.model,
-      },
-      ...(placeholderValues ? { placeholderValues } : {}),
-      ...(promptTemplating.prompt.tools ? { tools: promptTemplating.prompt.tools } : {}),
-      ...(promptTemplating.prompt.response_format
-        ? { response_format: promptTemplating.prompt.response_format }
-        : {}),
-    };
-
-    copyOrchestrationModules(
-      requestBody,
-      orchestrationConfig as unknown as Record<string, unknown>,
-    );
-
-    return requestBody;
   }
 
   /**
@@ -610,49 +544,25 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   /**
    * Builds request for standard (non-configRef) mode.
-   * @param config - Strategy configuration.
    * @param settings - Model settings.
-   * @param options - Call options.
    * @param commonParts - Common build result.
    * @param warnings - Warnings array to populate.
    * @returns Request body and warnings.
    * @internal
    */
   private buildStandardRequest(
-    config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
-    options: LanguageModelV3CallOptions,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
     warnings: SharedV3Warning[],
-  ): { readonly request: OrchestrationRequest; readonly warnings: SharedV3Warning[] } {
-    const { promptTemplateRef, tools } = commonParts.resolvedState as OrchestrationResolvedState;
-
-    const { responseFormat, warning: responseFormatWarning } = convertResponseFormat(
-      options.responseFormat,
-      settings.responseFormat,
-    );
-    if (responseFormatWarning) {
-      warnings.push(responseFormatWarning);
-    }
-
-    const { toolChoice } = commonParts;
-
-    const orchestrationConfig = this.buildOrchestrationModuleConfig(config, settings, {
-      modelParams: commonParts.modelParams,
-      promptTemplateRef,
-      responseFormat,
-      toolChoice,
-      tools,
-    });
-
+  ): { readonly request: ChatCompletionRequest; readonly warnings: SharedV3Warning[] } {
+    const { promptTemplateRef } = commonParts.resolvedState as OrchestrationResolvedState;
     const placeholderValues = resolvePlaceholderValues(settings, commonParts.sapOptions);
-
-    const request = this.buildRequestBody(
-      commonParts.messages,
-      orchestrationConfig,
-      placeholderValues,
-      Boolean(promptTemplateRef),
-    );
+    const request: ChatCompletionRequest = {
+      ...(promptTemplateRef
+        ? { messagesHistory: commonParts.messages }
+        : { messages: commonParts.messages }),
+      ...(placeholderValues ? { placeholderValues } : {}),
+    };
 
     return { request, warnings };
   }
@@ -707,6 +617,16 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       if (sapOptions?.[key] && !settings[key as keyof OrchestrationModelSettings]) {
         ignoredSettings.push(`providerOptions.${key}`);
       }
+    }
+
+    const optionValues: Record<string, unknown> = options;
+    for (const { optionKey } of this.getParamMappings()) {
+      if (optionKey && optionValues[optionKey] !== undefined) {
+        ignoredSettings.push(`options.${optionKey}`);
+      }
+    }
+    if (options.stopSequences && options.stopSequences.length > 0) {
+      ignoredSettings.push("options.stopSequences");
     }
 
     if (options.tools && options.tools.length > 0) {

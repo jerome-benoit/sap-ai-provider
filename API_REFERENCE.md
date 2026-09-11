@@ -145,8 +145,17 @@ clients, builders, validation helpers, error types, and `VERSION` match the root
 entrypoint.
 
 The standardized V4 `reasoning` option is forwarded as SAP's harmonized
-`reasoning_effort` model parameter. `provider-default` leaves the parameter unset;
-supported explicit levels are forwarded to the selected model.
+`reasoning_effort` model parameter. An explicit level overrides
+`providerOptions["sap-ai"].modelParams.reasoning_effort`, which overrides the
+model setting. `provider-default` adds no override: it preserves an explicitly
+configured `modelParams.reasoning_effort`, or leaves the parameter unset when
+none is configured. Support for each level depends on the selected model.
+
+For locally configured Orchestration calls, resolved model parameters, tools,
+response format, and modules are supplied to the SAP SDK client configuration
+for both generation and streaming. When `orchestrationConfigRef` is set, the
+referenced server configuration owns these settings instead; local generation
+options, including explicit `reasoning`, are ignored with a warning.
 
 V4 tagged file data is normalized before it reaches the shared core:
 
@@ -2110,9 +2119,11 @@ block is rejected before the request is sent.
 
 **Important Behavior:** When using `orchestrationConfigRef`, local module
 settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
-responseFormat, modelParams, modelVersion, fallbackModuleConfigs) are **ignored**
-with a warning. Only `messages` and `placeholderValues` are passed through to
-the stored configuration.
+responseFormat, modelParams, modelVersion, fallbackModuleConfigs) and supplied
+standard generation options (such as temperature, maxOutputTokens, and V4
+reasoning) are **ignored** with a warning. Only messages and placeholder values
+are passed through to the stored configuration, alongside its explicit
+`overrideConfig` when provided.
 
 **Usage Examples:**
 
@@ -2541,6 +2552,13 @@ for await (const part of stream) {
 
 Both `doGenerate` and `doStream` results include `providerMetadata` with
 SAP-specific fields under the provider name key (default: `"sap-ai"`).
+
+**Orchestration request metadata limitation:** The `request.body` returned by
+`doGenerate` and `doStream` contains the SAP SDK per-call inputs (messages or
+message history, and placeholder values), not the complete serialized HTTP
+body. The SDK adds the client configuration, including model parameters and
+modules, when sending the HTTP request. Do not use `request.body` as a full
+wire-payload audit. This limitation also applies through the V2 and V4 facades.
 
 **`doGenerate` — `providerMetadata[providerName]`:**
 
