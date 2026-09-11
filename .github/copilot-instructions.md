@@ -358,7 +358,7 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
 **Key patterns to follow:**
 
 - Implement Vercel AI SDK interfaces correctly (V3 / AI SDK 6 core, V2 / AI SDK 5 facade with AI SDK 6 compatibility, V4 / AI SDK 7 facade)
-- Maintain Node.js and Edge runtime compatibility
+- Maintain Node.js compatibility and the Edge-tested source paths. Edge deployment remains a portability goal; published bundles and SAP transport currently require Node-compatible APIs.
 - Keep components focused and single-purpose
 - Follow existing authentication and caching patterns
 
@@ -423,7 +423,7 @@ npm run check-build:v2
 **Integration Checks:**
 
 - [ ] Compatible with Vercel AI SDK patterns
-- [ ] Works in both Node.js and Edge runtime environments
+- [ ] Published bundles work on Node.js and the Edge source suite passes; any Edge deployment claim is separately verified against the published bundle and SAP transport
 - [ ] Maintains backward compatibility
 - [ ] Example applications still demonstrate correct usage
 

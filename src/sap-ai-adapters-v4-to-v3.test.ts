@@ -1,6 +1,7 @@
 /** Tests for the V4-to-V3 prompt normalization (AI SDK 7 entry adapter). */
 import type { LanguageModelV3Prompt, LanguageModelV4Prompt } from "@ai-sdk/provider";
 
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
@@ -97,9 +98,16 @@ describe("normalizeV4PromptToV3", () => {
     },
   );
 
-  it.each([["reasoning-file"], ["custom"]])("should throw for unsupported %s parts", (type) => {
-    const prompt = [{ content: [{ type }], role: "user" }] as unknown as LanguageModelV4Prompt;
-    expect(() => normalizeV4PromptToV3(prompt)).toThrow();
+  it.each([
+    {
+      data: { data: "aGVsbG8=", type: "data" },
+      mediaType: "application/octet-stream",
+      type: "reasoning-file",
+    },
+    { kind: "test-provider.payload", type: "custom" },
+  ] as const)("should reject unsupported assistant $type parts", (part) => {
+    const prompt = [{ content: [part], role: "assistant" }] satisfies LanguageModelV4Prompt;
+    expect(() => normalizeV4PromptToV3(prompt)).toThrow(UnsupportedFunctionalityError);
   });
 
   it("should pass tool-approval-response parts through (V3 contract)", () => {

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const sapErrorResponseBodySchema = z.object({
   error: z.object({
-    code: z.number().optional().catch(undefined),
+    code: z.union([z.string(), z.number()]).optional().catch(undefined),
     message: z.string().optional().catch(undefined),
     request_id: z.string().optional().catch(undefined),
   }),

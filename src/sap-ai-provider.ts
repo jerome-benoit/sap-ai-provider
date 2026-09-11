@@ -48,8 +48,9 @@ export interface SAPAIProvider extends ProviderV3 {
  */
 export interface SAPAIProviderSettings {
   /**
-   * Fallback SAP AI Core API for models created by this provider.
+   * Default SAP AI Core API for models created by this provider.
    * `defaultSettings.api`, per-model `api`, and per-call `providerOptions` take precedence.
+   * This option does not enable automatic failover between APIs.
    * - `'orchestration'` (default): SAP AI Core Orchestration API - supports filtering, grounding, masking, translation
    * - `'foundation-models'`: SAP AI Core Foundation Models API - supports dataSources, logprobs, seed, etc.
    * @default 'orchestration'

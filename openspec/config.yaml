@@ -25,7 +25,8 @@ context: |
   - Uses zod schemas for validation
   - Lazy loading of SAP SDK strategies (the SDK packages are runtime dependencies)
   - Strategy Pattern for API abstraction
-  - Preserve Node.js support and Edge-tested source behavior; published bundles depend on Node built-ins and the SAP SDK dependency chain
+  - Preserve Node.js support and Edge-tested source behavior; Edge deployment remains a portability goal, while published bundles and SAP transport currently require Node-compatible APIs
+  - Verify the published bundle and SAP transport on a target Edge runtime before claiming Edge deployment support
 
   ### Source Structure
   - src/index.ts - V3 public API exports (AI SDK 6 root entry)

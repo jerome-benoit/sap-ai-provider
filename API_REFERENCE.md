@@ -572,8 +572,12 @@ the provider's model-level `tools` setting, not the AI SDK `tools` map.
 Only function tools are converted. Provider-defined tools are omitted with an
 `unsupported` warning. On Orchestration, non-empty call-level `tools` take
 precedence over model-level SAP-format `tools`, with a warning when both are
-provided. An empty call-level list does not clear model-level tools; use
-`toolChoice: "none"` to disable tool use for a call.
+provided. An empty call-level list does not clear model-level tools. When tools
+are defined only in model settings, request no tool use with
+`providerOptions["sap-ai"].modelParams.tool_choice: "none"` (use your configured
+provider namespace if different). The high-level AI SDK drops `toolChoice` when
+its own `tools` map is absent or empty, so `toolChoice: "none"` alone does not
+cover this case.
 
 ```typescript
 import { jsonSchema, tool } from "ai";
