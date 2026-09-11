@@ -260,7 +260,8 @@ Version bumping is handled by maintainers during release process.
 
 ### Error Handling
 
-- Use Vercel AI SDK standard errors (`APICallError`, `LoadAPIKeyError`, `NoSuchModelError`, `UnsupportedFeatureError`)
+- Use Vercel AI SDK standard errors (`APICallError`, `LoadAPIKeyError`, `NoSuchModelError`, `UnsupportedFunctionalityError`)
+- Use the provider's `UnsupportedFeatureError` and `ApiSwitchError` for API-specific configuration conflicts
 - Provide clear, actionable error messages
 - Include debugging context (request IDs, locations)
 - Follow existing error patterns

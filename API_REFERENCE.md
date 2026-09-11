@@ -911,14 +911,14 @@ Configuration options for embedding models.
 
 **Properties:**
 
-| Property               | Type                                                         | Default           | Description                                               |
-| ---------------------- | ------------------------------------------------------------ | ----------------- | --------------------------------------------------------- |
-| `api`                  | `SAPAIApiType`                                               | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
-| `maxEmbeddingsPerCall` | `number`                                                     | `2048`            | Maximum values per API call                               |
-| `modelVersion`         | `string`                                                     | -                 | Specific version of the model                             |
-| `type`                 | `"document" \| "query" \| "text"`                            | `'text'`          | Embedding type                                            |
-| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>` | -                 | Model-specific parameters                                 |
-| `masking`              | `MaskingModule`                                              | -                 | Data masking configuration (DPI) - Orchestration API only |
+| Property               | Type                                                                 | Default           | Description                                               |
+| ---------------------- | -------------------------------------------------------------------- | ----------------- | --------------------------------------------------------- |
+| `api`                  | `SAPAIApiType`                                                       | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
+| `maxEmbeddingsPerCall` | `number`                                                             | `2048`            | Maximum values per API call                               |
+| `modelVersion`         | `string`                                                             | -                 | Specific version of the model                             |
+| `type`                 | `"document" \| "query" \| "text"`                                    | `'text'`          | Embedding type                                            |
+| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>`         | -                 | Model-specific parameters                                 |
+| `masking`              | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -                 | Data masking configuration (DPI) - Orchestration API only |
 
 **Embedding response metadata (`doEmbed` result):**
 
@@ -1326,22 +1326,22 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                          | Default | Description                                                         |
-| ---------------------------- | ----------------------------- | ------- | ------------------------------------------------------------------- |
-| `modelVersion`               | `string`                      | -       | Specific model version                                              |
-| `includeReasoning`           | `boolean`                     | `false` | Include reasoning parts in SAP prompt conversion                    |
-| `escapeTemplatePlaceholders` | `boolean`                     | `true`  | Escape template delimiters to prevent conflicts                     |
-| `modelParams`                | `CommonModelParams`           | -       | Model generation parameters                                         |
-| `masking`                    | `MaskingModule`               | -       | Data masking configuration (DPI)                                    |
-| `filtering`                  | `FilteringModule`             | -       | Content filtering configuration                                     |
-| `grounding`                  | `GroundingModule`             | -       | Document grounding configuration                                    |
-| `translation`                | `TranslationModule`           | -       | Translation configuration (Orchestration only)                      |
-| `placeholderValues`          | `Record<string, string>`      | -       | Default values for template placeholders                            |
-| `promptTemplateRef`          | `PromptTemplateRef`           | -       | Reference to a Prompt Registry template                             |
-| `responseFormat`             | `ResponseFormat`              | -       | Response format specification                                       |
-| `streamOptions`              | `OrchestrationStreamOptions`  | -       | Stream options for post-LLM modules (Orchestration only)            |
-| `tools`                      | `ChatCompletionTool[]`        | -       | Tool definitions in SAP AI SDK format                               |
-| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]` | -       | Ordered fallback prompt module configurations for Orchestration API |
+| Property                     | Type                                                                 | Default | Description                                                         |
+| ---------------------------- | -------------------------------------------------------------------- | ------- | ------------------------------------------------------------------- |
+| `modelVersion`               | `string`                                                             | -       | Specific model version                                              |
+| `includeReasoning`           | `boolean`                                                            | `false` | Include reasoning parts in SAP prompt conversion                    |
+| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`  | Escape template delimiters to prevent conflicts                     |
+| `modelParams`                | `CommonModelParams`                                                  | -       | Model generation parameters                                         |
+| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -       | Data masking configuration (DPI)                                    |
+| `filtering`                  | `FilteringModule`                                                    | -       | Content filtering configuration                                     |
+| `grounding`                  | `GroundingModule`                                                    | -       | Document grounding configuration                                    |
+| `translation`                | `TranslationModule`                                                  | -       | Translation configuration (Orchestration only)                      |
+| `placeholderValues`          | `Record<string, string>`                                             | -       | Default values for template placeholders                            |
+| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -       | Reference to a Prompt Registry template                             |
+| `responseFormat`             | `ResponseFormat`                                                     | -       | Response format specification                                       |
+| `streamOptions`              | `OrchestrationStreamOptions`                                         | -       | Stream options for post-LLM modules (Orchestration only)            |
+| `tools`                      | `ChatCompletionTool[]`                                               | -       | Tool definitions in SAP AI SDK format                               |
+| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -       | Ordered fallback prompt module configurations for Orchestration API |
 
 **Example:**
 
@@ -1441,14 +1441,14 @@ Azure OpenAI-compatible deployments. They are not all exclusive to that API:
 orchestration model parameters are passed through when provided. Backend/model
 support determines which values can be used.
 
-| Property       | Type                     | Default | Description                                           |
-| -------------- | ------------------------ | ------- | ----------------------------------------------------- |
-| `logprobs`     | `boolean`                | `false` | Request backend token log probabilities               |
-| `top_logprobs` | `number`                 | -       | Number of most likely tokens (0-20) at each position  |
-| `seed`         | `number`                 | -       | Seed for best-effort reproducibility (not guaranteed) |
-| `stop`         | `string \| string[]`     | -       | Stop sequences where generation halts                 |
-| `logit_bias`   | `Record<string, number>` | -       | Modify likelihood of specific tokens (-100 to 100)    |
-| `user`         | `string`                 | -       | Unique end-user identifier for abuse monitoring       |
+| Property       | Type                             | Default | Description                                           |
+| -------------- | -------------------------------- | ------- | ----------------------------------------------------- |
+| `logprobs`     | `boolean \| null`                | `false` | Request backend token log probabilities               |
+| `top_logprobs` | `number \| null`                 | -       | Number of most likely tokens (0-20) at each position  |
+| `seed`         | `number \| null`                 | -       | Seed for best-effort reproducibility (not guaranteed) |
+| `stop`         | `string \| string[]`             | -       | Stop sequences where generation halts                 |
+| `logit_bias`   | `Record<string, number> \| null` | -       | Modify likelihood of specific tokens (-100 to 100)    |
+| `user`         | `string`                         | -       | Unique end-user identifier for abuse monitoring       |
 
 **Example with Foundation Models parameters:**
 
@@ -2286,7 +2286,7 @@ export interface OrchestrationModelSettings {
   readonly filtering?: FilteringModule;
   readonly grounding?: GroundingModule;
   readonly includeReasoning?: boolean;
-  readonly masking?: MaskingModule;
+  readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };
   readonly modelParams?: OrchestrationModelParams;
   readonly modelVersion?: string;
   readonly orchestrationConfigRef?: OrchestrationConfigRefById | OrchestrationConfigRefByName;
@@ -2375,6 +2375,7 @@ export interface CommonModelParams {
   readonly presencePenalty?: number; // -2.0 to 2.0
   readonly temperature?: number; // 0 to 2
   readonly topP?: number; // 0 to 1
+  readonly [key: string]: unknown; // Additional model-specific parameters
 }
 ```
 
@@ -2392,11 +2393,11 @@ Foundation Models API parameters with additional options:
 
 ```typescript
 export interface FoundationModelsModelParams extends CommonModelParams {
-  readonly logit_bias?: Record<string, number>; // Token likelihood modification
-  readonly logprobs?: boolean; // Return log probabilities
-  readonly seed?: number; // Deterministic sampling
+  readonly logit_bias?: Record<string, number> | null; // Token likelihood modification
+  readonly logprobs?: boolean | null; // Request backend log probabilities
+  readonly seed?: number | null; // Best-effort reproducibility, not guaranteed
   readonly stop?: string | string[]; // Stop sequences
-  readonly top_logprobs?: number; // 0-20, requires logprobs=true
+  readonly top_logprobs?: number | null; // 0-20, requires logprobs=true
   readonly user?: string; // End-user identifier
 }
 ```
@@ -3371,7 +3372,7 @@ function buildLlamaGuard38BFilter<T extends "input" | "output">(type: T, categor
 
 - `type`: Filter type - `"input"` or `"output"`
 - `categories`: Array of at least one category to filter (e.g., `"hate"`,
-  `"violence"`, `"elections"`)
+  `"violent_crimes"`, `"elections"`)
 
 **Returns:** Llama Guard 3 8B filter configuration
 
@@ -3382,7 +3383,7 @@ const provider = createSAPAIProvider({
   defaultSettings: {
     filtering: {
       input: {
-        filters: [buildLlamaGuard38BFilter("input", ["hate", "violence"])],
+        filters: [buildLlamaGuard38BFilter("input", ["hate", "violent_crimes"])],
       },
     },
   },

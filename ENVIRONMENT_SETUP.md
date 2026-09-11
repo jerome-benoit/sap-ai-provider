@@ -111,21 +111,30 @@ const provider = createSAPAIProvider();
 const model = provider("gpt-4.1");
 ```
 
-**Authentication priority:** The SAP AI SDK checks credentials in this order:
+**Authentication priority:** Before a default service binding has been cached, the
+SAP AI SDK resolves credentials in this order:
 
 1. Explicit `destination` configuration, when provided
 2. `AICORE_SERVICE_KEY` environment variable
 3. `VCAP_SERVICES` (SAP BTP service binding)
 
+An explicit destination bypasses environment-based credential discovery. A
+malformed, non-empty `AICORE_SERVICE_KEY` causes a parsing error rather than
+falling back to `VCAP_SERVICES`.
+
+The SDK caches the selected environment/service binding in its module instance.
+Creating another provider using that SDK instance does not re-read the binding.
+Restart the process after changing credentials or the service endpoint.
+
 ---
 
 ## Environment Variables Reference
 
-| Variable                  | Description                                                    | Required    |
-| ------------------------- | -------------------------------------------------------------- | ----------- |
-| `AICORE_SERVICE_KEY`      | SAP AI Core service key JSON (local development)               | Yes (local) |
-| `VCAP_SERVICES`           | Service bindings (auto-detected on SAP BTP)                    | Yes (BTP)   |
-| `SAP_CLOUD_SDK_LOG_LEVEL` | Log level for SAP Cloud SDK (`debug`, `info`, `warn`, `error`) | No          |
+| Variable                  | Description                                                    | Required                                      |
+| ------------------------- | -------------------------------------------------------------- | --------------------------------------------- |
+| `AICORE_SERVICE_KEY`      | SAP AI Core service key JSON                                   | Unless using a destination or service binding |
+| `VCAP_SERVICES`           | Service bindings (auto-detected on SAP BTP)                    | Unless using a destination or service key     |
+| `SAP_CLOUD_SDK_LOG_LEVEL` | Log level for SAP Cloud SDK (`debug`, `info`, `warn`, `error`) | No                                            |
 
 **Example with debugging enabled:**
 

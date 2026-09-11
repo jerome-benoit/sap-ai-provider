@@ -83,7 +83,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 ## Quick Start
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider ai@^6
+npm install @jerome-benoit/sap-ai-provider ai@^6 dotenv
 ```
 
 ```typescript
@@ -669,8 +669,8 @@ authentication, model parameters, data masking, content filtering, and more.
 
 **Common Configuration:**
 
-- `name`: Provider name (default: `'sap-ai'`). Used as key in
-  `providerOptions`/`providerMetadata`.
+- `name`: Provider identifier prefix (default: `'sap-ai'`). The segment before
+  the first dot is used as the key in `providerOptions`/`providerMetadata`.
 - `resourceGroup`: SAP AI Core resource group (default: 'default')
 - `deploymentId`: Specific deployment ID (auto-resolved if not set)
 - `requestConfig`: Custom HTTP request configuration (headers, params, timeout, etc.)
