@@ -547,7 +547,8 @@ types.**
 **Breaking Changes:**
 
 - `SAPAIError` class removed from exports
-- All errors now use `APICallError` from `@ai-sdk/provider`
+- SAP API errors use `APICallError` from `@ai-sdk/provider`; recognized
+  authentication-message errors use `LoadAPIKeyError`
 - Error handling is now fully compatible with AI SDK ecosystem
 
 **Benefits:**
@@ -582,22 +583,19 @@ try {
 }
 ```
 
-**After (v3.x):**
+**After (v3.0.0):**
 
 ```typescript
-import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
 
 try {
   const result = await generateText({ model, prompt });
 } catch (error) {
   if (error instanceof LoadAPIKeyError) {
-    // 401/403: Authentication issue
+    // Recognized authentication-message error
     console.error("Auth Error:", error.message);
-  } else if (error instanceof NoSuchModelError) {
-    // 404: Model not found
-    console.error("Model not found:", error.modelId);
   } else if (error instanceof APICallError) {
-    // Other API errors
+    // Includes structured SAP 401/403/404 responses in v3.0.0
     console.error("API Error:", error.statusCode, error.message);
     const sapError = JSON.parse(error.responseBody || "{}");
     console.error("Request ID:", sapError.error?.request_id);
@@ -605,10 +603,16 @@ try {
 }
 ```
 
+Current releases additionally map structured SAP 401/403 responses to
+`LoadAPIKeyError` and structured 404 responses to `NoSuchModelError`. See the
+[current error reference](./API_REFERENCE.md#error-handling--reference) when
+upgrading beyond this historical release.
+
 #### 3. SAP Error Metadata Access
 
-SAP AI Core error metadata (request ID, code, location) is preserved in the
-`responseBody` field:
+Structured SAP AI Core error metadata (request ID, code, location) is preserved
+in the `APICallError.responseBody` field. Generic response bodies may be absent
+or non-JSON, so only parse bodies known to contain the SAP error envelope:
 
 ```typescript
 catch (error) {

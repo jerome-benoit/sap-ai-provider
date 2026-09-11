@@ -405,10 +405,11 @@ curl --verbose --fail-with-body --show-error ...
 **Decode JWT token:**
 
 ```bash
-echo "$ACCESS_TOKEN" | cut -d. -f2 | base64 -d | jq .
+printf '%s\n' "$ACCESS_TOKEN" | jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
 ```
 
-Check: `exp` (expiration), `subaccountid`, `scope`
+Check: `exp` (expiration), `subaccountid`, `scope`. This decodes the
+Base64URL payload for inspection; it does not verify the token signature.
 
 **Minimal test request:**
 
@@ -431,8 +432,10 @@ Check: `exp` (expiration), `subaccountid`, `scope`
 
 ## Foundation Models API
 
-The Foundation Models API provides direct model access with additional parameters
-like `logprobs`, `seed`, and `logit_bias`. Use a different endpoint path.
+The Foundation Models API provides direct model access using OpenAI-compatible
+parameters such as `logprobs`, `seed`, and `logit_bias`. These parameters are not
+necessarily exclusive to this API: Orchestration can forward model parameters
+as well, subject to backend/model support. Use a different endpoint path.
 
 ### Endpoint
 

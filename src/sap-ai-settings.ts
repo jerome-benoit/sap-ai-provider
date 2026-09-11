@@ -19,8 +19,8 @@ export type AzureOpenAiChatExtensionConfiguration = NonNullable<
 /**
  * Common model parameters shared between both APIs.
  *
- * These parameters control text generation behavior and are validated by Zod schemas
- * when passed via `providerOptions`.
+ * Known parameters are validated by Zod in constructor settings and per-call
+ * `modelParams` provider options; additional model-specific keys are passed through.
  */
 export interface CommonModelParams {
   /**
@@ -35,7 +35,7 @@ export interface CommonModelParams {
   readonly maxTokens?: number;
   /**
    * Number of completions to generate.
-   * Not supported by Amazon/Anthropic models.
+   * Availability depends on the selected SAP API and model; no model-family filtering is applied.
    * Range: Positive integer
    */
   readonly n?: number;
@@ -90,7 +90,10 @@ export interface FoundationModelsModelSettings {
   readonly api: "foundation-models";
   /** Azure OpenAI "On Your Data" configuration for RAG scenarios. */
   readonly dataSources?: AzureOpenAiChatExtensionConfiguration[];
-  /** @default false */
+  /**
+   * Forward assistant reasoning from the input history as text; does not enable reasoning output.
+   * @default false
+   */
   readonly includeReasoning?: boolean;
   readonly modelParams?: FoundationModelsModelParams;
   readonly modelVersion?: string;
@@ -113,7 +116,7 @@ export interface OrchestrationModelSettings {
   readonly escapeTemplatePlaceholders?: boolean;
   /**
    * Additional module configurations for prompt module fallback.
-   * The SDK tries the primary configuration first, then each fallback in order until one succeeds.
+   * These entries follow the primary configuration in the list passed to the SAP SDK.
    * Each entry is a full `OrchestrationModuleConfig` with its own model, prompt, and modules.
    * @example
    * ```ts
@@ -130,7 +133,10 @@ export interface OrchestrationModelSettings {
   readonly fallbackModuleConfigs?: OrchestrationModuleConfig[];
   readonly filtering?: FilteringModule;
   readonly grounding?: GroundingModule;
-  /** @default false */
+  /**
+   * Forward assistant reasoning from the input history as text; does not enable reasoning output.
+   * @default false
+   */
   readonly includeReasoning?: boolean;
   readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };
   readonly modelParams?: OrchestrationModelParams;
@@ -139,7 +145,8 @@ export interface OrchestrationModelSettings {
    * Reference to a complete orchestration configuration stored in SAP AI Core Prompt Registry.
    * When provided, local module settings (filtering, masking, grounding, translation, tools,
    * promptTemplateRef, responseFormat) are ignored as the full configuration is managed
-   * by the referenced config. Only `placeholderValues` and messages are passed through.
+   * by the referenced config. The reference, including its explicit `overrideConfig`,
+   * is passed to the SAP SDK; messages and `placeholderValues` remain request inputs.
    * @example { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" }
    * @example { scenario: "customer-support", name: "prod-config", version: "1.0.0" }
    */
@@ -149,7 +156,7 @@ export interface OrchestrationModelSettings {
   readonly responseFormat?: ResponseFormat;
   /**
    * Options for streaming behavior with post-LLM modules.
-   * Only applies when using `streamText()` with orchestration modules.
+   * Applies to Orchestration streaming requests, including direct `doStream()` calls.
    */
   readonly streamOptions?: OrchestrationStreamOptions;
   readonly tools?: ChatCompletionTool[];
@@ -168,7 +175,7 @@ export interface OrchestrationStreamOptions {
   readonly chunkSize?: number;
   /**
    * Delimiters for splitting stream into chunks (e.g., sentence boundaries).
-   * Required when translation module is configured.
+   * Recommended for translation; the provider warns when local translation settings lack them.
    * @example ["\n", ".", "?", "!"]
    */
   readonly delimiters?: readonly string[];
@@ -224,7 +231,10 @@ export interface SAPAIEmbeddingSettings {
   readonly modelParams?: FoundationModelsEmbeddingParams | Record<string, unknown>;
   readonly modelVersion?: string;
   readonly [key: string]: unknown;
-  /** @default 'text' */
+  /**
+   * Orchestration embedding input type; ignored by Foundation Models.
+   * @default 'text'
+   */
   readonly type?: "document" | "query" | "text";
 }
 
@@ -276,7 +286,10 @@ export interface SAPAISettings {
   readonly filtering?: FilteringModule;
   /** Orchestration API only. */
   readonly grounding?: GroundingModule;
-  /** @default false */
+  /**
+   * Forward assistant reasoning from the input history as text; does not enable reasoning output.
+   * @default false
+   */
   readonly includeReasoning?: boolean;
   /** Orchestration API only. */
   readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };

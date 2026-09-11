@@ -275,7 +275,7 @@ The provider is callable and also exposes explicit methods:
 const chatModel = provider("gpt-4.1");
 
 // Explicit method syntax
-const chatModel = provider.chat("gpt-4.1");
+const explicitChatModel = provider.chat("gpt-4.1");
 const embeddingModel = provider.embedding("text-embedding-3-small");
 ```
 
@@ -365,9 +365,8 @@ try {
     process.stdout.write(delta);
   }
 
-  // Await final result to catch any errors that occurred during streaming
-  const finalResult = await result;
-  console.log("\n\nUsage:", finalResult.usage);
+  // streamText returns a result object; its usage property is a promise.
+  console.log("\n\nUsage:", await result.usage);
 } catch (error) {
   if (error instanceof APICallError) {
     console.error("API Error:", error.message);
@@ -627,7 +626,10 @@ const model = provider("gpt-4.1");
 ### Provider Options (Per-Call Overrides)
 
 Override constructor settings on a per-call basis using `providerOptions`.
-Options are validated at runtime with Zod schemas.
+Only the documented per-call fields are supported: unknown top-level fields
+are stripped by the Zod schemas, while additional `modelParams` keys pass
+through. Standard AI SDK generation options (for example, `temperature`) take
+precedence over the corresponding `providerOptions` model parameters.
 
 ```typescript
 import { generateText } from "ai";
@@ -714,8 +716,8 @@ streaming, and tool calling.
 - Prefer streaming (`streamText`) for long outputs to reduce latency and memory.
 - Tune `modelParams` carefully: lower `temperature` for less variable results;
   set `maxTokens` to expected response size.
-- Use `defaultSettings` at provider creation for shared knobs across models to
-  avoid per-call overhead.
+- Use `defaultSettings` at provider creation to share configuration across models;
+  settings are still merged and validated when models and calls are prepared.
 - Avoid unnecessary history: keep `messages` concise to reduce prompt size and
   cost.
 

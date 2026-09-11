@@ -210,14 +210,14 @@ export class UnsupportedFeatureError extends Error {
 }
 
 /**
- * Converts SAP AI SDK OrchestrationErrorResponse to Vercel AI SDK APICallError.
+ * Converts a structured SAP error response to the appropriate Vercel AI SDK error.
  * @param errorResponse - SAP orchestration error response.
  * @param context - Request context.
- * @param context.httpStatusCode - HTTP status code from the response, used as fallback when error body code is null.
+ * @param context.httpStatusCode - Fallback HTTP status when the body code is missing or outside the HTTP status range.
  * @param context.requestBody - Original request body.
  * @param context.responseHeaders - Response headers.
  * @param context.url - Request URL.
- * @returns Vercel AI SDK error.
+ * @returns LoadAPIKeyError for 401/403, NoSuchModelError for 404, or APICallError otherwise.
  */
 export function convertSAPErrorToAPICallError(
   errorResponse: OrchestrationErrorResponse,

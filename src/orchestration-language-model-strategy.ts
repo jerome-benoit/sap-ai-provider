@@ -410,7 +410,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * Builds request for orchestrationConfigRef mode.
    *
    * In configRef mode, the full configuration is managed server-side.
-   * We only send messages and placeholderValues.
+   * This request contains messages and placeholderValues; createClient separately
+   * passes the reference, including overrideConfig, to the SAP SDK.
    * @param settings - Model settings.
    * @param options - Call options.
    * @param commonParts - Common build result.
@@ -651,8 +652,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
   /**
    * Resolves the orchestrationConfigRef from provider options or settings.
-   * Provider options take priority over settings. A present-but-invalid reference is
-   * ignored with a warning instead of failing the request.
+   * Parsed provider options take priority over settings. An invalid settings reference
+   * is ignored with a warning; invalid per-call references fail schema parsing earlier.
    * @param sapOptions - Parsed provider options from commonParts.
    * @param settings - The model settings.
    * @param warnings - Shared warnings sink for degradation signals.

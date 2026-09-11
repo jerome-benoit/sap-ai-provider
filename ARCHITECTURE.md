@@ -155,10 +155,10 @@ graph TB
 
 This sequence diagram shows the Orchestration generation lifecycle from your application
 through the AI SDK and provider to SAP AI Core. The flow is divided into four
-phases: SAP SDK client setup, Message Transformation (converting AI SDK format
-to SAP format), API Request & Response (communication with SAP AI Core and the
-AI model), and Response Processing (parsing and converting back to AI SDK
-format).
+phases: Message Transformation (converting AI SDK format to SAP format),
+SAP SDK client setup, API Request & Response (including SDK authentication and
+communication with SAP AI Core and the AI model), and Response Processing
+(converting back to AI SDK format).
 
 ```mermaid
 sequenceDiagram
@@ -173,27 +173,29 @@ sequenceDiagram
     App->>SDK: generateText(config)
     SDK->>Prov: doGenerate(options)
 
-    rect rgb(240, 248, 255)
-        Note over Prov,SAPSDK: SAP SDK Client Setup
-        Prov->>SAPSDK: Create client with deployment/resource group
-        SAPSDK->>SAP: Resolve credentials and token
-        SAP-->>SAPSDK: access_token
-        SAPSDK-->>Prov: Authenticated client
-    end
-
     rect rgb(255, 248, 240)
         Note over Prov,Trans: Message Transformation
         Prov->>Trans: convertToSAPMessages(prompt)
         Trans-->>Prov: SAP format messages
+        Prov->>Prov: Build request and model configuration
+    end
+
+    rect rgb(240, 248, 255)
+        Note over Prov,SAPSDK: SAP SDK Client Setup
+        Prov->>SAPSDK: Create client with module config and deployment/resource group
+        SAPSDK-->>Prov: Configured client
     end
 
     rect rgb(248, 255, 240)
         Note over Prov,Model: API Request & Response
-        Prov->>SAP: POST /v2/completion
+        Prov->>SAPSDK: chatCompletion(request)
+        SAPSDK->>SAPSDK: Resolve deployment, credentials, and token
+        SAPSDK->>SAP: POST /v2/completion
         Note right of SAP: Request Body:<br/>- config.modules.prompt_templating<br/>- config.modules.masking (optional)<br/>- model params
         SAP->>Model: Forward request
         Model-->>SAP: Generated response
-        SAP-->>Prov: Orchestration response
+        SAP-->>SAPSDK: Orchestration response
+        SAPSDK-->>Prov: SDK response object
         Note left of SAP: Response:<br/>- intermediate_results<br/>- final_result<br/>- usage stats
     end
 
@@ -401,50 +403,45 @@ sequenceDiagram
         SDK->>Provider: doGenerate({<br/>  prompt: [...],<br/>  tools: [...],<br/>  abortSignal: ...<br/>})
     end
 
-    rect rgb(240, 255, 240)
-        Note over Provider,SAPSDK: 3. SAP SDK Client Configuration
-        Provider->>SAPSDK: Create client with deployment config<br/>and destination options
-        Note right of SAPSDK: SAP AI SDK and SAP Cloud SDK<br/>resolve credentials, acquire tokens,<br/>cache tokens, and refresh tokens
-    end
-
     rect rgb(255, 245, 230)
-        Note over Provider,Transform: 4. Message Transformation
+        Note over Provider,Transform: 3. Message Transformation
         Provider->>Transform: convertToSAPMessages(prompt)
         Transform->>Transform: Convert SDK format to SAP format<br/>• System messages<br/>• User messages (text + images)<br/>• Assistant messages<br/>• Tool calls/results
         Transform-->>Provider: SAP format messages
     end
 
     rect rgb(240, 240, 255)
-        Note over Provider,SAP: 5. Request Building
-        Provider->>Provider: Build v2 request<br/>{<br/>  config: {<br/>    modules: {<br/>      prompt_templating: {...},<br/>      masking: {...}<br/>    }<br/>  }<br/>}
+        Note over Provider,SAPSDK: 4. Request and Client Configuration
+        Provider->>Provider: Build messages request and orchestration module configuration
+        Provider->>SAPSDK: Create client with module config,<br/>deployment config, and destination options
     end
 
     rect rgb(255, 240, 255)
-        Note over Provider,Model: 6. API Call & Processing
-        Provider->>SAP: POST /v2/inference/deployments/{id}/v2/completion<br/>Headers: {<br/>  Authorization: Bearer {token},<br/>  AI-Resource-Group: {group}<br/>}
+        Note over Provider,Model: 5. API Call & Processing
+        Provider->>SAPSDK: chatCompletion(request, requestConfig)
+        SAPSDK->>SAPSDK: Build wire request and resolve deployment,<br/>credentials, and cached or refreshed token
+        SAPSDK->>SAP: POST /v2/inference/deployments/{id}/v2/completion<br/>Headers: {<br/>  Authorization: Bearer {token},<br/>  AI-Resource-Group: {group}<br/>}
         SAP->>SAP: Validate request<br/>Apply masking (if configured)
         SAP->>Model: Route to model
         Model->>Model: Generate response
         Model-->>SAP: Model output
         SAP->>SAP: Apply output unmasking<br/>Build orchestration response
-        SAP-->>Provider: {<br/>  request_id: "...",<br/>  intermediate_results: {...},<br/>  final_result: {...}<br/>}
+        SAP-->>SAPSDK: {<br/>  request_id: "...",<br/>  intermediate_results: {...},<br/>  final_result: {...}<br/>}
+        SAPSDK-->>Provider: SDK response object
     end
 
     rect rgb(240, 255, 255)
-        Note over Provider,SDK: 7. Response Processing
+        Note over Provider,SDK: 6. Response Processing
         Provider->>Provider: Parse response<br/>• Extract content<br/>• Extract tool calls<br/>• Calculate usage
 
-        alt v2 Response
-            Provider->>Provider: Use final_result
-        else v1 Fallback
-            Provider->>Provider: Use module_results.llm
-        end
+        Provider->>SAPSDK: Read final_result via response getters
+        SAPSDK-->>Provider: Content, tool calls, finish reason, and usage
 
         Provider-->>SDK: {<br/>  content: [...],<br/>  usage: {...},<br/>  finishReason: {unified: "stop", raw: "stop"},<br/>  warnings: []<br/>}
     end
 
     rect rgb(230, 255, 240)
-        Note over SDK,App: 8. Result Delivery
+        Note over SDK,App: 7. Result Delivery
         SDK->>SDK: Transform to SDK format
         SDK-->>App: {<br/>  text: "...",<br/>  usage: {...},<br/>  finishReason: "stop"<br/>}
     end
@@ -476,23 +473,25 @@ sequenceDiagram
         Provider->>Provider: Build streaming request<br/>{<br/>  config: {<br/>    stream: {enabled: true}<br/>  }<br/>}
         Provider->>SAP: POST /v2/completion<br/>Accept: text/event-stream
         SAP->>Model: Start generation
+        Provider-->>SDK: {type: "stream-start", warnings: [...]}
     end
 
     rect rgb(255, 245, 230)
         Note over Provider,App: Server-Sent Events Stream
         loop For each token/chunk
             Model->>SAP: Generate token
-            SAP-->>Provider: data: {<br/>  intermediate_results: {<br/>    llm: {<br/>      choices: [{<br/>        delta: {content: "token"}<br/>      }]<br/>    }<br/>  }<br/>}
+            SAP-->>Provider: data: {<br/>  final_result: {<br/>    choices: [{<br/>      delta: {content: "token"}<br/>    }]<br/>  }<br/>}
             Provider->>Provider: Parse SSE chunk
             Provider->>Provider: Transform to StreamPart
 
-            alt First Chunk
-                Provider-->>SDK: {type: "stream-start"}
+            opt First Chunk
                 Provider-->>SDK: {type: "response-metadata"}
-                Provider-->>SDK: {type: "text-start", id: "0"}
+            end
+            opt First Nonempty Text Delta
+                Provider-->>SDK: {type: "text-start", id: "text-uuid"}
             end
 
-            Provider-->>SDK: {<br/>  type: "text-delta",<br/>  id: "0",<br/>  delta: "token"<br/>}
+            Provider-->>SDK: {<br/>  type: "text-delta",<br/>  id: "text-uuid",<br/>  delta: "token"<br/>}
             SDK-->>App: Stream chunk
             App->>App: Display token
         end
@@ -502,7 +501,7 @@ sequenceDiagram
         Note over Model,App: Stream Completion
         Model->>SAP: Generation complete
         SAP-->>Provider: data: {<br/>  final_result: {<br/>    choices: [{<br/>      finish_reason: "stop"<br/>    }],<br/>    usage: {...}<br/>  }<br/>}
-        Provider-->>SDK: {type: "text-end", id: "0"}
+        Provider-->>SDK: {type: "text-end", id: "text-uuid"}
         Provider-->>SDK: {<br/>  type: "finish",<br/>  finishReason: {unified: "stop", raw: "stop"},<br/>  usage: {...}<br/>}
         SDK-->>App: Stream end
     end
@@ -731,8 +730,8 @@ const stream = await client.stream(request, abortSignal, streamOptions, mergeReq
 ```
 
 The signal is forwarded to the SAP AI SDK, which passes it to the underlying
-Axios HTTP client. When aborted, the HTTP connection is closed and server-side
-processing stops.
+Axios HTTP client to cancel the request. This does not guarantee that SAP AI Core
+or the deployed model stops server-side processing.
 
 ### Tool Calling Flow
 
@@ -938,28 +937,35 @@ try {
 The `convertToAISDKError()` function handles error conversion with a clear
 priority:
 
-1. **Already AI SDK error?** → Return as-is (no conversion needed)
-2. **SAP Orchestration error?** → Convert to `APICallError` with details
-   extracted from response
-3. **Network/auth errors?** → Classify as `LoadAPIKeyError` or `APICallError`
-   with appropriate status code
-4. **Unknown error?** → Generic `APICallError` with status 500
+1. **Existing `APICallError`, `LoadAPIKeyError`, or `NoSuchModelError`?** → Return as-is
+2. **Structured SAP error?** → Convert 401/403 to `LoadAPIKeyError`, 404 to
+   `NoSuchModelError`, and other statuses to `APICallError`
+3. **Aborted request?** → Non-retryable `APICallError` with status 499
+4. **Recognized error message?** → Classify authentication/deployment failures,
+   extract a status from `status code NNN`, or apply a category-specific mapping
+5. **Unknown error?** → Non-retryable `APICallError` with status 500
 
-All errors include helpful context (operation, URL, request body summary) for
-debugging.
+Converted `APICallError` instances carry the supplied URL and request summary,
+plus response headers/body when available. Authentication and model errors do
+not expose those HTTP-context fields; structured SAP request IDs are included
+in their messages.
 
 ### Retry Mechanism
 
-The provider marks errors as retryable based on HTTP status codes (aligned with
-Vercel AI SDK defaults):
+For structured SAP errors and statuses extracted from error messages, the
+provider classifies HTTP statuses as follows:
 
 - **408 (Request Timeout)**: `isRetryable: true` → Retry after timeout
 - **409 (Conflict)**: `isRetryable: true` → Retry on transient conflicts
 - **429 (Rate Limit)**: `isRetryable: true` → Exponential backoff
 - **5xx (Server Errors)**: `isRetryable: true` → Exponential backoff
 - **400 (Bad Request)**: `isRetryable: false` → Client must fix request
-- **401/403 (Auth Errors)**: `isRetryable: false` → Fix credentials
-- **404 (Not Found)**: `isRetryable: false` → Fix model/deployment
+- **401/403 (Auth Errors)**: Non-retryable → Fix credentials
+- **404 (Not Found)**: Non-retryable → Fix model/deployment
+
+Message-based categories can override status-based retryability: for example,
+unknown errors and stream-consumption errors use status 500 but are not
+retryable. `LoadAPIKeyError` and `NoSuchModelError` have no `isRetryable` field.
 
 High-level Vercel AI SDK calls handle retries based on `isRetryable` and
 `maxRetries`. Direct provider calls do not add a retry loop, and failures after
@@ -967,12 +973,16 @@ streaming has begun require application handling.
 
 ### User-Facing Error Handling (v3.0.0+)
 
-This provider converts all SAP AI Core errors to standard Vercel AI SDK
+For structured SAP error responses, this provider uses standard Vercel AI SDK
 error types:
 
 - **401/403 (Authentication)** → `LoadAPIKeyError`
 - **404 (Model/Deployment not found)** → `NoSuchModelError`
 - **Other HTTP errors** → `APICallError` with SAP metadata in `responseBody`
+
+Generic SDK/Axios errors follow the message-based classification above. For
+example, `Request failed with status code 404` without a structured SAP body
+becomes `APICallError`, not `NoSuchModelError`. Handle both forms.
 
 **Breaking change in v3.0.0:** The custom `SAPAIError` class was removed to
 ensure full compatibility with the AI SDK ecosystem and enable automatic retry
@@ -1127,9 +1137,11 @@ graph TB
 Strategies are loaded lazily at first invocation - not at provider creation
 time. This enables:
 
-1. **Reduced startup time** - No SDK imports until needed
-2. **Smaller bundles** - Only import the API you use
-3. **Runtime flexibility** - Switch APIs at any level (provider, model, call)
+1. **Deferred client loading** - API client packages are dynamically imported
+   when a strategy is first needed; public helper re-exports may load other SDK code earlier
+2. **Shared strategy instances** - Cache one loading promise per API and model kind
+3. **Runtime flexibility** - Select APIs at provider, model, or call level,
+   subject to API-specific feature validation
 
 ```mermaid
 sequenceDiagram
@@ -1218,24 +1230,29 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements Embeddi
   async doEmbed(config, settings, options, maxEmbeddingsPerCall): Promise<EmbeddingModelV3Result> {
     const { abortSignal, values } = options;
 
-    const { embeddingOptions, providerName } = await prepareEmbeddingCall({ maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider }, options);
-
-    const embeddingType = embeddingOptions?.type ?? (settings.type as EmbeddingType | undefined) ?? "text";
-
     try {
+      const { embeddingOptions, providerName } = await prepareEmbeddingCall({ maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider }, options);
+      const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
+      const warnings: SharedV3Warning[] = [];
+      this.resolveWarnings(settings, warnings);
       const client = this.createClient(config, settings, embeddingOptions);
       const response = await this.executeCall(client, values, embeddingType, abortSignal, config.requestConfig);
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
+      const { headers: responseHeaders, requestId } = this.extractResponseMetadata(response);
 
       return buildEmbeddingResult({
         embeddings,
         modelId: config.modelId,
         providerName,
+        requestId,
+        responseHeaders,
         totalTokens,
         version: VERSION,
+        warnings,
       });
     } catch (error) {
+      if (error instanceof TooManyEmbeddingValuesForCallError) throw error;
       throw convertToAISDKError(error, {
         operation: "doEmbed",
         requestBody: { values: values.length },
@@ -1267,6 +1284,10 @@ implementations for creating clients, executing calls, and extracting data.
 4. `extractTokenCount(response)`: Retrieves token usage from the response.
 5. `getUrl()`: Returns the API URL for error context.
 
+The abbreviated class above omits the optional `resolveWarnings()` and
+`extractResponseMetadata()` hook definitions. Subclasses use them to surface
+warnings, request IDs, and response headers.
+
 **Benefits:**
 
 - **Code Reusability**: Eliminates approximately 50 lines of duplicate code
@@ -1281,7 +1302,9 @@ implementations for creating clients, executing calls, and extracting data.
 #### Template Method Pattern (Base Language Model Strategy)
 
 The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
-to consolidate shared logic while allowing API-specific customization:
+to consolidate shared logic while allowing API-specific customization. The
+following pseudocode abbreviates generic types, error conversion, and metadata
+assembly; see the source for the complete implementation:
 
 ```typescript
 // Base class with Template Method pattern
@@ -1296,7 +1319,7 @@ abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   }
 
   // Common logic shared by all strategies
-  protected buildCommonParts(config, settings, options): CommonParts { /* ... */ }
+  protected async buildCommonParts(config, settings, options): Promise<CommonParts> { /* ... */ }
 
   // Primitive operations - implemented by subclasses
   protected abstract buildRequest(...): { request: ApiRequest; warnings: Warning[] };

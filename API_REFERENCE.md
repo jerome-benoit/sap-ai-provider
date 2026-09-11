@@ -556,6 +556,12 @@ or wrap JSON Schema with the AI SDK's `jsonSchema` helper; raw SAP/OpenAI
 `{ type: "function", function: { parameters: ... } }` definitions belong to
 the provider's model-level `tools` setting, not the AI SDK `tools` map.
 
+Only function tools are converted. Provider-defined tools are omitted with an
+`unsupported` warning. On Orchestration, non-empty call-level `tools` take
+precedence over model-level SAP-format `tools`, with a warning when both are
+provided. An empty call-level list does not clear model-level tools; use
+`toolChoice: "none"` to disable tool use for a call.
+
 ```typescript
 import { jsonSchema, tool } from "ai";
 import { z } from "zod";
@@ -662,7 +668,7 @@ const result = await generateText({
           // Return error message that the model can understand
           return {
             error: true,
-            message: `Failed to get weather: ${error.message}`,
+            message: `Failed to get weather: ${error instanceof Error ? error.message : String(error)}`,
           };
         }
       },
@@ -823,6 +829,10 @@ const { embedding } = await embed({
 
 **Embedding Types:**
 
+The `type` setting and per-call override are sent only to the Orchestration
+embedding API. Foundation Models accepts these options but does not forward
+them or emit a warning.
+
 | Type       | Use Case                                 | Example                         |
 | ---------- | ---------------------------------------- | ------------------------------- |
 | `document` | Embedding documents for storage/indexing | RAG document ingestion          |
@@ -859,7 +869,9 @@ async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Res
 - `values`: Array of strings to embed
 - `abortSignal`: Optional signal to cancel the request
 
-**Returns:** Object containing `embeddings` array (same order as input values)
+**Returns:** Object containing `embeddings` (same order as input values),
+`usage.tokens`, `warnings`, and provider metadata. Response headers are included
+when available; an embedding response body is not exposed.
 
 **Throws:**
 
@@ -1594,6 +1606,23 @@ Provider options enable per-call configuration that overrides constructor settin
 These options are passed via `providerOptions[SAP_AI_PROVIDER_NAME]` in AI SDK calls and are
 validated at runtime using Zod schemas.
 
+Only the fields listed below are supported at call level. Unknown top-level
+fields (such as `masking`, `tools`, or `requestConfig`) are stripped, not applied
+or rejected. Additional keys inside `modelParams` pass through; known keys are
+validated. Invalid recognized call options reject with `InvalidArgumentError`;
+invalid constructor `modelParams` reject with a Zod error.
+
+For mapped generation parameters, precedence is: standard AI SDK call option
+(for example, `temperature` or `maxOutputTokens`), then per-call
+`providerOptions` model parameter, then model settings merged over provider
+`defaultSettings`. Use the documented camelCase parameter names for this
+precedence. Non-empty `stopSequences` overrides `modelParams.stop`. Additional
+model parameters and `placeholderValues` are deep-merged, with call values
+winning. `includeReasoning` and `escapeTemplatePlaceholders` use the call value
+when provided, otherwise the model setting. Stored orchestration configuration
+references are an exception: the stored configuration owns model parameters
+and modules, and ignored local options produce warnings.
+
 ### SAP AI Provider Name Constant
 
 The default provider name constant. Use as key in `providerOptions` and `providerMetadata`.
@@ -1734,7 +1763,7 @@ Zod schema for validating language model provider options.
 | --------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
 | `api`                             | `"orchestration" \| "foundation-models"`                     | Override API selection for this call                                  |
 | `escapeTemplatePlaceholders`      | `boolean`                                                    | Escape SAP or Jinja delimiters in prompt and message text             |
-| `includeReasoning`                | `boolean`                                                    | Whether to include assistant reasoning in responses                   |
+| `includeReasoning`                | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP        |
 | `orchestrationConfigRef`          | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration (Orchestration API) |
 | `placeholderValues`               | `Record<string, string>`                                     | Placeholder values sent to Orchestration API                          |
 | `promptTemplateRef`               | `PromptTemplateRef`                                          | Reference to a Prompt Registry template                               |
@@ -1777,10 +1806,16 @@ Zod schema for validating embedding model provider options.
 
 **Validated Fields:**
 
-| Field         | Type                              | Description                 |
-| ------------- | --------------------------------- | --------------------------- |
-| `type`        | `"text" \| "query" \| "document"` | Embedding task type         |
-| `modelParams` | `Record<string, unknown>`         | Additional model parameters |
+| Field         | Type                                     | Description                              |
+| ------------- | ---------------------------------------- | ---------------------------------------- |
+| `api`         | `"orchestration" \| "foundation-models"` | Override API selection for this call     |
+| `type`        | `"text" \| "query" \| "document"`        | Embedding task type (Orchestration only) |
+| `modelParams` | `Record<string, unknown>`                | Additional model parameters              |
+
+Known embedding parameters are validated: `dimensions` must be a positive
+integer, `encoding_format` must be `"base64"`, `"binary"`, or `"float"`, and
+`normalize` must be a boolean. Other `modelParams` keys pass through; actual
+parameter support depends on the backend and model.
 
 **Example:**
 
@@ -1836,7 +1871,7 @@ type SAPAILanguageModelProviderOptions = {
 | ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
 | `api`                        | `string`                                                     | Override API selection (`'orchestration'` or `'foundation-models'`) |
 | `escapeTemplatePlaceholders` | `boolean`                                                    | Escape template delimiters to prevent SAP templating conflicts      |
-| `includeReasoning`           | `boolean`                                                    | Include assistant reasoning parts in the response                   |
+| `includeReasoning`           | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP      |
 | `modelParams`                | `object`                                                     | Model generation parameters for this specific call                  |
 | `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration                   |
 | `placeholderValues`          | `Record<string, string>`                                     | Values for template placeholders (overrides settings values)        |
@@ -1923,8 +1958,14 @@ TypeScript type inferred from the Zod schema for embedding model options.
 
 ```typescript
 type SAPAIEmbeddingProviderOptions = {
+  api?: "orchestration" | "foundation-models";
   type?: "text" | "query" | "document";
-  modelParams?: Record<string, unknown>;
+  modelParams?: {
+    dimensions?: number;
+    encoding_format?: "base64" | "binary" | "float";
+    normalize?: boolean;
+    [key: string]: unknown;
+  };
 };
 ```
 
@@ -2014,9 +2055,10 @@ export type PromptTemplateRef = PromptTemplateRefByID | PromptTemplateRefByScena
 **Description:**
 
 The Prompt Registry allows you to manage prompt templates centrally in SAP AI Core
-and reference them in your application. When `promptTemplateRef` is provided, the
-orchestration config uses `template_ref` instead of building an inline `template`
-array from the conversation messages.
+and reference them in your application. When `promptTemplateRef` is provided,
+the orchestration config uses `template_ref` instead of an empty inline
+`template`; conversation messages are passed separately as `messagesHistory`
+rather than `messages`.
 
 **Usage Examples:**
 
@@ -2115,9 +2157,10 @@ Each reference variant accepts an optional `overrideConfig`
 It is forwarded verbatim to the `OrchestrationClient` constructor and overrides
 parts of the stored configuration per request. It is **not** subject to the
 ignored-local-modules behavior above, since it is part of the reference itself.
-Only its transport shape is validated (plain object; `stream.enabled` is
-rejected because the SAP AI SDK controls it from the call site). See the SAP AI
-SDK type definition for the accepted structure.
+Only its transport shape is validated (non-null, non-array object; any
+`stream` value must also be a non-null, non-array object without an `enabled`
+property, which is controlled by the call site). See the SAP AI SDK type
+definition for the accepted structure.
 
 An invalid reference (settings path) is ignored with a warning and the request
 falls back to local module settings; via provider options, an invalid `sap-ai`
@@ -2129,7 +2172,8 @@ responseFormat, modelParams, modelVersion, fallbackModuleConfigs) and supplied
 standard generation options (such as temperature, maxOutputTokens, and V4
 reasoning) are **ignored** with a warning. Only messages and placeholder values
 are passed through to the stored configuration, alongside its explicit
-`overrideConfig` when provided.
+`overrideConfig` when provided. Streaming still applies local `streamOptions`
+through the SAP SDK stream call options.
 
 **Usage Examples:**
 
@@ -2480,7 +2524,9 @@ async doStream(
 
 **Stream Events:**
 
-The stream emits the following event types in order:
+The stream emits the following event types. Text and tool-input events can
+interleave; the table describes each event's lifecycle rather than one fixed
+sequence for every response:
 
 | Event Type          | Description                                      | When Emitted                        |
 | ------------------- | ------------------------------------------------ | ----------------------------------- |
@@ -2493,6 +2539,7 @@ The stream emits the following event types in order:
 | `tool-input-delta`  | Incremental tool arguments                       | For each tool argument chunk        |
 | `tool-input-end`    | Tool input completes                             | When tool arguments complete        |
 | `tool-call`         | Complete tool call with ID, name, and full input | After tool-input-end                |
+| `source`            | URL citation returned by the SDK                 | Before finish, when available       |
 | `finish`            | Stream completes with usage and finish reason    | Last event on success               |
 | `error`             | Error occurred during streaming                  | On error (stream then closes)       |
 | `raw`               | Raw SDK chunk (when `includeRawChunks: true`)    | For each chunk, before other events |
@@ -2500,9 +2547,9 @@ The stream emits the following event types in order:
 **Raw Chunks Option:**
 
 When `includeRawChunks: true` is passed in options, the stream will emit
-additional `raw` events containing the unprocessed SDK response chunks. This is
-useful for debugging or accessing provider-specific data not exposed through
-standard events.
+additional `raw` events containing each SDK chunk's `_data` payload when
+available, or the chunk itself otherwise. This is useful for debugging or
+accessing provider-specific data not exposed through standard events.
 
 ```typescript
 const { stream } = await model.doStream({
@@ -2556,8 +2603,15 @@ for await (const part of stream) {
 
 ### Provider Metadata in Responses
 
-Both `doGenerate` and `doStream` results include `providerMetadata` with
-SAP-specific fields under the provider name key (default: `"sap-ai"`).
+`doGenerate` results include `providerMetadata` with SAP-specific fields under
+the provider name key (default: `"sap-ai"`). For direct `doStream` calls,
+metadata is on the stream `finish` event, not the returned result object. With
+the high-level `streamText` API, use `finish-step` events or await
+`result.providerMetadata`.
+
+**Generation response body:** `doGenerate().response.body` is a provider-built
+summary containing `content`, `finishReason`, `tokenUsage`, and `toolCalls`
+from SAP SDK accessors. It is not the complete raw SAP HTTP response.
 
 **Orchestration request metadata limitation:** The `request.body` returned by
 `doGenerate` and `doStream` contains the SAP SDK per-call inputs (messages or
@@ -2602,7 +2656,7 @@ const result = await generateText({
 
 const metadata = result.providerMetadata?.[SAP_AI_PROVIDER_NAME];
 console.log(metadata?.requestId); // "abc-123-def" (SAP pipeline correlation id)
-console.log(metadata?.version); // "4.x.x"
+console.log(metadata?.version); // Installed provider package version
 ```
 
 **Example (streaming):**
@@ -2617,10 +2671,10 @@ const result = streamText({
 });
 
 for await (const part of result.fullStream) {
-  if (part.type === "finish") {
+  if (part.type === "finish-step") {
     const metadata = part.providerMetadata?.[SAP_AI_PROVIDER_NAME];
     console.log(metadata?.requestId); // SAP pipeline correlation id
-    console.log(metadata?.responseId); // Server completion ID
+    console.log(metadata?.responseId); // Server completion ID or generated fallback
   }
 }
 ```
@@ -2644,11 +2698,11 @@ Properties:
 
 - `message`: Error description with helpful context
 - `statusCode`: HTTP status code (401, 403, 429, 500, etc.)
-- `url`: Request URL
-- `requestBodyValues`: Request body (for debugging)
-- `responseHeaders`: Response headers
-- `responseBody`: Raw response body (contains SAP error details)
-- `isRetryable`: Whether the error can be retried (true for 429, 5xx)
+- `url`: Request context identifier (for example, `sap-ai:orchestration`), not necessarily an HTTP URL
+- `requestBodyValues`: Provider request summary, not necessarily the complete request body
+- `responseHeaders`: Response headers, when available
+- `responseBody`: Serialized error details, when available; structured SAP errors are normalized
+- `isRetryable`: Whether the caller may retry (HTTP 408, 409, 429, and 5xx are eligible)
 
 **`LoadAPIKeyError`** - Thrown for authentication/configuration errors (from
 `@ai-sdk/provider`)
@@ -2734,7 +2788,12 @@ try {
 
 #### SAP-Specific Error Details
 
-SAP AI Core error details are preserved in `APICallError.responseBody` as JSON:
+Recognized structured SAP errors that become `APICallError` are normalized
+into the JSON shape below in `responseBody`; if SAP returns an error array,
+only its first entry is represented. Structured 401/403/404 errors instead
+become `LoadAPIKeyError`/`NoSuchModelError`, with any request ID in the message
+rather than a `responseBody` property. Generic Axios errors may retain a
+different response-body shape.
 
 ```typescript
 {
@@ -2775,7 +2834,7 @@ try {
     if (responseBody) {
       try {
         const sapError = JSON.parse(responseBody) as {
-          error?: { code?: string; location?: string; request_id?: string };
+          error?: { code?: number; location?: string; request_id?: string };
         };
         console.error("SAP Error Code:", sapError.error?.code);
         console.error("Location:", sapError.error?.location);
@@ -2790,9 +2849,12 @@ try {
 
 #### HTTP Status Code Reference
 
-Complete reference for status codes returned by SAP AI Core. Auto-Retry means
-eligible for high-level AI SDK retries subject to `maxRetries`, not a guarantee
-that the request succeeds.
+The error types below describe recognized structured SAP error responses.
+Without that structured envelope, classification also depends on the error
+message: for example, `Request failed with status code 401` produces a
+non-retryable `APICallError`, while authentication-keyword matches produce
+`LoadAPIKeyError`. Auto-Retry means eligible for high-level AI SDK retries
+subject to `maxRetries`, not a guarantee that the request succeeds.
 
 | Code | Description           | Error Type         | Auto-Retry | Common Causes                  | Recommended Action                              | Guide                                                                       |
 | :--: | :-------------------- | :----------------- | :--------: | :----------------------------- | :---------------------------------------------- | :-------------------------------------------------------------------------- |

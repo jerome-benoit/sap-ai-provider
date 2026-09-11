@@ -370,7 +370,7 @@ export abstract class BaseLanguageModelStrategy<
    * Returns whether to escape template placeholders for this API.
    * @param _sapOptions - Parsed provider options (unused in base implementation).
    * @param _settings - Model settings (unused in base implementation).
-   * @returns false by default; Orchestration strategy overrides to return true.
+   * @returns false by default; the Orchestration override defaults to true unless disabled.
    * @internal
    */
   protected getEscapeTemplatePlaceholders(
@@ -381,10 +381,10 @@ export abstract class BaseLanguageModelStrategy<
   }
 
   /**
-   * Returns whether to include reasoning in the response.
+   * Returns whether assistant reasoning in the input history is forwarded as text.
    * @param sapOptions - Parsed provider options.
    * @param settings - Model settings.
-   * @returns Whether to include reasoning (checks sapOptions then settings, defaults to false).
+   * @returns Whether to forward input reasoning (checks sapOptions then settings, defaults to false).
    * @internal
    */
   protected getIncludeReasoning(

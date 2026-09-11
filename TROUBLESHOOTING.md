@@ -99,7 +99,8 @@ below.
 
 ### Problem: "Authentication failed" or 401 errors
 
-**Symptoms:** HTTP 401, "Invalid token", provider fails to initialize, `LoadAPIKeyError` thrown
+**Symptoms:** HTTP 401, "Invalid token", authentication fails when making a request,
+`LoadAPIKeyError` or `APICallError` thrown depending on the error shape
 
 **Solutions:**
 
@@ -146,7 +147,8 @@ request, incompatible features
 
 - Validate configuration against TypeScript types
 - Check API Reference for valid parameter ranges
-- Enable verbose logging (`logLevel: 'debug'` on the provider) to see exact request
+- Enable verbose SDK logging (`logLevel: 'debug'` on the provider) for diagnostics;
+  this does not guarantee the full request body is logged
 
 ### Problem: Template Placeholder Conflicts
 
@@ -218,7 +220,8 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 ### Problem: 404 Model/Deployment Not Found
 
-**Symptoms:** "Model not found", "Deployment not found", HTTP 404, `NoSuchModelError` thrown
+**Symptoms:** "Model not found", "Deployment not found", HTTP 404,
+`NoSuchModelError` or `APICallError` thrown depending on the error shape
 
 **Solutions:**
 
@@ -364,7 +367,7 @@ require a specific API. For example, switching to `foundation-models` when
      await generateText({ model, prompt: "Hello", providerOptions: {...} });
    } catch (error) {
      if (error instanceof ApiSwitchError) {
-       console.error("Cannot switch to:", error.requestedApi);
+       console.error("Cannot switch to:", error.toApi);
        console.error("Reason:", error.message);
        // Consider creating a separate provider instance
      }
@@ -530,10 +533,11 @@ direct API testing.
 Decode JWT token:
 
 ```bash
-echo "$ACCESS_TOKEN" | cut -d. -f2 | base64 -d | jq .
+printf '%s\n' "$ACCESS_TOKEN" | jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
 ```
 
-Check: `exp` (expiration), `subaccountid`, `scope`
+Check: `exp` (expiration), `subaccountid`, `scope`. This decodes the
+Base64URL payload for inspection; it does not verify the token signature.
 
 ### Test with Minimal Request
 
