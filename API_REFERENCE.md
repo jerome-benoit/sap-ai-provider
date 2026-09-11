@@ -1122,7 +1122,7 @@ Configuration options for the SAP AI Provider.
 
 | Property                | Type                                     | Default           | Description                                                                                                                                                                                          |
 | ----------------------- | ---------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                  | `string`                                 | `'sap-ai'`        | Provider name used as key in `providerOptions`/`providerMetadata`. Provider identifier uses `{name}.{type}` format (e.g., `"sap-ai.chat"`)                                                           |
+| `name`                  | `string`                                 | `'sap-ai'`        | Provider identifier prefix (`{name}.{type}`). Call options and response metadata use the identifier segment before the first dot; per-part caching always uses `"sap-ai"`.                           |
 | `api`                   | `'orchestration' \| 'foundation-models'` | `'orchestration'` | SAP AI Core API to use. Orchestration provides full features (masking, filtering, grounding); Foundation Models provides direct model access                                                         |
 | `resourceGroup`         | `string`                                 | `'default'`       | SAP AI Core resource group                                                                                                                                                                           |
 | `deploymentId`          | `string`                                 | Auto              | SAP AI Core deployment ID                                                                                                                                                                            |
@@ -1232,6 +1232,11 @@ const result = await generateText({
 // providerMetadata also uses provider name as key
 console.log(result.providerMetadata?.["sap-ai-core"]);
 ```
+
+For names containing dots, use `getProviderName(model.provider)` for call-level
+options and response metadata: `name: "sap.ai"` produces `"sap.ai.chat"`, but
+the namespace is `"sap"`. Per-message-part and tool-definition `cacheControl`
+always uses `providerOptions["sap-ai"]`, even with a custom provider name.
 
 ---
 
@@ -1691,8 +1696,9 @@ type CacheControl = {
 `cacheControl` on an assistant `tool-call` part is unsupported and emits a
 single `unsupported` warning (deduplicated by feature key). Invalid blocks are
 dropped and surface a `type: "other"` warning naming the offending path. Use
-`providerMetadata['sap-ai'].cacheUsage` on the result to inspect backend-reported
-prompt-cache token buckets when they are present.
+`providerMetadata[getProviderName(model.provider)].cacheUsage` on the result to
+inspect backend-reported prompt-cache token buckets when they are present
+(`"sap-ai"` is the default response namespace).
 
 **Example:**
 
@@ -1728,17 +1734,21 @@ const cacheUsage = result.providerMetadata?.["sap-ai"]?.cacheUsage;
 User message `file` parts are converted for the Orchestration API before they are
 sent to SAP AI Core:
 
-| AI SDK file part                         | SAP message content                     |
-| ---------------------------------------- | --------------------------------------- |
-| `mediaType` starts with `image/`         | `image_url` with a data URL             |
-| any other `mediaType`                    | `file` with `file_data` data URL        |
-| `filename` on the AI SDK file part       | forwarded as `file.filename`            |
-| `providerOptions['sap-ai'].cacheControl` | forwarded as `cache_control` when valid |
+| AI SDK file part                         | SAP message content                                               |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `mediaType` starts with `image/`         | `image_url` with the original URL or an inline data URL           |
+| any other `mediaType`                    | `file` with the original URL or an inline data URL in `file_data` |
+| `filename` on a non-image file part      | forwarded as `file.filename`; image filenames are not forwarded   |
+| `providerOptions['sap-ai'].cacheControl` | forwarded as `cache_control` when valid                           |
 
-File data may be a `URL`, a base64 string, `Uint8Array`, `Buffer`,
-`ArrayBuffer`, or a buffer-like object whose custom `toString("base64")`
-returns canonical RFC 4648 base64. Plain objects, provider references, and
-invalid buffer-like results are rejected instead of being stringified.
+At the shared converter boundary, file data may be a `URL`, a base64 string,
+`Uint8Array`, `Buffer`, `ArrayBuffer`, or a buffer-like object whose custom
+`toString("base64")` returns canonical RFC 4648 base64. Genuine URL objects
+pass through without being fetched; inline data becomes a data URL. Plain
+objects, provider references, and invalid buffer-like results are rejected
+instead of being stringified. The high-level AI SDK prepares inputs before
+conversion and may download URLs not covered by the model
+`supportedUrls` patterns (HTTPS images and image data URLs).
 Non-image file conversion is supported by this provider, but SAP AI Core
 backend and model MIME-type support varies by tenant, deployment, and selected
 model. If a model rejects a MIME type, choose a model or orchestration setup
@@ -3111,7 +3121,8 @@ function getProviderName(providerIdentifier: string): string;
 - `providerIdentifier`: The provider identifier (e.g., `"sap-ai.chat"`,
   `"sap-ai.embedding"`)
 
-**Returns:** The provider name (e.g., `"sap-ai"`)
+**Returns:** The segment before the first dot, or the entire identifier when
+there is no dot (e.g., `"sap-ai.chat"` → `"sap-ai"`, `"sap.ai.chat"` → `"sap"`).
 
 **Example:**
 
@@ -3157,8 +3168,9 @@ function resolveApi(providerApi: SAPAIApiType | undefined, modelApi: SAPAIApiTyp
 **Parameters:**
 
 - `providerApi`: API set at provider creation (`createSAPAIProvider({ api })`)
-- `modelApi`: API set at model creation (`provider("gpt-4.1", { api })`)
-- `invocationApi`: API set at invocation (`providerOptions[SAP_AI_PROVIDER_NAME].api`)
+- `modelApi`: Effective model API after merging explicit model settings over
+  `defaultSettings.api`
+- `invocationApi`: API set at invocation (`providerOptions[providerName].api`)
 
 **Returns:** The resolved API type to use (highest precedence wins)
 
@@ -3168,6 +3180,11 @@ function resolveApi(providerApi: SAPAIApiType | undefined, modelApi: SAPAIApiTyp
 2. Model-level setting
 3. Provider-level setting
 4. System default (`"orchestration"`)
+
+The provider factory merges model settings before calling this helper. Thus
+the full provider precedence is invocation override, explicit model `api`,
+provider `defaultSettings.api`, provider `api`, then `"orchestration"`. API-specific
+settings validation can still reject an incompatible override.
 
 **Example:**
 
@@ -3513,7 +3530,8 @@ function escapeOrchestrationPlaceholders(text: string): string;
 
 - `text`: The text content that may contain template delimiters
 
-**Returns:** Text with escaped delimiters (e.g., `{{` becomes `\{{`)
+**Returns:** Text with a zero-width space (`U+200B`) inserted after the opening
+brace of each delimiter (`{{` → `{\u200B{`, `{%` → `{\u200B%`, `{#` → `{\u200B#`).
 
 **Example:**
 
@@ -3522,7 +3540,7 @@ import { escapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider"
 
 const userInput = "Use {{variable}} in your template";
 const escaped = escapeOrchestrationPlaceholders(userInput);
-// Result: "Use \\{{variable}} in your template"
+// Result: "Use {\u200B{variable}} in your template"
 ```
 
 **Use Case:**
@@ -3562,7 +3580,7 @@ function unescapeOrchestrationPlaceholders(text: string): string;
 ```typescript
 import { unescapeOrchestrationPlaceholders } from "@jerome-benoit/sap-ai-provider";
 
-const escaped = "Use \\{{variable}} in your template";
+const escaped = "Use {\u200B{variable}} in your template";
 const original = unescapeOrchestrationPlaceholders(escaped);
 // Result: "Use {{variable}} in your template"
 ```

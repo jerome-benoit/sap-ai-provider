@@ -38,8 +38,9 @@ The root entrypoint implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingMo
 The `/v4` subpath wraps the V3 core and implements `ProviderV4`,
 `LanguageModelV4`, and `EmbeddingModelV4` for AI SDK 7. Prompt and result
 shape differences are isolated in the V4 adapters. It exposes the same callable,
-chat, language-model, and embedding methods listed for V3 above. Unsupported
-V4 prompt parts are rejected explicitly; see the adapters for supported conversions.
+chat, language-model, and embedding methods listed for V3 above. V4-only shapes
+without a supported conversion are rejected; the shared core can ignore other
+unsupported parts with warnings. See the adapters for supported conversions.
 
 **Source files:**
 

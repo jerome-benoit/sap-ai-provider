@@ -40,9 +40,8 @@ export interface ConvertToSAPMessagesOptions {
   readonly parsePartProviderOptions?: ParsePartProviderOptions;
   /**
    * Optional sink for validation warnings raised by `parsePartProviderOptions`.
-   * Each invalid `cacheControl` directive (or other future per-part option)
-   * surfaces here so the strategy layer can forward the warning to the AI SDK
-   * call result rather than dropping it silently.
+   * Issues reported by the parser are forwarded to the AI SDK call result.
+   * The SAP parser deduplicates identical messages rather than warning per occurrence.
    */
   readonly warnings?: SharedV3Warning[];
 }

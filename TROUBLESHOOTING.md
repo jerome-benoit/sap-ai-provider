@@ -341,10 +341,11 @@ require a specific API. For example, switching to `foundation-models` when
 
 **Solutions:**
 
-1. **Remove conflicting features from call:**
+1. **Create a provider/model without incompatible settings:**
 
    ```typescript
-   // ❌ Wrong: Switching to foundation-models with orchestration features
+   // Assume provider has masking configured in defaultSettings.
+   // Switching the call API does not remove those model settings.
    const result = await generateText({
      model: provider("gpt-4.1"),
      prompt: "Hello",
@@ -532,7 +533,9 @@ Log levels:
 - `debug` - Verbose SDK debugging
 
 **Note:** The `SAP_CLOUD_SDK_LOG_LEVEL` environment variable takes precedence
-over the `logLevel` provider option.
+over the `logLevel` provider option. Without that environment override, each
+provider creation sets the process-wide SAP Cloud SDK log level, using `warn`
+when `logLevel` is omitted. Logging is not isolated per provider instance.
 
 ### Use cURL for Direct API Testing
 

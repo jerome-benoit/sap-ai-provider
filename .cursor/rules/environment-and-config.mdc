@@ -40,9 +40,12 @@ Configure the provider using `createSAPAIProvider(options)`. See
 | `defaultSettings`       | `SAPAISettings`                          | Default model settings applied to all calls                                                       |
 | `destination`           | `HttpDestinationOrFetchOptions`          | Custom destination configuration                                                                  |
 | `requestConfig`         | `CustomRequestConfig`                    | Provider-level SAP request configuration; see the API reference for abort and runtime constraints |
-| `logLevel`              | `'debug' \| 'info' \| 'warn' \| 'error'` | Logging verbosity for SAP AI SDK                                                                  |
-| `name`                  | `string`                                 | Provider name used as key in `providerOptions` (default: `'sap-ai'`)                              |
+| `logLevel`              | `'debug' \| 'info' \| 'warn' \| 'error'` | Process-wide SAP SDK logging level                                                                |
+| `name`                  | `string`                                 | Provider name (default: `'sap-ai'`); see namespace rules below.                                   |
 | `warnOnAmbiguousConfig` | `boolean`                                | Warn when both deploymentId and resourceGroup are set (default: `true`)                           |
+
+Call-level option and metadata keys use the prefix before the first dot in the
+provider name. Per-part prompt-cache options always use the fixed `sap-ai` key.
 
 ### Examples
 

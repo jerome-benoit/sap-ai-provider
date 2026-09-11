@@ -15,7 +15,7 @@ export const SAP_AI_PROVIDER_NAME = "sap-ai" as const;
 /**
  * Extracts the provider name from a provider identifier (e.g., "sap-ai.chat" → "sap-ai").
  * @param providerIdentifier - The full provider identifier string.
- * @returns The provider name without any suffix.
+ * @returns The prefix before the first dot, or the unchanged identifier when no dot exists.
  */
 export function getProviderName(providerIdentifier: string): string {
   const dotIndex = providerIdentifier.indexOf(".");
@@ -136,7 +136,7 @@ export const sapAIPartProviderOptionsSchema = z.object({
 /**
  * Callback that reads per-message-part `providerOptions` and returns the validated
  * `sap-ai` slice (e.g. `cacheControl`), or `undefined` when absent or invalid.
- * Optional `warnings` sink receives one entry per Zod issue.
+ * Optional `warnings` sink collects validation issues; the SAP parser deduplicates identical messages.
  * @internal
  */
 export type ParsePartProviderOptions = (
@@ -152,7 +152,8 @@ export type SAPAIPartProviderOptions = z.infer<typeof sapAIPartProviderOptionsSc
  *
  * Returns `undefined` when the block is absent or invalid. When `warnings` is
  * provided, Zod validation issues are surfaced as `SharedV3Warning` entries so
- * the strategy layer can forward them to the AI SDK call result.
+ * the strategy layer can forward them to the AI SDK call result. Identical messages
+ * already present in the sink are not added again.
  * @param providerOptions - Part-level providerOptions bag.
  * @param warnings - Optional sink for Zod validation issues.
  * @returns Validated per-part options, or undefined.

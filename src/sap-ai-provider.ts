@@ -48,15 +48,15 @@ export interface SAPAIProvider extends ProviderV3 {
  */
 export interface SAPAIProviderSettings {
   /**
-   * SAP AI Core API to use for all models created by this provider.
-   * Can be overridden at model creation time or per-call via providerOptions.
+   * Fallback SAP AI Core API for models created by this provider.
+   * `defaultSettings.api`, per-model `api`, and per-call `providerOptions` take precedence.
    * - `'orchestration'` (default): SAP AI Core Orchestration API - supports filtering, grounding, masking, translation
    * - `'foundation-models'`: SAP AI Core Foundation Models API - supports dataSources, logprobs, seed, etc.
    * @default 'orchestration'
    */
   readonly api?: SAPAIApiType;
 
-  /** Default model settings applied to every model instance. Per-call settings override these. */
+  /** Default model settings; settings supplied at model creation override these. */
   readonly defaultSettings?: SAPAISettings;
 
   /** SAP AI Core deployment ID. If not provided, the SDK resolves deployment automatically. */
@@ -67,14 +67,17 @@ export interface SAPAIProviderSettings {
 
   /**
    * Log level for SAP Cloud SDK loggers.
-   * Controls verbosity of internal SAP SDK logging (e.g., authentication, service binding).
+   * Controls process-wide SAP SDK logging (e.g., authentication, service binding).
+   * Creating another provider resets this level, using warn when logLevel is omitted.
    * Note: SAP_CLOUD_SDK_LOG_LEVEL environment variable takes precedence if set.
    * @default 'warn'
    */
   readonly logLevel?: "debug" | "error" | "info" | "warn";
 
   /**
-   * Provider name used as key for `providerOptions` and `providerMetadata`.
+   * Name used in model provider identifiers. Call-level `providerOptions` and
+   * `providerMetadata` keys use the prefix before the first dot; avoid dots in names.
+   * Per-part prompt-cache directives always use the fixed `sap-ai` key.
    * @default 'sap-ai'
    */
   readonly name?: string;
@@ -118,7 +121,7 @@ export interface SAPAIProviderSettings {
  * @param options.deploymentId - Explicit SAP AI Core deployment ID; omit for automatic deployment resolution.
  * @param options.destination - Custom SAP Cloud SDK destination configuration.
  * @param options.logLevel - Log level for SAP Cloud SDK loggers (`'debug'`, `'info'`, `'warn'`, `'error'`).
- * @param options.name - Provider name used as key in `providerOptions` (default: `'sap-ai'`).
+ * @param options.name - Provider name (default: `'sap-ai'`); see {@link SAPAIProviderSettings.name} for namespace rules.
  * @param options.requestConfig - Provider-level custom request configuration. See {@link SAPAIProviderSettings.requestConfig} for scope, portability, and abort semantics.
  * @param options.resourceGroup - SAP AI Core resource group (default: `'default'`); ignored when deploymentId is set.
  * @param options.warnOnAmbiguousConfig - Whether to warn when both deploymentId and resourceGroup are set.

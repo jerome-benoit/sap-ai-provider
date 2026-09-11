@@ -1,4 +1,4 @@
-/** Deep merge utility with prototype pollution protection. */
+/** Plain-object merge utility with unsafe-key filtering. */
 
 /**
  * @internal
@@ -11,9 +11,13 @@ const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_DEPTH = 100;
 
 /**
- * Deep merges multiple objects recursively with prototype pollution protection.
+ * Recursively merges and copies plain objects, excluding prototype-pollution keys.
+ * Arrays and other non-plain values replace earlier values by reference; their
+ * contents are not traversed. Undefined sources are skipped, but an explicit
+ * undefined property value replaces the earlier property value.
  * @param sources - Objects to merge.
  * @returns Merged object.
+ * @throws {Error} When traversed plain objects contain a cycle or exceed the depth limit.
  */
 export function deepMerge<T extends Record<string, unknown>>(
   ...sources: (Partial<T> | undefined)[]
@@ -40,7 +44,8 @@ export function deepMergeTwo<T extends Record<string, unknown>>(
 }
 
 /**
- * Deep clones an object with circular reference detection.
+ * Recursively copies plain-object properties with circular reference detection.
+ * Arrays and other non-plain values are retained by reference.
  * Uses ancestor tracking: adds object before recursing, removes after.
  * @param obj - Object to clone.
  * @param ancestors - Set of ancestor objects in the current recursion path.

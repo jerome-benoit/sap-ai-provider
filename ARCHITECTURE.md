@@ -1340,7 +1340,7 @@ only the API-specific primitive operations.
 The effective API is resolved with a clear priority order:
 
 ```text
-Call-time api > Model-time api > Provider-time api > Default ("orchestration")
+Call-time api > Model-time api > defaultSettings.api > Provider-time api > "orchestration"
 ```
 
 ```typescript
@@ -1360,6 +1360,9 @@ const result = await generateText({
 });
 ```
 
+`defaultSettings.api` participates when model settings omit `api` or set it to
+`undefined`. Call-time selection does not discard incompatible model settings.
+
 #### Feature Validation
 
 The validation layer ensures features are compatible with the resolved API:
@@ -1369,9 +1372,11 @@ The validation layer ensures features are compatible with the resolved API:
 - **Common features**: temperature, maxTokens, topP, seed, stop sequences, tools, streaming
 
 Incompatible feature combinations throw `UnsupportedFeatureError` with helpful
-suggestions for which API to use instead. Additional `modelParams` such as
-`logprobs` and `logit_bias` are passed through; their support is determined by
-the SAP backend/model rather than these API-feature checks.
+suggestions for which API to use instead. A call-time language-model API switch
+that conflicts with configured API-specific features instead throws
+`ApiSwitchError`. Additional `modelParams` such as `logprobs` and `logit_bias`
+are passed through; their support is determined by the SAP backend/model rather
+than these API-feature checks.
 
 ## Performance Considerations
 

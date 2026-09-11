@@ -48,7 +48,7 @@ export type AISDKToolChoice =
   { toolName: string; type: "tool" } | { type: "auto" } | { type: "none" } | { type: "required" };
 
 /**
- * Anthropic prompt-cache breakdown surfaced via `providerMetadata['sap-ai'].cacheUsage`.
+ * Anthropic prompt-cache breakdown surfaced via `providerMetadata[providerName].cacheUsage`.
  *
  * Mirrors the per-TTL ephemeral bucket shape returned by the SAP AI SDK token usage
  * payload (`prompt_tokens_details.cache_creation_token_details`).
