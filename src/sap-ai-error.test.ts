@@ -11,7 +11,6 @@ import {
   convertSAPErrorToAPICallError,
   convertToAISDKError,
   normalizeHeaders,
-  UnsupportedFeatureError,
 } from "./sap-ai-error";
 
 interface ParsedResponseBody {
@@ -41,45 +40,6 @@ describe("ApiSwitchError", () => {
       expect(error.message).toContain(`Cannot switch from ${fromApi} to ${toApi}`);
       expect(error.message).toContain(`${feature} would be ignored`);
       expect(error.message).toContain("Create a new model instance");
-    },
-  );
-});
-
-describe("UnsupportedFeatureError", () => {
-  it.each([
-    {
-      api: "foundation-models" as const,
-      expectedAvailable: "Orchestration API",
-      expectedIgnored: "Foundation Models API",
-      feature: "Content filtering",
-      suggestedApi: "orchestration" as const,
-    },
-    {
-      api: "foundation-models" as const,
-      expectedAvailable: "Orchestration API",
-      expectedIgnored: "Foundation Models API",
-      feature: "Data masking",
-      suggestedApi: "orchestration" as const,
-    },
-    {
-      api: "orchestration" as const,
-      expectedAvailable: "Foundation Models API",
-      expectedIgnored: "Orchestration API",
-      feature: "logprobs",
-      suggestedApi: "foundation-models" as const,
-    },
-  ])(
-    "should create error for $feature on $api",
-    ({ api, expectedAvailable, expectedIgnored, feature, suggestedApi }) => {
-      const error = new UnsupportedFeatureError(feature, api, suggestedApi);
-
-      expect(error).toBeInstanceOf(Error);
-      expect(error.name).toBe("UnsupportedFeatureError");
-      expect(error.feature).toBe(feature);
-      expect(error.api).toBe(api);
-      expect(error.suggestedApi).toBe(suggestedApi);
-      expect(error.message).toContain(`${feature} is only available with ${expectedAvailable}`);
-      expect(error.message).toContain(`will be ignored by ${expectedIgnored}`);
     },
   );
 });

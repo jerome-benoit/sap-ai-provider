@@ -14,6 +14,10 @@ the SAP AI Provider.
 > package. Examples below use the AI SDK 6 root; select the matching import
 > from [Installation](./README.md#installation).
 
+Use Node.js 22.12 or newer for local and deployed applications. The published
+package and SAP SDK dependencies rely on Node APIs; passing source-level Edge
+tests does not establish pure Edge runtime support.
+
 ## Table of Contents
 
 <!-- markdownlint-disable MD051 -->

@@ -37,8 +37,9 @@ Quick solutions for the most frequent issues:
 
 3. **🟡 429 Rate Limit Exceeded**
    - **Cause:** Too many requests
-   - **Fix:** Automatic retry enabled (no action needed)
-   - **ETA:** Resolves automatically
+   - **Fix:** Use bounded AI SDK retries and reduce request volume; see
+     [rate-limit guidance](#problem-429-rate-limit-exceeded)
+   - **ETA:** Depends on tenant quota and service limits
 
 4. **🟢 Streaming Not Working**
    - **Cause:** Incorrect iteration pattern
@@ -670,9 +671,13 @@ See [Installation](./README.md#installation) for matching install commands.
 
 **Cause:** The `prepare:v2` script requires the `build:v2` script to be run first.
 
-**Solution:** Ensure you run `npm run build:v2` before `npm run prepare:v2`.
+**Solution:** For local V2 build checks, run `npm run build:v2` then
+`npm run check-build:v2`. For standalone publication, run
+`AI_SDK_VERSION=v2 npm publish` from a separate clean checkout: the lifecycle
+builds, verifies, and prepares the package in order. Do not manually run
+`prepare:v2` before publishing; it rewrites the package manifests.
 
-**Reference:** See [Building](./.github/copilot-instructions.md#building) in `copilot-instructions.md` for the correct V2 build order.
+**Reference:** See [Architecture - Build Process](./ARCHITECTURE.md#build-process).
 
 ## Known Limitations
 

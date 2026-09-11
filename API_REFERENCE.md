@@ -168,7 +168,8 @@ V4 tagged file data is normalized before it reaches the shared core:
   producing an invalid SAP payload.
 - Top-level provider references are rejected explicitly and never fetched.
   References nested in tool-result content map to the equivalent V3 `file-id`
-  representation.
+  representation and are serialized as JSON tool output by the shared core;
+  they do not trigger native file lookup.
 - Text file variants become V3 text parts and retain provider options.
 
 ## V2 Facade Package API
@@ -1131,9 +1132,12 @@ const settings: SAPAIProviderSettings = {
 >   provider and is not currently overridable per-call via `providerOptions['sap-ai']`.
 >   For per-request variation (e.g. different `AI-Object-Store-Secret-Name` per tenant),
 >   create separate provider instances.
-> - **Runtime portability.** `httpAgent` and `httpsAgent` are Node-only and are silently
->   ignored on Edge / Cloudflare Workers runtimes. Prefer `headers`, `params`, and
->   `timeout` for portable configuration. (`timeout` reaches axios via the
+> - **Runtime support.** The published package targets Node.js 22.12+;
+>   `httpAgent` and `httpsAgent` configure its Node HTTP transport. The provider
+>   does not strip these fields or guarantee that they are ignored elsewhere.
+>   Node-dependent ESM output and SAP SDK dependencies prevent claiming pure
+>   Edge / Cloudflare Workers support from source-level Edge tests.
+>   (`timeout` reaches axios via the
 >   `CustomRequestConfig` `Record<string, any>` index signature; it is honoured
 >   end-to-end but is not a first-class typed field.)
 > - **Abort semantics.** The AI SDK `abortSignal` option always wins over any `signal`
@@ -1228,7 +1232,7 @@ the right API for your use case.
 | **SAP-format Tool Definitions** |       ✅        |        ❌         | `tools` property in settings                          |
 | **Azure On Your Data**          |       ❌        |        ✅         | `dataSources` for Azure AI Search, Cosmos DB          |
 | **Log Probabilities**           | Model-dependent |        ✅         | `logprobs`, `top_logprobs` parameters                 |
-| **Deterministic Sampling**      | Model-dependent |        ✅         | `seed` parameter for reproducible outputs             |
+| **Seeded Sampling**             | Model-dependent |        ✅         | `seed` for best-effort reproducibility                |
 | **Stop Sequences**              | Model-dependent |        ✅         | `stop` parameter to control generation                |
 | **Token Bias**                  | Model-dependent |        ✅         | `logit_bias` to adjust token probabilities            |
 | **User Tracking**               | Model-dependent |        ✅         | `user` parameter for abuse monitoring                 |
@@ -1236,7 +1240,11 @@ the right API for your use case.
 
 The matrix describes provider support, not a guarantee for every model. Both
 strategies forward `seed` and stop sequences; additional orchestration
-`modelParams` are backend/model-dependent.
+`modelParams` are backend/model-dependent. A seed requests best-effort
+reproducibility, not deterministic output. Although `logprobs` parameters are
+forwarded, token probabilities are not exposed in the normalized generation
+result, response body, or provider metadata. Use the SAP SDK or direct API
+for probability analysis.
 
 #### When to Use Each API
 
@@ -1250,8 +1258,6 @@ strategies forward `seed` and stop sequences; additional orchestration
 
 **Use Foundation Models API when:**
 
-- ✅ You need `logprobs` for token probability analysis
-- ✅ You need `seed` for deterministic/reproducible outputs
 - ✅ You need Azure "On Your Data" (`dataSources`) integration
 - ✅ You want direct model access without orchestration overhead
 - ✅ You need fine-grained control with `logit_bias` or `stop` sequences
@@ -1397,7 +1403,7 @@ are left to the backend rather than filled with provider defaults.
 | `n`                   | `number`  | Positive integer; model limit | Model-specific | Number of completions (not supported by Amazon models) |
 | `parallel_tool_calls` | `boolean` | -                             | Model-specific | Enable parallel tool execution (OpenAI models)         |
 
-#### Foundation Models-Only Parameters
+#### Additional Foundation Models Parameters
 
 These parameters have explicit types in `FoundationModelsModelParams` for
 Azure OpenAI-compatible deployments. They are not all exclusive to that API:
@@ -1405,14 +1411,14 @@ Azure OpenAI-compatible deployments. They are not all exclusive to that API:
 orchestration model parameters are passed through when provided. Backend/model
 support determines which values can be used.
 
-| Property       | Type                     | Default | Description                                                   |
-| -------------- | ------------------------ | ------- | ------------------------------------------------------------- |
-| `logprobs`     | `boolean`                | `false` | Return log probabilities of output tokens                     |
-| `top_logprobs` | `number`                 | -       | Number of most likely tokens (0-20) at each position          |
-| `seed`         | `number`                 | -       | Random seed for deterministic sampling (reproducible outputs) |
-| `stop`         | `string \| string[]`     | -       | Stop sequences where generation halts                         |
-| `logit_bias`   | `Record<string, number>` | -       | Modify likelihood of specific tokens (-100 to 100)            |
-| `user`         | `string`                 | -       | Unique end-user identifier for abuse monitoring               |
+| Property       | Type                     | Default | Description                                           |
+| -------------- | ------------------------ | ------- | ----------------------------------------------------- |
+| `logprobs`     | `boolean`                | `false` | Request backend token log probabilities               |
+| `top_logprobs` | `number`                 | -       | Number of most likely tokens (0-20) at each position  |
+| `seed`         | `number`                 | -       | Seed for best-effort reproducibility (not guaranteed) |
+| `stop`         | `string \| string[]`     | -       | Stop sequences where generation halts                 |
+| `logit_bias`   | `Record<string, number>` | -       | Modify likelihood of specific tokens (-100 to 100)    |
+| `user`         | `string`                 | -       | Unique end-user identifier for abuse monitoring       |
 
 **Example with Foundation Models parameters:**
 
@@ -1427,9 +1433,9 @@ const result = await generateText({
     modelParams: {
       temperature: 0.7,
       maxTokens: 1000,
-      // Foundation Models-only parameters
-      seed: 42, // Reproducible outputs
-      logprobs: true, // Get token probabilities
+      // Additional model parameters (support varies by backend)
+      seed: 42, // Best-effort reproducibility, not guaranteed
+      logprobs: true, // Requested upstream; not exposed in normalized results
       top_logprobs: 5, // Top 5 tokens at each position
       stop: ["\n\n", "END"], // Stop on double newline or "END"
       user: "user-123", // Track for abuse monitoring
@@ -1438,7 +1444,7 @@ const result = await generateText({
   prompt: "Write a haiku about programming",
 });
 
-// Access log probabilities from response (if model supports it)
+// Normalized results expose text, not the requested log probabilities.
 console.log("Response:", result.text);
 ```
 
@@ -2670,12 +2676,14 @@ try {
   // Using filtering with Foundation Models API
   const model = provider("gpt-4.1", {
     api: "foundation-models",
-    filtering: {/* ... */}, // Not supported!
+    filtering: {}, // Orchestration-only configuration
   });
+  // API-specific feature validation happens when the model is invoked.
+  await generateText({ model, prompt: "Hello" });
 } catch (error) {
   if (error instanceof UnsupportedFeatureError) {
     console.error(error.message);
-    // "Content filtering is not supported with Foundation Models API. Use Orchestration API instead."
+    // The request is rejected before the SAP SDK call.
     console.error("Feature:", error.feature); // "Content filtering"
     console.error("Current API:", error.api); // "foundation-models"
     console.error("Suggested API:", error.suggestedApi); // "orchestration"
@@ -2782,7 +2790,9 @@ try {
 
 #### HTTP Status Code Reference
 
-Complete reference for status codes returned by SAP AI Core:
+Complete reference for status codes returned by SAP AI Core. Auto-Retry means
+eligible for high-level AI SDK retries subject to `maxRetries`, not a guarantee
+that the request succeeds.
 
 | Code | Description           | Error Type         | Auto-Retry | Common Causes                  | Recommended Action                              | Guide                                                                       |
 | :--: | :-------------------- | :----------------- | :--------: | :----------------------------- | :---------------------------------------------- | :-------------------------------------------------------------------------- |

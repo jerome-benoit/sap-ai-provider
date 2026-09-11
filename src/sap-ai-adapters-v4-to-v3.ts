@@ -36,15 +36,18 @@ const TOP_LEVEL_REFERENCE_ERROR =
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
  *   `URL` object, `text` to a V3 text part. Top-level `reference` values are
  *   rejected explicitly (never fetched); tool-output references map to the
- *   equivalent V3 `file-id` shape.
- * - Bare and wildcard media types are resolved from detectable inline bytes.
- *   Remote `image` and `image/*` URLs are preserved as `image/*`; other
- *   incomplete URL media types are rejected.
- * - `reasoning-file` and `custom` parts are rejected explicitly.
+ *   equivalent V3 `file-id` shape. The SAP message converter serializes tool
+ *   outputs as JSON; it does not resolve these references.
+ * - Bare and wildcard media types on inline data are resolved from detectable
+ *   bytes. Top-level `image` and `image/*` URLs are preserved as `image/*`;
+ *   other incomplete top-level URL media types are rejected.
+ * - Assistant `reasoning-file` and `custom` parts are rejected explicitly;
+ *   `custom` items inside tool-result content pass through.
  * - Tool-result outputs are mapped to the V3 output union; nested `content[]`
- *   file items use the legacy `file-data`/`file-url` shapes.
- * - Everything else (text, reasoning, tool calls, approval responses,
- *   provider options) passes through untouched.
+ *   file items use the legacy `file-data`/`file-url`/`file-id` shapes.
+ * - Other parts (text, reasoning, tool calls, approval responses) and provider
+ *   options retain their V3-compatible shapes. Downstream SAP conversion may
+ *   still ignore unsupported parts with warnings.
  * @param prompt - The V4 prompt received from AI SDK 7.
  * @returns The equivalent V3 prompt for the internal core.
  * @throws {UnsupportedFunctionalityError} For V4-only shapes with no V3 equivalent.
@@ -130,7 +133,7 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
     case "text":
       return { providerOptions: item.providerOptions, text: item.data.text, type: "text" };
     case "url": {
-      // Legacy V3 file-url carries no media type; the subtype stays in the URL itself.
+      // Legacy V3 file-url carries only the URL, not a separate media type.
       const url = getURLHref(item.data.url);
       if (url === undefined) {
         throw new UnsupportedFunctionalityError({

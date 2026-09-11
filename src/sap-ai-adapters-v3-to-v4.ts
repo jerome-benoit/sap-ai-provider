@@ -90,10 +90,10 @@ export function convertWarningsToV4(internalWarnings: InternalWarning[]): Shared
 }
 /**
  * Transforms an internal stream to a V4 ReadableStream (total conversion).
- * Entry warnings (e.g. dropped V4-only options) are merged into the leading
- * `stream-start` part, which the internal stream always emits first.
+ * Optional entry warnings are merged into the first `stream-start` part.
+ * The current V4 facade supplies no entry warnings.
  * @param internalStream - The internal V3 stream.
- * @param entryWarnings - Warnings collected during prompt normalization.
+ * @param entryWarnings - Additional warnings to prepend to `stream-start`.
  * @returns The equivalent V4 stream.
  */
 export function createV4StreamFromInternal(

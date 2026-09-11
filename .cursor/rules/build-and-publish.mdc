@@ -71,3 +71,6 @@ Use `npm run build` explicitly to create distribution artifacts.
   resolves correctly: `npm run check-build`.
 - Verify one facade build explicitly with `npm run check-build:v2` or
   `npm run check-build:v4`.
+- `test:edge` exercises provider source behavior, not published-bundle
+  portability. The ESM banner and SAP SDK dependencies use Node built-ins;
+  do not infer pure Edge deployment support from that test suite.

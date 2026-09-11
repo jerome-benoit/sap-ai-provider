@@ -8,7 +8,7 @@ context: |
 
   ### Tech Stack
   - Language: TypeScript (strict mode)
-  - Runtime: Node.js 22.12+ and Edge runtime compatible
+  - Runtime: Node.js 22.12+; Edge tests cover provider source logic, not deployment of published bundles without Node compatibility
   - Build: tsup (CommonJS + ESM + .d.ts)
   - Test: Vitest (node + edge configs)
   - Formatting: Prettier + ESLint
@@ -21,11 +21,11 @@ context: |
   ### Architecture Patterns
   - Two published packages: main package with root (V3 / AI SDK 6), /v2 (V2 / AI SDK 5), /v4 (V4 / AI SDK 7), plus standalone -v2
   - V2 also supports AI SDK 6 compatibility; both facades share the V3 implementation
-  - Package release versions (4.x), provider specifications (V2/V3/V4), and AI SDK majors (5/6/7) are independent
+  - Package release versions, provider specifications (V2/V3/V4), and AI SDK majors (5/6/7) are independent
   - Uses zod schemas for validation
   - Lazy loading of SAP SDK strategies (the SDK packages are runtime dependencies)
   - Strategy Pattern for API abstraction
-  - Must work in both Node.js and Edge runtimes
+  - Preserve Node.js support and Edge-tested source behavior; published bundles depend on Node built-ins and the SAP SDK dependency chain
 
   ### Source Structure
   - src/index.ts - V3 public API exports (AI SDK 6 root entry)

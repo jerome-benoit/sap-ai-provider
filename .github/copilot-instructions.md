@@ -46,7 +46,7 @@ This repository publishes two npm packages from the same codebase:
 
 Use the root V3 entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the V2 facade
 (`/v2` or standalone `-v2`) for AI SDK 5 and AI SDK 6 compatibility. Package
-release versions (4.x), provider specifications (V2/V3/V4), and AI SDK majors
+release versions, provider specifications (V2/V3/V4), and AI SDK majors
 (5/6/7) are independent. Both build configurations clean `dist/`, so `build:v2`
 replaces the main build outputs with V2-only artifacts.
 
@@ -56,6 +56,10 @@ replaces the main build outputs with V2-only artifacts.
 - **Run Node.js specific tests**: `npm run test:node` -- takes ~1 second. Set timeout to 15+ seconds.
 - **Run Edge runtime tests**: `npm run test:edge` -- takes ~1 second. Set timeout to 15+ seconds.
 - **Watch mode for development**: `npm run test:watch`
+
+The Edge suite tests provider source behavior. Published bundles still use
+Node built-ins through the ESM banner and SAP SDK dependencies; passing this
+suite does not establish deployability to an Edge isolate without Node compatibility.
 
 ### Type Checking and Linting
 

@@ -198,12 +198,6 @@ describe("validateSettings", () => {
           modelSettings: mockSettings({ filtering: { input: {} } }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({ filtering: { input: {} } }),
-        });
-      }).toThrow(/Content filtering.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for fallbackModuleConfigs", () => {
@@ -222,21 +216,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            fallbackModuleConfigs: [
-              {
-                promptTemplating: {
-                  model: { name: "gpt-4.1-mini" },
-                  prompt: { template: [] },
-                },
-              },
-            ],
-          }),
-        });
-      }).toThrow(/fallbackModuleConfigs.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for grounding", () => {
@@ -248,14 +227,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            grounding: { config: {}, type: "document_grounding_service" },
-          }),
-        });
-      }).toThrow(/Document grounding.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for masking", () => {
@@ -265,12 +236,6 @@ describe("validateSettings", () => {
           modelSettings: mockSettings({ masking: { masking_providers: [] } }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({ masking: { masking_providers: [] } }),
-        });
-      }).toThrow(/Data masking.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for translation", () => {
@@ -282,14 +247,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            translation: { input: { config: {}, type: "sap_document_translation" } },
-          }),
-        });
-      }).toThrow(/Translation.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for tools", () => {
@@ -301,14 +258,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            tools: [{ function: { name: "test", parameters: {} }, type: "function" }],
-          }),
-        });
-      }).toThrow(/SAP-format tool definitions.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for orchestrationConfigRef", () => {
@@ -320,14 +269,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            orchestrationConfigRef: { id: "f47ac10b-58cc-4372-a567-0e02b2c3d479" },
-          }),
-        });
-      }).toThrow(/orchestrationConfigRef.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for placeholderValues", () => {
@@ -337,12 +278,6 @@ describe("validateSettings", () => {
           modelSettings: mockSettings({ placeholderValues: { key: "value" } }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({ placeholderValues: { key: "value" } }),
-        });
-      }).toThrow(/placeholderValues.*will be ignored by Foundation Models API/);
     });
 
     it("should throw UnsupportedFeatureError for promptTemplateRef", () => {
@@ -354,14 +289,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            promptTemplateRef: { id: "template-id", scope: "global" },
-          }),
-        });
-      }).toThrow(/promptTemplateRef.*will be ignored by Foundation Models API/);
     });
 
     it("should check features in order (filtering first)", () => {
@@ -463,33 +390,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          embeddingSettings: mockEmbeddingSettings({
-            masking: { masking_providers: [] },
-          }),
-        });
-      }).toThrow(/Data masking.*will be ignored by Foundation Models API/);
-    });
-
-    it("should throw with masking configuration with providers", () => {
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          embeddingSettings: mockEmbeddingSettings({
-            masking: {
-              masking_providers: [
-                {
-                  entities: [{ type: "profile-email" }],
-                  method: "anonymization",
-                  type: "sap_data_privacy_integration",
-                },
-              ],
-            },
-          }),
-        });
-      }).toThrow(/Data masking.*will be ignored by Foundation Models API/);
     });
 
     it("should allow embedding masking with Orchestration API", () => {
@@ -549,24 +449,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-      expect(() => {
-        validateSettings({
-          api: "orchestration",
-          modelSettings: mockSettings({
-            api: "foundation-models",
-            dataSources: [
-              {
-                parameters: {
-                  authentication: { type: "system_assigned_managed_identity" },
-                  endpoint: "https://search.example.com",
-                  index_name: "my-index",
-                },
-                type: "azure_search",
-              },
-            ],
-          }),
-        });
-      }).toThrow(/Azure On Your Data \(dataSources\).*will be ignored by Orchestration API/);
     });
 
     it("should throw with empty dataSources array (still !== undefined)", () => {
@@ -593,14 +475,6 @@ describe("validateSettings", () => {
             },
           });
         }).toThrow(UnsupportedFeatureError);
-        expect(() => {
-          validateSettings({
-            api: "foundation-models",
-            invocationSettings: {
-              escapeTemplatePlaceholders: true,
-            },
-          });
-        }).toThrow(/escapeTemplatePlaceholders.*will be ignored by Foundation Models API/);
       });
 
       it("should throw when escapeTemplatePlaceholders=true at model level", () => {

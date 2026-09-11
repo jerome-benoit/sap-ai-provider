@@ -2,14 +2,14 @@
 
 ---
 
-## Choosing Between V3 and V2 Packages
+## Choosing Between V4, V3, and V2 Entrypoints
 
 This library publishes two npm packages. The main package exposes three
 entrypoints; choose the provider specification that matches your AI SDK major.
-Package release numbers (such as 4.x) are independent of provider specification
+Package release numbers (such as 5.x) are independent of provider specification
 versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
 
-- **`@jerome-benoit/sap-ai-provider` (V3 Package)**:
+- **`@jerome-benoit/sap-ai-provider` (V3 Root Entrypoint)**:
   - **When to Use**: Use the root entrypoint with Vercel AI SDK 6, which
     supports `LanguageModelV3`/`EmbeddingModelV3` interfaces. AI SDK 5 cannot
     consume V3 models; AI SDK 7 integrations must use the V4 subpath below.
@@ -627,9 +627,10 @@ catch (error) {
 
 #### 4. Automatic Retries
 
-Package version 3.x leverages the AI SDK's built-in retry mechanism for transient errors (429,
-500, 503). No code changes needed - retries happen automatically with
-exponential backoff.
+Package version 3.x marks transient errors (429, 500, 503) as retryable for
+the AI SDK's built-in retry mechanism. High-level AI SDK calls retry with
+exponential backoff, bounded by `maxRetries`; direct provider calls do not
+implement a retry loop.
 
 ---
 
@@ -958,7 +959,8 @@ createSAPAIProvider({
       `error.code`
 - [ ] Update error metadata access to parse `error.responseBody` JSON for SAP
       details
-- [ ] Remove any custom retry logic (now automatic with AI SDK)
+- [ ] Review custom retry logic alongside AI SDK `maxRetries`; retain a retry
+      policy if calling provider methods directly
 - [ ] Run tests to verify error handling works correctly
 - [ ] Test automatic retry behavior with rate limits (429) and server errors
       (500, 503)
@@ -1068,10 +1070,8 @@ If you encounter issues during migration:
 ## Related Documentation
 
 - [README](./README.md) - Getting started and feature overview
-- [API Reference](./API_REFERENCE.md) - Complete API documentation for v2.x
-- [Environment Setup](./ENVIRONMENT_SETUP.md) - Authentication setup for both
-  v1 and v2
-- [Architecture](./ARCHITECTURE.md) - Technical architecture (v2
-  implementation)
+- [API Reference](./API_REFERENCE.md) - Current API documentation for V4, V3, and V2
+- [Environment Setup](./ENVIRONMENT_SETUP.md) - Current SAP SDK authentication setup
+- [Architecture](./ARCHITECTURE.md) - Shared V3 core and versioned facades
 - [Contributing Guide](./CONTRIBUTING.md) - Development and contribution guidelines
 - [cURL API Testing Guide](./CURL_API_TESTING_GUIDE.md) - Direct API testing for debugging

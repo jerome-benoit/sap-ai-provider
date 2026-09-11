@@ -34,7 +34,7 @@ A clear and concise description of the bug.
 
 ### Environment
 
-- **Package Name and Release Version:** <!-- e.g., @jerome-benoit/sap-ai-provider 4.x -->
+- **Package Name and Release Version:** <!-- e.g., @jerome-benoit/sap-ai-provider 5.0.0; provide the exact installed version -->
 - **Import Entrypoint:** <!-- root (V3 / AI SDK 6), /v2 or standalone -v2 (V2 / AI SDK 5; also AI SDK 6 compatibility), /v4 (V4 / AI SDK 7) -->
 - **Node.js Version:** <!-- e.g., 22.12.0 -->
 - **OS:** <!-- e.g., macOS 14.0, Ubuntu 22.04, Windows 11 -->

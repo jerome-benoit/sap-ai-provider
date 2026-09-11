@@ -184,7 +184,7 @@ export class ApiSwitchError extends Error {
  * @example
  * ```typescript
  * throw new UnsupportedFeatureError("Content filtering", "foundation-models", "orchestration");
- * // "Content filtering is only available with Orchestration API and will be ignored by Foundation Models API."
+ * // Rejects the request: content filtering requires the Orchestration API.
  * ```
  * @see {@link validateSettings} - Main validation function that throws this error
  * @see {@link ApiSwitchError} - Related error for API switching conflicts
@@ -193,7 +193,7 @@ export class UnsupportedFeatureError extends Error {
   /**
    * Creates a new UnsupportedFeatureError.
    * @param feature - The name of the unsupported feature (e.g., "Content filtering").
-   * @param api - The API being used where the feature will be ignored.
+   * @param api - The API being used that does not support the feature.
    * @param suggestedApi - The API that supports this feature.
    */
   constructor(
@@ -204,9 +204,7 @@ export class UnsupportedFeatureError extends Error {
     const apiName = api === "foundation-models" ? "Foundation Models" : "Orchestration";
     const suggestedApiName =
       suggestedApi === "foundation-models" ? "Foundation Models" : "Orchestration";
-    super(
-      `${feature} is only available with ${suggestedApiName} API and will be ignored by ${apiName} API.`,
-    );
+    super(`${feature} is not supported by ${apiName} API. Use ${suggestedApiName} API instead.`);
     this.name = "UnsupportedFeatureError";
   }
 }
@@ -278,7 +276,7 @@ export function convertSAPErrorToAPICallError(
       "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/rate-limits";
   } else if (statusCode >= HTTP_STATUS.INTERNAL_ERROR) {
     enhancedMessage +=
-      "\n\nSAP AI Core service error. This is typically a temporary issue. The request will be retried automatically." +
+      "\n\nSAP AI Core service error. This is typically a temporary issue. Retries depend on the caller's retry configuration." +
       "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/troubleshooting";
   } else if (location) {
     enhancedMessage += `\n\nError location: ${location}`;

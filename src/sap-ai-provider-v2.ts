@@ -65,8 +65,9 @@ export interface SAPAIProviderSettings {
    *
    * Provider-level only (not overridable per-call via `providerOptions['sap-ai']`). The
    * AI SDK `abortSignal` option always wins over any `signal` on `requestConfig`; the
-   * latter is dropped before the request is forwarded. Node-only knobs (`httpAgent`,
-   * `httpsAgent`) are silently ignored on Edge / Cloudflare Workers runtimes.
+   * latter is dropped before the request is forwarded. Other options, including
+   * Node-only agents (`httpAgent`, `httpsAgent`), are forwarded unchanged. The
+   * published package and SAP SDK transport require a Node-compatible runtime.
    *
    * See the "Note on `requestConfig`" section under `SAPAIProviderSettings` in
    * `API_REFERENCE.md` for the full SAP AI Core `AI-*` header guidance.

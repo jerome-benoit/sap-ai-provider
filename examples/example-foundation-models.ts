@@ -3,13 +3,13 @@
 /**
  * SAP AI Provider - Foundation Models API Example
  *
- * This example demonstrates using the Foundation Models API directly,
- * which provides access to model-specific features like logprobs, seed,
- * and stop sequences that are not available through the Orchestration API.
+ * This example demonstrates direct Azure OpenAI access through the Foundation
+ * Models API, including logprobs, seed, and stop-sequence request parameters.
+ * Orchestration can also forward model-specific parameters; support depends on the model.
  *
  * When to use Foundation Models API:
- * - You need logprobs for token probability analysis
- * - You need deterministic outputs with seed
+ * - You want to configure Azure OpenAI-specific request parameters
+ * - You want best-effort reproducibility with seed (not guaranteed determinism)
  * - You need custom stop sequences
  * - You want direct model access without orchestration features
  *
@@ -83,7 +83,7 @@ async function foundationModelsExample() {
 
     console.log("   📄 Response:", result2.text);
 
-    console.log("\n📌 3. Logprobs - Token Probability Analysis\n");
+    console.log("\n3. Configuring Logprobs\n");
 
     const result3 = await generateText({
       model: provider("gpt-4.1", {
@@ -99,11 +99,11 @@ async function foundationModelsExample() {
 
     console.log("   📄 Generated:", result3.text);
 
-    // Access logprobs from provider metadata if available
-    // Note: logprobs are returned in the raw response body
-    console.log("   📌 (Logprobs data available in raw API response)");
+    // The request enables logprobs, but this provider does not expose them in
+    // providerMetadata or response.body. Use the SAP SDK directly to inspect them.
+    console.log("   Logprobs requested; token probabilities are not exposed by this provider.");
 
-    console.log("\n📌 4. Seed - Deterministic Output\n");
+    console.log("\n4. Seed - Best-Effort Reproducibility\n");
 
     const seedValue = 12345;
 
@@ -113,7 +113,7 @@ async function foundationModelsExample() {
       modelParams: {
         max_tokens: 10,
         seed: seedValue,
-        temperature: 0.7, // Even with temperature, seed makes it deterministic
+        temperature: 0.7, // Seed requests repeatable sampling; identical output is not guaranteed.
       },
     });
 

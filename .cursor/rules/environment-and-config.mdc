@@ -11,6 +11,11 @@ description: Environment variables, credentials, and configuration guidance
   AI SDK 6 targets the V3 root; AI SDK 7 uses `/v4`. The standalone `-v2` package
   supports AI SDK 5 and 6.
 
+The published bundles use Node built-ins and the SAP SDK dependency chain.
+Passing `test:edge` verifies provider source behavior, not deployment to a
+pure Edge isolate. Verify the required Node compatibility in the target
+environment before deploying.
+
 ## Credentials
 
 The SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`)

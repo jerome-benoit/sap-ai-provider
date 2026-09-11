@@ -6,7 +6,7 @@ const isTsV6 = parseInt(tsVersion.split(".")[0] ?? "0", 10) >= 6;
 export default defineConfig([
   {
     banner: ({ format }) => {
-      // Polyfill require() for bundled CJS dependencies in ESM output
+      // Supply Node.js require() for bundled CJS dependencies; ESM remains Node-dependent.
       if (format === "esm") {
         return {
           js: `import {createRequire as __createRequire} from 'module';var require=__createRequire(import.meta.url);`,

@@ -135,6 +135,11 @@ try {
 **Requirements:** Node.js 22.12+. The provider entrypoint must match the installed
 AI SDK major.
 
+The published package targets Node.js. Its ESM output uses Node
+`module.createRequire`, and the SAP SDK dependency chain relies on Node APIs.
+The source-level Edge test suite does not establish deployability to pure Edge
+runtimes such as Cloudflare Workers; use a Node.js server runtime for deployment.
+
 | AI SDK | Install                                            | Provider import                     |
 | ------ | -------------------------------------------------- | ----------------------------------- |
 | 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
@@ -691,7 +696,9 @@ error handling across providers.
 
 - **Authentication (401)**: Check `AICORE_SERVICE_KEY` or `VCAP_SERVICES`
 - **Model not found (404)**: Confirm tenant/region supports the model ID
-- **Rate limit (429)**: Automatic retry with exponential backoff
+- **Rate limit (429)**: High-level AI SDK calls retry eligible errors with
+  exponential backoff, bounded by `maxRetries`; direct provider calls do not
+  implement retries
 - **Streaming**: Iterate `textStream` correctly; don't mix `generateText` and
   `streamText`
 
@@ -705,7 +712,7 @@ streaming, and tool calling.
 ## Performance
 
 - Prefer streaming (`streamText`) for long outputs to reduce latency and memory.
-- Tune `modelParams` carefully: lower `temperature` for deterministic results;
+- Tune `modelParams` carefully: lower `temperature` for less variable results;
   set `maxTokens` to expected response size.
 - Use `defaultSettings` at provider creation for shared knobs across models to
   avoid per-call overhead.
@@ -815,7 +822,7 @@ complete upgrade instructions.**
 
 - `SAPAIError` removed → Use `APICallError` from `@ai-sdk/provider`
 - Error properties: `error.code` → `error.statusCode`
-- Automatic retries for rate limits (429) and server errors (5xx)
+- Retryable error classification for the AI SDK's rate-limit/server-error retries
 
 ### Upgrading from v1.x to v2.x
 
@@ -849,7 +856,7 @@ for details.
 ### Documentation
 
 - [Migration Guide](./MIGRATION_GUIDE.md) - Version upgrade instructions (v1.x →
-  v2.x → v3.x → v4.x)
+  v2.x → v3.x → v4.x → v5.x)
 - [API Reference](./API_REFERENCE.md) - Complete API documentation with all
   types and functions
 - [Environment Setup](./ENVIRONMENT_SETUP.md) - Authentication and configuration

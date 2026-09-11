@@ -231,7 +231,7 @@ interface UserContentItem {
 }
 
 /**
- * Encodes bytes as base64 without the Node.js `Buffer` global (Edge-safe).
+ * Encodes bytes as base64 using `btoa`, without the Node.js `Buffer` global.
  * @internal
  * @param bytes - The bytes to encode.
  * @returns The base64 string (empty string for empty input).
@@ -274,11 +274,13 @@ export function base64FromBytes(bytes: Uint8Array): string {
 /**
  * Converts Vercel AI SDK prompt to SAP AI SDK ChatMessage array.
  *
- * Handles all Vercel AI SDK message types:
+ * Maps V3 message roles to SAP messages:
  * - `system` → `SystemChatMessage`
- * - `user` (text/images) → `UserChatMessage`
- * - `assistant` (text/tool-calls) → `AssistantChatMessage`
- * - `tool` (tool results) → `ToolChatMessage`
+ * - `user` (text/images/files) → `UserChatMessage`
+ * - `assistant` (text/tool-calls, optionally reasoning) → `AssistantChatMessage`
+ * - `tool` (JSON-serialized tool-result outputs) → `ToolChatMessage`
+ * Unsupported assistant parts and non-result tool parts are ignored, with
+ * warnings when a warning sink is supplied.
  * @param prompt - The Vercel AI SDK LanguageModelV3Prompt to convert.
  * @param options - Conversion options.
  * @param options.escapeTemplatePlaceholders - Whether to escape Jinja2 template delimiters (default: true).
@@ -286,7 +288,7 @@ export function base64FromBytes(bytes: Uint8Array): string {
  * @param options.parsePartProviderOptions - Optional callback to read per-part `providerOptions['sap-ai']`. Strategies opt in to honour part-level directives such as Anthropic `cacheControl`.
  * @param options.warnings - Optional sink the parser pushes Zod validation issues into.
  * @returns SAP AI SDK ChatMessage array ready for orchestration requests.
- * @throws {UnsupportedFunctionalityError} When encountering unsupported content types or file formats.
+ * @throws {UnsupportedFunctionalityError} When encountering unsupported user content or file data types.
  * @throws {InvalidPromptError} When encountering unsupported message roles.
  */
 export function convertToSAPMessages(
@@ -567,16 +569,17 @@ export function unescapeOrchestrationPlaceholders(text: string): string {
 }
 
 /**
- * Builds a data URL from a file part's data and media type.
+ * Returns a file URL or builds a base64 data URL from inline file data.
  *
- * Supports URL, base64 string, Uint8Array, ArrayBuffer, and buffer-like objects
- * whose custom `toString("base64")` method returns canonical base64. Other
- * objects are rejected instead of being stringified into an invalid payload.
+ * Genuine URL objects pass through without being fetched. Base64 strings are
+ * embedded verbatim without validation; Uint8Array and ArrayBuffer inputs are
+ * encoded. Buffer-like objects must have a custom `toString("base64")` method
+ * returning canonical base64. Other objects are rejected.
  * @internal
  * @param part - The file part containing data and mediaType.
  * @param part.data - The file data.
  * @param part.mediaType - The MIME type of the file.
- * @returns The data URL string.
+ * @returns The original URL string or an inline data URL.
  * @throws {UnsupportedFunctionalityError} If the data type is not supported.
  */
 function buildDataUrl(part: { data: unknown; mediaType: string }): string {

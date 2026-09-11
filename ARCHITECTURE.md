@@ -85,7 +85,7 @@ the same SAP authentication, validation, and request strategies.
 
 ### High-Level Architecture
 
-The diagram below illustrates the complete architecture of the SAP AI Provider,
+The diagram below illustrates the language-generation path of the SAP AI Provider,
 showing how it integrates your application with SAP AI Core through the Vercel
 AI SDK. The provider layer configures SAP AI SDK clients, transforms messages
 between AI SDK and SAP formats, and converts errors. The SAP AI SDK and SAP
@@ -109,7 +109,7 @@ graph TB
 
     subgraph "SAP BTP"
         OAuth[OAuth2 Server]
-        SAPAI[SAP AI Core Orchestration API]
+        SAPAI[SAP AI Core APIs]
     end
 
     subgraph "AI Models"
@@ -127,7 +127,7 @@ graph TB
     OAuth -->|Access Token| SAPSDK
     Provider -->|Convert Messages| Transform
     Transform -->|SAP Format| Provider
-    Provider -->|v2 API Request| SAPAI
+    SAPSDK -->|API Request| SAPAI
     SAPAI -->|Route to Model| GPT
     SAPAI -->|Route to Model| Claude
     SAPAI -->|Route to Model| Gemini
@@ -138,7 +138,8 @@ graph TB
     Gemini -->|Response| SAPAI
     Nova -->|Response| SAPAI
     OSS -->|Response| SAPAI
-    SAPAI -->|API Response| Provider
+    SAPAI -->|API Response| SAPSDK
+    SAPSDK -->|SDK Response| Provider
     Provider -->|Parse/Validate| Error
     Error -->|Transform| Provider
     Provider -->|AI SDK Format| SDK
@@ -152,7 +153,7 @@ graph TB
 
 ### Component Interaction Flow
 
-This sequence diagram shows the complete request lifecycle from your application
+This sequence diagram shows the Orchestration generation lifecycle from your application
 through the AI SDK and provider to SAP AI Core. The flow is divided into four
 phases: SAP SDK client setup, Message Transformation (converting AI SDK format
 to SAP format), API Request & Response (communication with SAP AI Core and the
@@ -200,7 +201,7 @@ sequenceDiagram
         Note over Prov,SDK: Response Processing
         Prov->>Prov: Parse & validate
         Prov->>Prov: Extract content & tool calls
-        Prov-->>SDK: LanguageModelV3Result
+        Prov-->>SDK: LanguageModelV3GenerateResult
     end
 
     SDK-->>App: GenerateTextResult
@@ -210,7 +211,7 @@ sequenceDiagram
 
 1. **Compatibility**: Full compatibility with Vercel AI SDK interfaces
 2. **Type Safety**: Comprehensive TypeScript types for all operations
-3. **Error Resilience**: Robust error handling with automatic retries
+3. **Error Resilience**: Retryable error classification for high-level AI SDK retries
 4. **Performance**: Efficient request handling and response streaming
 5. **Security**: Secure authentication and credential management
 
@@ -250,8 +251,8 @@ graph TB
     end
 
     subgraph "SAP AI Core"
-        OrchAPI[Orchestration API<br/>/v2/completion]
-        FMAPI[Foundation Models API<br/>/chat/completions]
+        OrchAPI[Orchestration API<br/>Completion and embedding endpoints]
+        FMAPI[Foundation Models API<br/>Chat completion and embedding endpoints]
     end
 
     Provider -->|Creates| Model
@@ -960,8 +961,9 @@ Vercel AI SDK defaults):
 - **401/403 (Auth Errors)**: `isRetryable: false` → Fix credentials
 - **404 (Not Found)**: `isRetryable: false` → Fix model/deployment
 
-The Vercel AI SDK handles retry logic automatically based on the `isRetryable`
-flag.
+High-level Vercel AI SDK calls handle retries based on `isRetryable` and
+`maxRetries`. Direct provider calls do not add a retry loop, and failures after
+streaming has begun require application handling.
 
 ### User-Facing Error Handling (v3.0.0+)
 
@@ -1222,9 +1224,8 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements Embeddi
 
     try {
       const client = this.createClient(config, settings, embeddingOptions);
-      const response = await this.executeCall(client, values, embeddingType, abortSignal);
-      const rawEmbeddings = this.extractEmbeddings(response);
-      const embeddings = this.sortEmbeddings(rawEmbeddings);
+      const response = await this.executeCall(client, values, embeddingType, abortSignal, config.requestConfig);
+      const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);
 
       return buildEmbeddingResult({
@@ -1245,7 +1246,7 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements Embeddi
 
   // Primitive operations (hooks) - implemented by subclasses
   protected abstract createClient(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, embeddingOptions: EmbeddingProviderOptions | undefined): TClient;
-  protected abstract executeCall(client: TClient, values: string[], embeddingType: EmbeddingType, abortSignal: AbortSignal | undefined): Promise<TResponse>;
+  protected abstract executeCall(client: TClient, values: string[], embeddingType: EmbeddingType, abortSignal: AbortSignal | undefined, requestConfig: CustomRequestConfig | undefined): Promise<TResponse>;
   protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
   protected abstract extractTokenCount(response: TResponse): number;
   protected abstract getUrl(): string;
@@ -1261,7 +1262,7 @@ implementations for creating clients, executing calls, and extracting data.
 **Key Hooks:**
 
 1. `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
-2. `executeCall(client, values, embeddingType, abortSignal)`: Executes the API call.
+2. `executeCall(client, values, embeddingType, abortSignal, requestConfig)`: Executes the API call.
 3. `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
 4. `extractTokenCount(response)`: Retrieves token usage from the response.
 5. `getUrl()`: Returns the API URL for error context.
@@ -1290,7 +1291,7 @@ abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
     const commonParts = await this.buildCommonParts(config, settings, options);
     const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
     const client = this.createClient(config, settings, commonParts);
-    const response = await this.executeApiCall(client, request, options.abortSignal);
+    const response = await this.executeApiCall(client, request, options.abortSignal, config.requestConfig);
     return buildGenerateResult({ modelId, providerName, request, response, warnings });
   }
 
@@ -1300,7 +1301,7 @@ abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   // Primitive operations - implemented by subclasses
   protected abstract buildRequest(...): { request: ApiRequest; warnings: Warning[] };
   protected abstract createClient(config, settings, commonParts): ApiClient;
-  protected abstract executeApiCall(client, request, abortSignal): Promise<ApiResponse>;
+  protected abstract executeApiCall(client, request, abortSignal, requestConfig): Promise<ApiResponse>;
 }
 ```
 
@@ -1352,7 +1353,8 @@ the SAP backend/model rather than these API-feature checks.
 
 1. **Connection Pooling**: Reuse HTTP connections
 2. **Request Batching**: Group multiple requests when possible
-3. **Caching**: Reuse SAP SDK clients and let SAP Cloud SDK handle token caching
+3. **Caching**: Reuse stateless strategy instances and let SAP Cloud SDK handle
+   token caching; SAP SDK clients are created per call
 4. **Compression**: Enable gzip/deflate for requests/responses
 
 ### Memory Management
@@ -1374,6 +1376,8 @@ Consider tracking:
 - SAP SDK authentication and service-binding errors
 
 ### Scalability Patterns
+
+These are application-level recommendations, not built-in provider features:
 
 1. **Horizontal Scaling**: Support for multiple instances
 2. **Load Balancing**: Distribute requests across deployments

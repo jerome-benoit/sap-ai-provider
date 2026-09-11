@@ -1,8 +1,8 @@
 /**
  * SAP AI Embedding Model V4 - Vercel AI SDK EmbeddingModelV4 implementation for SAP AI Core.
  *
- * Wraps the internal V3 embedding model; V4 results use the identical
- * nested usage shape and native warning passthrough.
+ * Wraps the internal V3 embedding model; V4 results use the same
+ * `{ tokens: number }` usage shape and warning variants.
  */
 
 import type {

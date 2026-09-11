@@ -116,9 +116,14 @@ Our development workflow follows these steps:
    ```bash
    npm test              # Run all tests
    npm run test:node     # Node.js environment
-   npm run test:edge     # Edge runtime environment
+   npm run test:edge     # Source tests in the Edge runtime VM
    npm run test:watch    # Watch mode for development
    ```
+
+   The Edge VM suite exercises source behavior with mocked SAP dependencies;
+   it is not a deployment test of the published package. ESM output uses Node
+   `module.createRequire`, and SAP dependencies require Node APIs. Use Node.js
+   22.12+ for supported deployments.
 
 4. **Check code formatting**
 
@@ -166,7 +171,9 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-This takes approximately 15 seconds and ensures CI will pass.
+This covers the local validation commands; CI also validates its configured
+runtime matrix. `build:v2` replaces `dist/`, so rerun `npm run build` before
+using or packaging the main package afterward.
 
 ### Git Hooks (Lefthook)
 
@@ -246,7 +253,7 @@ Version bumping is handled by maintainers during release process.
 ### Testing
 
 - Write unit tests for all new functionality
-- Test both Node.js and Edge runtime environments
+- Run both the Node.js suite and source-level Edge VM suite
 - Use descriptive test names
 - Cover error cases and edge cases
 - Mock external dependencies appropriately
@@ -359,7 +366,8 @@ npm test             # Runs test suite
   for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades share
   the V3 core; the main package exposes all three entrypoints.
 - Follow the separation: provider factory → language model
-- Maintain compatibility with Node.js and Edge runtimes
+- Maintain Node.js 22.12+ compatibility and source-level Edge VM coverage;
+  do not equate the latter with pure Edge deployment support
 - Use existing authentication patterns
 
 ### Performance
