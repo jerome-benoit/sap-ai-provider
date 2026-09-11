@@ -572,12 +572,16 @@ the provider's model-level `tools` setting, not the AI SDK `tools` map.
 Only function tools are converted. Provider-defined tools are omitted with an
 `unsupported` warning. On Orchestration, non-empty call-level `tools` take
 precedence over model-level SAP-format `tools`, with a warning when both are
-provided. An empty call-level list does not clear model-level tools. When tools
-are defined only in model settings, request no tool use with
-`providerOptions["sap-ai"].modelParams.tool_choice: "none"` (use your configured
-provider namespace if different). The high-level AI SDK drops `toolChoice` when
-its own `tools` map is absent or empty, so `toolChoice: "none"` alone does not
-cover this case.
+provided. An empty call-level list does not clear model-level tools. For tools
+defined only in model settings, the high-level SDK versions differ:
+
+- **AI SDK 5/6:** `generateText` and `streamText` drop `toolChoice` when their
+  `tools` map is absent or empty. Set
+  `providerOptions["sap-ai"].modelParams.tool_choice` to `"none"` instead
+  (use your provider namespace if different).
+- **AI SDK 7:** Set `toolChoice: "none"`. Without an explicit `toolChoice`,
+  the SDK supplies `"auto"`, which takes precedence over a model-level or
+  provider-option `modelParams.tool_choice`.
 
 ```typescript
 import { jsonSchema, tool } from "ai";
@@ -1491,8 +1495,11 @@ console.log("Response:", result.text);
 
 ### `OrchestrationStreamOptions`
 
-Stream options for controlling how post-LLM modules (translation, masking, filtering) process
-streaming responses. Only available with the Orchestration API.
+Stream options for controlling how locally configured post-LLM modules
+(translation, masking, filtering) process streaming responses. Only available
+with the Orchestration API. With `orchestrationConfigRef`, the SAP SDK ignores
+these local options; configure supported streaming settings in the stored
+configuration or its `overrideConfig` instead.
 
 **Properties:**
 
@@ -2199,8 +2206,11 @@ responseFormat, modelParams, modelVersion, fallbackModuleConfigs) and supplied
 standard generation options (such as temperature, maxOutputTokens, and V4
 reasoning) are **ignored** with a warning. Only messages and placeholder values
 are passed through to the stored configuration, alongside its explicit
-`overrideConfig` when provided. Streaming still applies local `streamOptions`
-through the SAP SDK stream call options.
+`overrideConfig` when provided. The SAP SDK ignores local `streamOptions` in
+this mode and logs a warning. Configure supported streaming settings in the
+stored configuration or the appropriate `orchestrationConfigRef.overrideConfig`
+fields. For global chunking, `overrideConfig.stream` uses SDK keys such as
+`chunk_size` and `delimiters`, not the local `streamOptions` shape.
 
 **Usage Examples:**
 

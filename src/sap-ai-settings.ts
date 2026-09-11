@@ -155,8 +155,8 @@ export interface OrchestrationModelSettings {
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
   /**
-   * Options for streaming behavior with post-LLM modules.
-   * Applies to Orchestration streaming requests, including direct `doStream()` calls.
+   * Options for streaming behavior with locally configured post-LLM modules.
+   * Includes direct `doStream()` calls; ignored when `orchestrationConfigRef` is used.
    */
   readonly streamOptions?: OrchestrationStreamOptions;
   readonly tools?: ChatCompletionTool[];
@@ -166,6 +166,8 @@ export interface OrchestrationModelSettings {
 /**
  * Stream options for orchestration post-LLM module processing.
  * Controls chunking behavior for translation, filtering, and other modules during streaming.
+ * Ignored with `orchestrationConfigRef`; configure streaming in the stored
+ * configuration or its `overrideConfig` instead.
  */
 export interface OrchestrationStreamOptions {
   /**
@@ -302,7 +304,7 @@ export interface SAPAISettings {
   /** Orchestration API only. */
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
-  /** Orchestration API only. */
+  /** Orchestration API only; ignored when `orchestrationConfigRef` is used. */
   readonly streamOptions?: OrchestrationStreamOptions;
   /** Orchestration API only. */
   readonly tools?: ChatCompletionTool[];
