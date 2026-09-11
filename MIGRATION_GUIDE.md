@@ -96,13 +96,38 @@ Package version **5.0.0** adds AI SDK 7 support through the V4 facade while
 retaining the V3 root entrypoint and V2 compatibility. Package version 5 does
 **not** mean provider specification V5 or a requirement to use AI SDK 5.
 
-### Runtime Requirement
+### Summary of Changes
+
+**Breaking Changes:**
+
+- Both packages require Node.js 22.12 or newer, up from Node.js 20.
+- Unsupported binary objects and detached `ArrayBuffer` values are rejected
+  explicitly instead of silently stringified.
+
+**Benefits:**
+
+- AI SDK 7 support through the V4 facade, including tagged JPEG/PDF inputs.
+- Versioned entrypoints preserve V2 and V3 contracts alongside V4.
+
+### Who Is Affected?
+
+| User Type                          | Impact                                               | Action Required                                |
+| ---------------------------------- | ---------------------------------------------------- | ---------------------------------------------- |
+| All users upgrading either package | Higher runtime minimum                               | Upgrade Node.js to 22.12 or newer              |
+| Existing AI SDK 6 users on V3      | Root contract unchanged                              | Keep the root import and SDK 6                 |
+| Existing V2 users                  | Standalone package retained; `/v2` is an alternative | Keep SDK 5 or a compatible current SDK 6 patch |
+| AI SDK 7 users                     | V4 facade required                                   | Use the `/v4` entrypoint                       |
+| Users of custom binary wrappers    | Unsupported representations now fail explicitly      | Use supported SDK file input forms             |
+
+### Migration Steps
+
+#### 1. Update the Runtime
 
 Both published packages now require **Node.js 22.12 or newer**, up from Node.js 20. Upgrade local development, CI and deployment runtimes before installing
 5.x. Node.js 22.12 is also the minimum supported CommonJS runtime for loading
 the ESM-only AI SDK provider dependencies without experimental flags.
 
-### Choose the Entrypoint for Your AI SDK
+#### 2. Update the Package and Select the Entrypoint
 
 | AI SDK | Installation                                          | Import                              |
 | ------ | ----------------------------------------------------- | ----------------------------------- |
@@ -126,7 +151,7 @@ AI SDK 6, use a current 6.x patch: the initial 6.0.0 embedding compatibility
 adapter has a warning-handling failure absent in 6.0.280. Do not pair the
 standalone V2 package with AI SDK 7.
 
-### AI SDK 7 Files and Reasoning
+#### 3. Adopt the V4 Facade for AI SDK 7
 
 When adopting AI SDK 7, use `/v4`. Its facade normalizes tagged file data
 before passing prompts to the shared V3 implementation, fixing the JPEG/PDF
@@ -139,7 +164,7 @@ The standardized `reasoning` option controls the outgoing model parameters.
 It does not add extraction of reasoning tokens from SAP response streams or
 resolve the separate reasoning-output feature requests.
 
-### Stricter Binary Input Handling
+#### 4. Check Binary Input Representations
 
 The shared message converter no longer silently stringifies arbitrary file
 objects. It rejects unsupported objects and detached `ArrayBuffer` values

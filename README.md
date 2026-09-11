@@ -46,6 +46,7 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 - [Debug Mode](#debug-mode)
 - [Examples](#examples)
 - [Migration Guides](#migration-guides)
+  - [Upgrading from v4.x to v5.x](#upgrading-from-v4x-to-v5x)
   - [Upgrading from v3.x to v4.x](#upgrading-from-v3x-to-v4x)
   - [Upgrading from v2.x to v3.x](#upgrading-from-v2x-to-v3x)
   - [Upgrading from v1.x to v2.x](#upgrading-from-v1x-to-v2x)
@@ -758,6 +759,24 @@ npx tsx examples/example-generate-text.ts
 > [Environment Setup](./ENVIRONMENT_SETUP.md) for configuration.
 
 ## Migration Guides
+
+### Upgrading from v4.x to v5.x
+
+Version 5.0 adds **AI SDK 7** support through the **V4** facade and requires
+**Node.js 22.12 or newer** for both packages. The root entrypoint remains
+**V3 for AI SDK 6**; upgrading the provider does not require switching SDKs.
+
+**Key changes:**
+
+- **Runtime**: Upgrade local, CI and deployment environments from Node.js 20
+  to Node.js 22.12 or newer.
+- **Entrypoints**: Use `/v4` with SDK 7, the root with SDK 6, or `/v2` with
+  SDK 5. The standalone V2 package remains available for SDK 5/6.
+- **Multimodal inputs**: V4 tagged JPEG/PDF inputs are normalized correctly;
+  unsupported binary objects are rejected instead of silently stringified.
+
+See the [4.x to 5.x migration guide](./MIGRATION_GUIDE.md#version-4x-to-5x-breaking-changes)
+for installation commands, compatibility details and the migration checklist.
 
 ### Upgrading from v3.x to v4.x
 

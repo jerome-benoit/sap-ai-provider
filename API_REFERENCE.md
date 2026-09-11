@@ -6,8 +6,8 @@ Complete API documentation for the SAP AI Provider.
 
 Unless a section specifies a facade, examples use the root V3 entrypoint with
 AI SDK 6. Use `/v2` for AI SDK 5 (also supported by AI SDK 6 compatibility),
-and `/v4` for AI SDK 7. Package release major 4.x is independent of these
-provider specification versions.
+and `/v4` for AI SDK 7. Package release versions are independent of provider
+specification versions and AI SDK majors.
 
 To avoid confusion, this documentation uses the following terminology
 consistently:
