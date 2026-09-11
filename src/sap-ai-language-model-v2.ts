@@ -10,11 +10,12 @@
 import type {
   LanguageModelV2,
   LanguageModelV2CallOptions,
-  LanguageModelV2CallWarning,
+  LanguageModelV3CallOptions,
+} from "@ai-sdk/provider";
+import type {
   LanguageModelV2Content,
   LanguageModelV2FinishReason,
   LanguageModelV2ResponseMetadata,
-  LanguageModelV2StreamPart,
   LanguageModelV2Usage,
   SharedV2Headers,
   SharedV2ProviderMetadata,
@@ -32,6 +33,11 @@ import {
   createV2StreamFromInternal,
 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAILanguageModel as SAPAILanguageModelInternal } from "./sap-ai-language-model.js";
+
+// AI SDK 6.0 shipped V2 tools with the V3 provider-tool discriminator.
+type CompatibleV2CallOptions = Omit<LanguageModelV2CallOptions, "tools"> & {
+  tools?: LanguageModelV2CallOptions["tools"] | LanguageModelV3CallOptions["tools"];
+};
 
 /** @internal */
 interface SAPAILanguageModelV2Config {
@@ -104,7 +110,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     this.internalModel = new SAPAILanguageModelInternal(modelId, settings, config);
   }
 
-  async doGenerate(options: LanguageModelV2CallOptions): Promise<{
+  async doGenerate(options: CompatibleV2CallOptions): Promise<{
     content: LanguageModelV2Content[];
     finishReason: LanguageModelV2FinishReason;
     providerMetadata?: SharedV2ProviderMetadata;
@@ -116,7 +122,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
       headers?: SharedV2Headers;
     };
     usage: LanguageModelV2Usage;
-    warnings: LanguageModelV2CallWarning[];
+    warnings: ReturnType<typeof convertWarningsToV2>;
   }> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = await this.internalModel.doGenerate(options as any);
@@ -142,14 +148,14 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     };
   }
 
-  async doStream(options: LanguageModelV2CallOptions): Promise<{
+  async doStream(options: CompatibleV2CallOptions): Promise<{
     request?: {
       body?: unknown;
     };
     response?: {
       headers?: SharedV2Headers;
     };
-    stream: ReadableStream<LanguageModelV2StreamPart>;
+    stream: ReturnType<typeof createV2StreamFromInternal>;
   }> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = await this.internalModel.doStream(options as any);

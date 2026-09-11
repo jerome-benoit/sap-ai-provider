@@ -250,9 +250,9 @@ All commands should pass; execution time depends on the environment.
 
 ### Package Dependencies
 
-- **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@ai-sdk/provider-v2` (npm alias for provider v2), `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
+- **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
 - **Peer**: `ai` (main package: `^5.0.0 || ^6.0.0 || ^7.0.0`; standalone V2: `^5.0.0 || ^6.0.0`)
-- **Dev**: `ai` 7, TypeScript, Vitest, tsup, ESLint, Prettier, dotenv; `ai` is not a direct runtime dependency
+- **Dev**: `@ai-sdk/provider-v2` (official V2 types bundled into declarations, never a consumer dependency), `ai` 7, TypeScript, Vitest, tsup, ESLint, Prettier, dotenv; `ai` is not a direct runtime dependency
 - **Node requirement**: Node.js 22.12+
 
 ### Common Commands Quick Reference

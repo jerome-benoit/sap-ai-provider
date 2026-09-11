@@ -24,6 +24,8 @@ export default defineConfig([
         // tsup injects baseUrl: "." for rollup-plugin-dts; suppress TS 6.0 deprecation
         ...(isTsV6 ? { ignoreDeprecations: "6.0" } : {}),
       },
+      // Inline legacy contracts so consumers do not install a second provider package.
+      resolve: ["@ai-sdk/provider-v2", "json-schema"],
     },
     entry: ["src/index.ts", "src/index-v2.ts", "src/index-v4.ts"],
     format: ["cjs", "esm"],

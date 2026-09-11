@@ -15,6 +15,10 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider-v2";
 
+type ConvertedV2StreamPart =
+  | Exclude<LanguageModelV2StreamPart, { type: "stream-start" }>
+  | { type: "stream-start"; warnings: ReturnType<typeof convertWarningsToV2> };
+
 /**
  * Converts internal finish reason to V2 format.
  * @param internalFinishReason - Internal finish reason object `{ unified, raw? }`.
@@ -62,7 +66,7 @@ export function convertProviderMetadataToV2(
  */
 export function convertStreamPartToV2(
   internalPart: InternalStreamPart,
-): LanguageModelV2StreamPart | null {
+): ConvertedV2StreamPart | null {
   switch (internalPart.type) {
     case "error":
       return {
@@ -254,7 +258,7 @@ export function convertUsageToV2(internalUsage: InternalUsage): LanguageModelV2U
  */
 export function convertWarningsToV2(
   internalWarnings: InternalWarning[],
-): LanguageModelV2CallWarning[] {
+): ReturnType<typeof convertWarningToV2>[] {
   return internalWarnings.map(convertWarningToV2);
 }
 
@@ -266,7 +270,9 @@ export function convertWarningsToV2(
  * @returns V2 warning object.
  * @internal
  */
-export function convertWarningToV2(internalWarning: InternalWarning): LanguageModelV2CallWarning {
+export function convertWarningToV2(
+  internalWarning: InternalWarning,
+): Extract<LanguageModelV2CallWarning, { type: "other" }> {
   if (internalWarning.type === "unsupported") {
     return {
       message: internalWarning.details
@@ -299,9 +305,9 @@ export function convertWarningToV2(internalWarning: InternalWarning): LanguageMo
  */
 export function createV2StreamFromInternal(
   internalStream: ReadableStream<InternalStreamPart>,
-): ReadableStream<LanguageModelV2StreamPart> {
+): ReadableStream<ConvertedV2StreamPart> {
   return internalStream.pipeThrough(
-    new TransformStream<InternalStreamPart, LanguageModelV2StreamPart>({
+    new TransformStream<InternalStreamPart, ConvertedV2StreamPart>({
       transform(chunk, controller) {
         const converted = convertStreamPartToV2(chunk);
         if (converted != null) {

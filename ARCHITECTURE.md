@@ -1420,7 +1420,19 @@ src/
 
 ### V2 Facade Layer
 
-The V2 package uses a **facade pattern** that wraps the internal V3 implementation:
+The V2 package uses a **facade pattern** that wraps the internal V3 implementation.
+The official provider v2 result types are a development-only dependency: both builds
+inline them and their JSON Schema types into the published declarations. Consumers
+do not install the `@ai-sdk/provider-v2` alias. This preserves AI SDK 5 result
+compatibility without copying upstream definitions into our source.
+
+V2 language-model inputs use the current upstream contracts, accepting both
+provider-tool discriminators shipped with AI SDK 5 and 6. Warning declarations
+reflect the `other` warnings that the adapters actually return. These are type-only
+compatibility measures, not an additional runtime implementation.
+
+The JSON type divergence remains in provider 2.0.4 and 4.0.13; see
+[upstream PR #8537](https://github.com/vercel/ai/pull/8537).
 
 ```mermaid
 graph TB
