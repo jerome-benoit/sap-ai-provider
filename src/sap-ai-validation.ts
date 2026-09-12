@@ -120,6 +120,7 @@ function validateOrchestrationOnlyEmbeddingOptions(
  * - `orchestrationConfigRef` - Prompt Registry configuration reference
  * - `placeholderValues` - Jinja2 template placeholder values
  * - `promptTemplateRef` - Prompt Registry template reference
+ * - `streamOptions` - Post-LLM module streaming configuration
  * - `tools` - SAP-format tool definitions (use AI SDK tools instead)
  * - `translation` - Translation module
  * @param settings - Settings to validate.

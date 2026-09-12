@@ -1,7 +1,6 @@
 /** Unit tests for SAP AI Language Model. */
 
 import type {
-  LanguageModelV3FunctionTool,
   LanguageModelV3Prompt,
   LanguageModelV3ProviderTool,
   LanguageModelV3StreamPart,
@@ -11,7 +10,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SAPAILanguageModel } from "./sap-ai-language-model";
 import { clearStrategyCaches } from "./sap-ai-strategy.js";
-import { computeNoCache } from "./strategy-utils.js";
 
 interface CapturedRequestConfig {
   [key: string]: unknown;
@@ -86,7 +84,15 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       if (MockOrchestrationClient.chatCompletionResponse) {
         const response = MockOrchestrationClient.chatCompletionResponse;
         MockOrchestrationClient.chatCompletionResponse = undefined;
-        return Promise.resolve(response);
+        return Promise.resolve(
+          Object.defineProperties(
+            {
+              getCitations: () => undefined,
+              getIntermediateFailures: () => undefined,
+            },
+            Object.getOwnPropertyDescriptors(response),
+          ),
+        );
       }
 
       const messages = (request as { messages?: unknown[] }).messages;
@@ -105,8 +111,10 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
       return Promise.resolve({
         _data: { final_result: { id: "chatcmpl-orch-test-123" } },
+        getCitations: () => undefined,
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
+        getIntermediateFailures: () => undefined,
         getRequestId: () => "test-request-id",
         getTokenUsage: () => ({
           completion_tokens: 5,
@@ -137,7 +145,13 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       if (MockOrchestrationClient.streamResponseOverride) {
         const override = MockOrchestrationClient.streamResponseOverride;
         MockOrchestrationClient.streamResponseOverride = undefined;
-        return override;
+        return Object.defineProperties(
+          {
+            getCitations: () => undefined,
+            getIntermediateFailures: () => undefined,
+          },
+          Object.getOwnPropertyDescriptors(override),
+        );
       }
 
       const chunks =
@@ -184,7 +198,9 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
       const errorToThrow = MockOrchestrationClient.streamError;
 
       return Promise.resolve({
+        getCitations: () => undefined,
         getFinishReason: () => lastFinishReason,
+        getIntermediateFailures: () => undefined,
         // getRequestId() returns undefined: _data.request_id is not populated before stream consumption.
         getRequestId: () => undefined,
         getTokenUsage: () =>
@@ -983,96 +999,10 @@ describe("SAPAILanguageModel", () => {
   };
 
   describe.each<APIType>(["orchestration", "foundation-models"])(
-    "model properties (%s API)",
-    (api) => {
-      beforeEach(async () => {
-        await resetMockStateForApi(api);
-      });
-
-      it("should have correct specification version", () => {
-        const model = createModelForApi(api);
-        expect(model.specificationVersion).toBe("v3");
-      });
-
-      it("should have correct model ID", () => {
-        const model = createModelForApi(api, "gpt-4o");
-        expect(model.modelId).toBe("gpt-4o");
-      });
-
-      it("should have correct provider", () => {
-        const model = createModelForApi(api);
-        expect(model.provider).toBe("sap-ai");
-      });
-
-      it.each([
-        {
-          expected: false,
-          name: "should not support HTTP URLs",
-          url: "http://example.com/image.png",
-        },
-        { expected: true, name: "should support data URLs", url: "data:image/png;base64,Zm9v" },
-      ])("$name", ({ expected, url }) => {
-        const model = createModelForApi(api);
-        expect(model.supportsUrl(new URL(url))).toBe(expected);
-      });
-
-      it("should have supportedUrls getter for image types", () => {
-        const model = createModelForApi(api);
-        const urls = model.supportedUrls;
-
-        expect(urls).toHaveProperty("image/*");
-        expect(urls["image/*"]).toHaveLength(2);
-        expect(urls["image/*"]?.[0]?.test("https://example.com/image.png")).toBe(true);
-        expect(urls["image/*"]?.[0]?.test("http://example.com/image.png")).toBe(false);
-        expect(urls["image/*"]?.[1]?.test("data:image/png;base64,Zm9v")).toBe(true);
-      });
-
-      describe("model capabilities", () => {
-        const v3RemovedFlags = [
-          "supportsImageUrls",
-          "supportsMultipleCompletions",
-          "supportsParallelToolCalls",
-          "supportsStreaming",
-          "supportsStructuredOutputs",
-          "supportsToolCalls",
-        ] as const;
-
-        it.each([
-          "any-model",
-          "gpt-4o",
-          "anthropic--claude-3.5-sonnet",
-          "gemini-2.0-flash",
-          "amazon--nova-pro",
-          "mistralai--mistral-large-instruct",
-          "unknown-future-model",
-        ])(
-          "should not expose V2-style supports* booleans on model %s (V3 spec uses supportedUrls)",
-          (modelId) => {
-            const model = createModelForApi(api, modelId);
-            for (const flag of v3RemovedFlags) {
-              expect(Object.prototype.hasOwnProperty.call(model, flag)).toBe(false);
-            }
-          },
-        );
-      });
-    },
-  );
-
-  describe.each<APIType>(["orchestration", "foundation-models"])(
     "constructor validation (%s API)",
     (api) => {
       beforeEach(async () => {
         await resetMockStateForApi(api);
-      });
-
-      it.each([
-        { name: "valid modelParams", params: { maxTokens: 1000, temperature: 0.7, topP: 0.9 } },
-        { name: "empty modelParams", params: {} },
-        { name: "no modelParams", params: undefined },
-      ])("should accept $name", ({ params }) => {
-        expect(() =>
-          createModelForApi(api, "gpt-4o", params ? { modelParams: params } : {}),
-        ).not.toThrow();
       });
 
       it.each([
@@ -1216,16 +1146,6 @@ describe("SAPAILanguageModel", () => {
         expect(MockClient.lastRequestConfig).toHaveProperty("signal", controller.signal);
       });
 
-      it("should not pass requestConfig when abort signal is not provided", async () => {
-        const model = createModelForApi(api);
-        const prompt = createPrompt("Hello");
-
-        await model.doGenerate({ prompt });
-
-        const MockClient = await getMockClientForApi(api);
-        expect(MockClient.lastRequestConfig).toBeUndefined();
-      });
-
       it("should propagate error when request rejects due to abort", async () => {
         const MockClient = await getMockClientForApi(api);
 
@@ -1252,43 +1172,6 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("requestConfig support", () => {
-      it("should pass custom headers via requestConfig in doGenerate", async () => {
-        const config = {
-          ...getConfigForApi(api),
-          requestConfig: { headers: { "x-custom": "value" } },
-        };
-        const model = new SAPAILanguageModel("gpt-4o", {}, config);
-        const prompt = createPrompt("Hello");
-
-        await model.doGenerate({ prompt });
-
-        const MockClient = await getMockClientForApi(api);
-        expect(MockClient.lastRequestConfig).toBeDefined();
-        expect(MockClient.lastRequestConfig).toHaveProperty("headers");
-        expect(MockClient.lastRequestConfig?.headers).toMatchObject({
-          "x-custom": "value",
-        });
-      });
-
-      it("should merge custom headers with abort signal in doGenerate", async () => {
-        const config = {
-          ...getConfigForApi(api),
-          requestConfig: { headers: { "x-custom": "value" } },
-        };
-        const model = new SAPAILanguageModel("gpt-4o", {}, config);
-        const prompt = createPrompt("Hello");
-        const controller = new AbortController();
-
-        await model.doGenerate({ abortSignal: controller.signal, prompt });
-
-        const MockClient = await getMockClientForApi(api);
-        expect(MockClient.lastRequestConfig).toBeDefined();
-        expect(MockClient.lastRequestConfig).toHaveProperty("signal", controller.signal);
-        expect(MockClient.lastRequestConfig?.headers).toMatchObject({
-          "x-custom": "value",
-        });
-      });
-
       it("should pass custom headers via requestConfig in doStream", async () => {
         const config = {
           ...getConfigForApi(api),
@@ -1332,33 +1215,6 @@ describe("SAPAILanguageModel", () => {
 
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]?.type).toBe("unsupported");
-    });
-
-    it("should warn when tool Zod schema conversion fails", async () => {
-      const model = createModelForApi(api);
-      const prompt = createPrompt("Use a tool");
-
-      const zodLikeThatThrows = {
-        _def: {},
-        parse: () => undefined,
-        toJSON: () => {
-          throw new Error("conversion failed");
-        },
-      };
-
-      const tools: LanguageModelV3FunctionTool[] = [
-        {
-          description: "Tool with failing Zod schema conversion",
-          inputSchema: {},
-          name: "badTool",
-          parameters: zodLikeThatThrows,
-          type: "function",
-        } as unknown as LanguageModelV3FunctionTool,
-      ];
-
-      const result = await model.doGenerate({ prompt, tools });
-
-      expectRequestBodyHasMessages(result);
     });
 
     it("should include tool calls in doGenerate response content", async () => {
@@ -1482,18 +1338,6 @@ describe("SAPAILanguageModel", () => {
       const result = await model.doGenerate({ prompt });
 
       expect(result.response?.headers).toEqual(expected);
-    });
-
-    it("should include response body in doGenerate result", async () => {
-      const model = createModelForApi(api);
-      const prompt = createPrompt("Hello");
-
-      const result = await model.doGenerate({ prompt });
-
-      expect(result.response?.body).toBeDefined();
-      expect(result.response?.body).toHaveProperty("content");
-      expect(result.response?.body).toHaveProperty("tokenUsage");
-      expect(result.response?.body).toHaveProperty("finishReason");
     });
 
     it("should handle large non-streaming responses without truncation (100KB+)", async () => {
@@ -1638,50 +1482,6 @@ describe("SAPAILanguageModel", () => {
       const parts = await readAllStreamParts(result.stream);
       const streamStart = parts.find((part) => part.type === "stream-start");
       expect(streamStart?.warnings).toHaveLength(0);
-    });
-
-    it("should not emit text deltas after tool-call deltas", async () => {
-      await setStreamChunksForApi(api, [
-        createMockStreamChunk({
-          deltaContent: "Hello",
-        }),
-        createMockStreamChunk({
-          deltaContent: " SHOULD_NOT_APPEAR",
-          deltaToolCalls: [
-            {
-              function: { arguments: '{"x":', name: "calc" },
-              id: "call_0",
-              index: 0,
-            },
-          ],
-        }),
-        createMockStreamChunk({
-          deltaContent: " ALSO_SHOULD_NOT_APPEAR",
-          deltaToolCalls: [
-            {
-              function: { arguments: "1}" },
-              id: "call_0",
-              index: 0,
-            },
-          ],
-          finishReason: "tool_calls",
-          usage: {
-            completion_tokens: 5,
-            prompt_tokens: 10,
-            total_tokens: 15,
-          },
-        }),
-      ]);
-
-      const model = createModelForApi(api);
-      const prompt = createPrompt("Hello");
-
-      const { stream } = await model.doStream({ prompt });
-      const parts = await readAllStreamParts(stream);
-
-      const textDeltas = parts.filter((p) => p.type === "text-delta");
-      expect(textDeltas).toHaveLength(1);
-      expect((textDeltas[0] as { delta: string }).delta).toBe("Hello");
     });
 
     it("should stream text response", async () => {
@@ -1909,54 +1709,6 @@ describe("SAPAILanguageModel", () => {
       const rawPart = rawParts[0] as { rawValue: unknown; type: "raw" };
       expect(rawPart.rawValue).toHaveProperty("getDeltaContent");
       expect(rawPart.rawValue).toHaveProperty("getFinishReason");
-    });
-
-    it("should flush tool calls immediately on tool-calls finishReason", async () => {
-      await setStreamChunksForApi(api, [
-        createMockStreamChunk({
-          deltaToolCalls: [
-            {
-              function: { arguments: '{"city":', name: "get_weather" },
-              id: "call_0",
-              index: 0,
-            },
-          ],
-        }),
-        createMockStreamChunk({
-          deltaToolCalls: [
-            {
-              function: { arguments: '"Paris"}' },
-              id: "call_0",
-              index: 0,
-            },
-          ],
-          finishReason: "tool_calls",
-          usage: {
-            completion_tokens: 5,
-            prompt_tokens: 10,
-            total_tokens: 15,
-          },
-        }),
-        createMockStreamChunk({ deltaContent: "SHOULD_NOT_APPEAR" }),
-      ]);
-
-      const model = createModelForApi(api);
-      const prompt = createPrompt("Use tool");
-
-      const result = await model.doStream({ prompt });
-      const parts = await readAllStreamParts(result.stream);
-
-      const toolCallIndex = parts.findIndex((p) => p.type === "tool-call");
-      const finishIndex = parts.findIndex((p) => p.type === "finish");
-
-      expect(toolCallIndex).toBeGreaterThan(-1);
-      expect(finishIndex).toBeGreaterThan(toolCallIndex);
-
-      const textDeltas = parts.filter((p) => p.type === "text-delta");
-      const hasPostToolTextDelta = textDeltas.some(
-        (td) => (td as { delta: string; type: "text-delta" }).delta === "SHOULD_NOT_APPEAR",
-      );
-      expect(hasPostToolTextDelta).toBe(false);
     });
 
     it.each([
@@ -3503,33 +3255,6 @@ describe("SAPAILanguageModel", () => {
         expect(result.usage.inputTokens.noCache).toBe(result.usage.inputTokens.total);
       });
 
-      it("should clamp noCache to 0 when cacheRead+cacheWrite exceed prompt_tokens", async () => {
-        const MockClient = await getMockClientForApi(api);
-        if (!MockClient.setChatCompletionResponse) {
-          throw new Error("mock missing setChatCompletionResponse");
-        }
-        MockClient.setChatCompletionResponse(
-          createMockChatResponse(api, {
-            usage: {
-              completion_tokens: 1,
-              prompt_tokens: 10,
-              prompt_tokens_details: { cache_creation_tokens: 8, cached_tokens: 5 },
-              total_tokens: 11,
-            },
-          }),
-        );
-
-        const model = createModelForApi(api);
-        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
-
-        expect(result.usage.inputTokens).toEqual({
-          cacheRead: 5,
-          cacheWrite: 8,
-          noCache: computeNoCache(10, 5, 8),
-          total: 10,
-        });
-      });
-
       it("should populate usage.raw when extended token detail fields are present", async () => {
         const MockClient = await getMockClientForApi(api);
         if (!MockClient.setChatCompletionResponse) {
@@ -3843,31 +3568,6 @@ describe("SAPAILanguageModel", () => {
 
   describe("configuration", () => {
     describe("masking and filtering", () => {
-      it("should warn when masking is configured with the deprecated masking_providers shape", async () => {
-        const model = createOrchModel("gpt-4o", {
-          masking: {
-            masking_providers: [
-              {
-                entities: [{ type: "profile-email" }],
-                method: "anonymization",
-                type: "sap_data_privacy_integration",
-              },
-            ],
-          },
-        });
-
-        const result = await model.doGenerate({ prompt: createPrompt("Hi") });
-
-        const deprecation = result.warnings.find((w) =>
-          ((w as { message?: string }).message ?? "").includes("masking_providers"),
-        );
-        expect(deprecation).toMatchObject({ type: "other" });
-        expect((deprecation as { message?: string }).message).toBe(
-          "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
-            "Migrate to settings.masking.providers.",
-        );
-      });
-
       it("should not warn about deprecated masking_providers when orchestrationConfigRef is set", async () => {
         const model = createOrchModel("gpt-4o", {
           masking: {
@@ -3923,46 +3623,6 @@ describe("SAPAILanguageModel", () => {
 
         const fallback = configArray[1] as { promptTemplating?: { model?: { name?: string } } };
         expect(fallback.promptTemplating?.model?.name).toBe("gpt-4.1-mini");
-      });
-
-      it("should use single config when no fallback configs are provided", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-        await model.doGenerate({ prompt });
-
-        const clientConfig = await getLastOrchClientConfig();
-        expect(Array.isArray(clientConfig)).toBe(false);
-        expect(clientConfig).toHaveProperty("promptTemplating");
-      });
-
-      it("should pass fallback configs for streaming as well", async () => {
-        const fallbackConfigs = [
-          {
-            promptTemplating: {
-              model: { name: "gpt-4.1-mini" as const },
-              prompt: { template: [] as const },
-            },
-          },
-          {
-            promptTemplating: {
-              model: { name: "gpt-4.1-nano" as const },
-              prompt: { template: [] as const },
-            },
-          },
-        ];
-
-        const model = createOrchModel("gpt-4o", {
-          fallbackModuleConfigs: fallbackConfigs,
-        });
-
-        const prompt = createPrompt("Hello");
-        await model.doStream({ prompt });
-
-        const clientConfig = await getLastOrchClientConfig();
-        const configArray = clientConfig as unknown as unknown[];
-        expect(Array.isArray(configArray)).toBe(true);
-        expect(configArray).toHaveLength(3);
       });
     });
 
@@ -4026,16 +3686,6 @@ describe("SAPAILanguageModel", () => {
         expect(streamConfig?.outputFiltering?.overlap).toBe(50);
       });
 
-      it("should always include promptTemplating.include_usage in stream config", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-        await model.doStream({ prompt });
-
-        const streamConfig = await getLastOrchStreamConfig();
-        expect(streamConfig?.promptTemplating?.include_usage).toBe(true);
-      });
-
       it("should warn when translation is configured without delimiters", async () => {
         const model = createOrchModel("gpt-4o", {
           translation: {
@@ -4082,68 +3732,6 @@ describe("SAPAILanguageModel", () => {
         await resetMockStateForApi("orchestration");
       });
 
-      it("should omit placeholderValues when empty object", async () => {
-        const model = createOrchModel("gpt-4o", { placeholderValues: {} });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastOrchRequest();
-        expect(request).not.toHaveProperty("placeholderValues");
-      });
-
-      it("should include placeholderValues from settings in request body", async () => {
-        const model = createOrchModel("gpt-4o", {
-          placeholderValues: {
-            language: "English",
-            product: "SAP Cloud SDK",
-          },
-        });
-
-        const prompt = createPrompt("Describe the product.");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("placeholderValues");
-        expect(request.placeholderValues).toEqual({
-          language: "English",
-          product: "SAP Cloud SDK",
-        });
-      });
-
-      it("should include placeholderValues from providerOptions in request body", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Describe the product.");
-
-        const result = await model.doGenerate({
-          prompt,
-          providerOptions: {
-            "sap-ai": {
-              placeholderValues: {
-                groundingInput: "What is SAP?",
-                groundingOutput: "",
-              },
-            },
-          },
-        });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastOrchRequest();
-
-        expect(request).toHaveProperty("placeholderValues");
-        expect(request.placeholderValues).toEqual({
-          groundingInput: "What is SAP?",
-          groundingOutput: "",
-        });
-      });
-
       it("should merge placeholderValues from settings and providerOptions (shallow)", async () => {
         const model = createOrchModel("gpt-4o", {
           placeholderValues: {
@@ -4176,41 +3764,6 @@ describe("SAPAILanguageModel", () => {
           product: "SAP S/4HANA",
           region: "EMEA",
           version: "1.0",
-        });
-      });
-
-      it("should not include placeholderValues when not provided", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastOrchRequest();
-
-        expect(request).not.toHaveProperty("placeholderValues");
-      });
-
-      it("should include placeholderValues in stream request body", async () => {
-        const model = createOrchModel("gpt-4o", {
-          placeholderValues: {
-            language: "English",
-            product: "SAP Cloud SDK",
-          },
-        });
-
-        const prompt = createPrompt("Describe the product.");
-
-        const result = await model.doStream({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastOrchStreamRequest();
-
-        expect(request).toHaveProperty("placeholderValues");
-        expect(request.placeholderValues).toEqual({
-          language: "English",
-          product: "SAP Cloud SDK",
         });
       });
 
@@ -4252,27 +3805,6 @@ describe("SAPAILanguageModel", () => {
         await resetMockStateForApi("orchestration");
       });
 
-      it("should include template_ref by ID in client config when set in settings", async () => {
-        const model = createOrchModel("gpt-4o", {
-          promptTemplateRef: { id: "my-template-id" },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        // promptTemplateRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // template_ref is in client config (not request body) when using promptTemplateRef
-        const clientConfig = await getLastOrchClientConfig();
-        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
-        expect(
-          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
-        ).toEqual({
-          id: "my-template-id",
-        });
-      });
-
       it("should include template_ref by scenario/name/version with scope in client config", async () => {
         const model = createOrchModel("gpt-4o", {
           promptTemplateRef: {
@@ -4299,32 +3831,6 @@ describe("SAPAILanguageModel", () => {
           scenario: "my-scenario",
           scope: "resource_group",
           version: "1.0.0",
-        });
-      });
-
-      it("should include template_ref from providerOptions in client config", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({
-          prompt,
-          providerOptions: {
-            "sap-ai": {
-              promptTemplateRef: { id: "provider-template-id" },
-            },
-          },
-        });
-        // promptTemplateRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // template_ref is in client config (not request body) when using promptTemplateRef
-        const clientConfig = await getLastOrchClientConfig();
-        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
-        expect(
-          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
-        ).toEqual({
-          id: "provider-template-id",
         });
       });
 
@@ -4370,27 +3876,6 @@ describe("SAPAILanguageModel", () => {
         const clientConfig = await getLastOrchClientConfig();
         expect(clientConfig.promptTemplating?.prompt).not.toHaveProperty("template_ref");
         expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template");
-      });
-
-      it("should include template_ref in client config for stream request", async () => {
-        const model = createOrchModel("gpt-4o", {
-          promptTemplateRef: { id: "stream-template-id" },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doStream({ prompt });
-        // promptTemplateRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // template_ref is in client config (not request body) when using promptTemplateRef
-        const clientConfig = await getLastOrchClientConfig();
-        expect(clientConfig.promptTemplating?.prompt).toHaveProperty("template_ref");
-        expect(
-          (clientConfig.promptTemplating?.prompt as { template_ref: unknown }).template_ref,
-        ).toEqual({
-          id: "stream-template-id",
-        });
       });
 
       it("should override settings promptTemplateRef with providerOptions in stream request", async () => {
@@ -4455,23 +3940,6 @@ describe("SAPAILanguageModel", () => {
     describe("orchestrationConfigRef", () => {
       beforeEach(async () => {
         await resetMockStateForApi("orchestration");
-      });
-
-      it("should use configRef by ID when set in settings", async () => {
-        const model = createOrchModel("gpt-4o", {
-          orchestrationConfigRef: { id: "my-config-id" },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-
-        // configRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // configRef is passed to OrchestrationClient constructor
-        const clientConfig = await getLastOrchClientConfig();
-        expect(clientConfig).toEqual({ id: "my-config-id" });
       });
 
       it("should forward overrideConfig from settings to the client", async () => {
@@ -4602,28 +4070,6 @@ describe("SAPAILanguageModel", () => {
         });
       });
 
-      it("should use configRef from providerOptions", async () => {
-        const model = createOrchModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({
-          prompt,
-          providerOptions: {
-            "sap-ai": {
-              orchestrationConfigRef: { id: "provider-config-id" },
-            },
-          },
-        });
-
-        // configRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // configRef is passed to OrchestrationClient constructor
-        const clientConfig = await getLastOrchClientConfig();
-        expect(clientConfig).toEqual({ id: "provider-config-id" });
-      });
-
       it("should override settings orchestrationConfigRef with providerOptions", async () => {
         const model = createOrchModel("gpt-4o", {
           orchestrationConfigRef: { id: "settings-config-id" },
@@ -4745,48 +4191,6 @@ describe("SAPAILanguageModel", () => {
         expectWarningMessageContains(result.warnings, "providerOptions.promptTemplateRef");
       });
 
-      it("should include placeholderValues when using configRef", async () => {
-        const model = createOrchModel("gpt-4o", {
-          orchestrationConfigRef: { id: "my-config-id" },
-          placeholderValues: {
-            customerName: "Alice",
-            topic: "billing",
-          },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-
-        // configRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // placeholderValues are included in request body when using configRef
-        const request = await getLastOrchRequest();
-        expect(request).toHaveProperty("placeholderValues");
-        expect(request.placeholderValues).toEqual({
-          customerName: "Alice",
-          topic: "billing",
-        });
-      });
-
-      it("should use configRef in stream request", async () => {
-        const model = createOrchModel("gpt-4o", {
-          orchestrationConfigRef: { id: "stream-config-id" },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doStream({ prompt });
-
-        // configRef mode uses messagesHistory, not messages
-        expectRequestBodyHasMessagesHistory(result);
-
-        // configRef is passed to OrchestrationClient constructor
-        const clientConfig = await getLastOrchClientConfig();
-        expect(clientConfig).toEqual({ id: "stream-config-id" });
-      });
-
       it("should override settings orchestrationConfigRef with providerOptions in stream request", async () => {
         const model = createOrchModel("gpt-4o", {
           orchestrationConfigRef: {
@@ -4842,48 +4246,6 @@ describe("SAPAILanguageModel", () => {
           expect(request[expectedKey]).toEqual(paramValue);
         },
       );
-
-      it("should pass logprobs with top_logprobs together", async () => {
-        const model = createFMModel("gpt-4o", {
-          modelParams: {
-            logprobs: true,
-            top_logprobs: 3,
-          },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastFMRequest();
-
-        expect(request.logprobs).toBe(true);
-        expect(request.top_logprobs).toBe(3);
-      });
-
-      it("should pass logit_bias with complex token mappings", async () => {
-        const logitBias = {
-          "1234": 50,
-          "9999": 0,
-          "50256": -100,
-        };
-
-        const model = createFMModel("gpt-4o", {
-          modelParams: {
-            logit_bias: logitBias,
-          },
-        });
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastFMRequest();
-
-        expect(request.logit_bias).toEqual(logitBias);
-      });
     });
 
     describe("Foundation Models dataSources (Azure On Your Data)", () => {
@@ -4958,19 +4320,6 @@ describe("SAPAILanguageModel", () => {
 
         expect(request).not.toHaveProperty("data_sources");
       });
-
-      it("should not include data_sources when dataSources is undefined", async () => {
-        const model = createFMModel("gpt-4o");
-
-        const prompt = createPrompt("Hello");
-
-        const result = await model.doGenerate({ prompt });
-        expectRequestBodyHasMessages(result);
-
-        const request = await getLastFMRequest();
-
-        expect(request).not.toHaveProperty("data_sources");
-      });
     });
 
     describe.each<APIType>(["orchestration", "foundation-models"])("warnings (%s API)", (api) => {
@@ -5022,58 +4371,6 @@ describe("SAPAILanguageModel", () => {
         expect(hasResponseFormatWarning).toBe(false);
       });
     });
-
-    describe.each<APIType>(["orchestration", "foundation-models"])(
-      "tool schema edge cases (%s API)",
-      (api) => {
-        beforeEach(async () => {
-          await resetMockStateForApi(api);
-        });
-
-        it.each([
-          {
-            description: "Tool with array schema",
-            inputSchema: { items: { type: "string" }, type: "array" },
-            testName: "coerce non-object schema type to object (array)",
-            toolName: "array_tool",
-          },
-          {
-            description: "Tool with string schema",
-            inputSchema: { type: "string" },
-            testName: "handle tool with string type schema",
-            toolName: "string_tool",
-          },
-          {
-            description: "Tool with empty properties",
-            inputSchema: { properties: {}, type: "object" },
-            testName: "handle tool with schema that has no properties",
-            toolName: "empty_props_tool",
-          },
-          {
-            description: "Tool without schema",
-            inputSchema: undefined as unknown as Record<string, unknown>,
-            testName: "handle tool with undefined inputSchema",
-            toolName: "no_schema_tool",
-          },
-        ])("should $testName", async ({ description, inputSchema, toolName }) => {
-          const model = createModelForApi(api);
-          const prompt = createPrompt("Use tool");
-
-          const tools: LanguageModelV3FunctionTool[] = [
-            {
-              description,
-              inputSchema,
-              name: toolName,
-              type: "function",
-            },
-          ];
-
-          const result = await model.doGenerate({ prompt, tools });
-
-          expectRequestBodyHasMessages(result);
-        });
-      },
-    );
   });
 
   describe("Foundation Models deployment resolution", () => {

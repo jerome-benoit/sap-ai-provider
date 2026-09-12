@@ -16,15 +16,12 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
 import { createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
-/**
- *
- */
+/** Reports generation results and marks the process unsuccessful if any request fails. */
 async function generateTextExample() {
   console.log("📝 SAP AI Text Generation Example\n");
 
@@ -86,13 +83,15 @@ async function generateTextExample() {
         );
         console.log("🏁 Finish reason:", modelFinish);
       } catch (error) {
+        process.exitCode = 1;
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.log(`❌ Error with ${modelId}:`, errorMessage);
       }
     }
 
-    console.log("\n✅ All tests completed!");
+    console.log("\nModel checks completed; see errors above if any failed.");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);
     } else if (error instanceof NoSuchModelError) {
@@ -118,6 +117,9 @@ async function generateTextExample() {
   }
 }
 
-generateTextExample().catch(console.error);
+generateTextExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { generateTextExample };

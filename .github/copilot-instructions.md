@@ -158,7 +158,7 @@ All commands should pass; execution time depends on the environment.
 │   │
 │   │   # V2 Facade Layer (AI SDK 5: LanguageModelV2/EmbeddingModelV2)
 │   ├── index-v2.ts                                   # V2 public API exports (AI SDK 5 facade)
-│   ├── sap-ai-provider-v2.ts                         # V2 provider factory (wraps V3)
+│   ├── sap-ai-provider-v2.ts                         # V2 provider factory
 │   ├── sap-ai-language-model-v2.ts                   # V2 language model (wraps V3)
 │   ├── sap-ai-embedding-model-v2.ts                  # V2 embedding model (wraps V3)
 │   ├── sap-ai-adapters-v3-to-v2.ts                   # V3→V2 format conversion
@@ -241,7 +241,7 @@ All commands should pass; execution time depends on the environment.
 - **`CONTRIBUTING.md`**: Development workflow, coding standards, and guidelines
 - **`ENVIRONMENT_SETUP.md`**: Authentication setup and SAP AI Core configuration
 - **`TROUBLESHOOTING.md`**: Common problems and their solutions
-- **`MIGRATION_GUIDE.md`**: Version migration instructions (v1.x → v2.x → v3.x → v4.x)
+- **`MIGRATION_GUIDE.md`**: Package migration history and current entrypoint selection
 - **`CURL_API_TESTING_GUIDE.md`**: Direct API testing without the SDK
 
 ### CI/CD Pipeline
@@ -254,7 +254,7 @@ All commands should pass; execution time depends on the environment.
 
 ### Package Dependencies
 
-- **Runtime**: `@ai-sdk/provider`, `@ai-sdk/provider-utils`, `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`, `zod`
+- **Runtime**: AI SDK provider contracts/utilities, SAP AI and Cloud SDKs, and Zod (exact packages and ranges in `package.json`)
 - **Peer**: `ai` (main package: `^5.0.0 || ^6.0.0 || ^7.0.0`; standalone V2: `^5.0.0 || ^6.0.0`)
 - **Dev**: `@ai-sdk/provider-v2` (official V2 types bundled into declarations, never a consumer dependency), `ai` 7, TypeScript, Vitest, tsup, ESLint, Prettier, dotenv; `ai` is not a direct runtime dependency
 - **Node requirement**: Node.js 22.12+

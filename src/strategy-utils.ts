@@ -2,7 +2,6 @@
  * Shared utilities for SAP AI Core strategy implementations.
  */
 import type {
-  EmbeddingModelV3CallOptions,
   EmbeddingModelV3Embedding,
   EmbeddingModelV3Result,
   JSONArray,
@@ -20,15 +19,12 @@ import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { ZodType } from "zod";
 
-import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 
 import { deepMerge } from "./deep-merge.js";
 import { normalizeHeaders } from "./sap-ai-error.js";
-import { getProviderName, sapAIEmbeddingProviderOptions } from "./sap-ai-provider-options.js";
 import { validateModelParamsWithWarnings } from "./sap-ai-provider-options.js";
 
 /**
@@ -57,15 +53,6 @@ export type AISDKToolChoice =
 export type AnthropicCacheUsage = NonNullable<
   NonNullable<SDKTokenUsage["prompt_tokens_details"]>["cache_creation_token_details"]
 >;
-
-/**
- * @internal
- */
-export interface BaseEmbeddingConfig {
-  readonly maxEmbeddingsPerCall: number;
-  readonly modelId: string;
-  readonly provider: string;
-}
 
 /**
  * @internal
@@ -280,23 +267,16 @@ export interface SDKResponse {
   responseId?: string;
 }
 
-export {
-  createInitialStreamState,
-  createStreamTransformer,
-  StreamIdGenerator,
-  type StreamState,
-  type StreamTransformerConfig,
-  type ToolCallInProgress,
-} from "./stream-transformer.js";
-
 /**
  * @internal
  */
 export interface SDKStreamChunk {
   _data?: unknown;
+  getCitations?(): SDKCitation[] | undefined;
   getDeltaContent(): null | string | undefined;
   getDeltaToolCalls(): null | SDKDeltaToolCall[] | undefined;
   getFinishReason(): null | string | undefined;
+  getTokenUsage?(): SDKTokenUsage | undefined;
 }
 
 /**
@@ -445,7 +425,7 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     warnings,
   } = config;
 
-  const content = extractResponseContent(response);
+  const content: LanguageModelV3Content[] = [];
 
   const tokenUsage = response.getTokenUsage();
   const finishReasonRaw = response.getFinishReason();
@@ -453,6 +433,15 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
 
   const textContent = response.getContent();
   const toolCalls = response.getToolCalls();
+  if (textContent) content.push({ text: textContent, type: "text" });
+  for (const toolCall of toolCalls ?? []) {
+    content.push({
+      input: toolCall.function.arguments,
+      toolCallId: toolCall.id,
+      toolName: toolCall.function.name,
+      type: "tool-call",
+    });
+  }
 
   const rawResponseBody = {
     content: textContent,
@@ -819,44 +808,12 @@ export function extractCompletionId(
 }
 
 /**
- * Extracts content (text and tool calls) from SDK response.
- * @param response - SDK response object.
- * @returns Content array for LanguageModelV3GenerateResult.
- * @internal
- */
-export function extractResponseContent(response: SDKResponse): LanguageModelV3Content[] {
-  const content: LanguageModelV3Content[] = [];
-
-  const textContent = response.getContent();
-  if (textContent) {
-    content.push({
-      text: textContent,
-      type: "text",
-    });
-  }
-
-  const toolCalls = response.getToolCalls();
-  if (toolCalls) {
-    for (const toolCall of toolCalls) {
-      content.push({
-        input: toolCall.function.arguments,
-        toolCallId: toolCall.id,
-        toolName: toolCall.function.name,
-        type: "tool-call",
-      });
-    }
-  }
-
-  return content;
-}
-
-/**
  * Extracts the request id and normalised headers from an SDK response.
  *
- * Resolves `requestId` from `getRequestId()` first; when absent, falls back to the
- * `x-request-id` header. Tolerates SDKs that omit `getRequestId`, expose it as a
- * non-function, or raise from the `headers` accessor. `field` selects the underlying
- * HttpResponse wrapper (`rawResponse` for foundation-models, `response` for orchestration).
+ * Resolves `requestId` from `getRequestId()`, then an orchestration chunk's
+ * `_data.request_id`, then the `x-request-id` header. Tolerates absent/non-callable
+ * accessors and throwing header accessors. `field` selects the underlying wrapper:
+ * `response` for orchestration embeddings, `rawResponse` for other SDK responses.
  * @param response - SDK response object.
  * @param field - Property containing the underlying HttpResponse wrapper.
  * @returns Combined `{ requestId, headers }` with both fields defensively gathered.
@@ -874,6 +831,13 @@ export function extractResponseMetadata(
       requestId = typeof value === "string" && value.length > 0 ? value : undefined;
     } catch {
       requestId = undefined;
+    }
+  }
+
+  if (requestId === undefined) {
+    const data = (response as null | { _data?: { request_id?: unknown } })?._data;
+    if (typeof data?.request_id === "string" && data.request_id.length > 0) {
+      requestId = data.request_id;
     }
   }
 
@@ -922,15 +886,8 @@ export function extractToolParameters(tool: LanguageModelV3FunctionTool): Extrac
     }
   }
 
-  if (inputSchema && hasKeys(inputSchema)) {
-    const hasProperties =
-      inputSchema.properties &&
-      typeof inputSchema.properties === "object" &&
-      hasKeys(inputSchema.properties);
-
-    if (hasProperties) {
-      return { parameters: buildSAPToolParameters(inputSchema) };
-    }
+  if (inputSchema) {
+    return { parameters: buildSAPToolParameters(inputSchema) };
   }
 
   return { parameters: buildSAPToolParameters({}) };
@@ -1043,9 +1000,9 @@ export function mapTokenUsage(tokenUsage: null | SDKTokenUsage | undefined): Lan
     outputTokens: {
       reasoning: reasoningTokens,
       text:
-        reasoningTokens != null
-          ? (tokenUsage?.completion_tokens ?? 0) - reasoningTokens
-          : tokenUsage?.completion_tokens,
+        tokenUsage?.completion_tokens == null
+          ? undefined
+          : Math.max(0, tokenUsage.completion_tokens - (reasoningTokens ?? 0)),
       total: tokenUsage?.completion_tokens,
     },
     ...(hasUnmappedFields && tokenUsage ? { raw: sanitizeAsJSONObject(tokenUsage) } : {}),
@@ -1117,40 +1074,6 @@ export function normalizeEmbedding(embedding: number[] | string): EmbeddingModel
     buffer.length / Float32Array.BYTES_PER_ELEMENT,
   );
   return Array.from(float32Array);
-}
-
-/**
- * Prepares embedding call by parsing provider options and validating input count.
- * @param config - Base embedding configuration.
- * @param options - Embedding model call options.
- * @returns Parsed SAP options and provider name.
- * @throws {TooManyEmbeddingValuesForCallError} When input count exceeds maximum.
- * @internal
- */
-export async function prepareEmbeddingCall(
-  config: BaseEmbeddingConfig,
-  options: EmbeddingModelV3CallOptions,
-): Promise<{ embeddingOptions: EmbeddingProviderOptions | undefined; providerName: string }> {
-  const { maxEmbeddingsPerCall, modelId, provider } = config;
-  const { providerOptions, values } = options;
-
-  const providerName = getProviderName(provider);
-  const sapOptions = await parseProviderOptions({
-    provider: providerName,
-    providerOptions,
-    schema: sapAIEmbeddingProviderOptions,
-  });
-
-  if (values.length > maxEmbeddingsPerCall) {
-    throw new TooManyEmbeddingValuesForCallError({
-      maxEmbeddingsPerCall,
-      modelId,
-      provider,
-      values,
-    });
-  }
-
-  return { embeddingOptions: sapOptions, providerName };
 }
 
 const jsonReplacer = (_key: string, value: unknown): unknown =>

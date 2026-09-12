@@ -9,12 +9,10 @@ AI SDK 6. Use `/v2` for AI SDK 5 (also supported by AI SDK 6 compatibility),
 and `/v4` for AI SDK 7. Package release versions are independent of provider
 specification versions and AI SDK majors.
 
-`@jerome-benoit/sap-ai-provider/v3` explicitly selects the same
-V3 API as the root. Both paths resolve to the same ESM/CommonJS modules and
-TypeScript declarations, so all exports, model classes, helpers, and the default
-`sapai` instance are identical within each module format. It is not a facade
-and does not change the root contract. The standalone V2 package does not
-provide a `/v3` subpath.
+`@jerome-benoit/sap-ai-provider/v3` aliases the root V3 API: both resolve to
+the same ESM/CommonJS modules and TypeScript declarations, including the same
+`sapai` instance within each module format. The standalone V2 package has no
+`/v3` subpath.
 
 To avoid confusion, this documentation uses the following terminology
 consistently:
@@ -189,9 +187,9 @@ The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provid
 
 ### Export Aliases
 
-The V2 package exports classes with simplified names for convenience:
+The V2 entrypoints export model classes and the provider interface with simplified names:
 
-| Internal Class          | Public Export         |
+| Internal Declaration    | Public Export         |
 | ----------------------- | --------------------- |
 | `SAPAILanguageModelV2`  | `SAPAILanguageModel`  |
 | `SAPAIEmbeddingModelV2` | `SAPAIEmbeddingModel` |
@@ -636,10 +634,14 @@ const result = await generateText({
 // Model can call getWeather 3 times in parallel
 ```
 
-⚠️ **Important:** Set `parallel_tool_calls: false` when using Gemini models or
-when tool execution order matters.
+Set `parallel_tool_calls: false` when your deployment does not support parallel
+calls or when tool execution order matters.
 
 ### Multi-Turn Tool Conversations
+
+When replaying assistant tool calls through Orchestration, inputs must be
+JSON-serializable; already serialized strings must contain valid JSON. Invalid
+arguments throw `InvalidPromptError` before a request is sent.
 
 The AI SDK executes tools with an `execute` function. Enable subsequent model
 steps with `stopWhen` to let the model consume tool results:
@@ -922,18 +924,20 @@ console.log(result.embeddings); // [[0.1, 0.2, ...], [0.3, 0.4, ...]]
 
 ### SAPAIEmbeddingSettings
 
-Configuration options for embedding models.
+Configuration options for embedding models. Invalid `maxEmbeddingsPerCall`
+values (including `NaN`, nonpositive numbers, and fractions) throw a Zod error
+when the model is created, across all entrypoints.
 
 **Properties:**
 
-| Property               | Type                                                                 | Default           | Description                                               |
-| ---------------------- | -------------------------------------------------------------------- | ----------------- | --------------------------------------------------------- |
-| `api`                  | `SAPAIApiType`                                                       | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
-| `maxEmbeddingsPerCall` | `number`                                                             | `2048`            | Maximum values per API call                               |
-| `modelVersion`         | `string`                                                             | -                 | Specific version of the model                             |
-| `type`                 | `"document" \| "query" \| "text"`                                    | `'text'`          | Embedding type                                            |
-| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>`         | -                 | Model-specific parameters                                 |
-| `masking`              | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -                 | Data masking configuration (DPI) - Orchestration API only |
+| Property               | Type                                                                 | Default           | Description                                                                                |
+| ---------------------- | -------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| `api`                  | `SAPAIApiType`                                                       | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)                                       |
+| `maxEmbeddingsPerCall` | `number`                                                             | `2048`            | Maximum values per API call: a positive integer, or `Infinity` for no provider-side limit. |
+| `modelVersion`         | `string`                                                             | -                 | Specific version of the model                                                              |
+| `type`                 | `"document" \| "query" \| "text"`                                    | `'text'`          | Embedding type                                                                             |
+| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>`         | -                 | Model-specific parameters                                                                  |
+| `masking`              | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -                 | Data masking configuration (DPI) - Orchestration API only                                  |
 
 **Embedding response metadata (`doEmbed` result):**
 
@@ -1144,7 +1148,7 @@ Configuration options for the SAP AI Provider.
 | `destination`           | `HttpDestinationOrFetchOptions`          | -                 | Custom destination configuration                                                                                                                                                                     |
 | `requestConfig`         | `CustomRequestConfig`                    | -                 | Custom HTTP request configuration forwarded on every call. See [Note on `requestConfig`](#requestconfig-note) below for scope, portability, abort semantics, and SAP AI Core `AI-*` header guidance. |
 | `defaultSettings`       | `SAPAISettings`                          | -                 | Default model settings applied to all models                                                                                                                                                         |
-| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Log level for SAP Cloud SDK internal logging (authentication, service binding). Can be overridden via `SAP_CLOUD_SDK_LOG_LEVEL` environment variable                                                 |
+| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Process-wide SAP Cloud SDK log level. Each provider creation sets it (`warn` when omitted), unless `SAP_CLOUD_SDK_LOG_LEVEL` is set.                                                                 |
 | `warnOnAmbiguousConfig` | `boolean`                                | `true`            | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)                                                                    |
 
 **Example:**
@@ -1341,22 +1345,24 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                                                                 | Default | Description                                                         |
-| ---------------------------- | -------------------------------------------------------------------- | ------- | ------------------------------------------------------------------- |
-| `modelVersion`               | `string`                                                             | -       | Specific model version                                              |
-| `includeReasoning`           | `boolean`                                                            | `false` | Include reasoning parts in SAP prompt conversion                    |
-| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`  | Escape template delimiters to prevent conflicts                     |
-| `modelParams`                | `CommonModelParams`                                                  | -       | Model generation parameters                                         |
-| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -       | Data masking configuration (DPI)                                    |
-| `filtering`                  | `FilteringModule`                                                    | -       | Content filtering configuration                                     |
-| `grounding`                  | `GroundingModule`                                                    | -       | Document grounding configuration                                    |
-| `translation`                | `TranslationModule`                                                  | -       | Translation configuration (Orchestration only)                      |
-| `placeholderValues`          | `Record<string, string>`                                             | -       | Default values for template placeholders                            |
-| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -       | Reference to a Prompt Registry template                             |
-| `responseFormat`             | `ResponseFormat`                                                     | -       | Response format specification                                       |
-| `streamOptions`              | `OrchestrationStreamOptions`                                         | -       | Stream options for post-LLM modules (Orchestration only)            |
-| `tools`                      | `ChatCompletionTool[]`                                               | -       | Tool definitions in SAP AI SDK format                               |
-| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -       | Ordered fallback prompt module configurations for Orchestration API |
+| Property                     | Type                                                                 | Default   | Description                                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `api`                        | `SAPAIApiType`                                                       | Inherited | Model-level API override; see [API selection precedence](#resolveapiproviderapi-modelapi-invocationapi).           |
+| `modelVersion`               | `string`                                                             | -         | Specific model version                                                                                             |
+| `includeReasoning`           | `boolean`                                                            | `false`   | Include reasoning parts in SAP prompt conversion                                                                   |
+| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`    | Escape template delimiters to prevent conflicts                                                                    |
+| `modelParams`                | `CommonModelParams`                                                  | -         | Model generation parameters                                                                                        |
+| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -         | Data masking configuration (DPI)                                                                                   |
+| `filtering`                  | `FilteringModule`                                                    | -         | Content filtering configuration                                                                                    |
+| `grounding`                  | `GroundingModule`                                                    | -         | Document grounding configuration                                                                                   |
+| `translation`                | `TranslationModule`                                                  | -         | Translation configuration (Orchestration only)                                                                     |
+| `placeholderValues`          | `Record<string, string>`                                             | -         | Default values for template placeholders                                                                           |
+| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName`         | -         | [Stored orchestration configuration reference](#orchestration-configuration-reference-types) (Orchestration only). |
+| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -         | Reference to a Prompt Registry template                                                                            |
+| `responseFormat`             | `ResponseFormat`                                                     | -         | Response format specification                                                                                      |
+| `streamOptions`              | `OrchestrationStreamOptions`                                         | -         | Stream options for post-LLM modules (Orchestration only)                                                           |
+| `tools`                      | `ChatCompletionTool[]`                                               | -         | Tool definitions in SAP AI SDK format                                                                              |
+| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -         | Ordered fallback prompt module configurations for Orchestration API                                                |
 
 **Example:**
 
@@ -1391,7 +1397,7 @@ const settings: SAPAISettings = {
 
 **API-Specific Settings Types:**
 
-For type-safe API-specific configuration, use the discriminated union types:
+For type-safe API-specific configuration, use these interfaces:
 
 - `OrchestrationModelSettings` - Settings with `api?: "orchestration"` and
   Orchestration-only options (`filtering`, `masking`, `grounding`, `translation`,
@@ -1796,7 +1802,7 @@ const result = await generateText({
 
 ### `sapAILanguageModelProviderOptions`
 
-Zod schema for validating language model provider options.
+Lazy AI SDK schema backed by Zod for validating language model provider options.
 
 **Validated Fields:**
 
@@ -1843,7 +1849,7 @@ const result = await generateText({
 
 ### `sapAIEmbeddingProviderOptions`
 
-Zod schema for validating embedding model provider options.
+Lazy AI SDK schema backed by Zod for validating embedding model provider options.
 
 **Validated Fields:**
 
@@ -1881,7 +1887,7 @@ const { embedding } = await embed({
 
 ### `SAPAILanguageModelProviderOptions` (Type)
 
-TypeScript type inferred from the Zod schema for language model options.
+TypeScript type inferred from the language model provider-options schema.
 
 **Type:**
 
@@ -1993,7 +1999,7 @@ const { text } = await generateText({
 
 ### `SAPAIEmbeddingProviderOptions` (Type)
 
-TypeScript type inferred from the Zod schema for embedding model options.
+TypeScript type inferred from the embedding model provider-options schema.
 
 **Type:**
 
@@ -2031,13 +2037,8 @@ for the provider's model ID contract. Referencing the upstream type keeps the
 accepted model identifiers synchronized with SAP AI SDK without redefining its
 structure.
 
-**For complete model information, see the [Models](#models) section above**,
-including:
-
-- Available model list (OpenAI, Google, Anthropic, Amazon, Open Source)
-- Model capabilities comparison
-- Selection guide by use case
-- Performance trade-offs
+See [Models](#models) for provider examples, deployment discovery, and upstream
+model documentation.
 
 ---
 
@@ -2290,8 +2291,8 @@ const model = provider("gpt-4.1", {
 
 ### API-Specific Settings Types
 
-The following types provide type-safe configuration for each API. They are
-discriminated union types that TypeScript can narrow based on the `api` field.
+These interfaces form the `SAPAIModelSettings` discriminated union, which
+TypeScript can narrow using `api`.
 
 #### `OrchestrationModelSettings`
 
@@ -2369,7 +2370,10 @@ export interface FoundationModelsModelSettings {
 **Foundation Models-Only Features:**
 
 - `dataSources` - Azure OpenAI "On Your Data" (Azure AI Search, Cosmos DB)
-- Advanced `modelParams`: `logprobs`, `seed`, `logit_bias`, `stop`, `top_logprobs`, `user`
+
+For explicitly typed Foundation Models parameters, see
+[Additional Foundation Models Parameters](#additional-foundation-models-parameters);
+backend support is not exclusive to this API.
 
 #### `SAPAIModelSettings`
 
@@ -2975,8 +2979,8 @@ advanced usage scenarios where direct access to SDK responses is needed:
 
 ### Re-exported SAP AI SDK Types
 
-The following types are re-exported from `@sap-ai-sdk/orchestration` for advanced
-usage scenarios. Refer to the
+The following SAP AI SDK types and provider aliases are exported for advanced
+usage. Refer to the
 [SAP AI SDK documentation](https://github.com/SAP/ai-sdk-js) for complete type
 definitions.
 
@@ -2997,20 +3001,20 @@ definitions.
 
 **Configuration Types:**
 
-| Type                                    | Description                                                   |
-| --------------------------------------- | ------------------------------------------------------------- |
-| `AzureOpenAiChatExtensionConfiguration` | Azure OpenAI data source configuration                        |
-| `ChatCompletionRequest`                 | Full chat completion request structure                        |
-| `ChatCompletionTool`                    | Tool definition for function calling                          |
-| `FunctionObject`                        | Function schema within a tool                                 |
-| `LlmModelDetails`                       | Model configuration details                                   |
-| `LlmModelParams`                        | Model-specific parameters                                     |
-| `OrchestrationConfigRef`                | Deprecated upstream configuration reference                   |
-| `OrchestrationConfigRefById`            | Stored configuration reference by ID                          |
-| `OrchestrationConfigRefByName`          | Stored configuration reference by scenario, name, and version |
-| `OrchestrationModuleConfig`             | Full orchestration module configuration                       |
-| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks                        |
-| `PromptTemplatingModule`                | Prompt template configuration                                 |
+| Type                                    | Description                                                                 |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| `AzureOpenAiChatExtensionConfiguration` | Provider alias for Foundation Models Azure OpenAI data source configuration |
+| `ChatCompletionRequest`                 | Full chat completion request structure                                      |
+| `ChatCompletionTool`                    | Tool definition for function calling                                        |
+| `FunctionObject`                        | Function schema within a tool                                               |
+| `LlmModelDetails`                       | Model configuration details                                                 |
+| `LlmModelParams`                        | Model-specific parameters                                                   |
+| `OrchestrationConfigRef`                | Deprecated upstream configuration reference                                 |
+| `OrchestrationConfigRefById`            | Stored configuration reference by ID                                        |
+| `OrchestrationConfigRefByName`          | Stored configuration reference by scenario, name, and version               |
+| `OrchestrationModuleConfig`             | Full orchestration module configuration                                     |
+| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks                                      |
+| `PromptTemplatingModule`                | Prompt template configuration                                               |
 
 **Module Configuration Types:**
 
@@ -3105,7 +3109,6 @@ import { createSAPAIProvider, type DeploymentConfig } from "@jerome-benoit/sap-a
 
 const deploymentConfig: DeploymentConfig = {
   deploymentId: "d1234567-89ab-cdef-0123-456789abcdef",
-  resourceGroup: "my-resource-group",
 };
 
 const provider = createSAPAIProvider(deploymentConfig);
@@ -3231,10 +3234,14 @@ Validates that settings are compatible with the selected API.
 function validateSettings(options: ValidateSettingsOptions): void;
 ```
 
+`ValidateSettingsOptions` is not re-exported; use
+`Parameters<typeof validateSettings>[0]` to name the input type.
+
 **Parameters:**
 
 - `options.api`: The resolved API type
-- `options.modelSettings`: Model-level settings to validate
+- `options.modelSettings`: Optional model-level settings to validate
+- `options.embeddingSettings`: Optional embedding settings to validate
 - `options.invocationSettings`: Optional invocation-time settings
 - `options.modelApi`: The API the model was configured with (for switch detection)
 
@@ -3344,7 +3351,7 @@ function buildAzureContentSafetyFilter<T extends "input" | "output">(type: T, co
   - `sexual`: Sexual content filter level
 
 **Filter Levels:** `ALLOW_SAFE`, `ALLOW_SAFE_LOW`, `ALLOW_SAFE_LOW_MEDIUM`, or
-block all
+`ALLOW_ALL`.
 
 **Returns:** Azure Content Safety filter configuration
 

@@ -22,14 +22,14 @@ src/
 ├── sap-ai-embedding-model.ts                       # V3 embedding model
 │
 │   # V4 Facade Layer (AI SDK 7: LanguageModelV4/EmbeddingModelV4)
-├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
+├── sap-ai-provider-v4.ts                           # V4 provider factory
 ├── sap-ai-language-model-v4.ts                     # V4 language model (wraps V3)
 ├── sap-ai-embedding-model-v4.ts                    # V4 embedding model (wraps V3)
 ├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
 ├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
 │
 │   # V2 Facade Layer (AI SDK 5: LanguageModelV2/EmbeddingModelV2)
-├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
+├── sap-ai-provider-v2.ts                           # V2 provider factory
 ├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
 ├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
 ├── sap-ai-adapters-v3-to-v2.ts                     # V3→V2 format conversion

@@ -20,10 +20,9 @@
 // Load environment variables
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
-import { embed, embedMany } from "ai";
+import { cosineSimilarity, embed, embedMany } from "ai";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
 import { createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
@@ -83,14 +82,6 @@ async function embeddingsExample() {
 
     console.log("\n📐 Calculating cosine similarities...\n");
 
-    // Calculate cosine similarity between embeddings
-    const cosineSimilarity = (a: number[], b: number[]): number => {
-      const dotProduct = a.reduce((sum, val, i) => sum + val * (b[i] ?? 0), 0);
-      const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-      const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-      return dotProduct / (magnitudeA * magnitudeB);
-    };
-
     // Compare each document to the first one
     const referenceDoc = documents[0] ?? "";
     const referenceEmb = embeddings[0] ?? [];
@@ -124,6 +115,7 @@ async function embeddingsExample() {
 
     console.log("\n✅ All embedding tests completed!");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);
     } else if (error instanceof NoSuchModelError) {
@@ -149,6 +141,9 @@ async function embeddingsExample() {
   }
 }
 
-embeddingsExample().catch(console.error);
+embeddingsExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { embeddingsExample };

@@ -175,10 +175,8 @@ export { VERSION } from "./version.js";
 /**
  * SAP AI SDK request configuration type for {@link SAPAIProviderSettings.requestConfig}.
  *
- * Re-exported so consumers can type provider options without a direct dependency on
- * `@sap-ai-sdk/core`. The shape tracks `@sap-ai-sdk/core` versioning and is inherited
- * transitively; upstream changes to `CustomRequestConfig` propagate here without a
- * release of this package.
+ * Re-exported so consumers do not need a direct dependency on `@sap-ai-sdk/core`.
+ * Its shape follows the installed SAP AI SDK version.
  */
 export type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
@@ -197,8 +195,7 @@ export { OrchestrationClient, OrchestrationEmbeddingClient } from "@sap-ai-sdk/o
 /**
  * SAP Cloud SDK destination type for {@link SAPAIProviderSettings.destination}.
  *
- * Re-exported so consumers can type provider options without a direct dependency on
- * `@sap-cloud-sdk/connectivity`. The shape tracks `@sap-cloud-sdk/connectivity`
- * versioning and is inherited transitively.
+ * Re-exported so consumers do not need a direct dependency on
+ * `@sap-cloud-sdk/connectivity`. Its shape follows the installed SAP Cloud SDK version.
  */
 export type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";

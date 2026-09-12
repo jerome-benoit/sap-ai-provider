@@ -11,6 +11,7 @@ const sapErrorResponseBodySchema = z.object({
 /**
  * Parses optional SAP details without replacing the original API error when its
  * response body is plain text, malformed JSON, or a different JSON shape.
+ * Shape validation does not redact sensitive values; review details before logging.
  * @param responseBody - Raw API response body from APICallError.
  * @returns Validated SAP error details, or undefined when unavailable.
  */

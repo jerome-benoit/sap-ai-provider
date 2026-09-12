@@ -228,7 +228,10 @@ export interface SAPAIEmbeddingSettings {
   readonly api?: SAPAIApiType;
   /** Orchestration API only. */
   readonly masking?: MaskingModule | { providers: MaskingModule["masking_providers"] };
-  /** @default 2048 */
+  /**
+   * Maximum batch size: a positive integer, or `Infinity` for no provider-side limit.
+   * @default 2048
+   */
   readonly maxEmbeddingsPerCall?: number;
   readonly modelParams?: FoundationModelsEmbeddingParams | Record<string, unknown>;
   readonly modelVersion?: string;

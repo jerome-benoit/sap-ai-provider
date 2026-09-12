@@ -6,6 +6,28 @@ import { isErrorWithCause } from "@sap-cloud-sdk/util";
 
 import type { SAPAIApiType } from "./sap-ai-settings.js";
 
+interface AxiosResponse {
+  data?: unknown;
+  headers?: unknown;
+  status?: number;
+}
+
+/** Request metadata used when translating SAP failures. */
+interface ErrorContext {
+  httpStatusCode?: number;
+  modelId?: string;
+  modelType?: "embeddingModel" | "languageModel";
+  operation?: string;
+  requestBody?: unknown;
+  responseHeaders?: Record<string, string>;
+  url?: string;
+}
+
+/** Diagnostic response body is retained explicitly, never appended to the message. */
+interface ResolvedErrorContext extends ErrorContext {
+  responseBody?: string;
+}
+
 /**
  * @internal
  */
@@ -213,6 +235,8 @@ export class UnsupportedFeatureError extends Error {
  * Converts a structured SAP error response to the appropriate Vercel AI SDK error.
  * @param errorResponse - SAP orchestration error response.
  * @param context - Request context.
+ * @param context.modelId - Known requested model ID, preferred over message-based extraction.
+ * @param context.modelType - Requested model kind (defaults to languageModel).
  * @param context.httpStatusCode - Fallback HTTP status when the body code is missing or outside the HTTP status range.
  * @param context.requestBody - Original request body.
  * @param context.responseHeaders - Response headers.
@@ -221,12 +245,7 @@ export class UnsupportedFeatureError extends Error {
  */
 export function convertSAPErrorToAPICallError(
   errorResponse: OrchestrationErrorResponse,
-  context?: {
-    httpStatusCode?: number;
-    requestBody?: unknown;
-    responseHeaders?: Record<string, string>;
-    url?: string;
-  },
+  context?: ErrorContext,
 ): APICallError | LoadAPIKeyError | NoSuchModelError {
   const { code, location, message, requestId } = extractErrorFields(errorResponse);
 
@@ -262,11 +281,11 @@ export function convertSAPErrorToAPICallError(
     if (requestId) {
       enhancedMessage += `\nRequest ID: ${requestId}`;
     }
-    const modelId = extractModelIdentifier(message, location);
+    const modelId = context?.modelId ?? extractModelIdentifier(message, location);
     return new NoSuchModelError({
       message: enhancedMessage,
       modelId: modelId ?? "unknown",
-      modelType: "languageModel",
+      modelType: context?.modelType ?? "languageModel",
     });
   }
 
@@ -301,6 +320,8 @@ export function convertSAPErrorToAPICallError(
  * Converts a generic error to an appropriate Vercel AI SDK error.
  * @param error - Error to convert.
  * @param context - Request context.
+ * @param context.modelId - Known requested model ID, preferred over message-based extraction.
+ * @param context.modelType - Requested model kind (defaults to languageModel).
  * @param context.operation - Operation name.
  * @param context.requestBody - Original request body.
  * @param context.responseHeaders - Response headers.
@@ -309,12 +330,7 @@ export function convertSAPErrorToAPICallError(
  */
 export function convertToAISDKError(
   error: unknown,
-  context?: {
-    operation?: string;
-    requestBody?: unknown;
-    responseHeaders?: Record<string, string>;
-    url?: string;
-  },
+  context?: ErrorContext,
 ): APICallError | LoadAPIKeyError | NoSuchModelError {
   if (
     error instanceof APICallError ||
@@ -324,18 +340,25 @@ export function convertToAISDKError(
     return error;
   }
 
-  const rootError = getRootError(error);
-
-  const errorResponse = findStructuredErrorResponse(error);
-  if (errorResponse) {
-    return convertSAPErrorToAPICallError(errorResponse, {
-      ...context,
-      httpStatusCode: getAxiosError(error)?.response?.status,
-      responseHeaders: context?.responseHeaders ?? getAxiosResponseHeaders(error),
-    });
+  const { aborted, response, rootError } = inspectError(error);
+  const responseHeaders = context?.responseHeaders ?? normalizeHeaders(response?.headers);
+  if (!aborted) {
+    const errorResponse = findStructuredErrorResponse(rootError, response?.data);
+    if (errorResponse) {
+      return convertSAPErrorToAPICallError(errorResponse, {
+        ...context,
+        httpStatusCode: response?.status ?? context?.httpStatusCode,
+        responseHeaders,
+      });
+    }
   }
 
-  if (isAbortError(rootError)) {
+  const resolvedContext: ResolvedErrorContext = {
+    ...context,
+    responseBody: serializeAxiosResponseData(response?.data),
+    responseHeaders,
+  };
+  if (aborted) {
     return createAPICallError(
       error,
       {
@@ -343,7 +366,19 @@ export function convertToAISDKError(
         message: "Request was aborted by the client",
         statusCode: HTTP_STATUS.CLIENT_CLOSED_REQUEST,
       },
-      context,
+      resolvedContext,
+    );
+  }
+
+  if (isHttpStatus(response?.status)) {
+    return createAPICallError(
+      error,
+      {
+        isRetryable: isRetryable(response.status),
+        message: rootError instanceof Error ? rootError.message : "SAP AI Core request failed",
+        statusCode: response.status,
+      },
+      resolvedContext,
     );
   }
 
@@ -361,20 +396,20 @@ export function convertToAISDKError(
     }
 
     if (DEPLOYMENT_ERROR_KEYWORDS.some((keyword) => errorMsg.includes(keyword))) {
-      const modelId = extractModelIdentifier(originalErrorMsg);
+      const modelId = context?.modelId ?? extractModelIdentifier(originalErrorMsg);
       return new NoSuchModelError({
         message:
           `SAP AI Core deployment error: ${originalErrorMsg}\n\n` +
           `Make sure you have a running orchestration deployment in your SAP AI Core instance.\n` +
           `See: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-deployment-for-orchestration`,
         modelId: modelId ?? "unknown",
-        modelType: "languageModel",
+        modelType: context?.modelType ?? "languageModel",
       });
     }
 
     const statusMatch = /status code (\d+)/i.exec(originalErrorMsg);
-    if (statusMatch?.[1]) {
-      const extractedStatus = Number.parseInt(statusMatch[1], 10);
+    const extractedStatus = statusMatch?.[1] ? Number.parseInt(statusMatch[1], 10) : undefined;
+    if (isHttpStatus(extractedStatus)) {
       return createAPICallError(
         error,
         {
@@ -382,7 +417,7 @@ export function convertToAISDKError(
           message: `SAP AI Core request failed: ${originalErrorMsg}`,
           statusCode: extractedStatus,
         },
-        context,
+        resolvedContext,
       );
     }
 
@@ -399,7 +434,7 @@ export function convertToAISDKError(
             message,
             statusCode: matcher.statusCode,
           },
-          context,
+          resolvedContext,
         );
       }
     }
@@ -423,7 +458,7 @@ export function convertToAISDKError(
       message: fullMessage,
       statusCode: HTTP_STATUS.INTERNAL_ERROR,
     },
-    context,
+    resolvedContext,
   );
 }
 
@@ -462,9 +497,9 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
 }
 
 /**
+ * Builds an API error with diagnostics kept separate from the message.
  * @param error - Original error.
  * @param options - Error options.
- * @param options.enrichMessage - Whether to enrich message with response body.
  * @param options.isRetryable - Whether error is retryable.
  * @param options.message - Error message.
  * @param options.statusCode - HTTP status code.
@@ -479,34 +514,19 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
 function createAPICallError(
   error: unknown,
   options: {
-    enrichMessage?: boolean;
     isRetryable: boolean;
     message: string;
     statusCode: number;
   },
-  context?: {
-    operation?: string;
-    requestBody?: unknown;
-    responseHeaders?: Record<string, string>;
-    url?: string;
-  },
+  context?: ResolvedErrorContext,
 ): APICallError {
-  const responseBody = getAxiosResponseBody(error);
-  const responseHeaders = context?.responseHeaders ?? getAxiosResponseHeaders(error);
-
-  const enrichMessage = options.enrichMessage ?? true;
-  const message =
-    enrichMessage && responseBody
-      ? `${options.message}\n\nSAP AI Core Error Response:\n${responseBody}`
-      : options.message;
-
   return new APICallError({
     cause: error,
     isRetryable: options.isRetryable,
-    message: message,
+    message: options.message,
     requestBodyValues: context?.requestBody,
-    responseBody,
-    responseHeaders,
+    responseBody: context?.responseBody,
+    responseHeaders: context?.responseHeaders,
     statusCode: options.statusCode,
     url: context?.url ?? "",
   });
@@ -556,9 +576,9 @@ function extractErrorFields(response: OrchestrationErrorResponse): {
  */
 function extractModelIdentifier(message: string, location?: string): string | undefined {
   const patterns = [
-    /deployment[:\s]+([a-zA-Z0-9_-]+)/i,
-    /model[:\s]+([a-zA-Z0-9_-]+)/i,
-    /resource[:\s]+([a-zA-Z0-9_-]+)/i,
+    /deployment[:\s]+([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)/i,
+    /model[:\s]+([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)/i,
+    /resource[:\s]+([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)/i,
   ];
 
   for (const pattern of patterns) {
@@ -569,7 +589,7 @@ function extractModelIdentifier(message: string, location?: string): string | un
   }
 
   if (location) {
-    const locationMatch = /([a-zA-Z0-9_-]+)/.exec(location);
+    const locationMatch = /([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)/.exec(location);
     if (locationMatch?.[1]) {
       return locationMatch[1];
     }
@@ -579,88 +599,21 @@ function extractModelIdentifier(message: string, location?: string): string | un
 }
 
 /**
- * @param error - Raw SDK error to traverse.
- * @returns Orchestration error response if found in the error chain, undefined otherwise.
- * @internal
+ * @param rootError - Root cause after inspecting the chain.
+ * @param axiosData - Response data retained from an Axios wrapper.
+ * @returns A structured SAP response when available.
  */
-function findStructuredErrorResponse(error: unknown): OrchestrationErrorResponse | undefined {
-  const rootError = getRootError(error);
-
-  if (isStructuredErrorResponse(rootError)) {
-    return rootError;
-  }
-
-  const axiosData = getAxiosError(error)?.response?.data;
-  if (axiosData && isStructuredErrorResponse(axiosData)) {
-    return axiosData;
-  }
-
+function findStructuredErrorResponse(
+  rootError: unknown,
+  axiosData: unknown,
+): OrchestrationErrorResponse | undefined {
+  if (isStructuredErrorResponse(rootError)) return rootError;
+  if (isStructuredErrorResponse(axiosData)) return axiosData;
   if (rootError instanceof Error) {
     const parsed = tryExtractSAPErrorFromMessage(rootError.message);
-    if (parsed && isStructuredErrorResponse(parsed)) {
-      return parsed;
-    }
+    if (isStructuredErrorResponse(parsed)) return parsed;
   }
-
   return undefined;
-}
-
-/**
- * @param error - Error to extract Axios error from.
- * @returns Axios error if found.
- * @internal
- */
-function getAxiosError(
-  error: unknown,
-):
-  | undefined
-  | { isAxiosError: true; response?: { data?: unknown; headers?: unknown; status?: number } } {
-  if (!(error instanceof Error)) return undefined;
-
-  const rootCause = getRootError(error);
-  if (typeof rootCause !== "object" || rootCause === null) return undefined;
-
-  const maybeAxios = rootCause as {
-    isAxiosError?: boolean;
-    response?: { data?: unknown; headers?: unknown; status?: number };
-  };
-
-  if (maybeAxios.isAxiosError !== true) return undefined;
-  return maybeAxios as {
-    isAxiosError: true;
-    response?: { data?: unknown; headers?: unknown; status?: number };
-  };
-}
-
-/**
- * @param error - Error to extract response body from.
- * @returns Serialized response body.
- * @internal
- */
-function getAxiosResponseBody(error: unknown): string | undefined {
-  const axiosError = getAxiosError(error);
-  if (!axiosError?.response?.data) return undefined;
-  return serializeAxiosResponseData(axiosError.response.data);
-}
-
-/**
- * @param error - Error to extract response headers from.
- * @returns Normalized response headers.
- * @internal
- */
-function getAxiosResponseHeaders(error: unknown): Record<string, string> | undefined {
-  const axiosError = getAxiosError(error);
-  if (!axiosError) return undefined;
-  return normalizeHeaders(axiosError.response?.headers);
-}
-
-/**
- * @param error - Raw error, potentially wrapping a root cause.
- * @returns The root cause if the error wraps one, otherwise the error itself.
- * @internal
- */
-function getRootError(error: unknown): unknown {
-  return error instanceof Error && isErrorWithCause(error) ? error.rootCause : error;
 }
 
 /**
@@ -670,15 +623,53 @@ function getRootError(error: unknown): unknown {
  * @internal
  */
 function getStatusCodeFromSAPError(code?: number, httpStatusCode?: number): number {
-  if (code && code >= 100 && code < 600) {
+  if (isHttpStatus(code)) {
     return code;
   }
 
-  if (httpStatusCode && httpStatusCode >= 100 && httpStatusCode < 600) {
+  if (isHttpStatus(httpStatusCode)) {
     return httpStatusCode;
   }
 
   return HTTP_STATUS.INTERNAL_ERROR;
+}
+
+/**
+ * Inspects native and SAP cause chains once, keeping transport metadata from wrappers.
+ * @param error - Raw SDK error.
+ * @returns The terminal cause, nearest Axios response, and cancellation state.
+ */
+function inspectError(error: unknown): {
+  aborted: boolean;
+  response?: AxiosResponse;
+  rootError: unknown;
+} {
+  const seen = new Set<object>();
+  let rootError = error;
+  let current = error;
+  let response: AxiosResponse | undefined;
+  let aborted = false;
+  while (typeof current === "object" && current !== null && !seen.has(current)) {
+    seen.add(current);
+    rootError = current;
+    aborted ||= isAbortError(current);
+    const entry = current as { cause?: unknown; isAxiosError?: boolean; response?: AxiosResponse };
+    if (response === undefined && entry.isAxiosError === true) response = entry.response;
+    // SAP ErrorWithCause exposes a native cause too. Avoid its recursive rootCause
+    // getter when that cause is present so cyclic chains cannot overflow the stack.
+    const cause =
+      "cause" in entry
+        ? entry.cause
+        : current instanceof Error && isErrorWithCause(current)
+          ? current.rootCause
+          : undefined;
+    if (cause === undefined || (typeof cause === "object" && cause !== null && seen.has(cause))) {
+      break;
+    }
+    rootError = cause;
+    current = cause;
+  }
+  return { aborted, response, rootError };
 }
 
 /**
@@ -694,6 +685,14 @@ function isAbortError(error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * @param status - Candidate HTTP status.
+ * @returns Whether the value is an integer HTTP status.
+ */
+function isHttpStatus(status: unknown): status is number {
+  return typeof status === "number" && Number.isInteger(status) && status >= 100 && status < 600;
 }
 
 /**
@@ -770,7 +769,8 @@ function serializeAxiosResponseData(data: unknown, maxLength = 2000): string | u
     if (typeof data === "string") {
       serialized = data;
     } else {
-      serialized = JSON.stringify(data, null, 2);
+      const json: unknown = JSON.stringify(data, null, 2);
+      serialized = typeof json === "string" ? json : `[Unable to serialize: ${typeof data}]`;
     }
   } catch {
     serialized = `[Unable to serialize: ${typeof data}]`;
@@ -793,9 +793,19 @@ function tryExtractSAPErrorFromMessage(message: string): unknown {
 
   let depth = 0;
   let endIdx = -1;
+  let inString = false;
+  let escaped = false;
   for (let i = startIdx; i < message.length; i++) {
-    if (message[i] === "{") depth++;
-    else if (message[i] === "}") {
+    const character = message.charCodeAt(i);
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === 0x5c) escaped = true;
+      else if (character === 0x22) inString = false;
+      continue;
+    }
+    if (character === 0x22) inString = true;
+    else if (character === 0x7b) depth++;
+    else if (character === 0x7d) {
       depth--;
       if (depth === 0) {
         endIdx = i;

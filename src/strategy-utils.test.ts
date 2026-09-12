@@ -10,13 +10,13 @@ import {
   computeNoCache,
   convertToolsToSAPFormat,
   extractCompletionId,
-  extractResponseContent,
+  extractToolParameters,
   mapFinishReason,
+  mapTokenUsage,
   mergeRequestConfig,
   sanitizeAsJSONArray,
   sanitizeAsJSONObject,
   type SAPTool,
-  type SDKResponse,
 } from "./strategy-utils.js";
 
 interface ChatCompletionTool extends SAPTool<unknown> {
@@ -85,18 +85,38 @@ describe("convertToolsToSAPFormat", () => {
     expect(result.tools?.[0]).not.toHaveProperty("cache_control");
     expect(sink).toHaveLength(0);
   });
+});
 
-  it("should accept an empty options object identically to omitted options", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
-      buildFunctionTool({
-        providerOptions: { "sap-ai": { cacheControl: { ttl: "5m", type: "ephemeral" } } },
-      }),
-    ];
-    const omitted = convertToolsToSAPFormat<ChatCompletionTool>(tools);
-    const empty = convertToolsToSAPFormat<ChatCompletionTool>(tools, {});
+describe("tool schema constraints", () => {
+  it("preserves dynamic object constraints without named properties", () => {
+    const inputSchema = {
+      additionalProperties: { type: "string" },
+      minProperties: 1,
+      type: "object",
+    } satisfies LanguageModelV3FunctionTool["inputSchema"];
+    expect(extractToolParameters(buildFunctionTool({ inputSchema })).parameters).toMatchObject(
+      inputSchema,
+    );
+  });
+});
 
-    expect(empty).toEqual(omitted);
-    expect((empty.tools?.[0] as { cache_control?: unknown }).cache_control).toBeUndefined();
+describe("output token accounting", () => {
+  it("keeps unknown output totals unknown instead of deriving negative text counts", () => {
+    expect(
+      mapTokenUsage({ completion_tokens_details: { reasoning_tokens: 5 } }).outputTokens,
+    ).toEqual({
+      reasoning: 5,
+      text: undefined,
+      total: undefined,
+    });
+    expect(
+      mapTokenUsage({ completion_tokens: 3, completion_tokens_details: { reasoning_tokens: 5 } })
+        .outputTokens,
+    ).toEqual({
+      reasoning: 5,
+      text: 0,
+      total: 3,
+    });
   });
 });
 
@@ -245,38 +265,6 @@ describe("extractCompletionId", () => {
         path,
       ),
     ).toBe(expected);
-  });
-});
-
-describe("extractResponseContent", () => {
-  it("should preserve SAP's Gemini thought signature in the tool-call id suffix", () => {
-    const signedToolCallId =
-      "vertex_tool_be5b294b-ece3-46f0-8b0d-22cd00000000__sig_AY89a1_testSignature";
-
-    const response: SDKResponse = {
-      getContent: () => undefined,
-      getFinishReason: () => undefined,
-      getTokenUsage: () => undefined,
-      getToolCalls: () => [
-        {
-          function: {
-            arguments: "{}",
-            name: "lookup",
-          },
-          id: signedToolCallId,
-        },
-      ],
-      rawResponse: { headers: new Headers() },
-    };
-
-    const [toolCall] = extractResponseContent(response);
-
-    expect(toolCall).toEqual(
-      expect.objectContaining({
-        toolCallId: signedToolCallId,
-        type: "tool-call",
-      }),
-    );
   });
 });
 

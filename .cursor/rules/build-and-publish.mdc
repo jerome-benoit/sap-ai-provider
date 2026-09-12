@@ -45,9 +45,10 @@ This repository publishes two npm packages from the same codebase:
 
 `prepublishOnly` runs the appropriate build and verification before publish:
 
-- Main package: `build && check-build && check-build:v2 && check-build:v4`
+- Main package: `build && check-build`
 - Standalone V2 (when `AI_SDK_VERSION=v2`):
-  `build:v2 && check-build:v2 && prepare:v2`
+  `build:v2 && check-build:v2 && prepare:v2`, followed by
+  `tsx scripts/check-package-exports.ts` on the prepared package.
 
 See [package.json](mdc:package.json) for the full script.
 
@@ -68,8 +69,8 @@ Use `npm run build` explicitly to create distribution artifacts.
 
 ## Verification
 
-- Verify all main-package artifacts exist and ESM/CommonJS declaration routing
-  resolves correctly: `npm run check-build`.
+- Verify all main-package artifacts exist and ESM/CommonJS runtime and declaration
+  routing resolves correctly: `npm run check-build`.
 - Verify one facade build explicitly with `npm run check-build:v2` or
   `npm run check-build:v4`.
 - `test:edge` exercises provider source behavior, not published-bundle

@@ -37,7 +37,6 @@ import {
   type ParamMapping,
   type SAPResponseFormat,
   type SAPToolChoice,
-  type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
@@ -293,14 +292,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const { requestId, responseId } = this.extractMetadata(response);
 
     return {
-      getCitations: () =>
-        (response as { getCitations?: () => SDKCitation[] | undefined }).getCitations?.(),
+      getCitations: () => response.getCitations(),
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
-      getIntermediateFailures: () =>
-        (
-          response as { getIntermediateFailures?: () => undefined | unknown[] }
-        ).getIntermediateFailures?.(),
+      getIntermediateFailures: () => response.getIntermediateFailures(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
@@ -328,13 +323,12 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
     return {
-      getCitations: () =>
-        (streamResponse as { getCitations?: () => SDKCitation[] | undefined }).getCitations?.(),
+      cancel: () => {
+        streamResponse.stream.controller.abort();
+      },
+      getCitations: () => streamResponse.getCitations(),
       getFinishReason: () => streamResponse.getFinishReason(),
-      getIntermediateFailures: () =>
-        (
-          streamResponse as { getIntermediateFailures?: () => undefined | unknown[] }
-        ).getIntermediateFailures?.(),
+      getIntermediateFailures: () => streamResponse.getIntermediateFailures(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,
       responseHeaders,

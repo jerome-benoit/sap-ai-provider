@@ -151,6 +151,9 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
     return {
+      cancel: () => {
+        streamResponse.stream.controller.abort();
+      },
       getFinishReason: () => streamResponse.getFinishReason(),
       getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,

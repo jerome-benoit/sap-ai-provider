@@ -10,8 +10,6 @@ import type {
   SharedV3Warning,
 } from "@ai-sdk/provider";
 
-import { convertAsyncIteratorToReadableStream } from "@ai-sdk/provider-utils";
-
 import type {
   SDKCitation,
   SDKDeltaToolCall,
@@ -41,10 +39,21 @@ export interface StreamState {
  * @internal
  */
 export interface StreamTransformerConfig {
+  readonly cancel: () => void;
   readonly convertToAISDKError: (
     error: unknown,
-    context: { operation: string; requestBody: unknown; url: string },
+    context: {
+      modelId: string;
+      modelType: "languageModel";
+      operation: string;
+      requestBody: unknown;
+      url: string;
+    },
   ) => unknown;
+  readonly extractChunkMetadata: (chunk: SDKStreamChunk) => {
+    requestId?: string;
+    responseId?: string;
+  };
   readonly idGenerator: StreamIdGenerator;
   readonly includeRawChunks: boolean;
   readonly modelId: string;
@@ -140,7 +149,9 @@ export function createStreamTransformer(
   config: StreamTransformerConfig,
 ): ReadableStream<LanguageModelV3StreamPart> {
   const {
+    cancel,
     convertToAISDKError,
+    extractChunkMetadata,
     idGenerator,
     includeRawChunks,
     modelId,
@@ -161,6 +172,58 @@ export function createStreamTransformer(
   let textBlockId: null | string = null;
   const streamState = createInitialStreamState();
   const toolCallsInProgress = new Map<number, ToolCallInProgress>();
+  let resolvedResponseId = responseId;
+  let resolvedRequestId = requestId;
+  let tokenUsage: SDKTokenUsage | undefined;
+  let citations: Map<string, SDKCitation> | undefined;
+
+  /**
+   * Retains sources from early chunks when later SDK snapshots omit them.
+   * @param incoming - Citations in a chunk or final response.
+   */
+  function collectCitations(incoming: SDKCitation[] | undefined): void {
+    if (!incoming?.length) return;
+    citations ??= new Map();
+    for (const citation of incoming) {
+      citations.set(String(citation.ref_id ?? citation.url), citation);
+    }
+  }
+
+  /**
+   * Combines usage snapshots without losing details omitted by the SDK's final totals.
+   * @param incoming - Usage in a chunk or final response.
+   */
+  function collectUsage(incoming: null | SDKTokenUsage | undefined): void {
+    if (!incoming) return;
+    const promptDetails = tokenUsage?.prompt_tokens_details;
+    const incomingPromptDetails = incoming.prompt_tokens_details;
+    const completionDetails = tokenUsage?.completion_tokens_details;
+    const incomingCompletionDetails = incoming.completion_tokens_details;
+    const cacheDetails = promptDetails?.cache_creation_token_details;
+    const incomingCacheDetails = incomingPromptDetails?.cache_creation_token_details;
+    tokenUsage = {
+      ...tokenUsage,
+      ...incoming,
+      ...(promptDetails || incomingPromptDetails
+        ? {
+            prompt_tokens_details: {
+              ...promptDetails,
+              ...incomingPromptDetails,
+              ...(cacheDetails || incomingCacheDetails
+                ? {
+                    cache_creation_token_details: { ...cacheDetails, ...incomingCacheDetails },
+                  }
+                : {}),
+            },
+          }
+        : {}),
+      ...(completionDetails || incomingCompletionDetails
+        ? {
+            completion_tokens_details: { ...completionDetails, ...incomingCompletionDetails },
+          }
+        : {}),
+    };
+  }
 
   /**
    * Emits tool-input-start and replays any buffered arguments as a delta.
@@ -187,9 +250,22 @@ export function createStreamTransformer(
     }
   }
 
-  return convertAsyncIteratorToReadableStream(
-    safeIterate(sdkStream)[Symbol.asyncIterator](),
-  ).pipeThrough(
+  const iterator = safeIterate(sdkStream)[Symbol.asyncIterator]();
+  let canceled = false;
+  return new ReadableStream<Error | SDKStreamChunk>({
+    async cancel() {
+      canceled = true;
+      // Abort transport before return(): an async iterator can be waiting on the next chunk.
+      cancel();
+      await iterator.return(undefined);
+    },
+    async pull(controller) {
+      const { done, value } = await iterator.next();
+      if (canceled) return;
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+  }).pipeThrough(
     new TransformStream<Error | SDKStreamChunk, LanguageModelV3StreamPart>({
       flush(controller) {
         const didEmitAnyToolCalls = finalizeToolCalls(
@@ -213,14 +289,12 @@ export function createStreamTransformer(
           };
         }
 
-        const finalUsage = streamResponseGetTokenUsage();
-        if (finalUsage) {
-          streamState.usage = mapTokenUsage(finalUsage);
-        }
+        collectUsage(streamResponseGetTokenUsage());
+        streamState.usage = mapTokenUsage(tokenUsage);
 
-        const streamCitations = streamResponseGetCitations?.();
-        if (streamCitations?.length) {
-          for (const citation of streamCitations) {
+        collectCitations(streamResponseGetCitations?.());
+        if (citations) {
+          for (const citation of citations.values()) {
             controller.enqueue({
               id: String(citation.ref_id ?? citation.url),
               sourceType: "url" as const,
@@ -237,7 +311,7 @@ export function createStreamTransformer(
           finishReason: streamState.finishReason,
           providerMetadata: {
             [providerName]: {
-              ...buildAnthropicCacheMetadata(finalUsage),
+              ...buildAnthropicCacheMetadata(tokenUsage),
               finishReason: streamState.finishReason.raw ?? "unknown",
               finishReasonMapped: streamState.finishReason,
               ...(streamIntermediateFailures?.length
@@ -245,8 +319,8 @@ export function createStreamTransformer(
                     intermediateFailures: sanitizeAsJSONArray(streamIntermediateFailures),
                   }
                 : {}),
-              ...(requestId ? { requestId } : {}),
-              responseId,
+              ...(resolvedRequestId ? { requestId: resolvedRequestId } : {}),
+              responseId: resolvedResponseId,
               version,
             },
           },
@@ -264,7 +338,7 @@ export function createStreamTransformer(
 
       transform(chunk, controller) {
         if (chunk instanceof Error) {
-          handleStreamError(chunk, controller, convertToAISDKError, options, url);
+          handleStreamError(chunk, controller, convertToAISDKError, options, modelId, url);
           return;
         }
 
@@ -275,10 +349,18 @@ export function createStreamTransformer(
           });
         }
 
-        if (streamState.isFirstChunk) {
+        const metadata = extractChunkMetadata(chunk);
+        if (metadata.requestId) resolvedRequestId = metadata.requestId;
+        const responseIdChanged =
+          metadata.responseId != null && metadata.responseId !== resolvedResponseId;
+        if (metadata.responseId) resolvedResponseId = metadata.responseId;
+        collectUsage(chunk.getTokenUsage?.());
+        collectCitations(chunk.getCitations?.());
+
+        if (streamState.isFirstChunk || responseIdChanged) {
           streamState.isFirstChunk = false;
           controller.enqueue({
-            id: responseId,
+            id: resolvedResponseId,
             modelId,
             timestamp: new Date(),
             type: "response-metadata",
@@ -294,11 +376,7 @@ export function createStreamTransformer(
         }
 
         const deltaContent = chunk.getDeltaContent();
-        if (
-          typeof deltaContent === "string" &&
-          deltaContent.length > 0 &&
-          streamState.finishReason.unified !== "tool-calls"
-        ) {
+        if (typeof deltaContent === "string" && deltaContent.length > 0) {
           textBlockId = handleTextDelta(
             deltaContent,
             controller,
@@ -348,10 +426,9 @@ function finalizeToolCalls(
     ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>,
   ) => void,
 ): boolean {
-  const toolCalls = Array.from(toolCallsInProgress.values());
   let didEmitAnyToolCalls = false;
 
-  for (const tc of toolCalls) {
+  for (const tc of toolCallsInProgress.values()) {
     if (tc.didEmitCall) {
       continue;
     }
@@ -379,6 +456,7 @@ function finalizeToolCalls(
  * @param controller - The transform stream controller.
  * @param convertToAISDKError - Error conversion function.
  * @param options - Language model call options for context.
+ * @param modelId - Model identifier for error classification.
  * @param url - The request URL for error context.
  * @internal
  */
@@ -387,9 +465,12 @@ function handleStreamError(
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
   convertToAISDKError: StreamTransformerConfig["convertToAISDKError"],
   options: LanguageModelV3CallOptions,
+  modelId: string,
   url: string,
 ): void {
   const aiError = convertToAISDKError(error, {
+    modelId,
+    modelType: "languageModel",
     operation: "doStream",
     requestBody: createAISDKRequestBodySummary(options),
     url,
@@ -509,15 +590,13 @@ function handleToolCallDeltas(
 /**
  * Wraps an async iterable to catch iteration errors and yield them as values.
  *
- * Intentionally single-error: after yielding the first Error, this generator completes.
- * The downstream TransformStream terminates via `controller.error()` on receiving an Error,
- * so no further values would be consumed. This is a cooperative contract — the stream
- * pipeline guarantees no reads after the first error event.
+ * After the first error, the transformer emits an error event and terminates without
+ * a successful finish event.
  * @param iterable - The async iterable to wrap.
  * @yields {Error | T} Original values or Error instances for caught exceptions.
  * @internal
  */
-async function* safeIterate<T>(iterable: AsyncIterable<T>): AsyncGenerator<Error | T> {
+async function* safeIterate<T>(iterable: AsyncIterable<T>): AsyncGenerator<Error | T, void> {
   try {
     yield* iterable;
   } catch (error) {

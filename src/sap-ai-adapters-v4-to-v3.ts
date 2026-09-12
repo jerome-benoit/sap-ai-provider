@@ -14,7 +14,10 @@ import { resolveFullMediaType } from "@ai-sdk/provider-utils";
 
 import { base64FromBytes, getURLHref } from "./convert-to-sap-messages.js";
 
-type V3AssistantContent = Extract<LanguageModelV3Prompt[number], { role: "assistant" }>["content"];
+type V3AssistantPart = Extract<
+  LanguageModelV3Prompt[number],
+  { role: "assistant" }
+>["content"][number];
 type V3ToolContentItem = Extract<
   LanguageModelV3ToolResultOutput,
   { type: "content" }
@@ -57,7 +60,7 @@ export function normalizeV4PromptToV3(prompt: LanguageModelV4Prompt): LanguageMo
     switch (message.role) {
       case "assistant":
         return {
-          content: message.content.flatMap((part) => normalizeAssistantPart(part)),
+          content: message.content.map(normalizeAssistantPart),
           providerOptions: message.providerOptions,
           role: "assistant",
         };
@@ -77,7 +80,7 @@ export function normalizeV4PromptToV3(prompt: LanguageModelV4Prompt): LanguageMo
         };
       case "user":
         return {
-          content: message.content.flatMap((part) => normalizeUserPart(part)),
+          content: message.content.map(normalizeUserPart),
           providerOptions: message.providerOptions,
           role: "user",
         };
@@ -86,11 +89,11 @@ export function normalizeV4PromptToV3(prompt: LanguageModelV4Prompt): LanguageMo
 }
 
 /**
- * Normalizes a V4 assistant part to V3 content parts.
+ * Normalizes a V4 assistant part to its V3 equivalent.
  * @param part - The V4 assistant content part.
- * @returns The equivalent V3 content parts.
+ * @returns The equivalent V3 content part.
  */
-function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
+function normalizeAssistantPart(part: V4AssistantPart): V3AssistantPart {
   switch (part.type) {
     case "custom":
     case "reasoning-file":
@@ -100,9 +103,9 @@ function normalizeAssistantPart(part: V4AssistantPart): V3AssistantContent {
     case "file":
       return normalizeUserPart(part);
     case "tool-result":
-      return [normalizeToolResultPart(part)];
+      return normalizeToolResultPart(part);
     default:
-      return [part];
+      return part;
   }
 }
 
@@ -192,39 +195,35 @@ function normalizeToolResultPart(
 }
 
 /**
- * Normalizes a V4 user part to V3 content parts.
+ * Normalizes a V4 user part to its V3 equivalent.
  * @param part - The V4 user content part.
- * @returns The equivalent V3 content parts.
+ * @returns The equivalent V3 content part.
  */
-function normalizeUserPart(part: V4UserPart): V3UserPart[] {
-  if (part.type === "text") return [part];
+function normalizeUserPart(part: V4UserPart): V3UserPart {
+  if (part.type === "text") return part;
   switch (part.data.type) {
     case "data": {
       const normalizedPart = normalizeMediaType(part);
-      return [
-        {
-          ...normalizedPart,
-          data: part.data.data,
-          mediaType: resolveFullMediaType({ part: normalizedPart }),
-        },
-      ];
+      return {
+        ...normalizedPart,
+        data: part.data.data,
+        mediaType: resolveFullMediaType({ part: normalizedPart }),
+      };
     }
     case "reference":
       throw new UnsupportedFunctionalityError({ functionality: TOP_LEVEL_REFERENCE_ERROR });
     case "text":
-      return [{ providerOptions: part.providerOptions, text: part.data.text, type: "text" }];
+      return { providerOptions: part.providerOptions, text: part.data.text, type: "text" };
     case "url": {
       const normalizedPart = normalizeMediaType(part);
-      return [
-        {
-          ...normalizedPart,
-          data: part.data.url,
-          mediaType:
-            normalizedPart.mediaType === "image" || normalizedPart.mediaType === "image/*"
-              ? "image/*"
-              : resolveFullMediaType({ part: normalizedPart }),
-        },
-      ];
+      return {
+        ...normalizedPart,
+        data: part.data.url,
+        mediaType:
+          normalizedPart.mediaType === "image" || normalizedPart.mediaType === "image/*"
+            ? "image/*"
+            : resolveFullMediaType({ part: normalizedPart }),
+      };
     }
   }
 }

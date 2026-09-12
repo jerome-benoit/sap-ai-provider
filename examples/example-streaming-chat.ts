@@ -16,15 +16,12 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { streamText } from "ai";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
 import { createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
-/**
- *
- */
+/** Consumes text incrementally while reporting final usage after completion. */
 async function streamingChatExample() {
   console.log("🧪 Streaming Chat with Vercel AI SDK (streamText)\n");
 
@@ -51,10 +48,10 @@ async function streamingChatExample() {
       prompt: "Write a short story about a cat who learns to code.",
     });
 
-    let aggregated = "";
+    let characterCount = 0;
     for await (const textPart of result.textStream) {
       process.stdout.write(textPart);
-      aggregated += textPart;
+      characterCount += textPart.length;
     }
 
     // textStream omits error events; preserve the original error for the handler below.
@@ -65,7 +62,7 @@ async function streamingChatExample() {
     }
 
     console.log("\n\n✅ Stream finished");
-    console.log("📄 Total characters:", aggregated.length);
+    console.log("📄 Total characters:", characterCount);
 
     // Get usage after stream completes
     const finalUsage = await result.usage;
@@ -74,6 +71,7 @@ async function streamingChatExample() {
       `${String(finalUsage.inputTokens)} prompt + ${String(finalUsage.outputTokens)} completion tokens`,
     );
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);
     } else if (error instanceof NoSuchModelError) {
@@ -99,6 +97,9 @@ async function streamingChatExample() {
   }
 }
 
-streamingChatExample().catch(console.error);
+streamingChatExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { streamingChatExample };

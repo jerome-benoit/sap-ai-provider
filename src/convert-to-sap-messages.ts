@@ -4,6 +4,7 @@ import type {
   SystemChatMessage,
   ToolChatMessage,
   UserChatMessage,
+  UserChatMessageContentItem,
 } from "@sap-ai-sdk/orchestration";
 
 import {
@@ -62,6 +63,8 @@ const TYPED_ARRAY_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
   Object.getPrototypeOf(Uint8Array.prototype) as object,
   "length",
 );
+
+const SUPPORTED_IMAGE_FORMATS = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"];
 
 /** Native cross-realm typed array brand descriptor. */
 const TYPED_ARRAY_TAG_DESCRIPTOR = Object.getOwnPropertyDescriptor(
@@ -168,24 +171,49 @@ function isUint8Array(value: unknown): value is Uint8Array {
 }
 
 /**
- * Safely serializes a value to JSON string, handling edge cases that would cause JSON.stringify to throw.
- *
- * Handles:
- * - Circular references (objects that reference themselves)
- * - BigInt values (converted to string representation)
- * - Undefined values and symbols (handled by JSON.stringify's default behavior)
- * @param value - The value to serialize.
- * @returns JSON string representation, or a fallback string representation if serialization fails.
+ * Serializes tool output, preserving BigInt values as strings and using a text
+ * representation when JSON serialization is unavailable (for example, cycles).
+ * @param value - The tool output to serialize.
+ * @returns JSON or fallback text.
+ * @throws {InvalidPromptError} When neither JSON nor text serialization is possible.
  * @internal
  */
 function safeJsonStringify(value: unknown): string {
   try {
-    return JSON.stringify(value, (_key, val) =>
+    const serialized: unknown = JSON.stringify(value, (_key, val) =>
       typeof val === "bigint" ? val.toString() : (val as unknown),
     );
+    if (typeof serialized === "string") return serialized;
   } catch {
-    return String(value);
+    // Fall back to the output's text representation.
   }
+  try {
+    return String(value);
+  } catch {
+    throw new InvalidPromptError({ message: "Tool output cannot be serialized.", prompt: value });
+  }
+}
+
+/**
+ * Serializes tool arguments, rejecting values that cannot be represented as JSON.
+ * @param input - Tool arguments or an already serialized JSON string.
+ * @returns Serialized arguments.
+ */
+function serializeToolCallInput(input: unknown): string {
+  try {
+    if (typeof input === "string") {
+      JSON.parse(input);
+      return input;
+    }
+    const serialized: unknown = JSON.stringify(input);
+    if (typeof serialized === "string") return serialized;
+  } catch {
+    // Report invalid arguments as a prompt error instead of emitting an invalid SAP request.
+  }
+  throw new InvalidPromptError({
+    message: "Tool call input must be JSON-serializable.",
+    prompt: input,
+  });
 }
 
 /**
@@ -211,23 +239,7 @@ const JINJA2_DELIMITERS_PATTERN = /\{(?=[{%#])/g;
 /**
  * @internal
  */
-const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}([{%#])`, "g");
-
-/**
- * @internal
- */
-interface UserContentItem {
-  readonly cache_control?: { ttl?: "1h" | "5m"; type: "ephemeral" };
-  readonly file?: {
-    readonly file_data: string;
-    readonly filename?: string;
-  };
-  readonly image_url?: {
-    readonly url: string;
-  };
-  readonly text?: string;
-  readonly type: "file" | "image_url" | "text";
-}
+const JINJA2_DELIMITERS_ESCAPED_PATTERN = new RegExp(`\\{${ZERO_WIDTH_SPACE}(?=[{%#])`, "g");
 
 /**
  * Encodes bytes as base64 using `btoa`, without the Node.js `Buffer` global.
@@ -239,6 +251,8 @@ export function base64FromBytes(bytes: Uint8Array): string {
   const CHUNK_SIZE = 0x8000;
   let byteLength: unknown;
   try {
+    // Native validation rejects detached and out-of-bounds views, including empty ones.
+    Uint8Array.prototype.at.call(bytes, 0);
     byteLength = TYPED_ARRAY_LENGTH_DESCRIPTOR?.get?.call(bytes);
   } catch {
     throw new UnsupportedFunctionalityError({
@@ -288,7 +302,7 @@ export function base64FromBytes(bytes: Uint8Array): string {
  * @param options.warnings - Optional sink the parser pushes Zod validation issues into.
  * @returns SAP AI SDK ChatMessage array ready for orchestration requests.
  * @throws {UnsupportedFunctionalityError} When encountering unsupported user content or file data types.
- * @throws {InvalidPromptError} When encountering unsupported message roles.
+ * @throws {InvalidPromptError} When message roles or tool arguments are invalid, or tool output cannot be serialized.
  */
 export function convertToSAPMessages(
   prompt: LanguageModelV3Prompt,
@@ -317,10 +331,9 @@ export function convertToSAPMessages(
     switch (message.role) {
       case "assistant": {
         let text = "";
-        const textParts: {
-          cacheControl?: { ttl?: "1h" | "5m"; type: "ephemeral" };
-          text: string;
-        }[] = [];
+        const textParts: undefined | { cacheControl?: CacheControl; text: string }[] = parser
+          ? []
+          : undefined;
         let anyCacheControl = false;
         const toolCalls: {
           function: { arguments: string; name: string };
@@ -341,7 +354,7 @@ export function convertToSAPMessages(
               if (includeReasoning && part.text) {
                 const escaped = `<think>${maybeEscape(part.text)}</think>`;
                 text += escaped;
-                textParts.push({ text: escaped });
+                textParts?.push({ text: escaped });
               }
               break;
             }
@@ -351,32 +364,19 @@ export function convertToSAPMessages(
               const partOpts = parsePart(part.providerOptions);
               const cacheControl = partOpts?.cacheControl;
               text += escaped;
-              textParts.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
+              textParts?.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
               if (cacheControl) anyCacheControl = true;
               break;
             }
             case "tool-call": {
               const partOpts = parsePart(part.providerOptions);
-              if (partOpts?.cacheControl && options.warnings) {
-                const feature = "cacheControl on assistant tool-call";
-                if (
-                  !options.warnings.some((w) => (w as { feature?: string }).feature === feature)
-                ) {
-                  options.warnings.push({
-                    details:
-                      "SAP orchestration does not expose cache_control on the assistant tool-call envelope.",
-                    feature,
-                    type: "unsupported",
-                  });
-                }
+              if (partOpts?.cacheControl) {
+                pushWarningOnce(
+                  "cacheControl on assistant tool-call",
+                  "SAP orchestration does not expose cache_control on the assistant tool-call envelope.",
+                );
               }
-              // Normalize tool call input to JSON string (Vercel AI SDK provides strings or objects)
-              let argumentsJson: string;
-              if (typeof part.input === "string") {
-                argumentsJson = part.input;
-              } else {
-                argumentsJson = JSON.stringify(part.input);
-              }
+              const argumentsJson = serializeToolCallInput(part.input);
 
               // Escape tool call arguments if needed (they may contain placeholder syntax)
               toolCalls.push({
@@ -401,9 +401,10 @@ export function convertToSAPMessages(
 
         if (text || toolCalls.length > 0) {
           const assistantMessage: AssistantChatMessage = {
-            content: anyCacheControl
-              ? textParts.map((p) => wrapAsTextContent(p.text, p.cacheControl))
-              : text,
+            content:
+              anyCacheControl && textParts
+                ? textParts.map((p) => wrapAsTextContent(p.text, p.cacheControl))
+                : text,
             role: "assistant",
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           };
@@ -448,7 +449,7 @@ export function convertToSAPMessages(
       }
 
       case "user": {
-        const contentParts: UserContentItem[] = [];
+        const contentParts: UserChatMessageContentItem[] = [];
 
         for (const part of message.content) {
           const partOpts = parsePart(part.providerOptions);
@@ -457,18 +458,11 @@ export function convertToSAPMessages(
             case "file": {
               const fileDataUrl = buildDataUrl(part);
 
-              if (part.mediaType.startsWith("image/")) {
-                const supportedFormats = [
-                  "image/png",
-                  "image/jpeg",
-                  "image/jpg",
-                  "image/gif",
-                  "image/webp",
-                ];
-                const normalizedMediaType = part.mediaType.toLowerCase();
+              const normalizedMediaType = part.mediaType.toLowerCase();
+              if (normalizedMediaType.startsWith("image/")) {
                 const isWildcardImageUrl =
                   getURLHref(part.data) !== undefined && normalizedMediaType === "image/*";
-                if (!isWildcardImageUrl && !supportedFormats.includes(normalizedMediaType)) {
+                if (!isWildcardImageUrl && !SUPPORTED_IMAGE_FORMATS.includes(normalizedMediaType)) {
                   console.warn(
                     `Image format ${part.mediaType} may not be supported by all models. ` +
                       `Recommended formats: PNG, JPEG, GIF, WebP`,
@@ -564,7 +558,7 @@ export function escapeOrchestrationPlaceholders(text: string): string {
  */
 export function unescapeOrchestrationPlaceholders(text: string): string {
   if (!text) return text;
-  return text.replaceAll(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{$1");
+  return text.replaceAll(JINJA2_DELIMITERS_ESCAPED_PATTERN, "{");
 }
 
 /**

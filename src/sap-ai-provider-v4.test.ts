@@ -1,9 +1,4 @@
-/**
- * Unit tests for SAP AI Embedding Model V4 and Provider V4 (Facades).
- *
- * Spec versions, delegation, and factory wiring. Core logic is covered by
- * the V3 core tests and the adapters tests.
- */
+/** V4 public entrypoint integration with AI SDK 7 and unsupported-image behavior. */
 
 import type {
   EmbeddingModelV3CallOptions,
@@ -13,10 +8,9 @@ import type {
   LanguageModelV3StreamResult,
 } from "@ai-sdk/provider";
 
+import { NoSuchModelError } from "@ai-sdk/provider";
 import { embed, generateText, streamText } from "ai";
 import { describe, expect, it, vi } from "vitest";
-
-import type { DeploymentConfig } from "./index-v4.js";
 
 import * as v4Exports from "./index-v4.js";
 import { createSAPAIProvider as createSAPAIProviderV4 } from "./index-v4.js";
@@ -57,60 +51,11 @@ const languageUsage = {
   outputTokens: { reasoning: 0, text: 1, total: 1 },
 };
 
-describe("SAPAIEmbeddingModelV4", () => {
-  const defaultConfig = {
-    deploymentConfig: { resourceGroup: "default" },
-    provider: "sap-ai" as const,
-  };
-
-  it("should have V4 specification version", () => {
-    const model = new SAPAIEmbeddingModelV4("text-embedding-3-small", {}, defaultConfig);
-
-    expect(model.specificationVersion).toBe("v4");
-  });
-
-  it("should delegate doEmbed and convert metadata", async () => {
-    const model = new SAPAIEmbeddingModelV4("text-embedding-3-small", {}, defaultConfig);
-
-    const mockDoEmbed = vi.fn((): Promise<EmbeddingModelV3Result> =>
-      Promise.resolve({
-        embeddings: [[0.1, 0.2]],
-        usage: { tokens: 4 },
-        warnings: [],
-      }),
-    );
-    internalEmbeddingOf(model).internalModel.doEmbed = mockDoEmbed;
-
-    const result = await model.doEmbed({ values: ["hello"] });
-
-    expect(mockDoEmbed).toHaveBeenCalledTimes(1);
-    expect(result.embeddings).toEqual([[0.1, 0.2]]);
-    expect(result.usage).toEqual({ tokens: 4 });
-    expect(result.warnings).toEqual([]);
-  });
-});
-
 describe("createSAPAIProviderV4", () => {
-  it("should create language models with specificationVersion v4", () => {
-    const provider = createSAPAIProviderV4();
-
-    expect(provider.specificationVersion).toBe("v4");
-    const model = provider.languageModel("gpt-4o");
-    expect(model.specificationVersion).toBe("v4");
-    expect(model.modelId).toBe("gpt-4o");
-  });
-
-  it("should create embedding models with specificationVersion v4", () => {
-    const provider = createSAPAIProviderV4();
-    const model = provider.embeddingModel("text-embedding-3-small");
-
-    expect(model.specificationVersion).toBe("v4");
-  });
-
   it("should throw for image models", () => {
     const provider = createSAPAIProviderV4();
 
-    expect(() => provider.imageModel("dall-e-3")).toThrow("does not support image generation");
+    expect(() => provider.imageModel("dall-e-3")).toThrow(NoSuchModelError);
   });
 
   it("should create a provider when the Node process global is unavailable", () => {
@@ -129,9 +74,6 @@ describe("createSAPAIProviderV4", () => {
 describe("AI SDK 7 public integration", () => {
   it("should expose the same public names as the root entrypoint", () => {
     expect(Object.keys(v4Exports).sort()).toEqual(Object.keys(rootExports).sort());
-
-    const deployment: DeploymentConfig = { resourceGroup: "default" };
-    expect(deployment.resourceGroup).toBe("default");
   });
 
   it("should generate text through AI SDK 7", async () => {

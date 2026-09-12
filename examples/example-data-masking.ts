@@ -16,15 +16,12 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider, buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider/v4";
 import { buildDpiMaskingProvider, createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
-/**
- *
- */
+/** Compares configured DPI anonymization with the returned completion. */
 async function dataMaskingExample() {
   console.log("🔒 SAP AI Data Masking Example (DPI)\n");
 
@@ -104,7 +101,7 @@ async function dataMaskingExample() {
 
     // Verbatim echo test
     console.log("\n================================");
-    console.log("📎 Verbatim echo test (shows what model receives)");
+    console.log("📎 Verbatim echo comparison (illustrative, not proof of masking)");
     console.log("================================\n");
 
     const original = "My name is John Smith, email: john.smith@company.com, phone: 555-987-6543";
@@ -133,6 +130,7 @@ async function dataMaskingExample() {
 
     console.log("\n✅ Data masking example completed!");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);
     } else if (error instanceof NoSuchModelError) {
@@ -158,6 +156,9 @@ async function dataMaskingExample() {
   }
 }
 
-dataMaskingExample().catch(console.error);
+dataMaskingExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { dataMaskingExample };

@@ -254,10 +254,10 @@ const restored = unescapeOrchestrationPlaceholders(escaped);
 
 **Solutions:**
 
-1. Check model-specific documentation for limitations
-2. Use `gpt-4.1` or `gpt-4.1-mini` for full tool calling (Gemini limited to 1
-   tool)
-3. Remove unsupported features or use alternatives (JSON mode instead of
+1. Check the deployed model and SAP API support for the requested feature; see
+   [Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
+   for tool-calling references.
+2. Remove unsupported features or use alternatives (JSON mode instead of
    structured outputs)
 
 ### Problem: API-specific feature mismatch (UnsupportedFeatureError)
@@ -675,16 +675,27 @@ for matching install commands.
 
 **Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for V2/V3 compatibility.
 
-### Problem: V2 build fails
+### Problem: V2 embeddings fail with AI SDK 6.0.0
 
-**Symptoms:** Build errors when trying to build the V2 package.
+**Symptoms:** A successful embedding request is followed by a `TypeError` when
+the SDK reads `warnings.length`.
+
+**Cause:** AI SDK 6.0.0 does not default the optional warnings absent from the
+V2 embedding contract. This is an SDK consumer bug, not a SAP transport failure.
+
+**Solution:** Upgrade to a current AI SDK 6 patch (verified with 6.0.282), or use
+the V3 root or `/v3` entrypoint. No V2-specific provider workaround is required.
+
+### Problem: Missing build directory during V2 preparation
+
+**Symptoms:** `npm run prepare:v2` fails with `ENOENT` because `dist/` does not exist.
 
 **Cause:** The `prepare:v2` script requires the `build:v2` script to be run first.
 
 **Solution:** For local V2 build checks, run `npm run build:v2` then
 `npm run check-build:v2`. For standalone publication, run
 `AI_SDK_VERSION=v2 npm publish` from a separate clean checkout: the lifecycle
-builds, verifies, and prepares the package in order. Do not manually run
+builds and prepares V2, then verifies the prepared exports. Do not manually run
 `prepare:v2` before publishing; it rewrites the package manifests.
 
 **Reference:** See [Architecture - Build Process](./ARCHITECTURE.md#build-process).

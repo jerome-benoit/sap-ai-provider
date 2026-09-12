@@ -296,7 +296,7 @@ src/
 │
 │   # V4 Facade Layer (AI SDK 7; LanguageModelV4/EmbeddingModelV4)
 ├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
-├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
+├── sap-ai-provider-v4.ts                           # V4 facade provider factory
 ├── sap-ai-language-model-v4.ts                     # V4 language model facade
 ├── sap-ai-embedding-model-v4.ts                    # V4 embedding model facade
 ├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
@@ -304,7 +304,7 @@ src/
 │
 │   # V2 Facade Layer (AI SDK 5; AI SDK 6 compatibility)
 ├── index-v2.ts                                     # V2 public API exports (AI SDK 5 facade)
-├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
+├── sap-ai-provider-v2.ts                           # V2 facade provider factory
 ├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
 ├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
 ├── sap-ai-adapters-v3-to-v2.ts                     # V3→V2 format conversion
@@ -484,7 +484,7 @@ sequenceDiagram
             Provider->>Provider: Parse SSE chunk
             Provider->>Provider: Transform to StreamPart
 
-            opt First Chunk
+            opt First Chunk or Updated Response ID
                 Provider-->>SDK: {type: "response-metadata"}
             end
             opt First Nonempty Text Delta
@@ -731,8 +731,9 @@ const stream = await client.stream(request, abortSignal, streamOptions, mergeReq
 ```
 
 The signal is forwarded to the SAP AI SDK, which passes it to the underlying
-Axios HTTP client to cancel the request. This does not guarantee that SAP AI Core
-or the deployed model stops server-side processing.
+Axios HTTP client to cancel the request. Canceling the returned provider stream
+also aborts its SDK transport before closing the iterator. Neither path guarantees
+that SAP AI Core or the deployed model stops server-side processing.
 
 ### Tool Calling Flow
 
@@ -1020,7 +1021,8 @@ See `src/sap-ai-settings.ts` for complete type definitions.
 All API interactions use types from `@sap-ai-sdk/orchestration` and
 `@sap-ai-sdk/foundation-models`, validated for type safety. Key types include:
 
-- `ChatCompletionRequest`: Orchestration config and input parameters
+- `ChatCompletionRequest`: Per-call messages, message history, and placeholder values
+- `OrchestrationModuleConfig`: Model and module configuration passed to the client constructor
 - `OrchestrationResponse`: API responses with module results
 - `ChatMessage`: Message format (role, content, tool calls)
 - `ChatCompletionTool`: Function definitions and parameters
@@ -1234,7 +1236,16 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements Embeddi
     const { abortSignal, values } = options;
 
     try {
-      const { embeddingOptions, providerName } = await prepareEmbeddingCall({ maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider }, options);
+      if (values.length > maxEmbeddingsPerCall) {
+        throw new TooManyEmbeddingValuesForCallError({
+          maxEmbeddingsPerCall,
+          modelId: config.modelId,
+          provider: config.provider,
+          values,
+        });
+      }
+      const embeddingOptions = config.parsedProviderOptions;
+      const providerName = getProviderName(config.provider);
       const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
       const warnings: SharedV3Warning[] = [];
       this.resolveWarnings(settings, warnings);
@@ -1257,6 +1268,8 @@ abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements Embeddi
     } catch (error) {
       if (error instanceof TooManyEmbeddingValuesForCallError) throw error;
       throw convertToAISDKError(error, {
+        modelId: config.modelId,
+        modelType: "embeddingModel",
         operation: "doEmbed",
         requestBody: { values: values.length },
         url: this.getUrl(),
@@ -1314,7 +1327,7 @@ assembly; see the source for the complete implementation:
 abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   // Template method - defines the algorithm skeleton
   async doGenerate(config, settings, options): Promise<LanguageModelV3GenerateResult> {
-    const commonParts = await this.buildCommonParts(config, settings, options);
+    const commonParts = this.buildCommonParts(config, settings, options);
     const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
     const client = this.createClient(config, settings, commonParts);
     const response = await this.executeApiCall(client, request, options.abortSignal, config.requestConfig);
@@ -1322,7 +1335,7 @@ abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
   }
 
   // Common logic shared by all strategies
-  protected async buildCommonParts(config, settings, options): Promise<CommonParts> { /* ... */ }
+  protected buildCommonParts(config, settings, options): CommonParts { /* ... */ }
 
   // Primitive operations - implemented by subclasses
   protected abstract buildRequest(...): { request: ApiRequest; warnings: Warning[] };
@@ -1487,7 +1500,6 @@ graph TB
     end
 
     subgraph "Internal V3 Implementation"
-        V3Provider[SAPAIProvider]
         V3LM[SAPAILanguageModel]
         V3EM[SAPAIEmbeddingModel]
         Strategies[API Strategies]
@@ -1498,7 +1510,8 @@ graph TB
         FMAPI[Foundation Models API]
     end
 
-    V2Provider -->|wraps| V3Provider
+    V2Provider -->|creates| V2LM
+    V2Provider -->|creates| V2EM
     V2LM -->|delegates to| V3LM
     V2EM -->|delegates to| V3EM
     V2LM -->|uses| Adapters
@@ -1506,8 +1519,6 @@ graph TB
     Adapters -->|converts V3 results| V2LM
     Adapters -->|converts V3 results| V2EM
 
-    V3Provider -->|creates| V3LM
-    V3Provider -->|creates| V3EM
     V3LM -->|uses| Strategies
     V3EM -->|uses| Strategies
     Strategies -->|calls| OrchAPI
@@ -1517,7 +1528,6 @@ graph TB
     style V2LM fill:#ffe1f5
     style V2EM fill:#ffe1f5
     style Adapters fill:#fff4e1
-    style V3Provider fill:#e1f5ff
     style V3LM fill:#e1f5ff
     style V3EM fill:#e1f5ff
 ```
@@ -1554,14 +1564,14 @@ npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
 
 # V2 publication (run from a separate clean checkout)
-AI_SDK_VERSION=v2 npm publish # prepublishOnly builds, checks, and prepares V2
+AI_SDK_VERSION=v2 npm publish
 ```
 
 **Why sequential?** Both builds use `clean: true` and replace `dist/`. The
 standalone publication also rewrites `package.json` and `package-lock.json` and
 removes the `/v2`, `/v3`, and `/v4` exports, leaving only the V2 root API.
 Run it in a separate clean checkout. Do not run `prepare:v2` manually before
-`npm publish`: the publication lifecycle performs preparation after building.
+`npm publish`: its lifecycle builds V2, prepares it, and verifies the prepared exports.
 
 ### Key Design Decisions
 

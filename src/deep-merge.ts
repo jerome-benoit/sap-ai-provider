@@ -1,17 +1,12 @@
-/** Plain-object merge utility with unsafe-key filtering. */
+/** Plain-object merge utility with own-property copying. */
 
-/**
- * @internal
- */
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
-/**
- * @internal
- */
+/** @internal */
 const MAX_DEPTH = 100;
 
 /**
- * Recursively merges and copies plain objects, excluding prototype-pollution keys.
+ * Recursively merges and copies plain objects without traversing inherited properties.
+ * All string keys are preserved as own data properties, including JSON Schema names
+ * such as `constructor` and `__proto__`, without changing object prototypes.
  * Arrays and other non-plain values replace earlier values by reference; their
  * contents are not traversed. Undefined sources are skipped, but an explicit
  * undefined property value replaces the earlier property value.
@@ -22,62 +17,11 @@ const MAX_DEPTH = 100;
 export function deepMerge<T extends Record<string, unknown>>(
   ...sources: (Partial<T> | undefined)[]
 ): T {
-  let result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = {};
   for (const source of sources) {
-    if (source == null) continue;
-    result = mergeTwo(result, source, new Set(), 0);
+    if (source != null) mergeInto(result, source, new Set(), 0);
   }
   return result as T;
-}
-
-/**
- * Deep merges two objects with better type inference for common cases.
- * @param target - Target object.
- * @param source - Source object.
- * @returns Merged object.
- */
-export function deepMergeTwo<T extends Record<string, unknown>>(
-  target: T | undefined,
-  source: Partial<T> | undefined,
-): T {
-  return deepMerge(target, source);
-}
-
-/**
- * Recursively copies plain-object properties with circular reference detection.
- * Arrays and other non-plain values are retained by reference.
- * Uses ancestor tracking: adds object before recursing, removes after.
- * @param obj - Object to clone.
- * @param ancestors - Set of ancestor objects in the current recursion path.
- * @param depth - Current recursion depth.
- * @returns Cloned object.
- * @throws {Error} When maximum merge depth (100) is exceeded.
- * @throws {Error} When circular reference is detected.
- * @internal
- */
-function cloneDeep(
-  obj: Record<string, unknown>,
-  ancestors: Set<object>,
-  depth: number,
-): Record<string, unknown> {
-  if (depth > MAX_DEPTH) {
-    throw new Error("Maximum merge depth exceeded");
-  }
-  if (ancestors.has(obj)) {
-    throw new Error("Circular reference detected during deep merge");
-  }
-
-  ancestors.add(obj);
-
-  const result: Record<string, unknown> = {};
-  for (const key of Object.keys(obj)) {
-    if (!isSafeKey(key)) continue;
-    const value = obj[key];
-    result[key] = isPlainObject(value) ? cloneDeep(value, ancestors, depth + 1) : value;
-  }
-
-  ancestors.delete(obj);
-  return result;
 }
 
 /**
@@ -92,55 +36,38 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * @param key - Key to check.
- * @returns True if key is safe from prototype pollution.
- * @internal
- */
-function isSafeKey(key: string): boolean {
-  return !DANGEROUS_KEYS.has(key);
-}
-
-/**
- * Merges two objects with circular reference detection.
- * Uses ancestor tracking: adds source before recursing, removes after.
- * @param target - Target object.
+ * Merges a source into an owned accumulator with ancestor-based cycle detection.
+ * @param target - Private accumulator, never a caller-owned object.
  * @param source - Source object.
- * @param ancestors - Set of ancestor objects in the current recursion path.
+ * @param ancestors - Objects in the current recursion path.
  * @param depth - Current recursion depth.
- * @returns Merged object.
- * @throws {Error} When maximum merge depth (100) is exceeded.
- * @throws {Error} When circular reference is detected.
+ * @returns The accumulator.
  * @internal
  */
-function mergeTwo(
+function mergeInto(
   target: Record<string, unknown>,
   source: Record<string, unknown>,
   ancestors: Set<object>,
   depth: number,
 ): Record<string, unknown> {
-  if (depth > MAX_DEPTH) {
-    throw new Error("Maximum merge depth exceeded");
-  }
-  if (ancestors.has(source)) {
-    throw new Error("Circular reference detected during deep merge");
-  }
-
+  if (depth > MAX_DEPTH) throw new Error("Maximum merge depth exceeded");
+  if (ancestors.has(source)) throw new Error("Circular reference detected during deep merge");
   ancestors.add(source);
 
   for (const key of Object.keys(source)) {
-    if (!isSafeKey(key)) continue;
-
     const sourceValue = source[key];
-    const targetValue = target[key];
+    const targetValue = Object.hasOwn(target, key) ? target[key] : undefined;
+    const value = isPlainObject(sourceValue)
+      ? mergeInto(isPlainObject(targetValue) ? targetValue : {}, sourceValue, ancestors, depth + 1)
+      : sourceValue;
 
-    if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
-      const cloned = cloneDeep(targetValue, new Set(), depth + 1);
-      target[key] = mergeTwo(cloned, sourceValue, ancestors, depth + 1);
-    } else if (isPlainObject(sourceValue)) {
-      target[key] = cloneDeep(sourceValue, new Set(), depth + 1);
-    } else {
-      target[key] = sourceValue;
-    }
+    // Define data properties instead of invoking inherited setters such as __proto__.
+    Object.defineProperty(target, key, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
   }
 
   ancestors.delete(source);

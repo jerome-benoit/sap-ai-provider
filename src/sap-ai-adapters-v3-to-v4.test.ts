@@ -8,11 +8,7 @@ import type {
 
 import { describe, expect, it } from "vitest";
 
-import {
-  convertGenerateResultToV4,
-  convertStreamPartToV4,
-  createV4StreamFromInternal,
-} from "./sap-ai-adapters-v3-to-v4.js";
+import { convertGenerateResultToV4, convertStreamPartToV4 } from "./sap-ai-adapters-v3-to-v4.js";
 
 const usage: LanguageModelV3Usage = {
   inputTokens: { cacheRead: 1, cacheWrite: 2, noCache: 10, total: 13 },
@@ -37,35 +33,6 @@ describe("convertStreamPartToV4", () => {
       });
     },
   );
-});
-
-describe("createV4StreamFromInternal", () => {
-  it("merges entry warnings once without mutating the original stream-start part", async () => {
-    const start: LanguageModelV3StreamPart = {
-      type: "stream-start",
-      warnings: [{ feature: "internal", type: "unsupported" }],
-    };
-    const source = new ReadableStream<LanguageModelV3StreamPart>({
-      start(controller) {
-        controller.enqueue(start);
-        controller.enqueue({ delta: "hello", id: "text", type: "text-delta" });
-        controller.close();
-      },
-    });
-    const reader = createV4StreamFromInternal(source, [
-      { message: "Use the replacement", setting: "entry", type: "deprecated" },
-    ]).getReader();
-    expect((await reader.read()).value).toEqual({
-      type: "stream-start",
-      warnings: [
-        { message: "Use the replacement", setting: "entry", type: "deprecated" },
-        { feature: "internal", type: "unsupported" },
-      ],
-    });
-    expect(start.warnings).toEqual([{ feature: "internal", type: "unsupported" }]);
-    expect((await reader.read()).value).toEqual({ delta: "hello", id: "text", type: "text-delta" });
-    expect((await reader.read()).done).toBe(true);
-  });
 });
 
 describe("convertGenerateResultToV4", () => {

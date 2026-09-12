@@ -11,7 +11,7 @@ import type { OrchestrationModelSettings } from "./sap-ai-settings.js";
 import { createSAPAIProviderV4 } from "./sap-ai-provider-v4.js";
 
 interface WireBody {
-  config: { modules?: WireModule | WireModule[]; stream?: { enabled?: boolean } };
+  config?: { modules?: WireModule | WireModule[]; stream?: { enabled?: boolean } };
   config_ref?: unknown;
   messages_history?: unknown[];
   placeholder_values?: Record<string, string>;
@@ -51,14 +51,69 @@ const reply = {
 
 describe("Orchestration serialized HTTP configuration", () => {
   const bodies: WireBody[] = [];
+  let streamScenario: "default" | "idle" | "mixed" = "default";
+  let onStreamClosed: (() => void) | undefined;
   const server = createServer((request, response) => {
     void (async () => {
       let data = "";
       for await (const chunk of request) data += String(chunk);
       const body = JSON.parse(data) as WireBody;
       bodies.push(body);
-      if (body.config.stream?.enabled) {
+      const foundationModels = request.url?.includes("/chat/completions") ?? false;
+      if (body.config?.stream?.enabled || foundationModels) {
         response.setHeader("content-type", "text/event-stream");
+        if (streamScenario !== "default") {
+          const first = {
+            choices: [
+              {
+                delta: {
+                  content: "I will look that up.",
+                  tool_calls: [
+                    {
+                      function: { arguments: "{}", name: "lookup" },
+                      id: "lookup-1",
+                      index: 0,
+                      type: "function",
+                    },
+                  ],
+                },
+                index: 0,
+              },
+            ],
+            citations: [{ ref_id: 1, title: "Source", url: "https://example.com/source" }],
+            id: "stream-completion",
+            usage: {
+              completion_tokens: 20,
+              completion_tokens_details: { reasoning_tokens: 5 },
+              prompt_tokens: 100,
+              prompt_tokens_details: {
+                cache_creation_token_details: { ephemeral_5m_input_tokens: 10 },
+                cache_creation_tokens: 10,
+                cached_tokens: 30,
+              },
+              total_tokens: 120,
+            },
+          };
+          const event = (
+            value: unknown,
+          ) => `data: ${JSON.stringify(foundationModels ? value : { final_result: value, request_id: "stream-request" })}
+
+`;
+          response.write(event(first));
+          if (streamScenario === "idle") {
+            // Complete the SSE delimiter even with SDK versions that buffer its final byte.
+            response.write("\n");
+            response.on("close", () => onStreamClosed?.());
+            return;
+          }
+          response.end(
+            event({
+              choices: [{ delta: {}, finish_reason: "tool_calls", index: 0 }],
+              usage: { completion_tokens: 20, prompt_tokens: 100, total_tokens: 120 },
+            }) + "data: [DONE]\n\n",
+          );
+          return;
+        }
         response.end(
           `data: ${JSON.stringify({
             final_result: {
@@ -89,6 +144,8 @@ describe("Orchestration serialized HTTP configuration", () => {
   });
   beforeEach(() => {
     bodies.length = 0;
+    streamScenario = "default";
+    onStreamClosed = undefined;
   });
   afterAll(async () => {
     server.closeAllConnections();
@@ -143,11 +200,86 @@ describe("Orchestration serialized HTTP configuration", () => {
    * @returns Primary orchestration module configuration.
    */
   function primary(body: WireBody): WireModule {
-    const modules = body.config.modules;
+    const modules = body.config?.modules;
     const module = Array.isArray(modules) ? modules[0] : modules;
     if (!module) throw new Error("Expected local orchestration modules");
     return module;
   }
+
+  describe.each(["orchestration", "foundation-models"] as const)("%s stream contract", (api) => {
+    it("preserves mixed text, tool input, server IDs and detailed usage across chunks", async () => {
+      streamScenario = "mixed";
+      const { stream } = await provider("gpt-4.1", { api }).doStream({ prompt });
+      const parts = [];
+      for await (const part of stream) parts.push(part);
+      expect(
+        parts
+          .filter((part) => part.type === "text-delta")
+          .map((part) => part.delta)
+          .join(""),
+      ).toBe("I will look that up.");
+      expect(parts).toContainEqual({
+        input: "{}",
+        toolCallId: "lookup-1",
+        toolName: "lookup",
+        type: "tool-call",
+      });
+      expect(parts.filter((part) => part.type === "tool-input-start")).toHaveLength(1);
+      expect(parts.filter((part) => part.type === "tool-input-end")).toHaveLength(1);
+      expect(parts).toContainEqual(
+        expect.objectContaining({ id: "stream-completion", type: "response-metadata" }),
+      );
+      const finish = parts.find((part) => part.type === "finish");
+      expect(finish).toMatchObject({
+        finishReason: { unified: "tool-calls" },
+        providerMetadata: {
+          "sap-ai": {
+            cacheUsage: { ephemeral_5m_input_tokens: 10 },
+            responseId: "stream-completion",
+          },
+        },
+        usage: {
+          inputTokens: { cacheRead: 30, cacheWrite: 10, noCache: 60, total: 100 },
+          outputTokens: { reasoning: 5, text: 15, total: 20 },
+        },
+      });
+      if (api === "orchestration") {
+        expect(finish?.providerMetadata).toMatchObject({
+          "sap-ai": { requestId: "stream-request" },
+        });
+        expect(parts).toContainEqual({
+          id: "1",
+          sourceType: "url",
+          title: "Source",
+          type: "source",
+          url: "https://example.com/source",
+        });
+      }
+    });
+
+    it("does not dispatch an already-aborted request", async () => {
+      await expect(
+        provider("gpt-4.1", { api }).doStream({ abortSignal: AbortSignal.abort(), prompt }),
+      ).rejects.toMatchObject({ isRetryable: false, statusCode: 499 });
+      expect(bodies).toEqual([]);
+    });
+
+    it("closes idle HTTP transport when its reader is canceled", async () => {
+      streamScenario = "idle";
+      const closed = new Promise<void>((resolve) => {
+        onStreamClosed = resolve;
+      });
+      const { stream } = await provider("gpt-4.1", { api }).doStream({ prompt });
+      const reader = stream.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) throw new Error("Stream ended before cancellation");
+        if (value.type === "text-delta") break;
+      }
+      await reader.cancel();
+      await closed;
+    }, 2000);
+  });
 
   describe.each([false, true])("streaming=%s", (streaming) => {
     it("sends resolved parameters, tools, format and all local modules", async () => {
@@ -309,7 +441,7 @@ describe("Orchestration serialized HTTP configuration", () => {
         },
         { reasoning: "high", temperature: 0.9 },
       );
-      expect(body.config.modules).toMatchObject([
+      expect(body.config?.modules).toMatchObject([
         {
           prompt_templating: {
             model: { name: "gpt-4.1", params: { reasoning_effort: "high", temperature: 0.9 } },
@@ -317,7 +449,7 @@ describe("Orchestration serialized HTTP configuration", () => {
         },
         { prompt_templating: { model: { name: "gpt-4o", params: { temperature: 0.1 } } } },
       ]);
-      if (!Array.isArray(body.config.modules)) throw new Error("Expected fallback modules");
+      if (!Array.isArray(body.config?.modules)) throw new Error("Expected fallback modules");
       expect(body.config.modules[1]?.prompt_templating.model.params).not.toHaveProperty(
         "reasoning_effort",
       );
@@ -347,7 +479,7 @@ describe("Orchestration serialized HTTP configuration", () => {
         },
       );
       expect(body.config_ref).toEqual({ id: "provider-config" });
-      expect(body.config.modules).toEqual({
+      expect(body.config?.modules).toEqual({
         prompt_templating: { model: { name: "server-model" } },
       });
       expect(body.messages_history).toEqual([{ content: "Hello", role: "user" }]);

@@ -127,7 +127,7 @@ try {
 | **Streaming**       | `streamText({ model: provider("gpt-4.1"), prompt })`             | [Streaming](#streaming-responses)                             |
 | **Tool Calling**    | `generateText({ tools: { myTool: tool({...}) } })`               | [Tool Calling](#tool-calling)                                 |
 | **Error Handling**  | `if (APICallError.isInstance(error)) { /* handle error */ }`     | [API Reference](./API_REFERENCE.md#error-handling--reference) |
-| **Choose Model**    | See 80+ models (GPT, Claude, Gemini, Llama)                      | [Models](./API_REFERENCE.md#models)                           |
+| **Choose Model**    | Discover models available in your tenant                         | [Models](./API_REFERENCE.md#models)                           |
 | **Embeddings**      | `embed({ model: provider.embedding("text-embedding-3-small") })` | [Embeddings](#embeddings)                                     |
 
 ## Installation
@@ -146,17 +146,9 @@ runtimes such as Cloudflare Workers; use a Node.js server runtime for deployment
 | 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider` or `@jerome-benoit/sap-ai-provider/v3` |
 | 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2`                                     |
 
-The main package also exposes
-`@jerome-benoit/sap-ai-provider/v3` as an explicit AI SDK 6 import. It is
-identical to the root: both resolve to the same runtime modules and TypeScript
-declarations, with the same exports and default provider instance. No import
-change is required. This adds a fourth package entrypoint, not another build or
-facade.
-
-```typescript
-// Explicit V3 import; the root import remains supported:
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v3";
-```
+`/v3` is an explicit alias for the AI SDK 6 root entrypoint. Both resolve to
+the same runtime modules and TypeScript declarations, including the same `sapai`
+instance within each module format; existing root imports remain valid.
 
 The Quick Start and inline snippets on this page use AI SDK 6 with the root V3
 entrypoint. The runnable files in `examples/` use the repository's installed
@@ -519,7 +511,7 @@ const result = await generateText({
 
 ⚠️ **Model Limitations:** Some models have tool calling restrictions. See
 [API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
-for the complete comparison table.
+for upstream support documentation.
 
 ### Multi-modal Input (Images)
 
@@ -763,19 +755,19 @@ repository's AI SDK 7 dependency and the local `../src/index-v4` entrypoint.
 In an AI SDK 7 application, import from `@jerome-benoit/sap-ai-provider/v4`.
 See [Installation](#installation) for other AI SDK versions.
 
-| Example                             | Description                 | Key Features                            |
-| ----------------------------------- | --------------------------- | --------------------------------------- |
-| `example-generate-text.ts`          | Basic text generation       | Simple prompts, synchronous generation  |
-| `example-simple-chat-completion.ts` | Simple chat conversation    | System messages, user prompts           |
-| `example-chat-completion-tool.ts`   | Tool calling with functions | Weather API tool, function execution    |
-| `example-streaming-chat.ts`         | Streaming responses         | Real-time text generation, SSE          |
-| `example-image-recognition.ts`      | Multi-modal with images     | Vision models, image analysis           |
-| `example-data-masking.ts`           | Data privacy integration    | DPI masking, anonymization              |
-| `example-content-filtering.ts`      | Content filtering           | Azure Content Safety, orchestration     |
-| `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen   |
-| `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation |
-| `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity  |
-| `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed     |
+| Example                             | Description                 | Key Features                             |
+| ----------------------------------- | --------------------------- | ---------------------------------------- |
+| `example-generate-text.ts`          | Basic text generation       | Simple prompts, non-streaming generation |
+| `example-simple-chat-completion.ts` | Simple chat conversation    | System messages, user prompts            |
+| `example-chat-completion-tool.ts`   | Tool calling with functions | Demo weather tool, function execution    |
+| `example-streaming-chat.ts`         | Streaming responses         | Real-time text generation, SSE           |
+| `example-image-recognition.ts`      | Multi-modal with images     | Vision models, image analysis            |
+| `example-data-masking.ts`           | Data privacy integration    | DPI masking, anonymization               |
+| `example-content-filtering.ts`      | Content filtering           | Azure Content Safety, orchestration      |
+| `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen    |
+| `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation  |
+| `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity   |
+| `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed      |
 
 **Running Examples:**
 

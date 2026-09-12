@@ -20,7 +20,7 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 
 import type { SAPAIApiType, SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
-import { convertProviderMetadataToV2, convertWarningsToV2 } from "./sap-ai-adapters-v3-to-v2.js";
+import { convertWarningsToV2 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAIEmbeddingModel } from "./sap-ai-embedding-model.js";
 
 /** @internal */
@@ -134,13 +134,8 @@ export class SAPAIEmbeddingModelV2 implements EmbeddingModelV2<string> {
     // Return result in V2 format
     return {
       embeddings: result.embeddings,
-      providerMetadata: convertProviderMetadataToV2(result.providerMetadata),
-      response: result.response
-        ? {
-            body: result.response.body,
-            headers: result.response.headers,
-          }
-        : undefined,
+      providerMetadata: result.providerMetadata as SharedV2ProviderMetadata | undefined,
+      response: result.response,
       usage: result.usage,
     };
   }

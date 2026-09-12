@@ -1,94 +1,19 @@
 import type { ImageModelV2, ProviderV2 } from "@ai-sdk/provider-v2";
-import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
-import type { CustomRequestConfig } from "@sap-ai-sdk/core";
-import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import { NoSuchModelError } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import type { SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";
+import type { DeploymentConfig, SAPAIProviderSettings } from "./sap-ai-provider.js";
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
 import { SAPAIEmbeddingModelV2 } from "./sap-ai-embedding-model-v2.js";
 import { SAPAILanguageModelV2 } from "./sap-ai-language-model-v2.js";
-import {
-  SAP_AI_PROVIDER_NAME,
-  validateEmbeddingModelParamsSettings,
-  validateModelParamsSettings,
-} from "./sap-ai-provider-options.js";
-import { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
+import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
+import { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
-/** SAP AI Core deployment configuration: either a deployment ID or a resource group. */
-export type DeploymentConfig = DeploymentIdConfig | ResourceGroupConfig;
-
-/**
- * Configuration settings for the SAP AI Provider.
- * See {@link createSAPAIProvider} for authentication details.
- */
-export interface SAPAIProviderSettings {
-  /**
-   * Default SAP AI Core API for models created by this provider.
-   * `defaultSettings.api`, per-model `api`, and per-call `providerOptions` take precedence.
-   * This option does not enable automatic failover between APIs.
-   * - `'orchestration'` (default): SAP AI Core Orchestration API - supports filtering, grounding, masking, translation
-   * - `'foundation-models'`: SAP AI Core Foundation Models API - supports dataSources, logprobs, seed, etc.
-   * @default 'orchestration'
-   */
-  readonly api?: SAPAIApiType;
-
-  /** Default model settings; settings supplied at model creation override these. */
-  readonly defaultSettings?: SAPAISettings;
-
-  /** SAP AI Core deployment ID. If not provided, the SDK resolves deployment automatically. */
-  readonly deploymentId?: string;
-
-  /** Custom destination configuration for SAP AI Core. */
-  readonly destination?: HttpDestinationOrFetchOptions;
-
-  /**
-   * Log level for SAP Cloud SDK loggers.
-   * Controls process-wide SAP SDK logging (e.g., authentication, service binding).
-   * Creating another provider resets this level, using warn when logLevel is omitted.
-   * Note: SAP_CLOUD_SDK_LOG_LEVEL environment variable takes precedence if set.
-   * @default 'warn'
-   */
-  readonly logLevel?: "debug" | "error" | "info" | "warn";
-
-  /**
-   * Name used in model provider identifiers. Call-level `providerOptions` and
-   * `providerMetadata` keys use the prefix before the first dot; avoid dots in names.
-   * Per-part prompt-cache directives always use the fixed `sap-ai` key.
-   * @default 'sap-ai'
-   */
-  readonly name?: string;
-
-  /**
-   * Custom request configuration forwarded to the underlying SAP AI SDK client on every
-   * call created from this provider.
-   *
-   * Provider-level only (not overridable per-call via `providerOptions['sap-ai']`). The
-   * AI SDK `abortSignal` option always wins over any `signal` on `requestConfig`; the
-   * latter is dropped before the request is forwarded. Other options, including
-   * Node-only agents (`httpAgent`, `httpsAgent`), are forwarded unchanged. The
-   * published package and SAP SDK transport require a Node-compatible runtime.
-   *
-   * See the "Note on `requestConfig`" section under `SAPAIProviderSettings` in
-   * `API_REFERENCE.md` for the full SAP AI Core `AI-*` header guidance.
-   * @see {@link https://sap.github.io/ai-sdk/docs/js/getting-started | SAP Cloud SDK for AI (JS)}
-   * @see {@link https://github.com/jerome-benoit/sap-ai-provider/blob/main/API_REFERENCE.md#requestconfig-note | Note on `requestConfig` (API_REFERENCE.md)}
-   */
-  readonly requestConfig?: CustomRequestConfig;
-
-  /**
-   * SAP AI Core resource group for resource isolation and access control.
-   * @default 'default'
-   */
-  readonly resourceGroup?: string;
-
-  /** Whether to emit warnings for ambiguous configurations (e.g. both deploymentId and resourceGroup). */
-  readonly warnOnAmbiguousConfig?: boolean;
-}
+export type { DeploymentConfig, SAPAIProviderSettings } from "./sap-ai-provider.js";
 
 /** SAP AI Provider interface extending Vercel AI SDK ProviderV2. */
 export interface SAPAIProviderV2 extends ProviderV2 {
@@ -171,10 +96,6 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
   const providerApi = options.api ?? "orchestration";
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
-    if (settings.modelParams) {
-      validateModelParamsSettings(settings.modelParams);
-    }
-
     const mergedSettings = mergeSettingsWithApi(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
@@ -194,10 +115,6 @@ export function createSAPAIProvider(options: SAPAIProviderSettings = {}): SAPAIP
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
   ): SAPAIEmbeddingModelV2 => {
-    if (settings.modelParams) {
-      validateEmbeddingModelParamsSettings(settings.modelParams);
-    }
-
     const mergedSettings = mergeSettingsWithApi(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,

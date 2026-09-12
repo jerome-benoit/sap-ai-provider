@@ -171,9 +171,9 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-This covers the local validation commands; CI also validates its configured
-runtime matrix. `build:v2` replaces `dist/`, so rerun `npm run build` before
-using or packaging the main package afterward.
+CI runs these checks on Node.js 24, including the Node.js and Edge VM suites.
+`build:v2` replaces `dist/`, so rerun `npm run build` before using or packaging
+the main package afterward.
 
 ### Git Hooks (Lefthook)
 
@@ -356,7 +356,9 @@ npm test             # Runs test suite
 
 ### Test Coverage
 
-- Aim for >80% code coverage
+- Run `npm run test:coverage` to enforce the 90% thresholds for branches,
+  functions, lines, and statements configured in `vitest.node.config.ts`.
+  CI runs the normal test suites, not this coverage check.
 - Focus on critical paths and error handling
 - Don't test trivial getters/setters
 

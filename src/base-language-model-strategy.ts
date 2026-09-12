@@ -8,20 +8,17 @@ import type {
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
-
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
-import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
+import { getProviderName } from "./sap-ai-provider-options.js";
 import {
   buildGenerateResult,
   buildModelParams,
   createAISDKRequestBodySummary,
-  createStreamTransformer,
   extractCompletionId,
   extractResponseMetadata,
   mapToolChoice,
@@ -31,8 +28,8 @@ import {
   type SDKResponse,
   type SDKStreamChunk,
   type SDKTokenUsage,
-  StreamIdGenerator,
 } from "./strategy-utils.js";
+import { createStreamTransformer, StreamIdGenerator } from "./stream-transformer.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -56,6 +53,7 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  * @internal
  */
 export interface StreamCallResponse {
+  readonly cancel: () => void;
   readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
@@ -109,7 +107,7 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
-      const commonParts = await this.buildCommonParts(config, settings, options);
+      const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings, commonParts);
@@ -133,6 +131,8 @@ export abstract class BaseLanguageModelStrategy<
       });
     } catch (error) {
       throw convertToAISDKError(error, {
+        modelId: config.modelId,
+        modelType: "languageModel",
         operation: "doGenerate",
         requestBody: createAISDKRequestBodySummary(options),
         url: this.getUrl(),
@@ -146,7 +146,8 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      const commonParts = await this.buildCommonParts(config, settings, options);
+      options.abortSignal?.throwIfAborted();
+      const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings, commonParts);
@@ -165,7 +166,9 @@ export abstract class BaseLanguageModelStrategy<
       const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 
       const transformedStream = createStreamTransformer({
+        cancel: streamResponse.cancel,
         convertToAISDKError,
+        extractChunkMetadata: (chunk) => this.extractMetadata(chunk),
         idGenerator,
         includeRawChunks: options.includeRawChunks ?? false,
         modelId: config.modelId,
@@ -194,6 +197,8 @@ export abstract class BaseLanguageModelStrategy<
       };
     } catch (error) {
       throw convertToAISDKError(error, {
+        modelId: config.modelId,
+        modelType: "languageModel",
         operation: "doStream",
         requestBody: createAISDKRequestBodySummary(options),
         url: this.getUrl(),
@@ -209,18 +214,14 @@ export abstract class BaseLanguageModelStrategy<
    * @returns Common build result with typed messages and tool choice.
    * @internal
    */
-  protected async buildCommonParts(
+  protected buildCommonParts(
     config: LanguageModelStrategyConfig,
     settings: TSettings,
     options: LanguageModelV3CallOptions,
-  ): Promise<CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>> {
+  ): CommonBuildResult<ChatMessage[], SAPToolChoice | undefined> {
     const providerName = getProviderName(config.provider);
 
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
+    const sapOptions = config.parsedProviderOptions;
 
     const warnings: SharedV3Warning[] = [];
 

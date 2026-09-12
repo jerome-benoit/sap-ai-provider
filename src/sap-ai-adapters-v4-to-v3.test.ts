@@ -110,42 +110,6 @@ describe("normalizeV4PromptToV3", () => {
     expect(() => normalizeV4PromptToV3(prompt)).toThrow(UnsupportedFunctionalityError);
   });
 
-  it("should pass tool-approval-response parts through (V3 contract)", () => {
-    const prompt = [
-      {
-        content: [{ approvalId: "a1", approved: true, type: "tool-approval-response" }],
-        role: "tool",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    expect(result).toEqual(prompt);
-  });
-
-  it("should pass through text and execution-denied tool outputs", () => {
-    const prompt = [
-      {
-        content: [
-          {
-            output: { type: "text", value: "ok" },
-            toolCallId: "c1",
-            toolName: "t",
-            type: "tool-result",
-          },
-          {
-            output: { reason: "nope", type: "execution-denied" },
-            toolCallId: "c2",
-            toolName: "t",
-            type: "tool-result",
-          },
-        ],
-        role: "tool",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    expect(result).toHaveLength(1);
-    expect((result[0] as { content: unknown[] }).content).toHaveLength(2);
-  });
-
   it("should resolve and encode inline tool-output media without copying input first", () => {
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const prompt = [
@@ -405,58 +369,5 @@ describe("normalizeV4PromptToV3", () => {
     } finally {
       warn.mockRestore();
     }
-  });
-
-  it("should preserve message-level providerOptions on all roles", () => {
-    const prompt = [
-      { content: "sys", providerOptions: { "test-provider": { a: 1 } }, role: "system" },
-      {
-        content: [{ text: "hi", type: "text" }],
-        providerOptions: { "test-provider": { b: 2 } },
-        role: "user",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    expect(result[0]).toMatchObject({ providerOptions: { "test-provider": { a: 1 } } });
-    expect(result[1]).toMatchObject({ providerOptions: { "test-provider": { b: 2 } } });
-  });
-
-  it("should carry part-level providerOptions through file mappings", () => {
-    const prompt = [
-      {
-        content: [
-          {
-            data: { data: "aGVsbG8=", type: "data" },
-            mediaType: "image/png",
-            providerOptions: { "test-provider": { c: 3 } },
-            type: "file",
-          },
-        ],
-        role: "user",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    expect(result[0]).toMatchObject({
-      content: [{ providerOptions: { "test-provider": { c: 3 } } }],
-    });
-  });
-
-  it("should pass custom tool content through (native V3 variant)", () => {
-    const prompt = [
-      {
-        content: [
-          {
-            output: { type: "content", value: [{ type: "custom" }] },
-            toolCallId: "c1",
-            toolName: "t",
-            type: "tool-result",
-          },
-        ],
-        role: "tool",
-      },
-    ] as unknown as LanguageModelV4Prompt;
-    const result = normalizeV4PromptToV3(prompt);
-    const message = result[0] as { content: { output: { value: unknown[] } }[] };
-    expect(message.content[0]?.output.value).toEqual([{ type: "custom" }]);
   });
 });

@@ -1,6 +1,7 @@
 /** Node-specific cross-realm tests for SAP message conversion. */
 import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
@@ -64,19 +65,17 @@ describe("convertToSAPMessages across JavaScript realms", () => {
     ]);
   });
 
-  it("should reject a detached ArrayBuffer with an AI SDK error", () => {
-    const data = new ArrayBuffer(2);
-    structuredClone(data, { transfer: [data] });
+  it.each(["ArrayBuffer", "Uint8Array"] as const)("should reject a detached %s", (type) => {
+    const bytes = new Uint8Array([104, 105]);
+    const data = type === "ArrayBuffer" ? bytes.buffer : bytes;
+    structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
     const prompt: LanguageModelV3Prompt = [
       {
-        content: [{ data: data as unknown as Uint8Array, mediaType: "image/png", type: "file" }],
+        content: [{ data: data as Uint8Array, mediaType: "image/png", type: "file" }],
         role: "user",
       },
     ];
-
-    expect(() => convertToSAPMessages(prompt)).toThrow(
-      "Detached ArrayBuffer file data is unsupported.",
-    );
+    expect(() => convertToSAPMessages(prompt)).toThrow(UnsupportedFunctionalityError);
   });
   it("should reject an Int8Array disguised through the Uint8Array prototype", () => {
     const data = new Int8Array([104, 105]);

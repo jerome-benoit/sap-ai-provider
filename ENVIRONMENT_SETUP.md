@@ -20,12 +20,10 @@ tests does not establish pure Edge runtime support.
 
 ## Table of Contents
 
-<!-- markdownlint-disable MD051 -->
-
 - [Quick Setup (Local Development)](#quick-setup-local-development)
-  - [1️⃣ Get Your Service Key](#1-get-your-service-key)
-  - [2️⃣ Configure Environment](#2-configure-environment)
-  - [3️⃣ Use in Code](#3-use-in-code)
+  - [1️⃣ Get Your Service Key](#1️⃣-get-your-service-key)
+  - [2️⃣ Configure Environment](#2️⃣-configure-environment)
+  - [3️⃣ Use in Code](#3️⃣-use-in-code)
   - [Running Examples](#running-examples)
 - [SAP BTP Deployment](#sap-btp-deployment)
 - [Advanced Configuration](#advanced-configuration)
@@ -33,15 +31,13 @@ tests does not establish pure Edge runtime support.
   - [Custom Deployment IDs](#custom-deployment-ids)
   - [Destination Configuration](#destination-configuration)
 - [Troubleshooting](#troubleshooting)
-  - [❌ Authentication Failed (401)](#authentication-failed-401)
-  - [❌ Cannot Find Module 'dotenv'](#cannot-find-module-dotenv)
-  - [❌ Deployment Not Found (404)](#deployment-not-found-404)
-  - [✅ Verify Configuration](#verify-configuration)
+  - [❌ Authentication Failed (401)](#-authentication-failed-401)
+  - [❌ Cannot Find Module 'dotenv'](#-cannot-find-module-dotenv)
+  - [❌ Deployment Not Found (404)](#-deployment-not-found-404)
+  - [✅ Verify Configuration](#-verify-configuration)
 - [Environment Variables Reference](#environment-variables-reference)
 - [Security Best Practices](#security-best-practices)
 - [Related Documentation](#related-documentation)
-
-<!-- markdownlint-enable MD051 -->
 
 ## Quick Setup (Local Development)
 

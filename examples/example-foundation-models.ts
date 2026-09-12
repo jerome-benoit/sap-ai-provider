@@ -222,6 +222,7 @@ async function foundationModelsExample() {
 
     console.log("\n✅ All Foundation Models examples completed!");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       console.error("❌ Authentication Error:", error.message);
     } else if (error instanceof NoSuchModelError) {
@@ -251,6 +252,9 @@ async function foundationModelsExample() {
   }
 }
 
-foundationModelsExample().catch(console.error);
+foundationModelsExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { foundationModelsExample };

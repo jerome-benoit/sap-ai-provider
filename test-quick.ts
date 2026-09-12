@@ -4,7 +4,7 @@
  *
  * Usage: npx tsx test-quick.ts
  *
- * Make sure AICORE_SERVICE_KEY is set in .env or environment
+ * Set AICORE_SERVICE_KEY locally or use VCAP_SERVICES on SAP BTP.
  */
 
 import "dotenv/config";
@@ -12,21 +12,18 @@ import { generateText } from "ai";
 
 import { createSAPAIProvider } from "./src/index-v4";
 
-/**
- *
- */
+/** Checks for configured credentials before a single generation request. */
 async function quickTest() {
   console.log("🧪 Quick Test: SAP AI Provider\n");
 
   // Check for credentials
-  if (!process.env.AICORE_SERVICE_KEY) {
-    console.error("❌ AICORE_SERVICE_KEY environment variable is not set!");
-    console.error("\nSet it in .env file:");
-    console.error('AICORE_SERVICE_KEY=\'{"serviceurls":{"AI_API_URL":"..."},...}\'');
-    process.exit(1);
+  if (!process.env.AICORE_SERVICE_KEY && !process.env.VCAP_SERVICES) {
+    console.error("Set AICORE_SERVICE_KEY locally or configure VCAP_SERVICES on SAP BTP.");
+    process.exitCode = 1;
+    return;
   }
 
-  console.log("✅ AICORE_SERVICE_KEY found");
+  console.log("Authentication configuration found");
   console.log("🔄 Creating provider...");
 
   try {
@@ -47,8 +44,9 @@ async function quickTest() {
     );
     console.log("🏁 Finish:", finishReason);
   } catch (error) {
-    console.error("\n❌ Test failed:", error);
-    process.exit(1);
+    // Do not dump request bodies, headers or nested transport errors.
+    console.error("Test failed:", error instanceof Error ? error.name : "Unknown error");
+    process.exitCode = 1;
   }
 }
 

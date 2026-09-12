@@ -82,7 +82,7 @@ function updatePackageJson(): void {
 
   pkg.name = V2_OVERRIDES.name;
   pkg.description = V2_OVERRIDES.description;
-  pkg.keywords = [...pkg.keywords, ...V2_OVERRIDES.additionalKeywords];
+  pkg.keywords = [...new Set([...pkg.keywords, ...V2_OVERRIDES.additionalKeywords])];
   pkg.peerDependencies.ai = V2_OVERRIDES.aiPeerDependency;
 
   // The standalone build renames index-v2.* to index.*. Remove all versioned

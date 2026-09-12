@@ -18,8 +18,7 @@ testing and debugging. For production code, use the SAP AI SDK with
   - [Basic Structure](#basic-structure)
   - [Request Structure](#request-structure)
 - [Tool Calling Example](#tool-calling-example)
-  <!-- markdownlint-disable-next-line MD051 -->
-  - [⚠️ Model-Specific Limitations](#model-specific-limitations)
+  - [Model-Specific Limitations](#model-specific-limitations)
 - [Complete Working Example](#complete-working-example)
 - [Response Format](#response-format)
   - [Success Response (HTTP 200)](#success-response-http-200)
@@ -79,15 +78,12 @@ to extract the required values:
 
 ```bash
 # Parse AICORE_SERVICE_KEY and extract individual values
-CLIENT_ID=$(echo "$AICORE_SERVICE_KEY" | jq -r '.clientid')
-CLIENT_SECRET=$(echo "$AICORE_SERVICE_KEY" | jq -r '.clientsecret')
-AUTH_URL=$(echo "$AICORE_SERVICE_KEY" | jq -r '.url')
-AI_API_URL=$(echo "$AICORE_SERVICE_KEY" | jq -r '.serviceurls.AI_API_URL')
+CLIENT_ID=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.clientid')
+CLIENT_SECRET=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.clientsecret')
+AUTH_URL=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.url')
+AI_API_URL=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.serviceurls.AI_API_URL')
 
-# Verify extraction succeeded
-echo "Client ID: ${CLIENT_ID:0:20}..."  # Show first 20 chars only
-echo "Auth URL: $AUTH_URL"
-echo "API URL: $AI_API_URL"
+# Keep credential values out of logs.
 ```
 
 Use a JSON parser rather than extracting credentials with regular expressions:
@@ -99,28 +95,25 @@ via `apt install jq`, `brew install jq`, or your package manager.
 ```bash
 #!/bin/bash
 
-# Your credentials (replace with actual values)
-CLIENT_ID="your-client-id-here"
-CLIENT_SECRET="your-client-secret-here"
-AUTH_URL="https://your-subdomain.authentication.region.hana.ondemand.com"
+# Reuse CLIENT_ID, CLIENT_SECRET and AUTH_URL extracted in Step 1.
+set -e
 
 # Encode credentials to Base64
 CREDENTIALS=$(printf '%s:%s' "$CLIENT_ID" "$CLIENT_SECRET" | base64 | tr -d '\n')
 
 # Request OAuth token
-TOKEN_RESPONSE=$(curl -s --request POST \
-  --url "${AUTH_URL}/oauth/token" \
+TOKEN_RESPONSE=$(curl --fail --silent --show-error --request POST \
+  --url "${AUTH_URL%/}/oauth/token" \
   --header "Authorization: Basic ${CREDENTIALS}" \
   --header "Content-Type: application/x-www-form-urlencoded" \
   --data "grant_type=client_credentials")
 
 # Extract access token from JSON response
-ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+ACCESS_TOKEN=$(printf '%s' "$TOKEN_RESPONSE" | jq -er '.access_token | select(type == "string" and length > 0)')
 
 # Verify token was obtained
 if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
   echo "❌ Failed to get OAuth token"
-  echo "Response: $TOKEN_RESPONSE"
   exit 1
 fi
 
@@ -190,8 +183,8 @@ curl --fail-with-body --show-error --request POST \
   "config": {
     "modules": {
       "prompt_templating": {
-        "prompt": {/* Prompt configuration */},
-        "model": {/* Model configuration */}
+        "prompt": { "template": [{ "role": "user", "content": "Hello" }] },
+        "model": { "name": "gpt-4.1", "version": "latest" }
       }
     }
   }
@@ -215,7 +208,7 @@ For complete tool calling documentation including all models, parallel
 execution, error handling, and best practices, see
 [API Reference - Tool Calling](./API_REFERENCE.md#tool-calling-function-calling).
 
-### ⚠️ Model-Specific Limitations
+### Model-Specific Limitations
 
 For complete model capabilities and tool calling support, see
 [API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations).
@@ -229,15 +222,16 @@ For complete model capabilities and tool calling support, see
 set -e
 
 # ============================================
-# Configuration (REPLACE WITH YOUR VALUES)
+# Configuration (set AICORE_SERVICE_KEY and DEPLOYMENT_ID in the environment)
 # ============================================
 
-CLIENT_ID="your-client-id"
-CLIENT_SECRET="your-client-secret"
-AUTH_URL="https://your-auth-url.authentication.region.hana.ondemand.com"
-AI_API_URL="https://api.ai.prod.region.aws.ml.hana.ondemand.com"
-DEPLOYMENT_ID="your-deployment-id"
-RESOURCE_GROUP="default"
+: "${AICORE_SERVICE_KEY:?Set your SAP service key JSON}"
+: "${DEPLOYMENT_ID:?Set your orchestration deployment ID}"
+CLIENT_ID=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.clientid')
+CLIENT_SECRET=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.clientsecret')
+AUTH_URL=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.url')
+AI_API_URL=$(printf '%s' "$AICORE_SERVICE_KEY" | jq -er '.serviceurls.AI_API_URL')
+RESOURCE_GROUP="${RESOURCE_GROUP:-default}"
 
 # ============================================
 # Get OAuth Token
@@ -247,13 +241,13 @@ echo "🔐 Getting OAuth token..."
 
 CREDENTIALS=$(printf '%s:%s' "$CLIENT_ID" "$CLIENT_SECRET" | base64 | tr -d '\n')
 
-TOKEN_RESPONSE=$(curl -s --request POST \
-  --url "${AUTH_URL}/oauth/token" \
+TOKEN_RESPONSE=$(curl --fail --silent --show-error --request POST \
+  --url "${AUTH_URL%/}/oauth/token" \
   --header "Authorization: Basic ${CREDENTIALS}" \
   --header "Content-Type: application/x-www-form-urlencoded" \
   --data "grant_type=client_credentials")
 
-ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.access_token')
+ACCESS_TOKEN=$(printf '%s' "$TOKEN_RESPONSE" | jq -er '.access_token | select(type == "string" and length > 0)')
 
 if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
   echo "❌ Failed to get OAuth token"
@@ -334,6 +328,8 @@ echo "✅ Request completed"
 
 ### Success Response (HTTP 200)
 
+Excerpt showing the final result; SAP also returns `intermediate_results`.
+
 ```json
 {
   "request_id": "uuid",
@@ -341,7 +337,7 @@ echo "✅ Request completed"
     "id": "chatcmpl-xxx",
     "object": "chat.completion",
     "created": 1234567890,
-    "model": "gpt-4.1-2024-08-06",
+    "model": "gpt-4.1",
     "choices": [
       {
         "index": 0,
@@ -393,13 +389,17 @@ echo "✅ Request completed"
 | Missing Tenant Id    | Expired token, wrong endpoint, missing `AI-Resource-Group` header, misconfigured service key | Regenerate token, verify `/v2` paths, ensure `AI-Resource-Group` header is set, check service key contains tenant information |
 | Bad Credentials      | Wrong client ID/secret, bad Base64 encoding                                                  | Check credentials, verify Base64 output has no newlines                                                                       |
 | Deployment Not Found | Wrong deployment ID, wrong region, wrong resource group                                      | Verify deployment exists, check resource group                                                                                |
-| Multiple Tools Error | Gemini model with >1 tool                                                                    | Use 1 tool OR switch to OpenAI/Claude models                                                                                  |
 
 ---
 
 ## Debugging Tips
 
 **Verbose output:**
+
+`--verbose` prints request headers, including bearer/basic credentials. Use it
+only in a private terminal; redact credentials, tokens and sensitive payloads
+before sharing diagnostics. Error messages and response bodies may also contain
+sensitive data.
 
 ```bash
 curl --verbose --fail-with-body --show-error ...
@@ -435,7 +435,8 @@ Base64URL payload for inspection; it does not verify the token signature.
 
 ## Foundation Models API
 
-The Foundation Models API provides direct model access using OpenAI-compatible
+The provider uses the Foundation Models API's Azure OpenAI endpoint for direct
+model access using OpenAI-compatible
 parameters such as `logprobs`, `seed`, and `logit_bias`. These parameters are not
 necessarily exclusive to this API: Orchestration can forward model parameters
 as well, subject to backend/model support. Use a different endpoint path.
@@ -443,7 +444,7 @@ as well, subject to backend/model support. Use a different endpoint path.
 ### Endpoint
 
 ```text
-${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions
+${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions?api-version=${API_VERSION}
 ```
 
 Note: Replace the deployment-relative `/v2/completion` path (Orchestration)
@@ -451,9 +452,13 @@ with `/chat/completions` (Foundation Models); keep the base `/v2/inference` path
 
 ### Basic Request
 
+Use a direct Azure OpenAI deployment and a supported API version. The installed
+SAP SDK uses `2024-10-21`.
+
 ```bash
+API_VERSION="2024-10-21"
 curl --fail-with-body --show-error --request POST \
-  --url "${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions" \
+  --url "${AI_API_URL}/v2/inference/deployments/${DEPLOYMENT_ID}/chat/completions?api-version=${API_VERSION}" \
   --header "Authorization: Bearer ${ACCESS_TOKEN}" \
   --header "AI-Resource-Group: ${RESOURCE_GROUP}" \
   --header "Content-Type: application/json" \
@@ -468,16 +473,16 @@ curl --fail-with-body --show-error --request POST \
 }'
 ```
 
-### Foundation Models-Specific Parameters
+### Model-Specific Request Parameters
 
 ```json
 {
   "model": "gpt-4.1",
-  "messages": [...],
+  "messages": [{ "role": "user", "content": "Hello" }],
   "logprobs": true,
   "top_logprobs": 5,
   "seed": 42,
-  "logit_bias": {"50256": -100},
+  "logit_bias": { "50256": -100 },
   "user": "user-123"
 }
 ```
@@ -498,9 +503,7 @@ curl --fail-with-body --show-error --request POST \
       },
       "finish_reason": "stop",
       "logprobs": {
-        "content": [
-          {"token": "Hello", "logprob": -0.5, "top_logprobs": [...]}
-        ]
+        "content": [{ "token": "Hello", "logprob": -0.5, "top_logprobs": [{ "token": "Hello", "logprob": -0.5 }] }]
       }
     }
   ],
