@@ -127,7 +127,6 @@
     "@ai-sdk/provider-v2": "npm:@ai-sdk/provider@^2.0.4",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
-    "@types/markdown-it": "^14.2.0",
     "@types/node": "^25.9.6",
     "@vitest/coverage-v8": "^5.0.0",
     "ai": "^7.0.99",
