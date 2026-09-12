@@ -9,12 +9,12 @@ AI SDK 6. Use `/v2` for AI SDK 5 (also supported by AI SDK 6 compatibility),
 and `/v4` for AI SDK 7. Package release versions are independent of provider
 specification versions and AI SDK majors.
 
-**Unreleased:** `@jerome-benoit/sap-ai-provider/v3` explicitly selects the same
+`@jerome-benoit/sap-ai-provider/v3` explicitly selects the same
 V3 API as the root. Both paths resolve to the same ESM/CommonJS modules and
 TypeScript declarations, so all exports, model classes, helpers, and the default
 `sapai` instance are identical within each module format. It is not a facade
-and does not change the root contract. The `/v3` subpath is not available in npm
-release 5.0.1 or in the standalone V2 package.
+and does not change the root contract. The standalone V2 package does not
+provide a `/v3` subpath.
 
 To avoid confusion, this documentation uses the following terminology
 consistently:

@@ -140,21 +140,21 @@ The published package targets Node.js. Its ESM output uses Node
 The source-level Edge test suite does not establish deployability to pure Edge
 runtimes such as Cloudflare Workers; use a Node.js server runtime for deployment.
 
-| AI SDK | Install                                            | Provider import                     |
-| ------ | -------------------------------------------------- | ----------------------------------- |
-| 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
-| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
-| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
+| AI SDK | Install                                            | Provider import                                                         |
+| ------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4`                                     |
+| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider` or `@jerome-benoit/sap-ai-provider/v3` |
+| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2`                                     |
 
-**Unreleased:** The main package also exposes
+The main package also exposes
 `@jerome-benoit/sap-ai-provider/v3` as an explicit AI SDK 6 import. It is
 identical to the root: both resolve to the same runtime modules and TypeScript
 declarations, with the same exports and default provider instance. No import
 change is required. This adds a fourth package entrypoint, not another build or
-facade; it is not available in npm release 5.0.1.
+facade.
 
 ```typescript
-// Explicit V3 import (unreleased); the root import remains supported:
+// Explicit V3 import; the root import remains supported:
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v3";
 ```
 

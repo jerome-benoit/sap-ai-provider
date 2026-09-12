@@ -1427,16 +1427,15 @@ AI SDK.
 This repository publishes **two npm packages** from a single codebase. The main
 package exposes four entrypoints for three provider specifications; the standalone
 V2 package preserves the existing package name for consumers that cannot use
-subpath exports. **Unreleased:** The explicit `/v3` subpath is not available in
-npm release 5.0.1.
+subpath exports.
 
-| Package export                                   | Interface                              | Target users                     |
-| ------------------------------------------------ | -------------------------------------- | -------------------------------- |
-| `@jerome-benoit/sap-ai-provider`                 | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
-| `@jerome-benoit/sap-ai-provider/v2`              | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
-| `@jerome-benoit/sap-ai-provider/v3` (unreleased) | Same V3 exports as the root            | AI SDK 6                         |
-| `@jerome-benoit/sap-ai-provider/v4`              | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
-| `@jerome-benoit/sap-ai-provider-v2`              | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| Package export                      | Interface                              | Target users                     |
+| ----------------------------------- | -------------------------------------- | -------------------------------- |
+| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
+| `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| `@jerome-benoit/sap-ai-provider/v3` | Same V3 exports as the root            | AI SDK 6                         |
+| `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
+| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
 
 The root and `/v3` share `src/index.ts` and the exact same export targets:
 `dist/index.js` / `dist/index.d.ts` for ESM and `dist/index.cjs` /

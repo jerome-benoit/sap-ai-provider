@@ -319,7 +319,7 @@ authentication setup.
 
 - Use relative imports (`../src/index-v4`) for repo examples to match the
   installed AI SDK 7 development dependency. The root V3 import and its identical
-  `/v3` subpath (unreleased) target AI SDK 6; `/v2` targets AI SDK 5 and also
+  `/v3` subpath target AI SDK 6; `/v2` targets AI SDK 5 and also
   supports AI SDK 6 compatibility.
 - Add comment explaining production import path:
 
@@ -368,8 +368,7 @@ npm test             # Runs test suite
   V2 facade for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades
   share the V3 core; the main package exposes four entrypoints backed by three
   artifact families. The root and `/v3` map to the same `index.*` runtime and
-  declaration files, not separate builds. The `/v3` subpath is unreleased and
-  unavailable in npm release 5.0.1.
+  declaration files, not separate builds.
 - Follow the separation: provider factory → language model
 - Maintain Node.js 22.12+ compatibility and source-level Edge VM coverage;
   do not equate the latter with pure Edge deployment support
