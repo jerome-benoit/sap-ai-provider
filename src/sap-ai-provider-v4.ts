@@ -1,9 +1,8 @@
 /**
  * SAP AI Provider V4 - Vercel AI SDK ProviderV4 implementation for SAP AI Core.
  *
- * Factory for LanguageModelV4 / EmbeddingModelV4 instances. Shared
- * configuration plumbing (validation, settings merge, deployment config)
- * is reused from the V3 provider modules.
+ * Creates V4 facades over the shared V3 models. Validation and settings-merge
+ * utilities are shared with the V2 and V3 factories.
  */
 
 import type { ImageModelV4, ProviderV4 } from "@ai-sdk/provider";
@@ -18,11 +17,7 @@ import type { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 import { SAPAIEmbeddingModelV4 } from "./sap-ai-embedding-model-v4.js";
 import { SAPAILanguageModelV4 } from "./sap-ai-language-model-v4.js";
-import {
-  SAP_AI_PROVIDER_NAME,
-  validateEmbeddingModelParamsSettings,
-  validateModelParamsSettings,
-} from "./sap-ai-provider-options.js";
+import { SAP_AI_PROVIDER_NAME, validateModelParamsSettings } from "./sap-ai-provider-options.js";
 import { mergeSettingsWithApi } from "./sap-ai-validation.js";
 
 export type { DeploymentConfig, SAPAIProviderSettings } from "./sap-ai-provider.js";
@@ -42,6 +37,7 @@ export interface SAPAIProviderV4 extends ProviderV4 {
   /** Always throws - SAP AI Core does not support image generation. */
   imageModel(modelId: string): ImageModelV4;
   languageModel(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV4;
+  /** @deprecated Use `embeddingModel()` instead. */
   textEmbeddingModel(
     modelId: SAPAIEmbeddingModelId,
     settings?: SAPAIEmbeddingSettings,
@@ -86,10 +82,6 @@ export function createSAPAIProviderV4(options: SAPAIProviderSettings = {}): SAPA
   const providerApi = options.api ?? "orchestration";
 
   const createModel = (modelId: SAPAIModelId, settings: SAPAISettings = {}) => {
-    if (settings.modelParams) {
-      validateModelParamsSettings(settings.modelParams);
-    }
-
     const mergedSettings = mergeSettingsWithApi(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,
@@ -109,10 +101,6 @@ export function createSAPAIProviderV4(options: SAPAIProviderSettings = {}): SAPA
     modelId: SAPAIEmbeddingModelId,
     settings: SAPAIEmbeddingSettings = {},
   ): SAPAIEmbeddingModelV4 => {
-    if (settings.modelParams) {
-      validateEmbeddingModelParamsSettings(settings.modelParams);
-    }
-
     const mergedSettings = mergeSettingsWithApi(
       options.defaultSettings as Record<string, unknown> | undefined,
       settings,

@@ -27,15 +27,12 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider, buildTranslationConfig } from "@jerome-benoit/sap-ai-provider/v4";
 import { buildTranslationConfig, createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
-/**
- *
- */
+/** Configures SAP document translation independently of the underlying model. */
 async function translationExample() {
   console.log("🌐 SAP AI Translation Example\n");
 
@@ -216,43 +213,49 @@ async function translationExample() {
     console.log("   - Input translation: Translate user queries to LLM's language");
     console.log("   - Output translation: Translate responses to user's language");
     console.log("   - Bidirectional: Combine both for seamless multilingual UX");
-    console.log("   - Supported languages: Use ISO 639-1 codes (en, de, fr, es, etc.)");
+    console.log(
+      "   - Use language identifiers supported by SAP Document Translation (e.g., en-US).",
+    );
     console.log("   - No source language needed for output translation (auto-detected)");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
-      console.error("❌ Authentication Error:", error.message);
+      console.error("❌ Authentication Error:", error.name);
     } else if (error instanceof NoSuchModelError) {
       console.error("❌ Model Not Found:", error.modelId);
     } else if (error instanceof APICallError) {
-      console.error("❌ API Call Error:", error.statusCode, error.message);
+      console.error("❌ API Call Error:", error.statusCode, error.name);
 
       // Parse SAP-specific metadata
       const sapError = parseSAPErrorResponseBody(error.responseBody);
       if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
-        console.error("   SAP Error Code:", sapError.error.code);
-        console.error("   SAP Error Message:", sapError.error.message);
       }
 
       // Common errors
       if (error.statusCode === 400) {
-        console.error("\n💡 Invalid language code or translation configuration.");
-        console.error("   Use ISO 639-1 language codes (e.g., en, de, fr, es).");
+        console.error("\n💡 HTTP 400: inspect the request and translation configuration.");
+        console.error(
+          "   Check SAP Document Translation language identifiers, including locale tags.",
+        );
       }
     } else {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("❌ Example failed:", errorMessage);
+      const errorName = error instanceof Error ? error.name : "Unknown error";
+      console.error("❌ Example failed:", errorName);
     }
 
     console.error("\n💡 Troubleshooting tips:");
     console.error("   - Ensure AICORE_SERVICE_KEY is set with valid credentials");
     console.error("   - Check that your SAP AI Core instance is accessible");
-    console.error("   - Verify the model supports the translation feature");
-    console.error("   - Use valid ISO 639-1 language codes (2-letter codes like 'en', 'de')");
+    console.error("   - Verify translation is available in your SAP orchestration setup");
+    console.error("   - Use supported SAP Document Translation language identifiers");
     console.error("   - Check SAP AI Core documentation for supported languages");
   }
 }
 
-translationExample().catch(console.error);
+translationExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { translationExample };

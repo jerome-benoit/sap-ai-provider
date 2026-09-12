@@ -2,13 +2,12 @@
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
+  LanguageModelV3ResponseMetadata,
   LanguageModelV3StreamResult,
   SharedV3Warning,
 } from "@ai-sdk/provider";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { ChatMessage } from "@sap-ai-sdk/orchestration";
-
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
 
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
@@ -16,23 +15,26 @@ import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sa
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
-import { getProviderName, sapAILanguageModelProviderOptions } from "./sap-ai-provider-options.js";
+import { getProviderName } from "./sap-ai-provider-options.js";
 import {
   buildGenerateResult,
   buildModelParams,
   createAISDKRequestBodySummary,
-  createStreamTransformer,
-  extractCompletionId,
+  extractCompletionMetadata,
   extractResponseMetadata,
   mapToolChoice,
+  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
-  type SDKTokenUsage,
-  StreamIdGenerator,
 } from "./strategy-utils.js";
+import {
+  createAbortError,
+  createStreamTransformer,
+  StreamIdGenerator,
+} from "./stream-transformer.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -56,15 +58,14 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  * @internal
  */
 export interface StreamCallResponse {
+  readonly cancel: () => void;
   readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
-  readonly getTokenUsage: () => null | SDKTokenUsage | undefined;
   /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
   readonly requestId?: string;
   readonly responseHeaders?: Record<string, string>;
-  /** Server-provided completion ID extracted from _data, if available. */
-  readonly responseId?: string;
+  readonly responseMetadata?: LanguageModelV3ResponseMetadata;
   readonly stream: AsyncIterable<SDKStreamChunk>;
 }
 
@@ -109,7 +110,8 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
-      const commonParts = await this.buildCommonParts(config, settings, options);
+      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings, commonParts);
@@ -117,12 +119,10 @@ export abstract class BaseLanguageModelStrategy<
       const response = await this.executeApiCall(
         client,
         request,
-        options.abortSignal ?? undefined,
-        config.requestConfig,
+        mergeRequestConfig(config.requestConfig, options.abortSignal, options.headers),
       );
 
       return buildGenerateResult({
-        modelId: config.modelId,
         providerName: commonParts.providerName,
         requestBody: request,
         requestId: response.requestId,
@@ -133,6 +133,8 @@ export abstract class BaseLanguageModelStrategy<
       });
     } catch (error) {
       throw convertToAISDKError(error, {
+        modelId: config.modelId,
+        modelType: "languageModel",
         operation: "doGenerate",
         requestBody: createAISDKRequestBodySummary(options),
         url: this.getUrl(),
@@ -146,7 +148,8 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      const commonParts = await this.buildCommonParts(config, settings, options);
+      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings, commonParts);
@@ -156,28 +159,31 @@ export abstract class BaseLanguageModelStrategy<
         request,
         options.abortSignal ?? undefined,
         settings,
-        config.requestConfig,
+        mergeRequestConfig(config.requestConfig, undefined, options.headers),
       );
 
       const idGenerator = new StreamIdGenerator();
-      const responseId = streamResponse.responseId ?? idGenerator.generateResponseId();
 
       const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 
       const transformedStream = createStreamTransformer({
+        cancel: streamResponse.cancel,
         convertToAISDKError,
+        extractChunkMetadata: (chunk) => this.extractMetadata(chunk),
         idGenerator,
         includeRawChunks: options.includeRawChunks ?? false,
         modelId: config.modelId,
         options,
         providerName: commonParts.providerName,
         requestId: streamResponse.requestId,
-        responseId,
+        responseMetadata: {
+          ...streamResponse.responseMetadata,
+          id: streamResponse.responseMetadata?.id ?? idGenerator.generateResponseId(),
+        },
         sdkStream: streamResponse.stream,
         streamResponseGetCitations: streamResponse.getCitations,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
         streamResponseGetIntermediateFailures: streamResponse.getIntermediateFailures,
-        streamResponseGetTokenUsage: streamResponse.getTokenUsage,
         url: this.getUrl(),
         version: VERSION,
         warnings: [...commonParts.warnings, ...warnings, ...streamWarnings],
@@ -194,6 +200,8 @@ export abstract class BaseLanguageModelStrategy<
       };
     } catch (error) {
       throw convertToAISDKError(error, {
+        modelId: config.modelId,
+        modelType: "languageModel",
         operation: "doStream",
         requestBody: createAISDKRequestBodySummary(options),
         url: this.getUrl(),
@@ -209,18 +217,14 @@ export abstract class BaseLanguageModelStrategy<
    * @returns Common build result with typed messages and tool choice.
    * @internal
    */
-  protected async buildCommonParts(
+  protected buildCommonParts(
     config: LanguageModelStrategyConfig,
     settings: TSettings,
     options: LanguageModelV3CallOptions,
-  ): Promise<CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>> {
+  ): CommonBuildResult<ChatMessage[], SAPToolChoice | undefined> {
     const providerName = getProviderName(config.provider);
 
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
+    const sapOptions = config.parsedProviderOptions;
 
     const warnings: SharedV3Warning[] = [];
 
@@ -309,7 +313,6 @@ export abstract class BaseLanguageModelStrategy<
    * Executes the non-streaming API call.
    * @param client - SDK client instance.
    * @param request - Request body.
-   * @param abortSignal - Optional abort signal.
    * @param requestConfig - Optional custom request configuration (e.g. custom headers).
    * @returns SDK response.
    * @internal
@@ -317,7 +320,6 @@ export abstract class BaseLanguageModelStrategy<
   protected abstract executeApiCall(
     client: TClient,
     request: TRequest,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse>;
 
@@ -340,7 +342,7 @@ export abstract class BaseLanguageModelStrategy<
   ): Promise<StreamCallResponse>;
 
   /**
-   * Resolves request id, completion id, and normalised headers from an SDK response.
+   * Resolves completion metadata, request ID, and normalised headers from an SDK response.
    * @param response - Raw SDK response or stream response.
    * @returns Combined metadata fragment.
    * @internal
@@ -348,23 +350,22 @@ export abstract class BaseLanguageModelStrategy<
   protected extractMetadata(response: unknown): {
     requestId?: string;
     responseHeaders?: Record<string, string>;
-    responseId?: string;
+    responseMetadata: LanguageModelV3ResponseMetadata;
   } {
-    const responseId = extractCompletionId(
+    const responseMetadata = extractCompletionMetadata(
       response as { _data?: unknown; getRequestId?: () => string | undefined },
-      this.getCompletionIdPath(),
+      this.getCompletionDataPath(),
     );
     const { headers, requestId } = extractResponseMetadata(response, "rawResponse");
-    return { requestId, responseHeaders: headers, responseId };
+    return { requestId, responseHeaders: headers, responseMetadata };
   }
 
   /**
-   * Returns the API-specific dotted path used to read the completion id off
-   * the SDK response's internal `_data` payload.
-   * @returns Path traversed under `_data` (e.g. `["final_result","id"]`, `["id"]`).
+   * Returns the API-specific path to the completion object in an SDK payload.
+   * @returns Completion path (`["final_result"]` for orchestration, `[]` for Foundation Models).
    * @internal
    */
-  protected abstract getCompletionIdPath(): readonly string[];
+  protected abstract getCompletionDataPath(): readonly string[];
 
   /**
    * Returns whether to escape template placeholders for this API.

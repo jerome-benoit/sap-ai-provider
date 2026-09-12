@@ -104,16 +104,17 @@ try {
 
   console.log(result.text);
 } catch (error) {
-  if (error instanceof APICallError) {
-    console.error("SAP AI Core API error:", error.message);
-    console.error("Status:", error.statusCode);
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("SAP AI Core API error:", error.statusCode, error.name);
   } else {
-    console.error("Unexpected error:", error);
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
 
-> **Note:** Requires `AICORE_SERVICE_KEY` environment variable. See
+> **Note:** For local service-key setup, set `AICORE_SERVICE_KEY`. SAP BTP service
+> bindings and custom destinations are alternatives. See
 > [Environment Setup](./ENVIRONMENT_SETUP.md) for configuration.
 
 ## Quick Reference
@@ -127,7 +128,7 @@ try {
 | **Streaming**       | `streamText({ model: provider("gpt-4.1"), prompt })`             | [Streaming](#streaming-responses)                             |
 | **Tool Calling**    | `generateText({ tools: { myTool: tool({...}) } })`               | [Tool Calling](#tool-calling)                                 |
 | **Error Handling**  | `if (APICallError.isInstance(error)) { /* handle error */ }`     | [API Reference](./API_REFERENCE.md#error-handling--reference) |
-| **Choose Model**    | See 80+ models (GPT, Claude, Gemini, Llama)                      | [Models](./API_REFERENCE.md#models)                           |
+| **Choose Model**    | Discover models available in your tenant                         | [Models](./API_REFERENCE.md#models)                           |
 | **Embeddings**      | `embed({ model: provider.embedding("text-embedding-3-small") })` | [Embeddings](#embeddings)                                     |
 
 ## Installation
@@ -140,11 +141,15 @@ The published package targets Node.js. Its ESM output uses Node
 The source-level Edge test suite does not establish deployability to pure Edge
 runtimes such as Cloudflare Workers; use a Node.js server runtime for deployment.
 
-| AI SDK | Install                                            | Provider import                     |
-| ------ | -------------------------------------------------- | ----------------------------------- |
-| 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
-| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
-| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
+| AI SDK | Install                                            | Provider import                                                         |
+| ------ | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| 7      | `npm install @jerome-benoit/sap-ai-provider ai@^7` | `@jerome-benoit/sap-ai-provider/v4`                                     |
+| 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider` or `@jerome-benoit/sap-ai-provider/v3` |
+| 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2`                                     |
+
+`/v3` is an explicit alias for the AI SDK 6 root entrypoint. Both resolve to
+the same runtime modules and TypeScript declarations, including the same `sapai`
+instance within each module format; existing root imports remain valid.
 
 The Quick Start and inline snippets on this page use AI SDK 6 with the root V3
 entrypoint. The runnable files in `examples/` use the repository's installed
@@ -375,11 +380,12 @@ try {
   // streamText returns a result object; its usage property is a promise.
   console.log("\n\nUsage:", await result.usage);
 } catch (error) {
+  process.exitCode = 1;
   if (APICallError.isInstance(error)) {
-    console.error("API Error:", error.message);
-    // See Error Handling section for complete error type reference
+    console.error("API error:", error.statusCode, error.name);
+  } else {
+    console.error("Streaming failed:", error instanceof Error ? error.name : "Unknown error");
   }
-  throw error;
 }
 ```
 
@@ -507,7 +513,7 @@ const result = await generateText({
 
 ⚠️ **Model Limitations:** Some models have tool calling restrictions. See
 [API Reference - Model-Specific Tool Limitations](./API_REFERENCE.md#model-specific-tool-limitations)
-for the complete comparison table.
+for upstream support documentation.
 
 ### Multi-modal Input (Images)
 
@@ -575,7 +581,7 @@ Ground LLM responses in your own documents using vector databases.
 const provider = createSAPAIProvider({
   defaultSettings: {
     grounding: buildDocumentGroundingConfig({
-      filters: [{ id: "vector-store-1", data_repositories: ["*"] }],
+      filters: [{ id: "knowledge-filter", data_repositories: ["*"] }],
       placeholders: { input: ["groundingRequest"], output: "groundingOutput" },
     }),
   },
@@ -675,7 +681,8 @@ authentication, model parameters, data masking, content filtering, and more.
 - `deploymentId`: Specific deployment ID (auto-resolved if not set)
 - `requestConfig`: Custom HTTP request configuration (headers, params, timeout, etc.)
   forwarded to the underlying SAP AI SDK client on every call. Provider-level scope
-  only; use `requestConfig.headers` for SAP-specific headers such as
+  only; per-call `headers` can override individual headers. Use `requestConfig.headers`
+  for SAP-specific headers such as
   `AI-Object-Store-Secret-Name` (feedback service). See
   [API Reference](./API_REFERENCE.md#sapaiprovidersettings) for portability caveats.
 - `modelParams`: Temperature, maxTokens, topP, and other generation parameters
@@ -751,19 +758,19 @@ repository's AI SDK 7 dependency and the local `../src/index-v4` entrypoint.
 In an AI SDK 7 application, import from `@jerome-benoit/sap-ai-provider/v4`.
 See [Installation](#installation) for other AI SDK versions.
 
-| Example                             | Description                 | Key Features                            |
-| ----------------------------------- | --------------------------- | --------------------------------------- |
-| `example-generate-text.ts`          | Basic text generation       | Simple prompts, synchronous generation  |
-| `example-simple-chat-completion.ts` | Simple chat conversation    | System messages, user prompts           |
-| `example-chat-completion-tool.ts`   | Tool calling with functions | Weather API tool, function execution    |
-| `example-streaming-chat.ts`         | Streaming responses         | Real-time text generation, SSE          |
-| `example-image-recognition.ts`      | Multi-modal with images     | Vision models, image analysis           |
-| `example-data-masking.ts`           | Data privacy integration    | DPI masking, anonymization              |
-| `example-content-filtering.ts`      | Content filtering           | Azure Content Safety, orchestration     |
-| `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen   |
-| `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation |
-| `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity  |
-| `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed     |
+| Example                             | Description                 | Key Features                             |
+| ----------------------------------- | --------------------------- | ---------------------------------------- |
+| `example-generate-text.ts`          | Basic text generation       | Simple prompts, non-streaming generation |
+| `example-simple-chat-completion.ts` | Simple chat conversation    | System messages, user prompts            |
+| `example-chat-completion-tool.ts`   | Tool calling with functions | Demo weather tool, function execution    |
+| `example-streaming-chat.ts`         | Streaming responses         | Real-time text generation, SSE           |
+| `example-image-recognition.ts`      | Multi-modal with images     | Vision models, image analysis            |
+| `example-data-masking.ts`           | Data privacy integration    | DPI masking, anonymization               |
+| `example-content-filtering.ts`      | Content filtering           | Azure Content Safety, orchestration      |
+| `example-document-grounding.ts`     | Document grounding (RAG)    | Vector store, retrieval-augmented gen    |
+| `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation  |
+| `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity   |
+| `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed      |
 
 **Running Examples:**
 
@@ -771,8 +778,8 @@ See [Installation](#installation) for other AI SDK versions.
 npx tsx examples/example-generate-text.ts
 ```
 
-> **Note:** Examples require `AICORE_SERVICE_KEY` environment variable. See
-> [Environment Setup](./ENVIRONMENT_SETUP.md) for configuration.
+> **Note:** Configure `AICORE_SERVICE_KEY` locally or bind the application to
+> SAP AI Core on SAP BTP. See [Environment Setup](./ENVIRONMENT_SETUP.md).
 
 ## Migration Guides
 

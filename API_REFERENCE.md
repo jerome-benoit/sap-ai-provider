@@ -9,6 +9,11 @@ AI SDK 6. Use `/v2` for AI SDK 5 (also supported by AI SDK 6 compatibility),
 and `/v4` for AI SDK 7. Package release versions are independent of provider
 specification versions and AI SDK majors.
 
+`@jerome-benoit/sap-ai-provider/v3` aliases the root V3 API: both resolve to
+the same ESM/CommonJS modules and TypeScript declarations, including the same
+`sapai` instance within each module format. The standalone V2 package has no
+`/v3` subpath.
+
 To avoid confusion, this documentation uses the following terminology
 consistently:
 
@@ -182,9 +187,9 @@ The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provid
 
 ### Export Aliases
 
-The V2 package exports classes with simplified names for convenience:
+The V2 entrypoints export model classes and the provider interface with simplified names:
 
-| Internal Class          | Public Export         |
+| Internal Declaration    | Public Export         |
 | ----------------------- | --------------------- |
 | `SAPAILanguageModelV2`  | `SAPAILanguageModel`  |
 | `SAPAIEmbeddingModelV2` | `SAPAIEmbeddingModel` |
@@ -249,11 +254,11 @@ try {
 
   console.log("Embedding dimensions:", embedding.length);
 } catch (error) {
-  if (error instanceof APICallError) {
-    console.error("SAP AI Core API error:", error.message);
-    console.error("Status:", error.statusCode);
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("SAP AI Core API error:", error.statusCode, error.name);
   } else {
-    console.error("Unexpected error:", error);
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
@@ -427,10 +432,12 @@ try {
 
   console.log(result.text);
 } catch (error) {
-  if (error instanceof APICallError) {
-    console.error("API error:", error.message, "- Status:", error.statusCode);
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("API error:", error.statusCode, error.name);
+  } else {
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
-  throw error;
 }
 ```
 
@@ -569,11 +576,13 @@ or wrap JSON Schema with the AI SDK's `jsonSchema` helper; raw SAP/OpenAI
 `{ type: "function", function: { parameters: ... } }` definitions belong to
 the provider's model-level `tools` setting, not the AI SDK `tools` map.
 
-Only function tools are converted. Provider-defined tools are omitted with an
-`unsupported` warning. On Orchestration, non-empty call-level `tools` take
-precedence over model-level SAP-format `tools`, with a warning when both are
-provided. An empty call-level list does not clear model-level tools. For tools
-defined only in model settings, the high-level SDK versions differ:
+Only function tools are converted. Their explicit `strict` flag is forwarded;
+backend/model support determines the accepted schema constraints. Provider-defined
+tools are omitted with an `unsupported` warning. On Orchestration, non-empty
+call-level `tools` take precedence over model-level SAP-format `tools`, with a
+warning when both are provided. An empty call-level list does not clear
+model-level tools. For tools defined only in model settings, the high-level SDK
+versions differ:
 
 - **AI SDK 5/6:** `generateText` and `streamText` drop `toolChoice` when their
   `tools` map is absent or empty. Set
@@ -629,10 +638,20 @@ const result = await generateText({
 // Model can call getWeather 3 times in parallel
 ```
 
-⚠️ **Important:** Set `parallel_tool_calls: false` when using Gemini models or
-when tool execution order matters.
+Set `parallel_tool_calls: false` when your deployment does not support parallel
+calls or when tool execution order matters.
 
 ### Multi-Turn Tool Conversations
+
+When replaying assistant tool calls through Orchestration, inputs must be
+JSON-serializable; already serialized strings must contain valid JSON. Invalid
+arguments throw `InvalidPromptError` before a request is sent.
+
+Tool results with `output.type: "text"` send `output.value` as SAP tool-message
+text, without the AI SDK envelope or output-level provider options. Other output
+variants retain JSON-envelope serialization, including nested V4 content and
+references. Orchestration escaping and valid tool-result-part cache directives
+apply after serialization.
 
 The AI SDK executes tools with an `execute` function. Enable subsequent model
 steps with `stopWhen` to let the model consume tool results:
@@ -889,6 +908,10 @@ async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Res
 
 - `values`: Array of strings to embed
 - `abortSignal`: Optional signal to cancel the request
+- `headers`: Optional per-call HTTP headers; defined values override provider
+  `requestConfig.headers` case-insensitively
+- `providerOptions`: Optional embedding overrides described under
+  [Provider Options](#sapaiembeddingprovideroptions)
 
 **Returns:** Object containing `embeddings` (same order as input values),
 `usage.tokens`, `warnings`, and provider metadata. Response headers are included
@@ -915,18 +938,20 @@ console.log(result.embeddings); // [[0.1, 0.2, ...], [0.3, 0.4, ...]]
 
 ### SAPAIEmbeddingSettings
 
-Configuration options for embedding models.
+Configuration options for embedding models. Invalid `maxEmbeddingsPerCall`
+values (including `NaN`, nonpositive numbers, and fractions) throw a Zod error
+when the model is created, across all entrypoints.
 
 **Properties:**
 
-| Property               | Type                                                                 | Default           | Description                                               |
-| ---------------------- | -------------------------------------------------------------------- | ----------------- | --------------------------------------------------------- |
-| `api`                  | `SAPAIApiType`                                                       | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)      |
-| `maxEmbeddingsPerCall` | `number`                                                             | `2048`            | Maximum values per API call                               |
-| `modelVersion`         | `string`                                                             | -                 | Specific version of the model                             |
-| `type`                 | `"document" \| "query" \| "text"`                                    | `'text'`          | Embedding type                                            |
-| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>`         | -                 | Model-specific parameters                                 |
-| `masking`              | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -                 | Data masking configuration (DPI) - Orchestration API only |
+| Property               | Type                                                                 | Default           | Description                                                                                |
+| ---------------------- | -------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| `api`                  | `SAPAIApiType`                                                       | `'orchestration'` | API to use (`'orchestration'`/`'foundation-models'`)                                       |
+| `maxEmbeddingsPerCall` | `number`                                                             | `2048`            | Maximum values per API call: a positive integer, or `Infinity` for no provider-side limit. |
+| `modelVersion`         | `string`                                                             | -                 | Specific version of the model                                                              |
+| `type`                 | `"document" \| "query" \| "text"`                                    | `'text'`          | Embedding type                                                                             |
+| `modelParams`          | `FoundationModelsEmbeddingParams \| Record<string, unknown>`         | -                 | Model-specific parameters                                                                  |
+| `masking`              | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -                 | Data masking configuration (DPI) - Orchestration API only                                  |
 
 **Embedding response metadata (`doEmbed` result):**
 
@@ -1137,7 +1162,7 @@ Configuration options for the SAP AI Provider.
 | `destination`           | `HttpDestinationOrFetchOptions`          | -                 | Custom destination configuration                                                                                                                                                                     |
 | `requestConfig`         | `CustomRequestConfig`                    | -                 | Custom HTTP request configuration forwarded on every call. See [Note on `requestConfig`](#requestconfig-note) below for scope, portability, abort semantics, and SAP AI Core `AI-*` header guidance. |
 | `defaultSettings`       | `SAPAISettings`                          | -                 | Default model settings applied to all models                                                                                                                                                         |
-| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Log level for SAP Cloud SDK internal logging (authentication, service binding). Can be overridden via `SAP_CLOUD_SDK_LOG_LEVEL` environment variable                                                 |
+| `logLevel`              | `'debug' \| 'error' \| 'info' \| 'warn'` | `'warn'`          | Process-wide SAP Cloud SDK log level. Each provider creation sets it (`warn` when omitted), unless `SAP_CLOUD_SDK_LOG_LEVEL` is set.                                                                 |
 | `warnOnAmbiguousConfig` | `boolean`                                | `true`            | Emit warnings for ambiguous configurations (e.g., when both `deploymentId` and `resourceGroup` are provided, `deploymentId` wins)                                                                    |
 
 **Example:**
@@ -1161,10 +1186,14 @@ const settings: SAPAIProviderSettings = {
 
 > **Note:**
 >
-> - **Provider-level scope only.** `requestConfig` is applied to every call from this
->   provider and is not currently overridable per-call via `providerOptions['sap-ai']`.
->   For per-request variation (e.g. different `AI-Object-Store-Secret-Name` per tenant),
->   create separate provider instances.
+> - **Scope and header precedence.** `requestConfig` applies to every call from
+>   this provider; `providerOptions['sap-ai']` cannot override it. Standard AI SDK
+>   per-call `headers` are merged into `requestConfig.headers` for generation,
+>   streaming, and embeddings. Defined call headers win case-insensitively;
+>   `undefined` call values preserve provider defaults. Provider header values
+>   retain Axios semantics, including `false` to suppress a header rather than
+>   send the string `"false"`. Other per-request transport differences require
+>   separate provider instances.
 > - **Runtime support.** The published package targets Node.js 22.12+;
 >   `httpAgent` and `httpsAgent` configure its Node HTTP transport. The provider
 >   does not strip these fields or guarantee that they are ignored elsewhere.
@@ -1174,8 +1203,10 @@ const settings: SAPAIProviderSettings = {
 >   `CustomRequestConfig` `Record<string, any>` index signature; it is honoured
 >   end-to-end but is not a first-class typed field.)
 > - **Abort semantics.** The AI SDK `abortSignal` option always wins over any `signal`
->   set on `requestConfig`; the latter is dropped before the request is forwarded via
->   the internal `mergeRequestConfig` helper.
+>   set on `requestConfig`; the latter is dropped before forwarding. An already
+>   aborted language-model call rejects with a non-retryable `APICallError`
+>   (status 499), including when the signal has a custom reason. For in-flight
+>   streaming cancellation, see [Request Cancellation](./ARCHITECTURE.md#request-cancellation).
 > - **SAP AI Core `AI-*` headers.** `requestConfig.headers` accepts service-specific
 >   headers that alter server-side behaviour:
 >   - **`AI-Object-Store-Secret-Name`** — names the object store secret used by the
@@ -1334,22 +1365,24 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                                                                 | Default | Description                                                         |
-| ---------------------------- | -------------------------------------------------------------------- | ------- | ------------------------------------------------------------------- |
-| `modelVersion`               | `string`                                                             | -       | Specific model version                                              |
-| `includeReasoning`           | `boolean`                                                            | `false` | Include reasoning parts in SAP prompt conversion                    |
-| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`  | Escape template delimiters to prevent conflicts                     |
-| `modelParams`                | `CommonModelParams`                                                  | -       | Model generation parameters                                         |
-| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -       | Data masking configuration (DPI)                                    |
-| `filtering`                  | `FilteringModule`                                                    | -       | Content filtering configuration                                     |
-| `grounding`                  | `GroundingModule`                                                    | -       | Document grounding configuration                                    |
-| `translation`                | `TranslationModule`                                                  | -       | Translation configuration (Orchestration only)                      |
-| `placeholderValues`          | `Record<string, string>`                                             | -       | Default values for template placeholders                            |
-| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -       | Reference to a Prompt Registry template                             |
-| `responseFormat`             | `ResponseFormat`                                                     | -       | Response format specification                                       |
-| `streamOptions`              | `OrchestrationStreamOptions`                                         | -       | Stream options for post-LLM modules (Orchestration only)            |
-| `tools`                      | `ChatCompletionTool[]`                                               | -       | Tool definitions in SAP AI SDK format                               |
-| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -       | Ordered fallback prompt module configurations for Orchestration API |
+| Property                     | Type                                                                 | Default   | Description                                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `api`                        | `SAPAIApiType`                                                       | Inherited | Model-level API override; see [API selection precedence](#resolveapiproviderapi-modelapi-invocationapi).           |
+| `modelVersion`               | `string`                                                             | -         | Specific model version                                                                                             |
+| `includeReasoning`           | `boolean`                                                            | `false`   | Include reasoning parts in SAP prompt conversion                                                                   |
+| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`    | Escape template delimiters to prevent conflicts                                                                    |
+| `modelParams`                | `CommonModelParams`                                                  | -         | Model generation parameters                                                                                        |
+| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -         | Data masking configuration (DPI)                                                                                   |
+| `filtering`                  | `FilteringModule`                                                    | -         | Content filtering configuration                                                                                    |
+| `grounding`                  | `GroundingModule`                                                    | -         | Document grounding configuration                                                                                   |
+| `translation`                | `TranslationModule`                                                  | -         | Translation configuration (Orchestration only)                                                                     |
+| `placeholderValues`          | `Record<string, string>`                                             | -         | Default values for template placeholders                                                                           |
+| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName`         | -         | [Stored orchestration configuration reference](#orchestration-configuration-reference-types) (Orchestration only). |
+| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -         | Reference to a Prompt Registry template                                                                            |
+| `responseFormat`             | `ResponseFormat`                                                     | -         | Response format specification                                                                                      |
+| `streamOptions`              | `OrchestrationStreamOptions`                                         | -         | Stream options for post-LLM modules (Orchestration only)                                                           |
+| `tools`                      | `ChatCompletionTool[]`                                               | -         | Tool definitions in SAP AI SDK format                                                                              |
+| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -         | Ordered fallback prompt module configurations for Orchestration API                                                |
 
 **Example:**
 
@@ -1384,7 +1417,7 @@ const settings: SAPAISettings = {
 
 **API-Specific Settings Types:**
 
-For type-safe API-specific configuration, use the discriminated union types:
+For type-safe API-specific configuration, use these interfaces:
 
 - `OrchestrationModelSettings` - Settings with `api?: "orchestration"` and
   Orchestration-only options (`filtering`, `masking`, `grounding`, `translation`,
@@ -1440,6 +1473,9 @@ are left to the backend rather than filled with provider defaults.
 | `presencePenalty`     | `number`  | -2 to 2                       | Model-specific | Presence penalty                                       |
 | `n`                   | `number`  | Positive integer; model limit | Model-specific | Number of completions (not supported by Amazon models) |
 | `parallel_tool_calls` | `boolean` | -                             | Model-specific | Enable parallel tool execution (OpenAI models)         |
+
+The provider returns one completion (choice index 0), even when `n` requests
+multiple backend completions. Use the SAP SDK directly if you need every choice.
 
 #### Additional Foundation Models Parameters
 
@@ -1534,9 +1570,9 @@ const result = await streamText({
 });
 ```
 
-> **Note:** When using translation with streaming, it is recommended to set
-> `delimiters` to ensure proper sentence boundary detection. The provider will
-> emit a warning if translation is configured without delimiters.
+> **Note:** The SAP streaming schema requires a nonempty `delimiters` list
+> when input or output translation is configured. The provider warns when
+> delimiters are missing but forwards the request without adding them.
 
 ---
 
@@ -1789,7 +1825,7 @@ const result = await generateText({
 
 ### `sapAILanguageModelProviderOptions`
 
-Zod schema for validating language model provider options.
+Lazy AI SDK schema backed by Zod for validating language model provider options.
 
 **Validated Fields:**
 
@@ -1836,7 +1872,7 @@ const result = await generateText({
 
 ### `sapAIEmbeddingProviderOptions`
 
-Zod schema for validating embedding model provider options.
+Lazy AI SDK schema backed by Zod for validating embedding model provider options.
 
 **Validated Fields:**
 
@@ -1849,7 +1885,8 @@ Zod schema for validating embedding model provider options.
 Known embedding parameters are validated: `dimensions` must be a positive
 integer, `encoding_format` must be `"base64"`, `"binary"`, or `"float"`, and
 `normalize` must be a boolean. Other `modelParams` keys pass through; actual
-parameter support depends on the backend and model.
+parameter support depends on the backend and model. `modelParams.input` cannot
+replace the texts supplied through `values`.
 
 **Example:**
 
@@ -1874,7 +1911,7 @@ const { embedding } = await embed({
 
 ### `SAPAILanguageModelProviderOptions` (Type)
 
-TypeScript type inferred from the Zod schema for language model options.
+TypeScript type inferred from the language model provider-options schema.
 
 **Type:**
 
@@ -1933,7 +1970,7 @@ const { text } = await generateText({
 ```typescript
 const model = provider("gpt-4.1", {
   grounding: buildDocumentGroundingConfig({
-    filters: [{ id: "vector-store-1", data_repositories: ["*"] }],
+    filters: [{ id: "knowledge-filter", data_repositories: ["*"] }],
     placeholders: { input: ["groundingRequest"], output: "groundingOutput" },
   }),
 });
@@ -1986,7 +2023,7 @@ const { text } = await generateText({
 
 ### `SAPAIEmbeddingProviderOptions` (Type)
 
-TypeScript type inferred from the Zod schema for embedding model options.
+TypeScript type inferred from the embedding model provider-options schema.
 
 **Type:**
 
@@ -2024,13 +2061,8 @@ for the provider's model ID contract. Referencing the upstream type keeps the
 accepted model identifiers synchronized with SAP AI SDK without redefining its
 structure.
 
-**For complete model information, see the [Models](#models) section above**,
-including:
-
-- Available model list (OpenAI, Google, Anthropic, Amazon, Open Source)
-- Model capabilities comparison
-- Selection guide by use case
-- Performance trade-offs
+See [Models](#models) for provider examples, deployment discovery, and upstream
+model documentation.
 
 ---
 
@@ -2183,8 +2215,9 @@ import type { OrchestrationConfigRef, OrchestrationConfigRefById, OrchestrationC
 The `orchestrationConfigRef` allows you to reference a complete orchestration
 configuration stored in SAP AI Core instead of specifying individual modules
 (filtering, masking, grounding, etc.) in your code. When `orchestrationConfigRef`
-is provided, the configuration is fetched from SAP AI Core and used to create
-the `OrchestrationClient`.
+is provided, the reference is passed to `OrchestrationClient` and sent as
+`config_ref` in the completion request. SAP AI Core resolves it server-side;
+the provider does not fetch the stored configuration before creating the client.
 
 Each reference variant accepts an optional `overrideConfig`
 (`OrchestrationConfigRefOverride`, re-exported from `@sap-ai-sdk/orchestration`).
@@ -2283,8 +2316,8 @@ const model = provider("gpt-4.1", {
 
 ### API-Specific Settings Types
 
-The following types provide type-safe configuration for each API. They are
-discriminated union types that TypeScript can narrow based on the `api` field.
+These interfaces form the `SAPAIModelSettings` discriminated union, which
+TypeScript can narrow using `api`.
 
 #### `OrchestrationModelSettings`
 
@@ -2362,7 +2395,10 @@ export interface FoundationModelsModelSettings {
 **Foundation Models-Only Features:**
 
 - `dataSources` - Azure OpenAI "On Your Data" (Azure AI Search, Cosmos DB)
-- Advanced `modelParams`: `logprobs`, `seed`, `logit_bias`, `stop`, `top_logprobs`, `user`
+
+For explicitly typed Foundation Models parameters, see
+[Additional Foundation Models Parameters](#additional-foundation-models-parameters);
+backend support is not exclusive to this API.
 
 #### `SAPAIModelSettings`
 
@@ -2384,7 +2420,7 @@ Parameters shared by both APIs:
 export interface CommonModelParams {
   readonly frequencyPenalty?: number; // -2.0 to 2.0
   readonly maxTokens?: number;
-  readonly n?: number; // Not supported by Amazon/Anthropic
+  readonly n?: number; // Support depends on the selected API and model
   readonly parallel_tool_calls?: boolean;
   readonly presencePenalty?: number; // -2.0 to 2.0
   readonly temperature?: number; // 0 to 2
@@ -2566,21 +2602,21 @@ The stream emits the following event types. Text and tool-input events can
 interleave; the table describes each event's lifecycle rather than one fixed
 sequence for every response:
 
-| Event Type          | Description                                      | When Emitted                        |
-| ------------------- | ------------------------------------------------ | ----------------------------------- |
-| `stream-start`      | Stream initialization with warnings              | First, before any content           |
-| `response-metadata` | Model ID, timestamp, and response ID             | After first chunk received          |
-| `text-start`        | Text block begins (includes unique block ID)     | When text generation starts         |
-| `text-delta`        | Incremental text chunk                           | For each text token                 |
-| `text-end`          | Text block completes                             | When text generation ends           |
-| `tool-input-start`  | Tool input begins (includes tool ID and name)    | When tool call starts               |
-| `tool-input-delta`  | Incremental tool arguments                       | For each tool argument chunk        |
-| `tool-input-end`    | Tool input completes                             | When tool arguments complete        |
-| `tool-call`         | Complete tool call with ID, name, and full input | After tool-input-end                |
-| `source`            | URL citation returned by the SDK                 | Before finish, when available       |
-| `finish`            | Stream completes with usage and finish reason    | Last event on success               |
-| `error`             | Error occurred during streaming                  | On error (stream then closes)       |
-| `raw`               | Raw SDK chunk (when `includeRawChunks: true`)    | For each chunk, before other events |
+| Event Type          | Description                                        | When Emitted                                |
+| ------------------- | -------------------------------------------------- | ------------------------------------------- |
+| `stream-start`      | Stream initialization with warnings                | First, before any content                   |
+| `response-metadata` | Available server model, timestamp, and response ID | First chunk and subsequent metadata updates |
+| `text-start`        | Text block begins (includes unique block ID)       | When text generation starts                 |
+| `text-delta`        | Incremental text chunk                             | For each text token                         |
+| `text-end`          | Text block completes                               | When text generation ends                   |
+| `tool-input-start`  | Tool input begins (includes tool ID and name)      | When tool call starts                       |
+| `tool-input-delta`  | Incremental tool arguments                         | For each tool argument chunk                |
+| `tool-input-end`    | Tool input completes                               | When tool arguments complete                |
+| `tool-call`         | Complete tool call with ID, name, and full input   | After tool-input-end                        |
+| `source`            | URL citation returned by the SDK                   | Before finish, when available               |
+| `finish`            | Stream completes with usage and finish reason      | Last event on success                       |
+| `error`             | Error occurred during streaming                    | On error (stream then closes)               |
+| `raw`               | Raw SDK chunk (when `includeRawChunks: true`)      | For each chunk, before other events         |
 
 **Raw Chunks Option:**
 
@@ -2589,45 +2625,62 @@ additional `raw` events containing each SDK chunk's `_data` payload when
 available, or the chunk itself otherwise. This is useful for debugging or
 accessing provider-specific data not exposed through standard events.
 
+Raw chunks can contain sensitive data. Keep them private, validate their structure,
+and redact sensitive fields before logging or exposing their contents. The example
+below counts raw chunks without logging their payloads.
+
 ```typescript
 const { stream } = await model.doStream({
   prompt: [...],
   includeRawChunks: true,
 });
 
+let rawChunkCount = 0;
 for await (const part of stream) {
   if (part.type === "raw") {
-    console.log("Raw chunk:", part.rawValue);
+    rawChunkCount++;
   }
 }
+console.log("Raw chunks received:", rawChunkCount);
 ```
 
 **Example:**
 
 ```typescript
-const { stream } = await model.doStream({
-  prompt: [
-    {
-      role: "user",
-      content: [{ type: "text", text: "Write a story" }],
-    },
-  ],
-});
+import { APICallError } from "@ai-sdk/provider";
 
-for await (const part of stream) {
-  switch (part.type) {
-    case "text-delta":
-      process.stdout.write(part.delta);
-      break;
-    case "tool-call":
-      console.log(`Tool called: ${part.toolName}`, part.input);
-      break;
-    case "finish":
-      console.log("Usage:", part.usage);
-      break;
-    case "error":
-      console.error("Stream error:", part.error);
-      break;
+try {
+  const { stream } = await model.doStream({
+    prompt: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Write a story" }],
+      },
+    ],
+  });
+
+  for await (const part of stream) {
+    switch (part.type) {
+      case "text-delta":
+        process.stdout.write(part.delta);
+        break;
+      case "tool-call":
+        console.log(`Tool called: ${part.toolName}`, part.input);
+        break;
+      case "finish":
+        console.log("Usage:", part.usage);
+        break;
+      case "error":
+        // Route stream error events through the same handler as setup failures.
+        throw part.error;
+    }
+  }
+} catch (error) {
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("Stream error:", error.statusCode, error.name);
+  } else {
+    console.error("Stream error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
@@ -2646,6 +2699,17 @@ the provider name key (default: `"sap-ai"`). For direct `doStream` calls,
 metadata is on the stream `finish` event, not the returned result object. With
 the high-level `streamText` API, use `finish-step` events or await
 `result.providerMetadata`.
+
+Token totals remain `undefined` when the backend does not report usage; the
+provider does not treat an absent streaming usage report as zero tokens.
+
+**Completion metadata:** Generation `response.modelId` and `response.timestamp`
+come from the server completion, not the requested model or the local clock.
+The Unix-seconds `created` value becomes a `Date`; unavailable model/timestamp
+fields are omitted. This preserves the actual model selected by a deployment
+or orchestration fallback. Streaming `response-metadata` events follow the same
+contract and update when a later chunk supplies or changes completion metadata;
+missing fields in later chunks do not erase earlier values.
 
 **Generation response body:** `doGenerate().response.body` is a provider-built
 summary containing `content`, `finishReason`, `tokenUsage`, and `toolCalls`
@@ -2844,6 +2908,15 @@ different response-body shape.
 }
 ```
 
+Native parser failures, including malformed credential JSON, use the enclosing
+SAP SDK error summary rather than copying parser input fragments into the public
+message. This is not general redaction: backend error messages, causes, response
+bodies, headers, and raw stream chunks can contain sensitive data. Routine logs
+should use error names, HTTP status, and retryability, as below. Keep detailed
+diagnostics private; validate their structure and redact their contents before
+logging or exposing them to users. Never log a raw response body as a fallback
+when parsing fails.
+
 #### Error Handling Examples
 
 ```typescript
@@ -2855,32 +2928,21 @@ try {
     prompt: "Hello",
   });
 } catch (error) {
-  if (error instanceof LoadAPIKeyError) {
+  process.exitCode = 1;
+  if (LoadAPIKeyError.isInstance(error)) {
     // 401/403: Authentication/permission issue
-    console.error("Setup error:", error.message);
+    console.error("Setup error:", error.name);
     // Check AICORE_SERVICE_KEY environment variable
-  } else if (error instanceof NoSuchModelError) {
+  } else if (NoSuchModelError.isInstance(error)) {
     // 404: Model or deployment not found
-    console.error("Model not found:", error.modelId);
-  } else if (error instanceof APICallError) {
+    console.error("Model not found:", error.name);
+  } else if (APICallError.isInstance(error)) {
     // Other API/HTTP errors (400, 429, 5xx, etc.)
-    console.error("API error:", error.message);
+    console.error("API error:", error.name);
     console.error("Status:", error.statusCode);
     console.error("Retryable:", error.isRetryable);
-
-    const responseBody = error.responseBody;
-    if (responseBody) {
-      try {
-        const sapError = JSON.parse(responseBody) as {
-          error?: { code?: number; location?: string; request_id?: string };
-        };
-        console.error("SAP Error Code:", sapError.error?.code);
-        console.error("Location:", sapError.error?.location);
-        console.error("Request ID:", sapError.error?.request_id);
-      } catch {
-        console.error("SAP error body:", responseBody);
-      }
-    }
+  } else {
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
@@ -2888,11 +2950,12 @@ try {
 #### HTTP Status Code Reference
 
 The error types below describe recognized structured SAP error responses.
-Without that structured envelope, classification also depends on the error
-message: for example, `Request failed with status code 401` produces a
-non-retryable `APICallError`, while authentication-keyword matches produce
-`LoadAPIKeyError`. Auto-Retry means eligible for high-level AI SDK retries
-subject to `maxRetries`, not a guarantee that the request succeeds.
+Without that envelope, an available HTTP response status produces an
+`APICallError`. If no response status survives, classification falls back to
+the message: `Request failed with status code 401` produces a non-retryable
+`APICallError`, while authentication-keyword matches produce `LoadAPIKeyError`.
+Auto-Retry means eligible for high-level AI SDK retries subject to `maxRetries`,
+not a guarantee that the request succeeds.
 
 The SDK can lose the original status and body before the provider receives an
 error. In particular, a non-JSON streaming error response can become a JSON
@@ -2968,8 +3031,8 @@ advanced usage scenarios where direct access to SDK responses is needed:
 
 ### Re-exported SAP AI SDK Types
 
-The following types are re-exported from `@sap-ai-sdk/orchestration` for advanced
-usage scenarios. Refer to the
+The following SAP AI SDK types and provider aliases are exported for advanced
+usage. Refer to the
 [SAP AI SDK documentation](https://github.com/SAP/ai-sdk-js) for complete type
 definitions.
 
@@ -2990,20 +3053,20 @@ definitions.
 
 **Configuration Types:**
 
-| Type                                    | Description                                                   |
-| --------------------------------------- | ------------------------------------------------------------- |
-| `AzureOpenAiChatExtensionConfiguration` | Azure OpenAI data source configuration                        |
-| `ChatCompletionRequest`                 | Full chat completion request structure                        |
-| `ChatCompletionTool`                    | Tool definition for function calling                          |
-| `FunctionObject`                        | Function schema within a tool                                 |
-| `LlmModelDetails`                       | Model configuration details                                   |
-| `LlmModelParams`                        | Model-specific parameters                                     |
-| `OrchestrationConfigRef`                | Deprecated upstream configuration reference                   |
-| `OrchestrationConfigRefById`            | Stored configuration reference by ID                          |
-| `OrchestrationConfigRefByName`          | Stored configuration reference by scenario, name, and version |
-| `OrchestrationModuleConfig`             | Full orchestration module configuration                       |
-| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks                        |
-| `PromptTemplatingModule`                | Prompt template configuration                                 |
+| Type                                    | Description                                                                 |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| `AzureOpenAiChatExtensionConfiguration` | Provider alias for Foundation Models Azure OpenAI data source configuration |
+| `ChatCompletionRequest`                 | Full chat completion request structure                                      |
+| `ChatCompletionTool`                    | Tool definition for function calling                                        |
+| `FunctionObject`                        | Function schema within a tool                                               |
+| `LlmModelDetails`                       | Model configuration details                                                 |
+| `LlmModelParams`                        | Model-specific parameters                                                   |
+| `OrchestrationConfigRef`                | Deprecated upstream configuration reference                                 |
+| `OrchestrationConfigRefById`            | Stored configuration reference by ID                                        |
+| `OrchestrationConfigRefByName`          | Stored configuration reference by scenario, name, and version               |
+| `OrchestrationModuleConfig`             | Full orchestration module configuration                                     |
+| `OrchestrationModuleConfigList`         | Ordered list of configs with fallbacks                                      |
+| `PromptTemplatingModule`                | Prompt template configuration                                               |
 
 **Module Configuration Types:**
 
@@ -3098,7 +3161,6 @@ import { createSAPAIProvider, type DeploymentConfig } from "@jerome-benoit/sap-a
 
 const deploymentConfig: DeploymentConfig = {
   deploymentId: "d1234567-89ab-cdef-0123-456789abcdef",
-  resourceGroup: "my-resource-group",
 };
 
 const provider = createSAPAIProvider(deploymentConfig);
@@ -3224,10 +3286,14 @@ Validates that settings are compatible with the selected API.
 function validateSettings(options: ValidateSettingsOptions): void;
 ```
 
+`ValidateSettingsOptions` is not re-exported; use
+`Parameters<typeof validateSettings>[0]` to name the input type.
+
 **Parameters:**
 
 - `options.api`: The resolved API type
-- `options.modelSettings`: Model-level settings to validate
+- `options.modelSettings`: Optional model-level settings to validate
+- `options.embeddingSettings`: Optional embedding settings to validate
 - `options.invocationSettings`: Optional invocation-time settings
 - `options.modelApi`: The API the model was configured with (for switch detection)
 
@@ -3337,7 +3403,7 @@ function buildAzureContentSafetyFilter<T extends "input" | "output">(type: T, co
   - `sexual`: Sexual content filter level
 
 **Filter Levels:** `ALLOW_SAFE`, `ALLOW_SAFE_LOW`, `ALLOW_SAFE_LOW_MEDIUM`, or
-block all
+`ALLOW_ALL`.
 
 **Returns:** Azure Content Safety filter configuration
 
@@ -3419,7 +3485,9 @@ function buildDocumentGroundingConfig(config: DocumentGroundingServiceConfig): G
 
 **Parameters:**
 
-- `config`: Document grounding service configuration
+- `config`: Document grounding service configuration. Filter `id` identifies a
+  search filter within the request; `data_repositories` selects repository IDs
+  (`["*"]` searches all repositories).
 
 **Returns:** Full grounding module configuration
 
@@ -3432,7 +3500,7 @@ function buildDocumentGroundingConfig(config: DocumentGroundingServiceConfig): G
 const groundingConfig = buildDocumentGroundingConfig({
   filters: [
     {
-      id: "vector-store-1", // Your vector database ID
+      id: "knowledge-filter", // Filter identifier unique within this request
       data_repositories: ["*"], // Search all repositories
     },
   ],
@@ -3547,6 +3615,11 @@ function escapeOrchestrationPlaceholders(text: string): string;
 
 **Returns:** Text with a zero-width space (`U+200B`) inserted after the opening
 brace of each delimiter (`{{` → `{\u200B{`, `{%` → `{\u200B%`, `{#` → `{\u200B#`).
+
+Orchestration applies escaping after concatenating assistant text parts, so
+delimiters formed across part boundaries are escaped too. When prompt caching
+keeps assistant content in separate SAP text blocks, each block is escaped
+independently without moving its cache directive.
 
 **Example:**
 

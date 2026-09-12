@@ -11,6 +11,10 @@ import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import type {
+  SAPAIEmbeddingProviderOptions,
+  SAPAILanguageModelProviderOptions,
+} from "./sap-ai-provider-options.js";
+import type {
   SAPAIApiType,
   SAPAIEmbeddingSettings,
   SAPAIModelSettings,
@@ -31,6 +35,7 @@ export interface EmbeddingModelStrategyConfig {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly modelId: string;
+  readonly parsedProviderOptions?: SAPAIEmbeddingProviderOptions;
   readonly provider: string;
   readonly requestConfig?: CustomRequestConfig;
 }
@@ -61,6 +66,7 @@ export interface LanguageModelStrategyConfig {
   readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
   readonly destination?: HttpDestinationOrFetchOptions;
   readonly modelId: string;
+  readonly parsedProviderOptions?: SAPAILanguageModelProviderOptions;
   readonly provider: string;
   readonly requestConfig?: CustomRequestConfig;
 }
@@ -75,22 +81,6 @@ const embeddingModelStrategyCache = new Map<SAPAIApiType, Promise<EmbeddingModel
 export function clearStrategyCaches(): void {
   languageModelStrategyCache.clear();
   embeddingModelStrategyCache.clear();
-}
-
-/**
- * @returns Embedding model strategy cache size.
- * @internal
- */
-export function getEmbeddingModelStrategyCacheSize(): number {
-  return embeddingModelStrategyCache.size;
-}
-
-/**
- * @returns Language model strategy cache size.
- * @internal
- */
-export function getLanguageModelStrategyCacheSize(): number {
-  return languageModelStrategyCache.size;
 }
 
 /**

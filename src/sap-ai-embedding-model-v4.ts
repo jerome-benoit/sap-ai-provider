@@ -9,7 +9,6 @@ import type {
   EmbeddingModelV4,
   EmbeddingModelV4CallOptions,
   EmbeddingModelV4Result,
-  SharedV4ProviderMetadata,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
@@ -17,7 +16,6 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 
 import type { SAPAIApiType, SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
-import { convertProviderMetadataToV4 } from "./sap-ai-adapters-v3-to-v4.js";
 import {
   type SAPAIEmbeddingModelId,
   SAPAIEmbeddingModel as SAPAIEmbeddingModelInternal,
@@ -66,29 +64,7 @@ export class SAPAIEmbeddingModelV4 implements EmbeddingModelV4 {
     this.supportsParallelCalls = this.internalModel.supportsParallelCalls;
   }
 
-  async doEmbed(options: EmbeddingModelV4CallOptions): Promise<EmbeddingModelV4Result> {
-    const result = await this.internalModel.doEmbed({
-      abortSignal: options.abortSignal,
-      headers: options.headers,
-      providerOptions: options.providerOptions,
-      values: options.values,
-    });
-
-    const providerMetadata: SharedV4ProviderMetadata | undefined = convertProviderMetadataToV4(
-      result.providerMetadata,
-    );
-
-    return {
-      embeddings: result.embeddings,
-      providerMetadata,
-      response: result.response
-        ? {
-            body: result.response.body,
-            headers: result.response.headers,
-          }
-        : undefined,
-      usage: result.usage,
-      warnings: result.warnings,
-    };
+  doEmbed(options: EmbeddingModelV4CallOptions): Promise<EmbeddingModelV4Result> {
+    return this.internalModel.doEmbed(options);
   }
 }

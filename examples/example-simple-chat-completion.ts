@@ -15,15 +15,12 @@
 import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
 import { createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
 
-/**
- *
- */
+/** Runs one chat request and classifies authentication, model and API errors. */
 async function simpleTest() {
   console.log("🧪 Simple SAP AI Chat Completion Example\n");
 
@@ -74,24 +71,24 @@ async function simpleTest() {
     console.log("🏁 Finish reason:", result.finishReason);
     console.log("");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       // 401/403: Authentication or permission issue
-      console.error("❌ Authentication Error:", error.message);
+      console.error("❌ Authentication Error:", error.name);
     } else if (error instanceof NoSuchModelError) {
       // 404: Model or deployment not found
       console.error("❌ Model Not Found:", error.modelId);
     } else if (error instanceof APICallError) {
-      console.error("❌ API Call Error:", error.statusCode, error.message);
+      console.error("❌ API Call Error:", error.statusCode, error.name);
 
       // Parse SAP-specific metadata
       const sapError = parseSAPErrorResponseBody(error.responseBody);
       if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
-        console.error("   SAP Error Code:", sapError.error.code);
       }
     } else {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("❌ Test failed:", errorMessage);
+      const errorName = error instanceof Error ? error.name : "Unknown error";
+      console.error("❌ Test failed:", errorName);
     }
 
     console.error("\n💡 Troubleshooting tips:");
@@ -101,6 +98,9 @@ async function simpleTest() {
   }
 }
 
-simpleTest().catch(console.error);
+simpleTest().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { simpleTest };

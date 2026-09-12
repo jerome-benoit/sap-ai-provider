@@ -14,12 +14,12 @@ context: |
   - Formatting: Prettier + ESLint
 
   ### Key Dependencies
-  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models, zod
+  - Runtime: AI SDK provider contracts/utilities, SAP AI and Cloud SDKs, and Zod (exact packages and ranges in package.json)
   - Peer: ai (main package: ^5.0.0 || ^6.0.0 || ^7.0.0; standalone V2: ^5.0.0 || ^6.0.0)
   - Development: @ai-sdk/provider-v2 (official V2 types bundled into declarations, never a consumer dependency), ai 7; ai is not a direct runtime dependency
 
   ### Architecture Patterns
-  - Two published packages: main package with root (V3 / AI SDK 6), /v2 (V2 / AI SDK 5), /v4 (V4 / AI SDK 7), plus standalone -v2
+  - Two published packages: main package with root and identical /v3 (V3 / AI SDK 6), /v2 (V2 / AI SDK 5), /v4 (V4 / AI SDK 7), plus standalone -v2
   - V2 also supports AI SDK 6 compatibility; both facades share the V3 implementation
   - Package release versions, provider specifications (V2/V3/V4), and AI SDK majors (5/6/7) are independent
   - Uses zod schemas for validation
@@ -29,7 +29,7 @@ context: |
   - Verify the published bundle and SAP transport on a target Edge runtime before claiming Edge deployment support
 
   ### Source Structure
-  - src/index.ts - V3 public API exports (AI SDK 6 root entry)
+  - src/index.ts - V3 public API exports (AI SDK 6 root and /v3 share the same artifacts)
   - src/index-v2.ts - V2 public API exports (AI SDK 5 facade; also AI SDK 6 compatibility)
   - src/index-v4.ts - V4 public API exports (AI SDK 7 facade)
   - src/sap-ai-provider-v4.ts - V4 provider factory (shared V3 settings and implementation)
@@ -56,6 +56,7 @@ context: |
   - src/foundation-models-language-model-strategy.ts - Foundation Models API language model
   - src/foundation-models-embedding-model-strategy.ts - Foundation Models API embedding model
   - src/strategy-utils.ts - Shared strategy utilities
+  - src/stream-transformer.ts - SAP stream lifecycle and V3 event conversion
   - src/convert-to-sap-messages.ts - Message format conversion
   - src/deep-merge.ts - Deep merge utility
   - src/version.ts - Package version constant

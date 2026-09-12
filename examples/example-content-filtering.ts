@@ -17,8 +17,7 @@ import "dotenv/config";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
 import { generateText } from "ai";
 
-// This example uses relative imports for local development within this repo.
-// In YOUR production project, use the published package instead:
+// In an application, import from the published V4 entrypoint:
 // import { createSAPAIProvider, buildAzureContentSafetyFilter } from "@jerome-benoit/sap-ai-provider/v4";
 import { buildAzureContentSafetyFilter, createSAPAIProvider } from "../src/index-v4";
 import { parseSAPErrorResponseBody } from "./parse-sap-error-response-body.js";
@@ -85,22 +84,21 @@ async function contentFilteringExample() {
 
     console.log("\n✅ Content filtering example completed!");
   } catch (error: unknown) {
+    process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
-      console.error("❌ Authentication Error:", error.message);
+      console.error("❌ Authentication Error:", error.name);
     } else if (error instanceof NoSuchModelError) {
       console.error("❌ Model Not Found:", error.modelId);
     } else if (error instanceof APICallError) {
-      console.error("❌ API Call Error:", error.statusCode, error.message);
+      console.error("❌ API Call Error:", error.statusCode, error.name);
 
       const sapError = parseSAPErrorResponseBody(error.responseBody);
       if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
-        console.error("   SAP Error Code:", sapError.error.code);
-        console.error("   SAP Error Message:", sapError.error.message);
       }
     } else {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("❌ Example failed:", errorMessage);
+      const errorName = error instanceof Error ? error.name : "Unknown error";
+      console.error("❌ Example failed:", errorName);
     }
 
     console.error("\n💡 Troubleshooting tips:");
@@ -111,6 +109,9 @@ async function contentFilteringExample() {
   }
 }
 
-contentFilteringExample().catch(console.error);
+contentFilteringExample().catch((error: unknown) => {
+  process.exitCode = 1;
+  console.error("Example failed:", error instanceof Error ? error.name : "Unknown error");
+});
 
 export { contentFilteringExample };

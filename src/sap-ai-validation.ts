@@ -120,6 +120,7 @@ function validateOrchestrationOnlyEmbeddingOptions(
  * - `orchestrationConfigRef` - Prompt Registry configuration reference
  * - `placeholderValues` - Jinja2 template placeholder values
  * - `promptTemplateRef` - Prompt Registry template reference
+ * - `streamOptions` - Post-LLM module streaming configuration
  * - `tools` - SAP-format tool definitions (use AI SDK tools instead)
  * - `translation` - Translation module
  * @param settings - Settings to validate.
@@ -240,7 +241,8 @@ const ESCAPE_TEMPLATE_PLACEHOLDERS_DESCRIPTION =
  * that are specific to one API and incompatible with the target API.
  * @param fromApi - Source API type (configured at model creation).
  * @param toApi - Target API type (requested at invocation time).
- * @param modelSettings - Model settings to validate for conflicts.
+ * @param modelSettings - Language model settings to validate for conflicts.
+ * @param embeddingSettings - Embedding model settings to validate for conflicts.
  * @throws {ApiSwitchError} When the model has features incompatible with the target API.
  * @internal
  */
@@ -248,25 +250,31 @@ function validateApiSwitch(
   fromApi: SAPAIApiType,
   toApi: SAPAIApiType,
   modelSettings: SAPAIModelSettings | SAPAISettings | undefined,
+  embeddingSettings: SAPAIEmbeddingSettings | undefined,
 ): void {
   if (fromApi === toApi) return;
-  if (!modelSettings) return;
+  if (!modelSettings && !embeddingSettings) return;
 
   if (fromApi === "orchestration" && toApi === "foundation-models") {
-    const orchSettings = modelSettings as OrchestrationModelSettings;
+    const orchSettings = modelSettings as OrchestrationModelSettings | undefined;
 
     for (const feature of ORCHESTRATION_ONLY_FEATURE_KEYS) {
-      if (orchSettings[feature] !== undefined) {
+      if (orchSettings?.[feature] !== undefined) {
+        throw new ApiSwitchError(fromApi, toApi, feature);
+      }
+    }
+    for (const feature of ORCHESTRATION_ONLY_EMBEDDING_FEATURE_KEYS) {
+      if (embeddingSettings?.[feature] !== undefined) {
         throw new ApiSwitchError(fromApi, toApi, feature);
       }
     }
   }
 
   if (fromApi === "foundation-models" && toApi === "orchestration") {
-    const fmSettings = modelSettings as FoundationModelsModelSettings;
+    const fmSettings = modelSettings as FoundationModelsModelSettings | undefined;
 
     for (const feature of FOUNDATION_MODELS_ONLY_FEATURE_KEYS) {
-      if (fmSettings[feature] !== undefined) {
+      if (fmSettings?.[feature] !== undefined) {
         throw new ApiSwitchError(fromApi, toApi, feature);
       }
     }
@@ -425,7 +433,12 @@ export function validateSettings(options: ValidateSettingsOptions): void {
   if (invocationSettings?.api !== undefined) {
     const effectiveModelApi = modelApi ?? "orchestration";
     if (effectiveModelApi !== invocationSettings.api) {
-      validateApiSwitch(effectiveModelApi, invocationSettings.api, modelSettings);
+      validateApiSwitch(
+        effectiveModelApi,
+        invocationSettings.api,
+        modelSettings,
+        embeddingSettings,
+      );
     }
   }
 

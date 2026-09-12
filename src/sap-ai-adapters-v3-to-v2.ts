@@ -1,239 +1,75 @@
-/** Adapters to convert internal (V3) formats to LanguageModelV2 formats for the V2 facade. */
+/** Adapters for the semantic differences between the V3 core and V2 facade. */
 
 import type {
-  LanguageModelV3FinishReason as InternalFinishReason,
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
   SharedV3Warning as InternalWarning,
-  SharedV3ProviderMetadata,
 } from "@ai-sdk/provider";
 import type {
   LanguageModelV2CallWarning,
-  LanguageModelV2FinishReason,
   LanguageModelV2StreamPart,
   LanguageModelV2Usage,
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider-v2";
 
-type ConvertedV2StreamPart =
+/** Stream events supported by the V2 facade. */
+export type ConvertedV2StreamPart =
   | Exclude<LanguageModelV2StreamPart, { type: "stream-start" }>
-  | { type: "stream-start"; warnings: ReturnType<typeof convertWarningsToV2> };
+  | { type: "stream-start"; warnings: ConvertedV2Warning[] };
+
+/** V2 warning representation used when adapting V3 feature diagnostics. */
+export type ConvertedV2Warning = Extract<LanguageModelV2CallWarning, { type: "other" }>;
 
 /**
- * Converts internal finish reason to V2 format.
- * @param internalFinishReason - Internal finish reason object `{ unified, raw? }`.
- * @returns V2 finish reason string.
- * @internal
- */
-export function convertFinishReasonToV2(
-  internalFinishReason: InternalFinishReason,
-): LanguageModelV2FinishReason {
-  return internalFinishReason.unified;
-}
-
-/**
- * Converts V3 provider metadata to V2 format.
- *
- * Both are `Record<string, Record<string, JSONValue>>` compatible; cast for type safety.
- * @param metadata - V3 provider metadata.
- * @returns V2 provider metadata.
- * @internal
- */
-export function convertProviderMetadataToV2(
-  metadata: SharedV3ProviderMetadata | undefined,
-): SharedV2ProviderMetadata | undefined {
-  return metadata as SharedV2ProviderMetadata | undefined;
-}
-
-/**
- * Converts internal stream part to V2 format.
- *
- * Handles all V3→V2 semantic differences explicitly:
- * - `file`: removes V3-only `providerMetadata`
- * - `finish`: converts `usage`, `finishReason`, casts `providerMetadata`
- * - `stream-start`: converts `warnings` array
- * - `tool-approval-request`: V3-only, returns `null`
- * - `tool-call`: removes V3-only `dynamic`
- * - `tool-input-start`: removes V3-only `dynamic`, `title`
- * - `tool-result`: marks provider execution, removes `dynamic` and `preliminary`
- * - `source`: casts `providerMetadata`
- * - `response-metadata`: identical structure, passthrough
- * - `text-*`, `reasoning-*`, `tool-input-delta`, `tool-input-end`: casts `providerMetadata`
- * - `raw`, `error`: identical structure, passthrough
- * @param internalPart - Internal stream part.
- * @returns V2 stream part, or `null` if no V2 equivalent exists.
+ * Converts V3-only event fields; structurally identical events pass through unchanged.
+ * @param internalPart - V3 stream event
+ * @returns V2 event, or null for unsupported tool approval requests
  * @internal
  */
 export function convertStreamPartToV2(
   internalPart: InternalStreamPart,
 ): ConvertedV2StreamPart | null {
-  switch (internalPart.type) {
-    case "error":
-      return {
-        error: internalPart.error,
-        type: "error",
-      };
-
-    case "file":
-      return {
-        data: internalPart.data,
-        mediaType: internalPart.mediaType,
-        type: "file",
-      };
-
+  // V2 has a narrower JSON metadata type; preserve the core payload without cloning.
+  const compatiblePart = internalPart as InternalStreamPart & {
+    providerMetadata?: SharedV2ProviderMetadata;
+  };
+  switch (compatiblePart.type) {
+    case "file": {
+      const { providerMetadata: _providerMetadata, ...part } = compatiblePart;
+      return part;
+    }
     case "finish":
-      return withProviderMetadata(
-        {
-          finishReason: convertFinishReasonToV2(internalPart.finishReason),
-          type: "finish" as const,
-          usage: convertUsageToV2(internalPart.usage),
-        },
-        internalPart.providerMetadata,
-      );
-
-    case "raw":
       return {
-        rawValue: internalPart.rawValue,
-        type: "raw",
+        ...compatiblePart,
+        finishReason: compatiblePart.finishReason.unified,
+        usage: convertUsageToV2(compatiblePart.usage),
       };
-
-    case "reasoning-delta":
-      return withProviderMetadata(
-        { delta: internalPart.delta, id: internalPart.id, type: "reasoning-delta" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "reasoning-end":
-      return withProviderMetadata(
-        { id: internalPart.id, type: "reasoning-end" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "reasoning-start":
-      return withProviderMetadata(
-        { id: internalPart.id, type: "reasoning-start" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "response-metadata":
-      return {
-        id: internalPart.id,
-        modelId: internalPart.modelId,
-        timestamp: internalPart.timestamp,
-        type: "response-metadata",
-      };
-
-    case "source":
-      if (internalPart.sourceType === "url") {
-        return withProviderMetadata(
-          {
-            id: internalPart.id,
-            sourceType: "url" as const,
-            title: internalPart.title,
-            type: "source" as const,
-            url: internalPart.url,
-          },
-          internalPart.providerMetadata,
-        );
-      }
-      return withProviderMetadata(
-        {
-          filename: internalPart.filename,
-          id: internalPart.id,
-          mediaType: internalPart.mediaType,
-          sourceType: "document" as const,
-          title: internalPart.title,
-          type: "source" as const,
-        },
-        internalPart.providerMetadata,
-      );
-
     case "stream-start":
-      return {
-        type: "stream-start",
-        warnings: convertWarningsToV2(internalPart.warnings),
-      };
-
-    case "text-delta":
-      return withProviderMetadata(
-        { delta: internalPart.delta, id: internalPart.id, type: "text-delta" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "text-end":
-      return withProviderMetadata(
-        { id: internalPart.id, type: "text-end" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "text-start":
-      return withProviderMetadata(
-        { id: internalPart.id, type: "text-start" as const },
-        internalPart.providerMetadata,
-      );
-
+      return { ...compatiblePart, warnings: convertWarningsToV2(compatiblePart.warnings) };
     case "tool-approval-request":
       return null;
-
-    case "tool-call":
-      return withProviderMetadata(
-        {
-          input: internalPart.input,
-          toolCallId: internalPart.toolCallId,
-          toolName: internalPart.toolName,
-          type: "tool-call" as const,
-          ...(internalPart.providerExecuted !== undefined && {
-            providerExecuted: internalPart.providerExecuted,
-          }),
-        },
-        internalPart.providerMetadata,
-      );
-
-    case "tool-input-delta":
-      return withProviderMetadata(
-        { delta: internalPart.delta, id: internalPart.id, type: "tool-input-delta" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "tool-input-end":
-      return withProviderMetadata(
-        { id: internalPart.id, type: "tool-input-end" as const },
-        internalPart.providerMetadata,
-      );
-
-    case "tool-input-start":
-      return withProviderMetadata(
-        {
-          id: internalPart.id,
-          toolName: internalPart.toolName,
-          type: "tool-input-start" as const,
-          ...(internalPart.providerExecuted !== undefined && {
-            providerExecuted: internalPart.providerExecuted,
-          }),
-        },
-        internalPart.providerMetadata,
-      );
-
-    case "tool-result":
-      return withProviderMetadata(
-        {
-          // V3 tool results are provider-executed, independent of dynamic tool classification.
-          providerExecuted: true,
-          result: internalPart.result,
-          toolCallId: internalPart.toolCallId,
-          toolName: internalPart.toolName,
-          type: "tool-result" as const,
-          ...(internalPart.isError !== undefined && { isError: internalPart.isError }),
-        },
-        internalPart.providerMetadata,
-      );
+    case "tool-call": {
+      const { dynamic: _dynamic, ...part } = compatiblePart;
+      return part;
+    }
+    case "tool-input-start": {
+      const { dynamic: _dynamic, title: _title, ...part } = compatiblePart;
+      return part;
+    }
+    case "tool-result": {
+      const { dynamic: _dynamic, preliminary: _preliminary, ...part } = compatiblePart;
+      // Provider execution and dynamic tool classification are independent in V3.
+      return { ...part, providerExecuted: true };
+    }
+    default:
+      return compatiblePart;
   }
 }
 
 /**
- * Converts internal usage (nested format) to V2 usage (flat format).
- * @param internalUsage - Internal usage object with nested `inputTokens`/`outputTokens`.
- * @returns V2 usage object with flat token counts.
+ * Flattens usage without inventing totals when either component is unknown.
+ * @param internalUsage - V3 nested usage
+ * @returns V2 usage
  * @internal
  */
 export function convertUsageToV2(internalUsage: InternalUsage): LanguageModelV2Usage {
@@ -251,56 +87,35 @@ export function convertUsageToV2(internalUsage: InternalUsage): LanguageModelV2U
 }
 
 /**
- * Converts internal warnings array to V2 warnings array.
- * @param internalWarnings - Internal warning objects.
- * @returns V2 warning objects.
+ * Converts warnings to V2's descriptive other-warning representation.
+ * @param internalWarnings - V3 warnings
+ * @returns V2 warnings
  * @internal
  */
-export function convertWarningsToV2(
-  internalWarnings: InternalWarning[],
-): ReturnType<typeof convertWarningToV2>[] {
+export function convertWarningsToV2(internalWarnings: InternalWarning[]): ConvertedV2Warning[] {
   return internalWarnings.map(convertWarningToV2);
 }
 
 /**
- * Converts internal warning to V2 warning format.
- *
- * Maps `unsupported`/`compatibility` warnings to V2 `other` type with descriptive message.
- * @param internalWarning - Internal warning object.
- * @returns V2 warning object.
+ * Retains feature and compatibility details absent from the V2 warning union.
+ * @param internalWarning - V3 warning
+ * @returns V2 warning
  * @internal
  */
-export function convertWarningToV2(
-  internalWarning: InternalWarning,
-): Extract<LanguageModelV2CallWarning, { type: "other" }> {
-  if (internalWarning.type === "unsupported") {
-    return {
-      message: internalWarning.details
-        ? `Unsupported feature: ${internalWarning.feature}. ${internalWarning.details}`
-        : `Unsupported feature: ${internalWarning.feature}`,
-      type: "other",
-    };
-  }
-
-  if (internalWarning.type === "compatibility") {
-    return {
-      message: internalWarning.details
-        ? `Compatibility mode: ${internalWarning.feature}. ${internalWarning.details}`
-        : `Compatibility mode: ${internalWarning.feature}`,
-      type: "other",
-    };
-  }
-
+export function convertWarningToV2(internalWarning: InternalWarning): ConvertedV2Warning {
+  if (internalWarning.type === "other") return internalWarning;
+  const prefix =
+    internalWarning.type === "unsupported" ? "Unsupported feature" : "Compatibility mode";
   return {
-    message: internalWarning.message,
+    message: `${prefix}: ${internalWarning.feature}${internalWarning.details ? `. ${internalWarning.details}` : ""}`,
     type: "other",
   };
 }
 
 /**
- * Transforms internal stream to V2 ReadableStream.
- * @param internalStream - Internal ReadableStream to transform.
- * @returns V2-formatted ReadableStream.
+ * Converts an internal stream, preserving backpressure, cancellation and errors.
+ * @param internalStream - V3 stream
+ * @returns V2 stream
  * @internal
  */
 export function createV2StreamFromInternal(
@@ -310,24 +125,8 @@ export function createV2StreamFromInternal(
     new TransformStream<InternalStreamPart, ConvertedV2StreamPart>({
       transform(chunk, controller) {
         const converted = convertStreamPartToV2(chunk);
-        if (converted != null) {
-          controller.enqueue(converted);
-        }
+        if (converted !== null) controller.enqueue(converted);
       },
     }),
   );
-}
-
-/**
- * Conditionally attaches converted provider metadata to a V2 stream part object.
- * @param obj - The base stream part object.
- * @param metadata - Optional V3 provider metadata to convert and attach.
- * @returns The object, with `providerMetadata` added if metadata was defined.
- */
-function withProviderMetadata<T extends object>(
-  obj: T,
-  metadata: SharedV3ProviderMetadata | undefined,
-): T & { providerMetadata?: SharedV2ProviderMetadata } {
-  if (metadata === undefined) return obj;
-  return { ...obj, providerMetadata: convertProviderMetadataToV2(metadata) };
 }

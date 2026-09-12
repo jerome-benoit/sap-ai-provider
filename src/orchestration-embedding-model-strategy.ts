@@ -18,7 +18,6 @@ import {
   type EmbeddingProviderOptions,
   extractResponseMetadata,
   hasKeys,
-  mergeRequestConfig,
   normalizeEmbedding,
   type ResponseMetadata,
 } from "./strategy-utils.js";
@@ -74,13 +73,9 @@ export class OrchestrationEmbeddingModelStrategy extends BaseEmbeddingModelStrat
     client: OrchestrationEmbeddingClient,
     values: string[],
     embeddingType: "document" | "query" | "text" | undefined,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<OrchestrationEmbeddingResponse> {
-    return client.embed(
-      { input: values, type: embeddingType },
-      mergeRequestConfig(requestConfig, abortSignal),
-    );
+    return client.embed({ input: values, type: embeddingType }, requestConfig);
   }
 
   protected extractEmbeddings(

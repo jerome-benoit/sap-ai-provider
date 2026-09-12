@@ -24,10 +24,10 @@ import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
+import type { ConvertedV2StreamPart, ConvertedV2Warning } from "./sap-ai-adapters-v3-to-v2.js";
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
 import {
-  convertFinishReasonToV2,
   convertUsageToV2,
   convertWarningsToV2,
   createV2StreamFromInternal,
@@ -122,7 +122,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
       headers?: SharedV2Headers;
     };
     usage: LanguageModelV2Usage;
-    warnings: ReturnType<typeof convertWarningsToV2>;
+    warnings: ConvertedV2Warning[];
   }> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = await this.internalModel.doGenerate(options as any);
@@ -130,19 +130,10 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     // Return result in V2 format
     return {
       content: result.content as LanguageModelV2Content[],
-      finishReason: convertFinishReasonToV2(result.finishReason),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-      providerMetadata: result.providerMetadata as any,
+      finishReason: result.finishReason.unified,
+      providerMetadata: result.providerMetadata as SharedV2ProviderMetadata | undefined,
       request: result.request,
-      response: result.response
-        ? {
-            body: result.response.body,
-            headers: result.response.headers,
-            id: result.response.id,
-            modelId: result.response.modelId,
-            timestamp: result.response.timestamp,
-          }
-        : undefined,
+      response: result.response,
       usage: convertUsageToV2(result.usage),
       warnings: convertWarningsToV2(result.warnings),
     };
@@ -155,7 +146,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     response?: {
       headers?: SharedV2Headers;
     };
-    stream: ReturnType<typeof createV2StreamFromInternal>;
+    stream: ReadableStream<ConvertedV2StreamPart>;
   }> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
     const result = await this.internalModel.doStream(options as any);

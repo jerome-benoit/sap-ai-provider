@@ -16,6 +16,7 @@ import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
+import { z } from "zod";
 
 import type { SAPAIApiType, SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 
@@ -31,6 +32,7 @@ import {
 import { resolveApi, validateSettings } from "./sap-ai-validation.js";
 
 const DEFAULT_MAX_EMBEDDINGS_PER_CALL = 2048;
+const maxEmbeddingsPerCallSchema = z.number().int().positive().or(z.literal(Infinity));
 
 /**
  * Model identifier for SAP AI embedding models.
@@ -112,7 +114,9 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
     this.settings = settings;
     this.config = config;
     this.provider = config.provider;
-    this.maxEmbeddingsPerCall = settings.maxEmbeddingsPerCall ?? DEFAULT_MAX_EMBEDDINGS_PER_CALL;
+    this.maxEmbeddingsPerCall = maxEmbeddingsPerCallSchema.parse(
+      settings.maxEmbeddingsPerCall ?? DEFAULT_MAX_EMBEDDINGS_PER_CALL,
+    );
   }
 
   async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Result> {
@@ -138,6 +142,7 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       deploymentConfig: this.config.deploymentConfig,
       destination: this.config.destination,
       modelId: this.modelId,
+      parsedProviderOptions: sapOptions,
       provider: this.config.provider,
       requestConfig: this.config.requestConfig,
     };

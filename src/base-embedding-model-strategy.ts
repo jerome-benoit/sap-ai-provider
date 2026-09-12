@@ -14,11 +14,12 @@ import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./
 
 import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
+import { getProviderName } from "./sap-ai-provider-options.js";
 import {
   buildEmbeddingResult,
   type EmbeddingProviderOptions,
   type EmbeddingType,
-  prepareEmbeddingCall,
+  mergeRequestConfig,
   type ResponseMetadata,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
@@ -51,10 +52,16 @@ export abstract class BaseEmbeddingModelStrategy<
     const { abortSignal, values } = options;
 
     try {
-      const { embeddingOptions, providerName } = await prepareEmbeddingCall(
-        { maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider },
-        options,
-      );
+      if (values.length > maxEmbeddingsPerCall) {
+        throw new TooManyEmbeddingValuesForCallError({
+          maxEmbeddingsPerCall,
+          modelId: config.modelId,
+          provider: config.provider,
+          values,
+        });
+      }
+      const embeddingOptions = config.parsedProviderOptions;
+      const providerName = getProviderName(config.provider);
 
       const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
 
@@ -67,8 +74,7 @@ export abstract class BaseEmbeddingModelStrategy<
         client,
         values,
         embeddingType,
-        abortSignal,
-        config.requestConfig,
+        mergeRequestConfig(config.requestConfig, abortSignal, options.headers),
       );
 
       const embeddings = this.extractEmbeddings(response);
@@ -90,6 +96,8 @@ export abstract class BaseEmbeddingModelStrategy<
         throw error;
       }
       throw convertToAISDKError(error, {
+        modelId: config.modelId,
+        modelType: "embeddingModel",
         operation: "doEmbed",
         requestBody: { values: values.length },
         url: this.getUrl(),
@@ -116,8 +124,7 @@ export abstract class BaseEmbeddingModelStrategy<
    * @param client - SDK client instance.
    * @param values - Input strings to embed.
    * @param embeddingType - Type of embedding (text, query, document).
-   * @param abortSignal - Optional abort signal.
-   * @param requestConfig - Optional custom request configuration (e.g. custom headers).
+   * @param requestConfig - Request configuration with merged headers and abort signal.
    * @returns SDK response containing embeddings.
    * @internal
    */
@@ -125,7 +132,6 @@ export abstract class BaseEmbeddingModelStrategy<
     client: TClient,
     values: string[],
     embeddingType: EmbeddingType,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<TResponse>;
 

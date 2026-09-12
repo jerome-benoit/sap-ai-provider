@@ -296,7 +296,7 @@ src/
 │
 │   # V4 Facade Layer (AI SDK 7; LanguageModelV4/EmbeddingModelV4)
 ├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
-├── sap-ai-provider-v4.ts                           # V4 provider factory (wraps V3)
+├── sap-ai-provider-v4.ts                           # V4 facade provider factory
 ├── sap-ai-language-model-v4.ts                     # V4 language model facade
 ├── sap-ai-embedding-model-v4.ts                    # V4 embedding model facade
 ├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
@@ -304,7 +304,7 @@ src/
 │
 │   # V2 Facade Layer (AI SDK 5; AI SDK 6 compatibility)
 ├── index-v2.ts                                     # V2 public API exports (AI SDK 5 facade)
-├── sap-ai-provider-v2.ts                           # V2 provider factory (wraps V3)
+├── sap-ai-provider-v2.ts                           # V2 facade provider factory
 ├── sap-ai-language-model-v2.ts                     # V2 language model (wraps V3)
 ├── sap-ai-embedding-model-v2.ts                    # V2 embedding model (wraps V3)
 ├── sap-ai-adapters-v3-to-v2.ts                     # V3→V2 format conversion
@@ -316,6 +316,7 @@ src/
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
+├── stream-transformer.ts                           # Shared stream lifecycle, tool input, and metadata conversion
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
 ├── base-embedding-model-strategy.ts                # Base class for embedding model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
@@ -452,7 +453,9 @@ sequenceDiagram
 This diagram illustrates the streaming text generation flow using Server-Sent
 Events (SSE). Unlike standard generation, streaming returns partial responses
 incrementally as the AI model generates content, enabling real-time display of
-results to users.
+results to users. Both API strategies delegate event conversion to
+`src/stream-transformer.ts`: the SAP SDK parses SSE, and the shared transformer
+maintains text/tool-input lifecycles, usage, citations, and response metadata.
 
 ```mermaid
 sequenceDiagram
@@ -481,10 +484,10 @@ sequenceDiagram
         loop For each token/chunk
             Model->>SAP: Generate token
             SAP-->>Provider: data: {<br/>  final_result: {<br/>    choices: [{<br/>      delta: {content: "token"}<br/>    }]<br/>  }<br/>}
-            Provider->>Provider: Parse SSE chunk
-            Provider->>Provider: Transform to StreamPart
+            Provider->>Provider: Receive SDK-parsed SSE chunk
+            Provider->>Provider: Shared stream transformer emits V3 events
 
-            opt First Chunk
+            opt First Chunk or Updated Completion Metadata
                 Provider-->>SDK: {type: "response-metadata"}
             end
             opt First Nonempty Text Delta
@@ -562,7 +565,7 @@ The v2 API uses a modular configuration structure:
           version: "latest",
           params: {
             temperature: 0.7,
-            max_tokens: 2000,
+            max_completion_tokens: 2000,
             // ... other params
           }
         }
@@ -731,8 +734,13 @@ const stream = await client.stream(request, abortSignal, streamOptions, mergeReq
 ```
 
 The signal is forwarded to the SAP AI SDK, which passes it to the underlying
-Axios HTTP client to cancel the request. This does not guarantee that SAP AI Core
-or the deployed model stops server-side processing.
+Axios HTTP client to cancel the request. Canceling the returned provider stream
+also aborts its SDK transport before closing the iterator. Already-aborted
+language-model calls and in-flight stream aborts produce a non-retryable
+`APICallError` (status 499), including with custom abort reasons. An aborted
+stream does not emit a successful `finish` or complete a partial tool call.
+Cancellation does not guarantee that SAP AI Core or the deployed model stops
+server-side processing.
 
 ### Tool Calling Flow
 
@@ -940,13 +948,19 @@ try {
 The `convertToAISDKError()` function handles error conversion with a clear
 priority:
 
-1. **Existing `APICallError`, `LoadAPIKeyError`, or `NoSuchModelError`?** → Return as-is
-2. **Structured SAP error?** → Convert 401/403 to `LoadAPIKeyError`, 404 to
+1. **Existing standard request/API error?** → Preserve `APICallError`,
+   `LoadAPIKeyError`, `NoSuchModelError`, `InvalidPromptError`, and
+   `UnsupportedFunctionalityError` across SDK package versions
+2. **Aborted request?** → Non-retryable `APICallError` with status 499
+3. **Structured SAP error?** → Convert 401/403 to `LoadAPIKeyError`, 404 to
    `NoSuchModelError`, and other statuses to `APICallError`
-3. **Aborted request?** → Non-retryable `APICallError` with status 499
-4. **Recognized error message?** → Classify authentication/deployment failures,
+4. **HTTP response status?** → `APICallError` preserving the status, even if
+   the body is not a structured SAP error
+5. **Native parser failure?** → Retain the enclosing SDK summary, or a generic
+   parse-error message, instead of exposing parser input fragments
+6. **Recognized error message?** → Classify authentication/deployment failures,
    extract a status from `status code NNN`, or apply a category-specific mapping
-5. **Unknown error?** → Non-retryable `APICallError` with status 500
+7. **Unknown error?** → Non-retryable `APICallError` with status 500
 
 Converted `APICallError` instances carry the supplied URL and request summary,
 plus response headers/body when available. Authentication and model errors do
@@ -1020,7 +1034,8 @@ See `src/sap-ai-settings.ts` for complete type definitions.
 All API interactions use types from `@sap-ai-sdk/orchestration` and
 `@sap-ai-sdk/foundation-models`, validated for type safety. Key types include:
 
-- `ChatCompletionRequest`: Orchestration config and input parameters
+- `ChatCompletionRequest`: Per-call messages, message history, and placeholder values
+- `OrchestrationModuleConfig`: Model and module configuration passed to the client constructor
 - `OrchestrationResponse`: API responses with module results
 - `ChatMessage`: Message format (role, content, tool calls)
 - `ChatCompletionTool`: Function definitions and parameters
@@ -1222,118 +1237,33 @@ interface EmbeddingModelAPIStrategy {
 
 #### Template Method Pattern (Base Embedding Model Strategy)
 
-The `BaseEmbeddingModelStrategy` abstract class uses the Template Method pattern
-to consolidate shared logic for embedding generation while allowing API-specific
-customization:
+[`BaseEmbeddingModelStrategy`](./src/base-embedding-model-strategy.ts) centralizes
+batch-size validation, embedding options, request configuration, result assembly,
+and error conversion. Its API-specific subclasses supply these hooks:
 
-```typescript
-// Base class with Template Method pattern for embeddings
-abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements EmbeddingModelAPIStrategy {
-  // Template method - defines the embedding algorithm skeleton
-  async doEmbed(config, settings, options, maxEmbeddingsPerCall): Promise<EmbeddingModelV3Result> {
-    const { abortSignal, values } = options;
-
-    try {
-      const { embeddingOptions, providerName } = await prepareEmbeddingCall({ maxEmbeddingsPerCall, modelId: config.modelId, provider: config.provider }, options);
-      const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
-      const warnings: SharedV3Warning[] = [];
-      this.resolveWarnings(settings, warnings);
-      const client = this.createClient(config, settings, embeddingOptions);
-      const response = await this.executeCall(client, values, embeddingType, abortSignal, config.requestConfig);
-      const embeddings = this.extractEmbeddings(response);
-      const totalTokens = this.extractTokenCount(response);
-      const { headers: responseHeaders, requestId } = this.extractResponseMetadata(response);
-
-      return buildEmbeddingResult({
-        embeddings,
-        modelId: config.modelId,
-        providerName,
-        requestId,
-        responseHeaders,
-        totalTokens,
-        version: VERSION,
-        warnings,
-      });
-    } catch (error) {
-      if (error instanceof TooManyEmbeddingValuesForCallError) throw error;
-      throw convertToAISDKError(error, {
-        operation: "doEmbed",
-        requestBody: { values: values.length },
-        url: this.getUrl(),
-      });
-    }
-  }
-
-  // Primitive operations (hooks) - implemented by subclasses
-  protected abstract createClient(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, embeddingOptions: EmbeddingProviderOptions | undefined): TClient;
-  protected abstract executeCall(client: TClient, values: string[], embeddingType: EmbeddingType, abortSignal: AbortSignal | undefined, requestConfig: CustomRequestConfig | undefined): Promise<TResponse>;
-  protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
-  protected abstract extractTokenCount(response: TResponse): number;
-  protected abstract getUrl(): string;
-}
-```
-
-The `doEmbed()` method orchestrates the embedding workflow, defining the sequence
-of operations. Concrete embedding strategies like `OrchestrationEmbeddingModelStrategy`
-and `FoundationModelsEmbeddingModelStrategy` extend this base class and implement
-the abstract primitive operations (hooks) to provide API-specific
-implementations for creating clients, executing calls, and extracting data.
-
-**Key Hooks:**
-
-1. `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
-2. `executeCall(client, values, embeddingType, abortSignal, requestConfig)`: Executes the API call.
+1. `createClient(config, settings, embeddingOptions)`: Creates the SAP SDK client.
+2. `executeCall(client, values, embeddingType, requestConfig)`: Sends the request.
 3. `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
-4. `extractTokenCount(response)`: Retrieves token usage from the response.
-5. `getUrl()`: Returns the API URL for error context.
+4. `extractTokenCount(response)`: Retrieves token usage.
+5. `getUrl()`: Supplies the API identifier for error context.
 
-The abbreviated class above omits the optional `resolveWarnings()` and
-`extractResponseMetadata()` hook definitions. Subclasses use them to surface
-warnings, request IDs, and response headers.
-
-**Benefits:**
-
-- **Code Reusability**: Eliminates approximately 50 lines of duplicate code
-  per strategy by centralizing the core embedding algorithm.
-- **Single Source of Truth**: Ensures consistent embedding logic across different
-  API implementations.
-- **Type Safety**: Utilizes generic type parameters (`<TClient, TResponse>`)
-  for enhanced type checking and developer experience.
-- **Extensibility**: Simplifies adding new embedding providers by requiring
-  only the implementation of a few abstract methods.
+The base class merges provider `requestConfig`, per-call headers, and
+`abortSignal` before calling `executeCall`; cancellation is not a separate hook
+argument. Optional `resolveWarnings()` and `extractResponseMetadata()` hooks
+surface API-specific warnings, request IDs, and response headers.
 
 #### Template Method Pattern (Base Language Model Strategy)
 
-The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
-to consolidate shared logic while allowing API-specific customization. The
-following pseudocode abbreviates generic types, error conversion, and metadata
-assembly; see the source for the complete implementation:
+[`BaseLanguageModelStrategy`](./src/base-language-model-strategy.ts) centralizes
+message conversion, parameter precedence, cancellation, response assembly, and
+error conversion for generation and streaming. The concrete Orchestration and
+Foundation Models strategies build API-specific requests and clients.
 
-```typescript
-// Base class with Template Method pattern
-abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
-  // Template method - defines the algorithm skeleton
-  async doGenerate(config, settings, options): Promise<LanguageModelV3GenerateResult> {
-    const commonParts = await this.buildCommonParts(config, settings, options);
-    const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
-    const client = this.createClient(config, settings, commonParts);
-    const response = await this.executeApiCall(client, request, options.abortSignal, config.requestConfig);
-    return buildGenerateResult({ modelId, providerName, request, response, warnings });
-  }
-
-  // Common logic shared by all strategies
-  protected async buildCommonParts(config, settings, options): Promise<CommonParts> { /* ... */ }
-
-  // Primitive operations - implemented by subclasses
-  protected abstract buildRequest(...): { request: ApiRequest; warnings: Warning[] };
-  protected abstract createClient(config, settings, commonParts): ApiClient;
-  protected abstract executeApiCall(client, request, abortSignal, requestConfig): Promise<ApiResponse>;
-}
-```
-
-The concrete strategies (`OrchestrationLanguageModelStrategy` and
-`FoundationModelsLanguageModelStrategy`) extend this base class and implement
-only the API-specific primitive operations.
+For nonstreaming calls, `executeApiCall(client, request, requestConfig)` receives
+the merged transport configuration, including per-call headers and cancellation.
+Streaming uses the SDK
+[cancellation signatures](#request-cancellation) and delegates event conversion
+to the [shared stream transformer](./src/stream-transformer.ts).
 
 #### API Selection Hierarchy
 
@@ -1425,15 +1355,23 @@ AI SDK.
 ## Versioned Package Architecture (V4 + V3 + V2)
 
 This repository publishes **two npm packages** from a single codebase. The main
-package exposes three versioned entrypoints; the standalone V2 package preserves
-the existing package name for consumers that cannot use subpath exports.
+package exposes four entrypoints for three provider specifications; the standalone
+V2 package preserves the existing package name for consumers that cannot use
+subpath exports.
 
 | Package export                      | Interface                              | Target users                     |
 | ----------------------------------- | -------------------------------------- | -------------------------------- |
 | `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
 | `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| `@jerome-benoit/sap-ai-provider/v3` | Same V3 exports as the root            | AI SDK 6                         |
 | `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
 | `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+
+The root and `/v3` share `src/index.ts` and the exact same export targets:
+`dist/index.js` / `dist/index.d.ts` for ESM and `dist/index.cjs` /
+`dist/index.d.cts` for CommonJS. There is no V3 facade or extra bundle. The
+four package entrypoints use **three artifact families**: `index.*`,
+`index-v2.*`, and `index-v4.*`.
 
 ### V4 Facade Layer
 
@@ -1479,7 +1417,6 @@ graph TB
     end
 
     subgraph "Internal V3 Implementation"
-        V3Provider[SAPAIProvider]
         V3LM[SAPAILanguageModel]
         V3EM[SAPAIEmbeddingModel]
         Strategies[API Strategies]
@@ -1490,7 +1427,8 @@ graph TB
         FMAPI[Foundation Models API]
     end
 
-    V2Provider -->|wraps| V3Provider
+    V2Provider -->|creates| V2LM
+    V2Provider -->|creates| V2EM
     V2LM -->|delegates to| V3LM
     V2EM -->|delegates to| V3EM
     V2LM -->|uses| Adapters
@@ -1498,8 +1436,6 @@ graph TB
     Adapters -->|converts V3 results| V2LM
     Adapters -->|converts V3 results| V2EM
 
-    V3Provider -->|creates| V3LM
-    V3Provider -->|creates| V3EM
     V3LM -->|uses| Strategies
     V3EM -->|uses| Strategies
     Strategies -->|calls| OrchAPI
@@ -1509,7 +1445,6 @@ graph TB
     style V2LM fill:#ffe1f5
     style V2EM fill:#ffe1f5
     style Adapters fill:#fff4e1
-    style V3Provider fill:#e1f5ff
     style V3LM fill:#e1f5ff
     style V3EM fill:#e1f5ff
 ```
@@ -1541,18 +1476,19 @@ The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 
 The builds are **sequential** to the same `dist/` directory:
 
 ```bash
-# Main package build: V3 root plus /v2 and /v4 entrypoints
+# Main package build: root, /v2, /v3, /v4 using three artifact families
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
 
 # V2 publication (run from a separate clean checkout)
-AI_SDK_VERSION=v2 npm publish # prepublishOnly builds, checks, and prepares V2
+AI_SDK_VERSION=v2 npm publish
 ```
 
 **Why sequential?** Both builds use `clean: true` and replace `dist/`. The
-standalone publication also rewrites `package.json` and `package-lock.json`, so
-run it in a separate clean checkout. Do not run `prepare:v2` manually before
-`npm publish`: the publication lifecycle performs preparation after building.
+standalone publication also rewrites `package.json` and `package-lock.json` and
+removes the `/v2`, `/v3`, and `/v4` exports, leaving only the V2 root API.
+Run it in a separate clean checkout. Do not run `prepare:v2` manually before
+`npm publish`: its lifecycle builds V2, prepares it, and verifies the prepared exports.
 
 ### Key Design Decisions
 

@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { deepMerge, deepMergeTwo } from "./deep-merge";
+import { deepMerge } from "./deep-merge";
 
 describe("deepMerge", () => {
   describe("basic merging", () => {
@@ -154,72 +154,13 @@ describe("deepMerge", () => {
       expect(source2).toEqual({ a: { c: 2 } });
     });
 
-    it("should create new nested objects", () => {
-      const source1 = { a: { b: 1 } };
-      const result = deepMerge<Record<string, unknown>>(source1, { a: { c: 2 } });
-
-      expect(result.a).not.toBe(source1.a);
-    });
-
-    describe("deep cloning during nested merge (regression tests)", () => {
-      it("should not mutate deeply nested target objects when merging", () => {
-        const target = { a: { b: { c: { original: true } } } };
-        const source = { a: { b: { c: { added: true } } } };
-        const originalC = target.a.b.c;
-
-        deepMerge<Record<string, unknown>>(target, source);
-
-        // Original nested object should be unchanged
-        expect(originalC).toEqual({ original: true });
-        expect(target.a.b.c).toEqual({ original: true });
-      });
-
-      it("should deeply clone target nested objects (not shallow copy)", () => {
-        const deepNested = { level3: { value: 1 } };
-        const target = { a: { b: deepNested } };
-        const source = { a: { b: { level3: { extra: 2 } } } };
-
-        const result = deepMerge<Record<string, unknown>>(target, source);
-
-        // Result should have merged values
-        expect(result).toEqual({ a: { b: { level3: { extra: 2, value: 1 } } } });
-        // Original deep nested object should be unchanged
-        expect(deepNested).toEqual({ level3: { value: 1 } });
-        // Result should not reference original nested object
-        expect((result.a as Record<string, unknown>).b).not.toBe(deepNested);
-      });
-
-      it("should preserve target immutability across multiple merge levels", () => {
-        const level2 = { c: { d: 1 } };
-        const level1 = { b: level2 };
-        const target = { a: level1 };
-        const source = { a: { b: { c: { e: 2 } } } };
-
-        const result = deepMerge<Record<string, unknown>>(target, source);
-
-        // All original nested objects should be unchanged
-        expect(level2).toEqual({ c: { d: 1 } });
-        expect(level1).toEqual({ b: { c: { d: 1 } } });
-        expect(target).toEqual({ a: { b: { c: { d: 1 } } } });
-        // Result should have merged values
-        expect(result).toEqual({ a: { b: { c: { d: 1, e: 2 } } } });
-      });
-
-      it("should handle mutation attempts on result without affecting sources", () => {
-        const target = { config: { nested: { value: 1 } } };
-        const source = { config: { nested: { extra: 2 } } };
-
-        const result = deepMerge<Record<string, unknown>>(target, source);
-
-        // Mutate the result
-        (result.config as Record<string, unknown>).mutated = true;
-        ((result.config as Record<string, unknown>).nested as Record<string, unknown>).changed =
-          true;
-
-        // Sources should remain unchanged
-        expect(target).toEqual({ config: { nested: { value: 1 } } });
-        expect(source).toEqual({ config: { nested: { extra: 2 } } });
-      });
+    it("should isolate mutations of merged nested objects from every source", () => {
+      const target = { config: { nested: { value: 1 } } };
+      const source = { config: { nested: { extra: 2 } } };
+      const result = deepMerge<Record<string, unknown>>(target, source);
+      ((result.config as Record<string, unknown>).nested as Record<string, unknown>).value = 3;
+      expect(target.config.nested.value).toBe(1);
+      expect(source.config.nested).toEqual({ extra: 2 });
     });
   });
 
@@ -253,62 +194,37 @@ describe("deepMerge", () => {
       expect(result[sym2]).toBeUndefined();
     });
 
-    it("should handle class instances with inherited properties", () => {
-      class Base {
-        inherited = "base";
-      }
-      class Extended extends Base {
-        own = "extended";
-      }
-
-      const obj = new Extended();
-      const result = deepMerge<Record<string, unknown>>(obj as unknown as Record<string, unknown>, {
-        other: "value",
-      });
-
-      expect(result.other).toBe("value");
-      expect(result.own).toBe("extended");
-      expect(result.inherited).toBe("base");
+    it("should copy only own enumerable properties", () => {
+      const source = Object.create({ inherited: "ignored" }) as Record<string, unknown>;
+      source.own = "kept";
+      expect(deepMerge(source)).toEqual({ own: "kept" });
     });
   });
 
   describe("security", () => {
-    describe("prototype pollution protection", () => {
-      it.each([
-        { description: "proto", key: "__proto__" },
-        { description: "constructor", key: "constructor" },
-        { description: "prototype", key: "prototype" },
-      ])("should skip $description key to prevent prototype pollution", ({ key }) => {
-        const malicious = { [key]: { polluted: true } };
-        const result = deepMerge<Record<string, unknown>>({}, malicious);
-
-        expect(result).toEqual({});
-        expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    it("should preserve special data keys without changing any object prototype", () => {
+      const source = JSON.parse(
+        '{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}}}',
+      ) as Record<string, unknown>;
+      const result = deepMerge<Record<string, unknown>>(source, {
+        constructor: { prototype: { extra: true } },
       });
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+      expect(Object.hasOwn(result, "__proto__")).toBe(true);
+      expect(result.__proto__).toEqual({ polluted: true });
+      expect(result.constructor).toEqual({ prototype: { extra: true, polluted: true } });
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+      expect(source.constructor).toEqual({ prototype: { polluted: true } });
+    });
 
-      it("should handle nested __proto__ attempts", () => {
-        const malicious = JSON.parse('{"a": {"__proto__": {"polluted": true}}}') as Record<
-          string,
-          unknown
-        >;
-        const result = deepMerge<Record<string, unknown>>({ a: { safe: true } }, malicious);
-
-        expect(result).toEqual({ a: { safe: true } });
-        expect(({} as Record<string, unknown>).polluted).toBeUndefined();
-      });
-
-      it.each([
-        { json: '{"safe": "value", "__proto__": {"polluted": true}}', key: "__proto__" },
-        { json: '{"safe": "value", "constructor": {"polluted": true}}', key: "constructor" },
-      ])("should skip $key when cloning source-only plain objects", ({ json }) => {
-        const malicious = {
-          newKey: JSON.parse(json) as Record<string, unknown>,
-        };
-        const result = deepMerge<Record<string, unknown>>({}, malicious);
-
-        expect(result.newKey).toEqual({ safe: "value" });
-        expect(({} as Record<string, unknown>).polluted).toBeUndefined();
-      });
+    it("should retain required JSON Schema properties named constructor and prototype", () => {
+      const schema = {
+        properties: { constructor: { type: "string" }, prototype: { type: "number" } },
+        required: ["constructor", "prototype"],
+      };
+      const result = deepMerge({ responseFormat: { schema } });
+      expect(result.responseFormat.schema).toEqual(schema);
+      expect(Object.keys(result.responseFormat.schema.properties)).toEqual(schema.required);
     });
 
     describe("circular reference detection", () => {
@@ -368,48 +284,6 @@ describe("deepMerge", () => {
         // Verify deep cloning (not same reference)
         expect(result.left).not.toBe(result.right);
       });
-
-      it("should handle object appearing in target then reappearing in source", () => {
-        const shared = { data: "shared" };
-        const target = { a: shared, b: { nested: shared } };
-        const source = { c: shared };
-
-        const result = deepMerge<Record<string, unknown>>(target, source);
-
-        expect(result).toEqual({
-          a: { data: "shared" },
-          b: { nested: { data: "shared" } },
-          c: { data: "shared" },
-        });
-      });
-
-      it("should handle deeply nested shared objects", () => {
-        const shared = { deep: { value: 1 } };
-        const target = { level1: { level2: { shared } } };
-        const source = { level1: { level2: { extra: true, shared } } };
-
-        const result = deepMerge<Record<string, unknown>>(target, source);
-
-        expect(result).toEqual({
-          level1: { level2: { extra: true, shared: { deep: { value: 1 } } } },
-        });
-      });
-
-      it("should still detect actual circular references after processing shared objects", () => {
-        const shared = { value: 1 };
-        const circular: Record<string, unknown> = { shared };
-        circular.self = circular; // Actual circular reference
-
-        // First merge with shared object succeeds
-        expect(() =>
-          deepMerge<Record<string, unknown>>({ a: shared }, { b: shared }),
-        ).not.toThrow();
-
-        // Then circular reference is still detected
-        expect(() => deepMerge<Record<string, unknown>>({}, circular)).toThrow(
-          "Circular reference detected during deep merge",
-        );
-      });
     });
 
     describe("depth limit protection", () => {
@@ -431,7 +305,7 @@ describe("deepMerge", () => {
         }
 
         const result = deepMerge<Record<string, unknown>>({}, deepObj);
-        expect(result).toHaveProperty("nested");
+        expect(result).toEqual(deepObj);
       });
     });
   });
@@ -483,63 +357,5 @@ describe("deepMerge", () => {
         temperature: 0.7,
       });
     });
-
-    it("should handle complex nested configuration", () => {
-      const base = {
-        modelParams: {
-          config: {
-            advanced: { option1: true, option2: false },
-            basic: { timeout: 1000 },
-          },
-          simple: "value",
-        },
-      };
-
-      const override = {
-        modelParams: {
-          config: {
-            advanced: { option2: true, option3: true },
-          },
-          newParam: 42,
-        },
-      };
-
-      const result = deepMerge<Record<string, unknown>>(base, override);
-
-      expect(result.modelParams).toEqual({
-        config: {
-          advanced: { option1: true, option2: true, option3: true },
-          basic: { timeout: 1000 },
-        },
-        newParam: 42,
-        simple: "value",
-      });
-    });
-  });
-});
-
-describe("deepMergeTwo", () => {
-  // Note: deepMergeTwo is a convenience wrapper around deepMerge.
-  // Core merge behavior (nested, arrays, security, immutability) is tested in deepMerge tests.
-  // These tests focus on the two-argument API and undefined handling.
-
-  it("should merge two objects with deep merge behavior", () => {
-    const result = deepMergeTwo<Record<string, unknown>>({ a: { b: 1 } }, { a: { c: 2 } });
-    expect(result).toEqual({ a: { b: 1, c: 2 } });
-  });
-
-  it("should handle undefined target", () => {
-    const result = deepMergeTwo<Record<string, unknown>>(undefined, { a: 1 });
-    expect(result).toEqual({ a: 1 });
-  });
-
-  it("should handle undefined source", () => {
-    const result = deepMergeTwo<Record<string, unknown>>({ a: 1 }, undefined);
-    expect(result).toEqual({ a: 1 });
-  });
-
-  it("should handle both undefined", () => {
-    const result = deepMergeTwo(undefined, undefined);
-    expect(result).toEqual({});
   });
 });

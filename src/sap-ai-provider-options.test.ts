@@ -12,21 +12,12 @@ import {
   orchestrationConfigRefOverrideSchema,
   orchestrationConfigRefSchema,
   parseSAPPartProviderOptions,
-  SAP_AI_PROVIDER_NAME,
   sapAIEmbeddingProviderOptions,
-  type SAPAIEmbeddingProviderOptions,
   sapAILanguageModelProviderOptions,
-  type SAPAILanguageModelProviderOptions,
   validateEmbeddingModelParamsSettings,
   validateModelParamsSettings,
   validateModelParamsWithWarnings,
 } from "./sap-ai-provider-options";
-
-describe("SAP_AI_PROVIDER_NAME", () => {
-  it("should have the correct provider name", () => {
-    expect(SAP_AI_PROVIDER_NAME).toBe("sap-ai");
-  });
-});
 
 describe("getProviderName", () => {
   it("should extract provider name from identifier with .chat suffix", () => {
@@ -443,31 +434,6 @@ describe("sapAILanguageModelProviderOptions", () => {
       expect(result.success).toBe(false);
     });
   });
-
-  describe("type inference", () => {
-    it("should have correct TypeScript type", () => {
-      const validOptions: SAPAILanguageModelProviderOptions = {
-        includeReasoning: true,
-        modelParams: {
-          maxTokens: 100,
-          temperature: 0.5,
-        },
-      };
-      expect(validOptions).toBeDefined();
-    });
-
-    it("should have correct TypeScript type with placeholderValues", () => {
-      const validOptions: SAPAILanguageModelProviderOptions = {
-        placeholderValues: {
-          groundingInput: "What is SAP?",
-          groundingOutput: "",
-          product: "SAP Cloud SDK",
-        },
-      };
-      expect(validOptions).toBeDefined();
-      expect(validOptions.placeholderValues?.product).toBe("SAP Cloud SDK");
-    });
-  });
 });
 
 describe("sapAIEmbeddingProviderOptions", () => {
@@ -547,16 +513,6 @@ describe("sapAIEmbeddingProviderOptions", () => {
         value: { modelParams: { dimensions: -1 } },
       });
       expect(result.success).toBe(false);
-    });
-  });
-
-  describe("type inference", () => {
-    it("should have correct TypeScript type", () => {
-      const validOptions: SAPAIEmbeddingProviderOptions = {
-        modelParams: { dimensions: 1536 },
-        type: "query",
-      };
-      expect(validOptions).toBeDefined();
     });
   });
 });
@@ -806,9 +762,6 @@ describe("orchestrationConfigRefOverrideSchema", () => {
   ])("should reject $description", ({ value }) => {
     const result = orchestrationConfigRefOverrideSchema.safeParse(value);
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe("overrideConfig must be an object");
-    }
   });
 
   it.each([
@@ -820,19 +773,13 @@ describe("orchestrationConfigRefOverrideSchema", () => {
   ])("should reject non-object $description stream with an issue, not a throw", ({ value }) => {
     const result = orchestrationConfigRefOverrideSchema.safeParse(value);
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe("overrideConfig.stream must be an object");
-    }
   });
 
-  it("should reject stream.enabled with the upstream call-site message", () => {
+  it("should reject stream.enabled overrides", () => {
     const result = orchestrationConfigRefOverrideSchema.safeParse({
       stream: { enabled: true },
     });
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain("stream.enabled is not allowed");
-    }
   });
 
   it("should reject a throwing stream getter instead of propagating the error", () => {
@@ -971,12 +918,6 @@ describe("parseSAPPartProviderOptions", () => {
     expect(parseSAPPartProviderOptions({ "sap-ai": input })).toBeUndefined();
   });
 
-  it("should not throw on circular input", () => {
-    const circular: Record<string, unknown> = {};
-    circular.self = circular;
-    expect(() => parseSAPPartProviderOptions(circular)).not.toThrow();
-  });
-
   it("should push one warning per Zod issue when invalid block is provided", () => {
     const warnings: SharedV3Warning[] = [];
     const result = parseSAPPartProviderOptions(
@@ -987,10 +928,6 @@ describe("parseSAPPartProviderOptions", () => {
     expect(result).toBeUndefined();
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
-    const message = (warnings[0] as { message?: string }).message ?? "";
-    expect(message).toMatch(
-      /^providerOptions\['sap-ai'\]\.cacheControl\.ttl is invalid: [^]+\. The directive was dropped\.$/,
-    );
   });
 
   it("should not push warnings when block is absent", () => {

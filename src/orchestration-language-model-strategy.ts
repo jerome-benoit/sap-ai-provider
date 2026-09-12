@@ -33,11 +33,9 @@ import {
   convertResponseFormat,
   convertToolsToSAPFormat,
   hasKeys,
-  mergeRequestConfig,
   type ParamMapping,
   type SAPResponseFormat,
   type SAPToolChoice,
-  type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
@@ -282,31 +280,23 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   protected async executeApiCall(
     client: OrchestrationClientInstance,
     request: ChatCompletionRequest,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const response = await client.chatCompletion(
-      request,
-      mergeRequestConfig(requestConfig, abortSignal),
-    );
+    const response = await client.chatCompletion(request, requestConfig);
 
-    const { requestId, responseId } = this.extractMetadata(response);
+    const { requestId, responseMetadata } = this.extractMetadata(response);
 
     return {
-      getCitations: () =>
-        (response as { getCitations?: () => SDKCitation[] | undefined }).getCitations?.(),
+      getCitations: () => response.getCitations(),
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
-      getIntermediateFailures: () =>
-        (
-          response as { getIntermediateFailures?: () => undefined | unknown[] }
-        ).getIntermediateFailures?.(),
+      getIntermediateFailures: () => response.getIntermediateFailures(),
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
       requestId,
-      responseId,
+      responseMetadata,
     };
   }
 
@@ -322,29 +312,27 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       request,
       abortSignal,
       sdkStreamOptions,
-      mergeRequestConfig(requestConfig, undefined),
+      requestConfig,
     );
 
-    const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
+    const { requestId, responseHeaders, responseMetadata } = this.extractMetadata(streamResponse);
 
     return {
-      getCitations: () =>
-        (streamResponse as { getCitations?: () => SDKCitation[] | undefined }).getCitations?.(),
+      cancel: () => {
+        streamResponse.stream.controller.abort();
+      },
+      getCitations: () => streamResponse.getCitations(),
       getFinishReason: () => streamResponse.getFinishReason(),
-      getIntermediateFailures: () =>
-        (
-          streamResponse as { getIntermediateFailures?: () => undefined | unknown[] }
-        ).getIntermediateFailures?.(),
-      getTokenUsage: () => streamResponse.getTokenUsage(),
+      getIntermediateFailures: () => streamResponse.getIntermediateFailures(),
       requestId,
       responseHeaders,
-      responseId,
+      responseMetadata,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }
 
-  protected getCompletionIdPath(): readonly string[] {
-    return ["final_result", "id"];
+  protected getCompletionDataPath(): readonly string[] {
+    return ["final_result"];
   }
 
   protected getEscapeTemplatePlaceholders(

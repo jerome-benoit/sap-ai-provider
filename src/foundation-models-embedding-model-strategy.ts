@@ -16,7 +16,6 @@ import {
   buildModelDeployment,
   extractResponseMetadata,
   hasKeys,
-  mergeRequestConfig,
   normalizeEmbedding,
 } from "./strategy-utils.js";
 
@@ -69,11 +68,10 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     clientWithContext: FMEmbeddingClientWithContext,
     values: string[],
     _embeddingType: unknown,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<AzureOpenAiEmbeddingResponse> {
     const request = this.buildRequest(values, clientWithContext.mergedParams);
-    return clientWithContext.client.run(request, mergeRequestConfig(requestConfig, abortSignal));
+    return clientWithContext.client.run(request, requestConfig);
   }
 
   protected extractEmbeddings(response: AzureOpenAiEmbeddingResponse): EmbeddingModelV3Embedding[] {
@@ -102,8 +100,8 @@ export class FoundationModelsEmbeddingModelStrategy extends BaseEmbeddingModelSt
     mergedParams: Record<string, unknown> | undefined,
   ): AzureOpenAiEmbeddingParameters {
     return {
-      input: values,
       ...(mergedParams ?? {}),
+      input: values,
     };
   }
 }

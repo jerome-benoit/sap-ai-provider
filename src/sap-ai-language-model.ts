@@ -170,6 +170,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       deploymentConfig: this.config.deploymentConfig,
       destination: this.config.destination,
       modelId: this.modelId,
+      parsedProviderOptions: sapOptions,
       provider: this.config.provider,
       requestConfig: this.config.requestConfig,
     };

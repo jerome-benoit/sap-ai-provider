@@ -77,14 +77,7 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
 
   async doGenerate(options: LanguageModelV4CallOptions): Promise<LanguageModelV4GenerateResult> {
     const result = await this.internalModel.doGenerate(normalizeCallOptions(options));
-    const converted = convertGenerateResultToV4(result);
-    return {
-      ...converted,
-      providerMetadata: result.providerMetadata,
-      request: result.request,
-      response: result.response,
-      warnings: converted.warnings,
-    };
+    return convertGenerateResultToV4(result);
   }
 
   async doStream(options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> {

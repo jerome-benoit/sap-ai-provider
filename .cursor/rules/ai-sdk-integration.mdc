@@ -6,10 +6,10 @@ description: Guidance for integrating with the Vercel AI SDK
 
 This repository publishes two npm packages with versioned Vercel AI SDK entrypoints:
 
-- **`@jerome-benoit/sap-ai-provider`** — V3 root, `/v2`, and `/v4` entrypoints
+- **`@jerome-benoit/sap-ai-provider`** — V3 root plus `/v2`, `/v3`, and `/v4` entrypoints
 - **`@jerome-benoit/sap-ai-provider-v2`** — standalone V2 facade
 
-Use `/v2` with AI SDK 5, the root V3 entrypoint with AI SDK 6, and `/v4`
+Use `/v2` with AI SDK 5, the root or identical `/v3` entrypoint with AI SDK 6, and `/v4`
 with AI SDK 7. The V2 facade also supports AI SDK 6 compatibility. Package
 release versions, provider specifications (V2/V3/V4), and AI SDK majors
 (5/6/7) are separate version axes.
@@ -17,6 +17,7 @@ release versions, provider specifications (V2/V3/V4), and AI SDK majors
 ## V3 Root Entrypoint (AI SDK 6)
 
 The root entrypoint implements `ProviderV3`, `LanguageModelV3`, and `EmbeddingModelV3` contracts.
+The explicit `/v3` subpath shares the root runtime and declarations; it is not a facade.
 
 | Method                                 | Description                        |
 | -------------------------------------- | ---------------------------------- |

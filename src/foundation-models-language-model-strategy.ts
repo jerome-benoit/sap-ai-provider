@@ -20,7 +20,6 @@ import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
-  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -116,12 +115,11 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   protected async executeApiCall(
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const response = await client.run(request, mergeRequestConfig(requestConfig, abortSignal));
+    const response = await client.run(request, requestConfig);
 
-    const { requestId, responseId } = this.extractMetadata(response);
+    const { requestId, responseMetadata } = this.extractMetadata(response);
 
     return {
       getContent: () => response.getContent(),
@@ -131,7 +129,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
       rawResponse: { headers: response.rawResponse.headers },
       requestId,
-      responseId,
+      responseMetadata,
     };
   }
 
@@ -142,26 +140,24 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     _settings: FoundationModelsModelSettings,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<StreamCallResponse> {
-    const streamResponse = await client.stream(
-      request,
-      abortSignal,
-      mergeRequestConfig(requestConfig, undefined),
-    );
+    const streamResponse = await client.stream(request, abortSignal, requestConfig);
 
-    const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
+    const { requestId, responseHeaders, responseMetadata } = this.extractMetadata(streamResponse);
 
     return {
+      cancel: () => {
+        streamResponse.stream.controller.abort();
+      },
       getFinishReason: () => streamResponse.getFinishReason(),
-      getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,
       responseHeaders,
-      responseId,
+      responseMetadata,
       stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
     };
   }
 
-  protected getCompletionIdPath(): readonly string[] {
-    return ["id"];
+  protected getCompletionDataPath(): readonly string[] {
+    return [];
   }
 
   protected getParamMappings(): readonly ParamMapping[] {

@@ -171,9 +171,9 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-This covers the local validation commands; CI also validates its configured
-runtime matrix. `build:v2` replaces `dist/`, so rerun `npm run build` before
-using or packaging the main package afterward.
+CI runs these checks on Node.js 24, including the Node.js and Edge VM suites.
+`build:v2` replaces `dist/`, so rerun `npm run build` before using or packaging
+the main package afterward.
 
 ### Git Hooks (Lefthook)
 
@@ -318,8 +318,9 @@ authentication setup.
 **4. Example Code Guidelines**
 
 - Use relative imports (`../src/index-v4`) for repo examples to match the
-  installed AI SDK 7 development dependency. The root V3 import targets
-  AI SDK 6; `/v2` targets AI SDK 5 and also supports AI SDK 6 compatibility.
+  installed AI SDK 7 development dependency. The root V3 import and its identical
+  `/v3` subpath target AI SDK 6; `/v2` targets AI SDK 5 and also
+  supports AI SDK 6 compatibility.
 - Add comment explaining production import path:
 
   ```typescript
@@ -332,7 +333,7 @@ authentication setup.
 Before submitting a PR, run:
 
 ```bash
-npm run build         # Builds V3 root, /v2, and /v4 with declarations
+npm run build         # Builds three artifact families for root, /v2, /v3, /v4
 npm test             # Runs test suite
 ```
 
@@ -349,13 +350,16 @@ npm test             # Runs test suite
 
 ### Integration Tests
 
-- Test actual integration with SAP AI SDK
-- Require `AICORE_SERVICE_KEY` to run
-- Can be skipped in CI if credentials not available
+- Real SAP SDK contract tests use local HTTP fixtures without credentials and
+  run in the Node.js CI suite (`*.node.test.ts`).
+- Optional live SAP tenant smoke tests require `AICORE_SERVICE_KEY` or a service
+  binding; run them only in an appropriately configured environment.
 
 ### Test Coverage
 
-- Aim for >80% code coverage
+- Run `npm run test:coverage` to enforce the 90% thresholds for branches,
+  functions, lines, and statements configured in `vitest.node.config.ts`.
+  CI runs the normal test suites, not this coverage check.
 - Focus on critical paths and error handling
 - Don't test trivial getters/setters
 
@@ -363,9 +367,11 @@ npm test             # Runs test suite
 
 ### Provider Integration
 
-- Implement the matching Vercel AI SDK contracts: root V3 for SDK 6, V2 facade
-  for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades share
-  the V3 core; the main package exposes all three entrypoints.
+- Implement the matching Vercel AI SDK contracts: V3 root and `/v3` for SDK 6,
+  V2 facade for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades
+  share the V3 core; the main package exposes four entrypoints backed by three
+  artifact families. The root and `/v3` map to the same `index.*` runtime and
+  declaration files, not separate builds.
 - Follow the separation: provider factory → language model
 - Maintain Node.js 22.12+ compatibility and source-level Edge VM coverage;
   do not equate the latter with pure Edge deployment support

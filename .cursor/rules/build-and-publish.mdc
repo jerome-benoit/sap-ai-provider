@@ -13,12 +13,13 @@ description: Build, type-check, test, and publish workflow for the package
 - Main build stems: `index` (V3 / AI SDK 6), `index-v2` (V2 / AI SDK 5,
   also AI SDK 6 compatibility), and `index-v4` (V4 / AI SDK 7), each with
   `.js`, `.cjs`, `.d.ts`, `.d.cts`, and JavaScript sourcemaps.
+  The root and `/v3` share `index.*`: four entrypoints, three artifact families.
 
 ## Commands
 
 ### Build Commands
 
-- Build the main package (V3 root, `/v2`, and `/v4`): `npm run build`
+- Build the main package (V3 root, `/v2`, `/v3`, and `/v4`): `npm run build`
 - Watch the main package build: `npm run build:watch`
 - Build the standalone V2 package: `npm run build:v2`
 - Watch the standalone V2 build: `npm run build:v2:watch`
@@ -39,14 +40,15 @@ description: Build, type-check, test, and publish workflow for the package
 
 This repository publishes two npm packages from the same codebase:
 
-- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2` and `/v4` subpaths
+- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2`, `/v3`, and `/v4` subpaths
 - `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade
 
 `prepublishOnly` runs the appropriate build and verification before publish:
 
-- Main package: `build && check-build && check-build:v2 && check-build:v4`
+- Main package: `build && check-build`
 - Standalone V2 (when `AI_SDK_VERSION=v2`):
-  `build:v2 && check-build:v2 && prepare:v2`
+  `build:v2 && check-build:v2 && prepare:v2`, followed by
+  `tsx scripts/check-package-exports.ts` on the prepared package.
 
 See [package.json](mdc:package.json) for the full script.
 
@@ -55,7 +57,7 @@ package artifacts with V2-only outputs. `prepare:v2` renames `index-v2.*` to
 `index.*`, updates JavaScript source-map references and any matching map `file`
 metadata without changing mapped sources, rewrites the package name and AI peer
 range to AI SDK 5/6, removes
-`/v2` and `/v4` exports from the manifest, and updates the lockfile.
+`/v2`, `/v3`, and `/v4` exports from the manifest, and updates the lockfile.
 Run publish preparation only in a disposable publishing checkout.
 
 Dependency installation runs `prepare` (`lefthook install`), not a build.
@@ -67,8 +69,8 @@ Use `npm run build` explicitly to create distribution artifacts.
 
 ## Verification
 
-- Verify all main-package artifacts exist and ESM/CommonJS declaration routing
-  resolves correctly: `npm run check-build`.
+- Verify all main-package artifacts exist and ESM/CommonJS runtime and declaration
+  routing resolves correctly: `npm run check-build`.
 - Verify one facade build explicitly with `npm run check-build:v2` or
   `npm run check-build:v4`.
 - `test:edge` exercises provider source behavior, not published-bundle

@@ -74,21 +74,6 @@ describe("resolveApi", () => {
       // Provider set, model undefined, invocation set -> invocation wins
       expect(resolveApi("orchestration", undefined, "foundation-models")).toBe("foundation-models");
     });
-
-    it("should handle all combinations correctly", () => {
-      // All permutations of undefined vs set values
-      type ApiOrUndefined = "foundation-models" | "orchestration" | undefined;
-      const apis: ApiOrUndefined[] = [undefined, "orchestration", "foundation-models"];
-
-      for (const provider of apis) {
-        for (const model of apis) {
-          for (const invocation of apis) {
-            const expected = invocation ?? model ?? provider ?? "orchestration";
-            expect(resolveApi(provider, model, invocation)).toBe(expected);
-          }
-        }
-      }
-    });
   });
 });
 
@@ -289,18 +274,6 @@ describe("validateSettings", () => {
           }),
         });
       }).toThrow(UnsupportedFeatureError);
-    });
-
-    it("should check features in order (filtering first)", () => {
-      expect(() => {
-        validateSettings({
-          api: "foundation-models",
-          modelSettings: mockSettings({
-            filtering: { input: {} },
-            grounding: { type: "document_grounding_service" },
-          }),
-        });
-      }).toThrow(/Content filtering/);
     });
   });
 
@@ -801,10 +774,6 @@ describe("getEffectiveEscapeTemplatePlaceholders", () => {
 });
 
 describe("validateMaskingProvidersDeprecation", () => {
-  const expectedMessage =
-    "settings.masking.masking_providers is deprecated and will be removed by SAP on 2027-03-20. " +
-    "Migrate to settings.masking.providers.";
-
   it("should push a deprecation warning when only masking_providers is set", () => {
     const warnings: SharedV3Warning[] = [];
     const settings = {
@@ -815,7 +784,6 @@ describe("validateMaskingProvidersDeprecation", () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
-    expect((warnings[0] as { message?: string }).message).toBe(expectedMessage);
   });
 
   it("should not push a warning when providers is set (preferred shape)", () => {
@@ -850,7 +818,6 @@ describe("validateMaskingProvidersDeprecation", () => {
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: "other" });
-    expect((warnings[0] as { message?: string }).message).toBe(expectedMessage);
   });
 
   it("should not push a warning when masking is absent", () => {

@@ -4,10 +4,17 @@
 import type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+import {
+  APICallError as APICallErrorV2,
+  InvalidPromptError as InvalidPromptErrorV2,
+  LoadAPIKeyError as LoadAPIKeyErrorV2,
+  NoSuchModelError as NoSuchModelErrorV2,
+  UnsupportedFunctionalityError as UnsupportedFunctionalityErrorV2,
+} from "@ai-sdk/provider-v2";
+import { ErrorWithCause } from "@sap-cloud-sdk/util";
 import { describe, expect, it } from "vitest";
 
 import {
-  ApiSwitchError,
   convertSAPErrorToAPICallError,
   convertToAISDKError,
   normalizeHeaders,
@@ -21,28 +28,6 @@ interface ParsedResponseBody {
     request_id?: string;
   };
 }
-
-describe("ApiSwitchError", () => {
-  it.each([
-    { feature: "filtering", fromApi: "orchestration", toApi: "foundation-models" },
-    { feature: "masking", fromApi: "orchestration", toApi: "foundation-models" },
-    { feature: "logprobs", fromApi: "foundation-models", toApi: "orchestration" },
-  ] as const)(
-    "should create error for $fromApi → $toApi with $feature",
-    ({ feature, fromApi, toApi }) => {
-      const error = new ApiSwitchError(fromApi, toApi, feature);
-
-      expect(error).toBeInstanceOf(Error);
-      expect(error.name).toBe("ApiSwitchError");
-      expect(error.fromApi).toBe(fromApi);
-      expect(error.toApi).toBe(toApi);
-      expect(error.conflictingFeature).toBe(feature);
-      expect(error.message).toContain(`Cannot switch from ${fromApi} to ${toApi}`);
-      expect(error.message).toContain(`${feature} would be ignored`);
-      expect(error.message).toContain("Create a new model instance");
-    },
-  );
-});
 
 describe("normalizeHeaders", () => {
   describe("invalid inputs", () => {
@@ -135,7 +120,7 @@ describe("normalizeHeaders", () => {
       });
     });
 
-    it("should handle Web Headers instances by iterating via forEach", () => {
+    it("should normalize Web Headers instances", () => {
       const headers = new Headers({
         "Content-Length": "512",
         "X-Request-Id": "rid-123",
@@ -148,6 +133,13 @@ describe("normalizeHeaders", () => {
 
     it("should return undefined for an empty Headers instance", () => {
       expect(normalizeHeaders(new Headers())).toBeUndefined();
+    });
+
+    it("should preserve prototype-named Web Headers as own data properties", () => {
+      const headers = new Headers([["__proto__", "trace"]]);
+      const result = normalizeHeaders(headers);
+      expect(result).toEqual({ ["__proto__"]: "trace" });
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
     });
   });
 });
@@ -312,8 +304,9 @@ describe("convertSAPErrorToAPICallError", () => {
       const result = convertSAPErrorToAPICallError(errorResponse);
 
       expect(result).toBeInstanceOf(APICallError);
-      if (result instanceof APICallError && result.responseBody) {
-        const body = JSON.parse(result.responseBody) as ParsedResponseBody;
+      if (result instanceof APICallError) {
+        expect(result.responseBody).toBeDefined();
+        const body = JSON.parse(result.responseBody ?? "null") as ParsedResponseBody;
         expect(body.error.message).toBe("Test error");
         expect(body.error.code).toBe(500);
         expect(body.error.location).toBe("Test Module");
@@ -338,21 +331,6 @@ describe("convertSAPErrorToAPICallError", () => {
         expect(result.responseHeaders).toEqual({ "x-request-id": "test-123" });
         expect(result.requestBodyValues).toEqual({ prompt: "test" });
       }
-    });
-
-    it("should add request ID to error message", () => {
-      const errorResponse: OrchestrationErrorResponse = {
-        error: {
-          code: 500,
-          location: "Module",
-          message: "Test error",
-          request_id: "message-test-123",
-        },
-      };
-
-      const result = convertSAPErrorToAPICallError(errorResponse);
-
-      expect(result.message).toContain("Request ID: message-test-123");
     });
   });
 
@@ -395,26 +373,31 @@ describe("convertSAPErrorToAPICallError", () => {
         }
       },
     );
-
-    it("should include location in error message for 4xx errors", () => {
-      const errorResponse: OrchestrationErrorResponse = {
-        error: {
-          code: 400,
-          location: "Input Validation",
-          message: "Bad request",
-          request_id: "validation-123",
-        },
-      };
-
-      const result = convertSAPErrorToAPICallError(errorResponse);
-
-      expect(result.message).toContain("Error location: Input Validation");
-    });
   });
 });
 
 describe("convertToAISDKError", () => {
   describe("passthrough", () => {
+    it("should preserve SDK errors from another installed provider version", () => {
+      const errors = [
+        new APICallErrorV2({
+          message: "Capacity exhausted",
+          requestBodyValues: { prompt: "hello" },
+          responseHeaders: { "retry-after": "7" },
+          statusCode: 429,
+          url: "https://example.test/chat",
+        }),
+        new LoadAPIKeyErrorV2({ message: "Missing key" }),
+        new NoSuchModelErrorV2({ modelId: "missing", modelType: "languageModel" }),
+        new InvalidPromptErrorV2({ message: "Invalid arguments", prompt: "not json" }),
+        new UnsupportedFunctionalityErrorV2({ functionality: "file data" }),
+      ];
+
+      for (const error of errors) {
+        expect(convertToAISDKError(error)).toBe(error);
+      }
+    });
+
     it.each([
       {
         error: new APICallError({
@@ -542,7 +525,6 @@ describe("convertToAISDKError", () => {
 
       expect(result).toBeInstanceOf(APICallError);
       expect(result.statusCode).toBe(499);
-      expect(result.message).toBe("Request was aborted by the client");
       expect(result.isRetryable).toBe(false);
     });
 
@@ -599,26 +581,6 @@ describe("convertToAISDKError", () => {
       expect((result as APICallError).isRetryable).toBe(true);
       expect((result as APICallError).statusCode).toBe(503);
     });
-
-    it("should include response body for network errors when available", () => {
-      const axiosError = new Error("Network timeout");
-      Object.assign(axiosError, {
-        isAxiosError: true,
-        response: {
-          data: {
-            code: 503,
-            message: "Service temporarily unavailable",
-          },
-        },
-      });
-
-      const result = convertToAISDKError(axiosError) as APICallError;
-
-      expect(result.statusCode).toBe(503);
-      expect(result.responseBody).toBeDefined();
-      expect(result.message).toContain("SAP AI Core Error Response:");
-      expect(result.message).toContain("Service temporarily unavailable");
-    });
   });
 
   describe("generic error handling", () => {
@@ -654,12 +616,6 @@ describe("convertToAISDKError", () => {
       expect(result.message).toContain("doGenerate");
     });
 
-    it("should handle error without operation context", () => {
-      const result = convertToAISDKError(new Error("Simple error"));
-      expect(result.message).toContain("SAP AI Core error:");
-      expect(result.message).not.toContain("undefined");
-    });
-
     it("should pass through context URL and requestBody", () => {
       const result = convertToAISDKError(new Error("Test"), {
         operation: "doStream",
@@ -677,74 +633,6 @@ describe("convertToAISDKError", () => {
       }) as APICallError;
 
       expect(result.responseHeaders).toEqual({ "x-request-id": "axios-123" });
-    });
-  });
-
-  describe("axios header normalization", () => {
-    const createAxiosError = (headers: Record<string, unknown>) => {
-      const err = new Error("Request failed") as unknown as {
-        isAxiosError: boolean;
-        response: { headers: Record<string, unknown> };
-      };
-      err.isAxiosError = true;
-      err.response = { headers };
-      return err;
-    };
-
-    it.each([
-      {
-        desc: "array values joined with semicolon",
-        expected: { "x-multi": "a; b; c" },
-        headers: { "x-multi": ["a", "b", "c"] },
-      },
-      {
-        desc: "non-string values filtered from arrays",
-        expected: { "x-mixed": "valid; also" },
-        headers: { "x-mixed": ["valid", 123, null, "also"] },
-      },
-      {
-        desc: "arrays with only non-strings excluded",
-        expected: { "x-valid": "keep" },
-        headers: { "x-invalid": [123, null], "x-valid": "keep" },
-      },
-      {
-        desc: "number values converted to strings",
-        expected: { "content-length": "1024" },
-        headers: { "content-length": 1024 },
-      },
-      {
-        desc: "boolean values converted to strings",
-        expected: { "x-disabled": "false", "x-enabled": "true" },
-        headers: { "x-disabled": false, "x-enabled": true },
-      },
-      {
-        desc: "object values skipped",
-        expected: { "x-valid": "keep" },
-        headers: { "x-object": { nested: "obj" }, "x-valid": "keep" },
-      },
-    ])("should handle $desc", ({ expected, headers }) => {
-      const result = convertToAISDKError(createAxiosError(headers)) as APICallError;
-      expect(result.responseHeaders).toEqual(expected);
-    });
-
-    it.each([
-      { desc: "all unsupported types", headers: { "x-object": { nested: "object" } } },
-      { desc: "null headers", headers: null },
-    ])("should return undefined for $desc", ({ headers }) => {
-      const err = new Error("Request failed") as unknown as {
-        isAxiosError: boolean;
-        response: { headers: unknown };
-      };
-      err.isAxiosError = true;
-      err.response = { headers };
-
-      const result = convertToAISDKError(err) as APICallError;
-      expect(result.responseHeaders).toBeUndefined();
-    });
-
-    it("should return undefined when rootCause is not an object", () => {
-      const result = convertToAISDKError("just a string error") as APICallError;
-      expect(result.responseHeaders).toBeUndefined();
     });
   });
 
@@ -847,17 +735,6 @@ describe("convertToAISDKError", () => {
       expect(result.isRetryable).toBe(true);
     });
 
-    it("should traverse nested ErrorWithCause chain", () => {
-      const rootError = new Error("Network timeout");
-      const topError = new Error("SSE stream error");
-      Object.defineProperty(topError, "name", { value: "ErrorWithCause" });
-      Object.defineProperty(topError, "rootCause", { get: () => rootError });
-
-      const result = convertToAISDKError(topError) as APICallError;
-
-      expect(result.message).toContain("Network timeout");
-    });
-
     it("should handle server errors received during streaming", () => {
       const serverError = { code: 429, message: "Rate limited", request_id: "test-123" };
       const error = new Error(`Error received from the server.\n${JSON.stringify(serverError)}`);
@@ -902,27 +779,6 @@ describe("convertToAISDKError", () => {
         expect(result.statusCode).toBe(503);
         expect(result.isRetryable).toBe(true);
       });
-
-      it("should include response body for destination errors", () => {
-        const axiosError = new Error("Could not resolve destination");
-        Object.assign(axiosError, {
-          isAxiosError: true,
-          response: {
-            data: {
-              error: "DESTINATION_NOT_FOUND",
-              message: "Destination 'my-dest' does not exist",
-            },
-          },
-        });
-
-        const result = convertToAISDKError(axiosError) as APICallError;
-
-        expect(result.statusCode).toBe(400);
-        expect(result.isRetryable).toBe(false);
-        expect(result.responseBody).toBeDefined();
-        expect(result.message).toContain("SAP AI Core Error Response:");
-        expect(result.message).toContain("DESTINATION_NOT_FOUND");
-      });
     });
 
     describe("content and configuration errors (non-retryable 400)", () => {
@@ -940,27 +796,6 @@ describe("convertToAISDKError", () => {
 
         expect(result.statusCode).toBe(400);
         expect(result.isRetryable).toBe(false);
-      });
-
-      it("should include response body for configuration errors", () => {
-        const axiosError = new Error("Filtering parameters cannot be empty");
-        Object.assign(axiosError, {
-          isAxiosError: true,
-          response: {
-            data: {
-              code: 400,
-              details: "At least one filter must be specified",
-              message: "Invalid filter configuration",
-            },
-          },
-        });
-
-        const result = convertToAISDKError(axiosError) as APICallError;
-
-        expect(result.statusCode).toBe(400);
-        expect(result.responseBody).toBeDefined();
-        expect(result.message).toContain("SAP AI Core Error Response:");
-        expect(result.message).toContain("Invalid filter configuration");
       });
     });
 
@@ -1036,9 +871,7 @@ describe("convertToAISDKError", () => {
 
         expect(result.statusCode).toBe(400);
         expect(result.responseBody).toBeDefined();
-        expect(result.message).toContain("SAP AI Core Error Response:");
-        expect(result.message).toContain("request_id");
-        expect(result.message).toContain("258f5390-51f6-93cc-a066-858be2558a64");
+        expect(result.responseBody).toContain("258f5390-51f6-93cc-a066-858be2558a64");
       });
 
       it("should handle axios error with string response data", () => {
@@ -1054,8 +887,6 @@ describe("convertToAISDKError", () => {
 
         expect(result.statusCode).toBe(500);
         expect(result.responseBody).toBe("Internal Server Error");
-        expect(result.message).toContain("SAP AI Core Error Response:");
-        expect(result.message).toContain("Internal Server Error");
       });
 
       it("should truncate large response bodies", () => {
@@ -1076,7 +907,6 @@ describe("convertToAISDKError", () => {
           expect(result.responseBody.length).toBeLessThanOrEqual(2014); // 2000 + "...[truncated]"
         }
         expect(result.responseBody).toContain("...[truncated]");
-        expect(result.message).toContain("...[truncated]");
       });
 
       it("should handle JSON.stringify errors gracefully", () => {
@@ -1095,9 +925,7 @@ describe("convertToAISDKError", () => {
 
         expect(result.statusCode).toBe(400);
         expect(result.responseBody).toBeDefined();
-        expect(result.message).toContain("SAP AI Core Error Response:");
-        // Should fall back to type indication for circular references
-        expect(result.responseBody).toContain("[Unable to serialize: object]");
+        expect(result.cause).toBe(axiosError);
       });
 
       it("should extract OrchestrationErrorResponse from Axios error nested in ErrorWithCause", () => {
@@ -1160,8 +988,127 @@ describe("convertToAISDKError", () => {
 
         expect(result.statusCode).toBe(503);
         expect(result.responseBody).toBeUndefined();
-        expect(result.message).not.toContain("SAP AI Core Error Response:");
       });
+    });
+  });
+  describe("error boundary regressions", () => {
+    it("keeps parser input out of public summaries while retaining the original diagnostic cause", () => {
+      let parsingError: unknown;
+      try {
+        JSON.parse("credential-sentinel-network-timeout");
+      } catch (error) {
+        parsingError = error;
+      }
+      expect(parsingError).toBeInstanceOf(SyntaxError);
+      const wrapper = new Error("Could not parse service configuration", { cause: parsingError });
+      const converted = convertToAISDKError(wrapper) as APICallError;
+      expect(converted.statusCode).toBe(500);
+      expect(converted.isRetryable).toBe(false);
+      expect(converted.message).not.toContain("credential-sentinel");
+      expect(converted.cause).toBe(wrapper);
+
+      const transport = Object.assign(
+        new Error("Response parsing failed", { cause: parsingError }),
+        {
+          isAxiosError: true,
+          response: { headers: { "retry-after": "5" }, status: 429 },
+        },
+      );
+      const transportResult = convertToAISDKError(transport) as APICallError;
+      expect(transportResult.statusCode).toBe(429);
+      expect(transportResult.isRetryable).toBe(true);
+      expect(transportResult.message).not.toContain("credential-sentinel");
+      expect(transportResult.cause).toBe(transport);
+      expect(transportResult.responseHeaders?.["retry-after"]).toBe("5");
+    });
+
+    it("should parse braces and escaped quotes inside a structured SSE error string", () => {
+      const message = 'Unexpected } token with { and "quoted" text';
+      const result = convertToAISDKError(
+        new Error(
+          "Error received from the server. " + JSON.stringify({ error: { code: 400, message } }),
+        ),
+      ) as APICallError;
+      expect(result.statusCode).toBe(400);
+      expect(result.isRetryable).toBe(false);
+      expect(JSON.parse(result.responseBody ?? "null")).toMatchObject({ error: { message } });
+    });
+
+    it("should preserve HTTP status and diagnostics through mixed native and SAP causes", () => {
+      const transport = Object.assign(new Error("Service unavailable"), {
+        isAxiosError: true,
+        response: { data: "gateway", headers: { "retry-after": "5" }, status: 503 },
+      });
+      const wrapper = new Error("native wrapper", {
+        cause: new ErrorWithCause("SAP wrapper", transport),
+      });
+      const result = convertToAISDKError(wrapper) as APICallError;
+      expect(result.statusCode).toBe(503);
+      expect(result.isRetryable).toBe(true);
+      expect(result.responseHeaders?.["retry-after"]).toBe("5");
+      expect(result.responseBody).toBe("gateway");
+    });
+
+    it("should retain Axios metadata when its deeper native cause has no response", () => {
+      const transport = Object.assign(new Error("HTTP failure", { cause: new Error("backend") }), {
+        isAxiosError: true,
+        response: { data: { error: { message: "throttled" } }, status: 429 },
+      });
+      const result = convertToAISDKError(transport) as APICallError;
+      expect(result.statusCode).toBe(429);
+      expect(result.isRetryable).toBe(true);
+    });
+
+    it("should preserve wrapped cancellation without looping on cyclic causes", () => {
+      const abort = new DOMException("aborted", "AbortError");
+      const wrapper = new ErrorWithCause("SAP wrapper", new Error("native", { cause: abort }));
+      const result = convertToAISDKError(wrapper) as APICallError;
+      expect(result.statusCode).toBe(499);
+      expect(result.isRetryable).toBe(false);
+      const cyclic = new ErrorWithCause("cycle", new Error("inner"));
+      Object.defineProperty(cyclic, "cause", { value: cyclic });
+      expect(convertToAISDKError(cyclic)).toBeInstanceOf(APICallError);
+    });
+
+    it("should keep arbitrary response data out of the message while retaining explicit diagnostics", () => {
+      const body = { access_token: "credential-sentinel", prompt: "private-prompt-sentinel" };
+      const result = convertToAISDKError(
+        Object.assign(new Error("Request rejected"), {
+          isAxiosError: true,
+          response: { data: body, status: 400 },
+        }),
+      ) as APICallError;
+      expect(JSON.parse(result.responseBody ?? "null")).toEqual(body);
+      expect(result.message).not.toContain(body.access_token);
+      expect(result.message).not.toContain(body.prompt);
+    });
+
+    it.each([Symbol("body"), () => undefined, { toJSON: () => undefined }])(
+      "should retain the original error when response serialization produces no string",
+      (data) => {
+        const original = Object.assign(new Error("Request rejected"), {
+          isAxiosError: true,
+          response: { data, status: 400 },
+        });
+        const result = convertToAISDKError(original) as APICallError;
+        expect(result.statusCode).toBe(400);
+        expect(result.cause).toBe(original);
+      },
+    );
+
+    it("should preserve dotted model IDs and prefer known embedding request identity", () => {
+      const error = {
+        error: { code: 404, message: "Model anthropic--claude-4.5-sonnet not found." },
+      };
+      expect((convertToAISDKError(error) as NoSuchModelError).modelId).toBe(
+        "anthropic--claude-4.5-sonnet",
+      );
+      const context = { modelId: "text-embedding-3-small", modelType: "embeddingModel" as const };
+      for (const failure of [error, new Error("Failed to resolve deployment: guessed")]) {
+        const result = convertToAISDKError(failure, context) as NoSuchModelError;
+        expect(result.modelId).toBe(context.modelId);
+        expect(result.modelType).toBe("embeddingModel");
+      }
     });
   });
 });

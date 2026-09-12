@@ -4,13 +4,14 @@
 
 ## Choosing Between V4, V3, and V2 Entrypoints
 
-This library publishes two npm packages. The main package exposes three
-entrypoints; choose the provider specification that matches your AI SDK major.
+This library publishes two npm packages. The main package exposes four
+entrypoints: the root, `/v2`, `/v3` and `/v4`. The root and `/v3` expose the
+same V3 implementation; choose the specification matching your AI SDK major.
 Package release numbers (such as 5.x) are independent of provider specification
 versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
 
-- **`@jerome-benoit/sap-ai-provider` (V3 Root Entrypoint)**:
-  - **When to Use**: Use the root entrypoint with Vercel AI SDK 6, which
+- **`@jerome-benoit/sap-ai-provider/v3` (V3 Entrypoint)**:
+  - **When to Use**: Use `/v3` or the equivalent package root with Vercel AI SDK 6, which
     supports `LanguageModelV3`/`EmbeddingModelV3` interfaces. AI SDK 5 cannot
     consume V3 models; AI SDK 7 integrations must use the V4 subpath below.
   - **Key Features**: Implements Vercel AI SDK `LanguageModelV3` and `EmbeddingModelV3` interfaces.
@@ -32,7 +33,7 @@ versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
     the shared V3 core. See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7)
     for reasoning options and file normalization.
 
-### Migrating from V2 to V3 (`@jerome-benoit/sap-ai-provider-v2` → `@jerome-benoit/sap-ai-provider`)
+### Migrating from V2 to V3
 
 If you are upgrading to Vercel AI SDK 6 and want to use the native V3
 interfaces, install `ai@^6` and follow these steps:
@@ -43,7 +44,7 @@ interfaces, install `ai@^6` and follow these steps:
    // Before (V2)
    import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
    // After (V3)
-   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v3";
    ```
 
 2. **Update Type Imports**:
@@ -64,7 +65,7 @@ interfaces, install `ai@^6` and follow these steps:
    `finishReason` and `usage` are structured in responses. Refer to the
    "Version 3.x to 4.x" migration section for details on these changes.
 
-### Migrating from V3 to V2 (`@jerome-benoit/sap-ai-provider` → `@jerome-benoit/sap-ai-provider-v2`)
+### Migrating from V3 to V2
 
 If you need to downgrade your Vercel AI SDK version or require strict
 `LanguageModelV2`/`EmbeddingModelV2` compatibility, follow these steps:
@@ -73,7 +74,7 @@ If you need to downgrade your Vercel AI SDK version or require strict
 
    ```typescript
    // Before (V3)
-   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v3";
    // After (V2)
    import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
    ```
@@ -129,11 +130,14 @@ the ESM-only AI SDK provider dependencies without experimental flags.
 
 #### 2. Update the Package and Select the Entrypoint
 
-| AI SDK | Installation                                          | Import                              |
-| ------ | ----------------------------------------------------- | ----------------------------------- |
-| 7      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^7` | `@jerome-benoit/sap-ai-provider/v4` |
-| 6      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^6` | `@jerome-benoit/sap-ai-provider`    |
-| 5      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
+The installation options below include `/v3`, the current explicit alternative
+to the unchanged V3 root entrypoint.
+
+| AI SDK | Installation                                          | Import                                      |
+| ------ | ----------------------------------------------------- | ------------------------------------------- |
+| 7      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^7` | `@jerome-benoit/sap-ai-provider/v4`         |
+| 6      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^6` | Root or `@jerome-benoit/sap-ai-provider/v3` |
+| 5      | `npm install @jerome-benoit/sap-ai-provider@^5 ai@^5` | `@jerome-benoit/sap-ai-provider/v2`         |
 
 **Existing AI SDK 6 users keep the root import and V3 model contracts.**
 Upgrading the provider package alone does not require switching to AI SDK 7
@@ -182,7 +186,7 @@ contents or of caller-supplied base64 strings.
 
 - [ ] Upgrade every Node.js runtime to 22.12 or newer.
 - [ ] Install provider 5.x alongside the intended AI SDK major.
-- [ ] Select the matching entrypoint; preserve the root import for SDK 6.
+- [ ] Select the matching entrypoint; SDK 6 can keep the root or use `/v3`.
 - [ ] Replace arbitrary file wrappers with supported file input forms.
 - [ ] Exercise generation, streaming, tool calls and embeddings used by your app.
 - [ ] Verify multimodal inputs against your selected SAP models when applicable.
@@ -381,7 +385,8 @@ parameters are passed through and depend on the selected SAP model.
 #### Using Foundation Models API
 
 ```typescript
-import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+import { createSAPAIProvider, SAP_AI_PROVIDER_NAME } from "@jerome-benoit/sap-ai-provider";
 
 // Option 1: Provider-level (affects all models)
 const provider = createSAPAIProvider({ api: "foundation-models" });
@@ -456,7 +461,8 @@ If you encounter issues, you can stay on v3.x:
 npm install @jerome-benoit/sap-ai-provider@3.x.x
 ```
 
-Version 3.x will receive security updates for 6 months after v4.0.0 release.
+Restore the previous manifest and lockfile together when rolling back an
+application, then run `npm ci`. Do not assume older releases receive fixes.
 
 ### Common Migration Issues
 
@@ -511,7 +517,7 @@ import type { LanguageModelV3 } from "@ai-sdk/provider";
 `streamText()`?**
 
 A: High-level APIs abstract most V2/V3 differences, but the root V3 entrypoint
-requires AI SDK 6. AI SDK 5 users must select the V2 facade; AI SDK 7 users
+(root or `/v3`) requires AI SDK 6. AI SDK 5 users must select the V2 facade; AI SDK 7 users
 must select `/v4`. See [Installation](./README.md#installation).
 
 **Q: Why did the finish reason become an object?**
@@ -527,13 +533,10 @@ checked against your deployment; this guide does not predict SAP's roadmap.
 
 **Q: Can I use v3.x and v4.x in the same project?**
 
-A: No, you can only use one version at a time. Choose based on your needs and
-migrate when ready.
-
-**Q: How long will v3.x be supported?**
-
-A: Version 3.x will receive security and critical bug fixes for 6 months after
-v4.0.0 release.
+A: A normal dependency name resolves to one version in your application. npm
+aliases can install multiple versions under different names, but each must be
+paired with compatible AI SDK contracts. Most applications should migrate one
+integration at a time.
 
 ---
 
@@ -587,18 +590,28 @@ try {
 
 ```typescript
 import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
+import { z } from "zod";
 
 try {
   const result = await generateText({ model, prompt });
 } catch (error) {
   if (error instanceof LoadAPIKeyError) {
     // Recognized authentication-message error
-    console.error("Auth Error:", error.message);
+    console.error("Auth Error:", error.name);
   } else if (error instanceof APICallError) {
     // Includes structured SAP 401/403/404 responses in v3.0.0
-    console.error("API Error:", error.statusCode, error.message);
-    const sapError = JSON.parse(error.responseBody || "{}");
-    console.error("Request ID:", sapError.error?.request_id);
+    console.error("API Error:", error.statusCode, error.name);
+    try {
+      const body: unknown = JSON.parse(error.responseBody ?? "");
+      const details = z
+        .object({
+          error: z.object({ request_id: z.string().optional() }),
+        })
+        .safeParse(body);
+      if (details.success) console.error("Request ID:", details.data.error.request_id);
+    } catch {
+      // A non-JSON body must not replace the original API failure.
+    }
   }
 }
 ```
@@ -610,24 +623,15 @@ upgrading beyond this historical release.
 
 #### 3. SAP Error Metadata Access
 
-Structured SAP AI Core error metadata (request ID, code, location) is preserved
-in the `APICallError.responseBody` field. Generic response bodies may be absent
-or non-JSON, so only parse bodies known to contain the SAP error envelope:
+Structured SAP AI Core metadata is available in `APICallError.responseBody`.
+Use guarded parsing and shape validation as above; plain-text responses, JSON
+`null` and unrelated envelopes are possible. The repository examples share
+[an optional-details parser](./examples/parse-sap-error-response-body.ts).
 
-```typescript
-catch (error) {
-  if (error instanceof APICallError) {
-    const sapError = JSON.parse(error.responseBody || '{}');
-    console.error({
-      statusCode: error.statusCode,
-      message: sapError.error?.message,
-      code: sapError.error?.code,
-      location: sapError.error?.location,
-      requestId: sapError.error?.request_id
-    });
-  }
-}
-```
+Error messages and response bodies can contain credentials, prompt data or other
+sensitive backend details. Prefer error names and HTTP status for routine logs.
+Do not log raw messages, whole error objects, request payloads or authentication
+headers automatically; inspect and redact detailed diagnostics privately first.
 
 #### 4. Automatic Retries
 
@@ -639,6 +643,12 @@ implement a retry loop.
 ---
 
 ## Version 1.x to 2.x (Breaking Changes)
+
+This section describes the upstream `@mymediset/sap-ai-provider`, not releases
+of the `@jerome-benoit` fork. Published upstream `1.0.3` and `2.0.1` target
+AI SDK 5; upstream `2.1.0` instead declares AI SDK 6. The fork's published
+history starts at 3.0.0 release candidates, so `@jerome-benoit` 1.x/2.x
+installation commands do not resolve.
 
 **Version 2.0 is a complete rewrite using the official SAP AI SDK
 (@sap-ai-sdk/orchestration).**
@@ -677,7 +687,7 @@ implement a retry loop.
 #### 1. Update Package
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@^2 ai@^5
+npm install @mymediset/sap-ai-provider@2.0.1 ai@^5
 ```
 
 #### 2. Update Authentication
@@ -687,6 +697,9 @@ npm install @jerome-benoit/sap-ai-provider@^2 ai@^5
 - Environment variable: `SAP_AI_SERVICE_KEY` → `AICORE_SERVICE_KEY`
 - Provider creation: Now synchronous (remove `await`)
 - Token management: Automatic (SAP AI SDK handles OAuth2)
+- Remove obsolete provider options: `serviceKey`, `token`, `baseURL`,
+  `completionPath`, `headers` and `fetch`; SAP AI SDK handles authentication
+  and transport. See the current API reference for supported configuration.
 
 **Complete setup instructions:**
 
@@ -731,225 +744,8 @@ for complete documentation and [examples/](./examples/) for working code.
   [API Reference - Default Settings](./API_REFERENCE.md#default-settings-configuration-types)
 - **Grounding & Translation**: Document grounding, language translation modules
 
-For detailed examples, see the [New Features](#new-features) section below.
-
----
-
-## Breaking Changes
-
-### Version 3.0.x
-
-| Change                 | Details                                                                                | Migration                                                                                     |
-| ---------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **SAPAIError Removed** | `SAPAIError` class no longer exported                                                  | Use `APICallError` from `@ai-sdk/provider` instead. SAP metadata preserved in `responseBody`. |
-| **Error Types**        | All errors now use AI SDK standard types                                               | Import `APICallError` from `@ai-sdk/provider`, not from this package.                         |
-| **Error Properties**   | `error.code` → `error.statusCode`, `error.requestId` → parse from `error.responseBody` | Access SAP metadata via `JSON.parse(error.responseBody)`.                                     |
-
-### Version 2.0.x
-
-| Change                   | Details                                                            | Migration                                                                                                |
-| ------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| **Authentication**       | `serviceKey` option removed; now uses `AICORE_SERVICE_KEY` env var | Set environment variable, remove `serviceKey` from code. See [Environment Setup](./ENVIRONMENT_SETUP.md) |
-| **Synchronous Provider** | `createSAPAIProvider()` no longer async                            | Remove `await` from provider creation                                                                    |
-| **Removed Options**      | `token`, `completionPath`, `baseURL`, `headers`, `fetch`           | Use SAP AI SDK automatic handling                                                                        |
-| **Token Management**     | Manual OAuth2 removed                                              | Automatic via SAP AI SDK                                                                                 |
-
----
-
-## Deprecations
-
-### Manual OAuth2 Token Management (Removed in v2.0)
-
-**Status:** Removed in v2.0\
-**Replacement:** Automatic authentication via SAP AI SDK with
-`AICORE_SERVICE_KEY` environment variable\
-**Migration:** See [Environment Setup](./ENVIRONMENT_SETUP.md) for setup
-instructions
-
----
-
-## New Features
-
-### 2.0.x Features
-
-V2.0 introduces several powerful features built on top of the official SAP AI
-SDK. For detailed API documentation and complete examples, see
-[API Reference](./API_REFERENCE.md).
-
-#### 1. SAP AI SDK Integration
-
-Full integration with `@sap-ai-sdk/orchestration` for authentication and API
-communication. Authentication is now automatic via `AICORE_SERVICE_KEY`
-environment variable or `VCAP_SERVICES` service binding.
-
-```typescript
-const provider = createSAPAIProvider({
-  resourceGroup: "production",
-  deploymentId: "d65d81e7c077e583", // Optional - auto-resolved if omitted
-});
-```
-
-**Complete documentation:**
-[API Reference - SAPAIProviderSettings](./API_REFERENCE.md#sapaiprovidersettings)
-
-#### 2. Data Masking (DPI)
-
-Automatically anonymize or pseudonymize sensitive information (emails, phone
-numbers, names) using SAP's Data Privacy Integration:
-
-```typescript
-import { buildDpiMaskingProvider } from "@jerome-benoit/sap-ai-provider";
-
-const dpiConfig = buildDpiMaskingProvider({
-  method: "anonymization",
-  entities: ["profile-email", "profile-person", "profile-phone"],
-});
-```
-
-**Complete documentation:**
-[API Reference - Data Masking](./API_REFERENCE.md#builddpimaskingproviderconfig),
-[example-data-masking.ts](./examples/example-data-masking.ts)
-
-#### 3. Content Filtering
-
-Filter harmful content using Azure Content Safety or Llama Guard for
-input/output safety:
-
-```typescript
-import { buildAzureContentSafetyFilter } from "@jerome-benoit/sap-ai-provider";
-
-const provider = createSAPAIProvider({
-  defaultSettings: {
-    filtering: {
-      input: {
-        filters: [
-          buildAzureContentSafetyFilter("input", {
-            hate: "ALLOW_SAFE",
-            violence: "ALLOW_SAFE_LOW_MEDIUM",
-          }),
-        ],
-      },
-    },
-  },
-});
-```
-
-**Complete documentation:**
-[API Reference - Content Filtering](./API_REFERENCE.md#buildazurecontentsafetyfiltertype-config)
-
-#### 4. Response Format Control
-
-Specify structured output formats including JSON schema for deterministic
-responses:
-
-```typescript
-// JSON object response
-const model1 = provider("gpt-4.1", {
-  responseFormat: { type: "json_object" },
-});
-
-// JSON schema response
-const model2 = provider("gpt-4.1", {
-  responseFormat: {
-    type: "json_schema",
-    json_schema: {
-      name: "user_profile",
-      schema: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          age: { type: "number" },
-        },
-        required: ["name"],
-      },
-      strict: true,
-    },
-  },
-});
-```
-
-**Complete documentation:**
-[API Reference - Response Formats](./API_REFERENCE.md#response-formats)
-
-#### 5. Default Settings
-
-Apply consistent settings across all models created by a provider instance:
-
-```typescript
-const provider = createSAPAIProvider({
-  defaultSettings: {
-    modelParams: { temperature: 0.7, maxTokens: 2000 },
-    masking: {/* DPI config */},
-  },
-});
-
-// All models inherit default settings
-const model1 = provider("gpt-4.1"); // temperature=0.7
-const model2 = provider("gpt-4.1", {
-  modelParams: { temperature: 0.3 }, // Override per model
-});
-```
-
-**Complete documentation:**
-[API Reference - Default Settings](./API_REFERENCE.md#default-settings-configuration-types)
-
-#### 6. Enhanced Streaming & Error Handling
-
-Improved streaming support with better error recovery and detailed error
-messages including request IDs and error locations for debugging.
-
-**Complete documentation:** [README - Streaming](./README.md#streaming-responses),
-[API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference)
-
----
-
-## API Changes
-
-### Added APIs (v2.0+)
-
-| API                                     | Purpose                 | Example                                                                           |
-| --------------------------------------- | ----------------------- | --------------------------------------------------------------------------------- |
-| `buildDpiMaskingProvider()`             | Data masking helper     | `buildDpiMaskingProvider({ method: "anonymization", entities: [...] })`           |
-| `buildAzureContentSafetyFilter()`       | Azure content filtering | `buildAzureContentSafetyFilter("input", { hate: "ALLOW_SAFE" })`                  |
-| `buildLlamaGuard38BFilter()`            | Llama Guard filtering   | `buildLlamaGuard38BFilter("input")`                                               |
-| `buildDocumentGroundingConfig()`        | Document grounding      | `buildDocumentGroundingConfig({ filters: [...], placeholders: {...} })`           |
-| `buildTranslationConfig()`              | Translation module      | `buildTranslationConfig("input", { sourceLanguage: "de", targetLanguage: "en" })` |
-| `SAPAISettings.responseFormat`          | Structured outputs      | `{ type: "json_schema", json_schema: {...} }`                                     |
-| `SAPAISettings.masking`                 | Masking configuration   | `{ providers: [...] }`                                                            |
-| `SAPAISettings.filtering`               | Content filtering       | `{ input: { filters: [...] } }`                                                   |
-| `SAPAIProviderSettings.defaultSettings` | Provider defaults       | `{ defaultSettings: { modelParams: {...} } }`                                     |
-
-**See [API Reference](./API_REFERENCE.md) for complete documentation.**
-
-### Modified APIs
-
-**`createSAPAIProvider`** - Now synchronous:
-
-```typescript
-// v1.x: Async with serviceKey
-await createSAPAIProvider({
-  serviceKey,
-  token,
-  deploymentId,
-  baseURL,
-  headers,
-  fetch,
-});
-
-// v2.x: Synchronous with SAP AI SDK
-createSAPAIProvider({
-  resourceGroup,
-  deploymentId,
-  destination,
-  defaultSettings,
-});
-```
-
-### Removed APIs
-
-- `serviceKey` option → Use `AICORE_SERVICE_KEY` env var
-- `token` option → Automatic authentication
-- `baseURL`, `completionPath`, `headers`, `fetch` → Handled by SAP AI SDK
+These historical changes are summarized here; the linked API reference and
+examples describe the current release and its SDK-specific entrypoints.
 
 ---
 
@@ -971,7 +767,7 @@ createSAPAIProvider({
 
 ### Upgrading from 1.x to 2.x
 
-- [ ] Update packages: `npm install @jerome-benoit/sap-ai-provider@^2 ai@^5`
+- [ ] Update packages: `npm install @mymediset/sap-ai-provider@2.0.1 ai@^5`
 - [ ] Set `AICORE_SERVICE_KEY` environment variable (remove `serviceKey` from
       code)
 - [ ] Remove `await` from `createSAPAIProvider()` calls (now synchronous)
@@ -1016,36 +812,17 @@ For detailed troubleshooting, see [Troubleshooting Guide](./TROUBLESHOOTING.md).
 
 If you need to rollback to a previous version:
 
-### Rollback to 2.x
+Restore the previous `package.json` and `package-lock.json` together from
+your application's version control, then reinstall the locked dependency tree:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@2.x.x
+npm ci
+npm list @jerome-benoit/sap-ai-provider @mymediset/sap-ai-provider
 ```
 
-> **Note:** Version 2.x exports `SAPAIError` class for error handling.
-
-### Rollback to 1.x
-
-```bash
-npm install @jerome-benoit/sap-ai-provider@1.0.3 ai@^5.0.0
-```
-
-> **Note:** Version 1.x uses a different authentication approach and async
-> provider creation.
-
-### Verify Installation
-
-```bash
-npm list @jerome-benoit/sap-ai-provider
-```
-
-### Clear Cache
-
-```bash
-rm -rf node_modules
-rm package-lock.json
-npm install
-```
+Do not delete the lockfile as routine troubleshooting. If restoring an upstream
+1.x/2.x application, retain its original package scope and compatible AI SDK
+version rather than substituting a nonexistent fork release.
 
 ---
 

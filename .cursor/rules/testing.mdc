@@ -56,5 +56,6 @@ The V2 facade layer has dedicated test files:
   Tests for V3→V2 type adapter functions.
 
 When modifying facade files, cover affected V2/V3/V4 observable contracts.
-The V4 facade has corresponding provider, language-model, embedding-model,
-and adapter tests alongside its source files.
+V4 embedding integration is covered in
+[src/sap-ai-provider-v4.test.ts](mdc:src/sap-ai-provider-v4.test.ts); language-model
+and adapter tests are co-located with their corresponding source files.
