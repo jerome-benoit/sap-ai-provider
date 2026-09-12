@@ -8,7 +8,7 @@ description: Environment variables, credentials, and configuration guidance
 
 - **Node.js**: >= 22.12 (see `engines` in [package.json](mdc:package.json))
 - **Vercel AI SDK**: AI SDK 5 uses `/v2` (also supported for AI SDK 6 compatibility);
-  AI SDK 6 targets the V3 root; AI SDK 7 uses `/v4`. The standalone `-v2` package
+  AI SDK 6 targets the V3 root or identical `/v3`; AI SDK 7 uses `/v4`. The standalone `-v2` package
   supports AI SDK 5 and 6.
 
 The published bundles use Node built-ins and the SAP SDK dependency chain.

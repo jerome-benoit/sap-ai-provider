@@ -20,6 +20,11 @@ const entryPoints: EntryPoint[] = [
     specifier: "@jerome-benoit/sap-ai-provider/v2",
   },
   {
+    cjsDeclaration: "index.d.cts",
+    esmDeclaration: "index.d.ts",
+    specifier: "@jerome-benoit/sap-ai-provider/v3",
+  },
+  {
     cjsDeclaration: "index-v4.d.cts",
     esmDeclaration: "index-v4.d.ts",
     specifier: "@jerome-benoit/sap-ai-provider/v4",

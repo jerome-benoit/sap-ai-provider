@@ -1,8 +1,8 @@
 /**
- * `@jerome-benoit/sap-ai-provider` AI SDK 6 (spec V3) root entrypoint.
+ * `@jerome-benoit/sap-ai-provider` AI SDK 6 (spec V3) root and `/v3` entrypoints.
  *
- * Exposes the shared V3 implementation for SAP AI Core. Use the `v2` subpath
- * for AI SDK 5 and the `v4` subpath for AI SDK 7.
+ * Both paths share the same runtime and declaration artifacts. Use the `v2`
+ * subpath for AI SDK 5 and the `v4` subpath for AI SDK 7.
  */
 
 /**

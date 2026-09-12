@@ -146,6 +146,18 @@ runtimes such as Cloudflare Workers; use a Node.js server runtime for deployment
 | 6      | `npm install @jerome-benoit/sap-ai-provider ai@^6` | `@jerome-benoit/sap-ai-provider`    |
 | 5      | `npm install @jerome-benoit/sap-ai-provider ai@^5` | `@jerome-benoit/sap-ai-provider/v2` |
 
+**Unreleased:** The main package also exposes
+`@jerome-benoit/sap-ai-provider/v3` as an explicit AI SDK 6 import. It is
+identical to the root: both resolve to the same runtime modules and TypeScript
+declarations, with the same exports and default provider instance. No import
+change is required. This adds a fourth package entrypoint, not another build or
+facade; it is not available in npm release 5.0.1.
+
+```typescript
+// Explicit V3 import (unreleased); the root import remains supported:
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v3";
+```
+
 The Quick Start and inline snippets on this page use AI SDK 6 with the root V3
 entrypoint. The runnable files in `examples/` use the repository's installed
 AI SDK 7 with the V4 entrypoint.

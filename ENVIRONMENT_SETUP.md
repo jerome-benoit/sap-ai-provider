@@ -8,11 +8,12 @@ the SAP AI Provider.
 > configuration options, see
 > [API Reference - SAPAIProviderSettings](./API_REFERENCE.md#sapaiprovidersettings).
 >
-> **Note:** Authentication is identical for all three main-package entrypoints
-> (root V3 for AI SDK 6, `/v2` for AI SDK 5 with AI SDK 6 compatibility,
-> `/v4` for AI SDK 7) and the standalone `@jerome-benoit/sap-ai-provider-v2`
-> package. Examples below use the AI SDK 6 root; select the matching import
-> from [Installation](./README.md#installation).
+> **Note:** Authentication is identical for all four main-package entrypoints
+> (V3 root and its identical `/v3` subpath for AI SDK 6, `/v2` for AI SDK 5 with
+> AI SDK 6 compatibility, `/v4` for AI SDK 7) and the standalone
+> `@jerome-benoit/sap-ai-provider-v2` package. The `/v3` subpath is unreleased
+> and unavailable in npm release 5.0.1. Examples below keep using the AI SDK 6
+> root; select the matching import from [Installation](./README.md#installation).
 
 Use Node.js 22.12 or newer for local and deployed applications. The published
 package and SAP SDK dependencies rely on Node APIs; passing source-level Edge

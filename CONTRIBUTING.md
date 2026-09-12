@@ -318,8 +318,9 @@ authentication setup.
 **4. Example Code Guidelines**
 
 - Use relative imports (`../src/index-v4`) for repo examples to match the
-  installed AI SDK 7 development dependency. The root V3 import targets
-  AI SDK 6; `/v2` targets AI SDK 5 and also supports AI SDK 6 compatibility.
+  installed AI SDK 7 development dependency. The root V3 import and its identical
+  `/v3` subpath (unreleased) target AI SDK 6; `/v2` targets AI SDK 5 and also
+  supports AI SDK 6 compatibility.
 - Add comment explaining production import path:
 
   ```typescript
@@ -332,7 +333,7 @@ authentication setup.
 Before submitting a PR, run:
 
 ```bash
-npm run build         # Builds V3 root, /v2, and /v4 with declarations
+npm run build         # Builds three artifact families for root, /v2, /v3, /v4
 npm test             # Runs test suite
 ```
 
@@ -363,9 +364,12 @@ npm test             # Runs test suite
 
 ### Provider Integration
 
-- Implement the matching Vercel AI SDK contracts: root V3 for SDK 6, V2 facade
-  for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades share
-  the V3 core; the main package exposes all three entrypoints.
+- Implement the matching Vercel AI SDK contracts: V3 root and `/v3` for SDK 6,
+  V2 facade for SDK 5 (and SDK 6 compatibility), V4 facade for SDK 7. Both facades
+  share the V3 core; the main package exposes four entrypoints backed by three
+  artifact families. The root and `/v3` map to the same `index.*` runtime and
+  declaration files, not separate builds. The `/v3` subpath is unreleased and
+  unavailable in npm release 5.0.1.
 - Follow the separation: provider factory → language model
 - Maintain Node.js 22.12+ compatibility and source-level Edge VM coverage;
   do not equate the latter with pure Edge deployment support

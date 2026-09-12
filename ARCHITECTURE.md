@@ -1425,15 +1425,24 @@ AI SDK.
 ## Versioned Package Architecture (V4 + V3 + V2)
 
 This repository publishes **two npm packages** from a single codebase. The main
-package exposes three versioned entrypoints; the standalone V2 package preserves
-the existing package name for consumers that cannot use subpath exports.
+package exposes four entrypoints for three provider specifications; the standalone
+V2 package preserves the existing package name for consumers that cannot use
+subpath exports. **Unreleased:** The explicit `/v3` subpath is not available in
+npm release 5.0.1.
 
-| Package export                      | Interface                              | Target users                     |
-| ----------------------------------- | -------------------------------------- | -------------------------------- |
-| `@jerome-benoit/sap-ai-provider`    | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
-| `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
-| `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| Package export                                   | Interface                              | Target users                     |
+| ------------------------------------------------ | -------------------------------------- | -------------------------------- |
+| `@jerome-benoit/sap-ai-provider`                 | `LanguageModelV3` / `EmbeddingModelV3` | AI SDK 6                         |
+| `@jerome-benoit/sap-ai-provider/v2`              | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+| `@jerome-benoit/sap-ai-provider/v3` (unreleased) | Same V3 exports as the root            | AI SDK 6                         |
+| `@jerome-benoit/sap-ai-provider/v4`              | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
+| `@jerome-benoit/sap-ai-provider-v2`              | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
+
+The root and `/v3` share `src/index.ts` and the exact same export targets:
+`dist/index.js` / `dist/index.d.ts` for ESM and `dist/index.cjs` /
+`dist/index.d.cts` for CommonJS. There is no V3 facade or extra bundle. The
+four package entrypoints use **three artifact families**: `index.*`,
+`index-v2.*`, and `index-v4.*`.
 
 ### V4 Facade Layer
 
@@ -1541,7 +1550,7 @@ The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 
 The builds are **sequential** to the same `dist/` directory:
 
 ```bash
-# Main package build: V3 root plus /v2 and /v4 entrypoints
+# Main package build: root, /v2, /v3, /v4 using three artifact families
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
 
@@ -1550,8 +1559,9 @@ AI_SDK_VERSION=v2 npm publish # prepublishOnly builds, checks, and prepares V2
 ```
 
 **Why sequential?** Both builds use `clean: true` and replace `dist/`. The
-standalone publication also rewrites `package.json` and `package-lock.json`, so
-run it in a separate clean checkout. Do not run `prepare:v2` manually before
+standalone publication also rewrites `package.json` and `package-lock.json` and
+removes the `/v2`, `/v3`, and `/v4` exports, leaving only the V2 root API.
+Run it in a separate clean checkout. Do not run `prepare:v2` manually before
 `npm publish`: the publication lifecycle performs preparation after building.
 
 ### Key Design Decisions

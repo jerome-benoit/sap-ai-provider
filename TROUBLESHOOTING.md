@@ -6,6 +6,12 @@ Examples below use AI SDK 6 and the V3 root entrypoint. For AI SDK 7, use
 `@jerome-benoit/sap-ai-provider/v4`; for AI SDK 5, use `/v2` and
 `textEmbeddingModel()` instead of `embedding()`.
 
+**Unreleased:** The explicit `@jerome-benoit/sap-ai-provider/v3` subpath is
+identical to the root V3 entrypoint. If it fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`,
+check the installed provider version: npm release 5.0.1 does not export `/v3`.
+Use the unchanged root import with AI SDK 6 on that release. The standalone V2
+package does not provide a `/v3` subpath.
+
 ## Quick Reference
 
 | Issue                   | Section                                                                                         |
@@ -652,8 +658,8 @@ configuration.
 
 **Cause:** V2 only exposes `textEmbeddingModel()` per the `ProviderV2` spec.
 
-**Solution:** Use `provider.textEmbeddingModel()`, or use the V3 root with
-AI SDK 6 / V4 subpath with AI SDK 7.
+**Solution:** Use `provider.textEmbeddingModel()`, or use the V3 root (or its
+unreleased `/v3` subpath) with AI SDK 6 / V4 subpath with AI SDK 7.
 
 **Reference:** [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)
 
@@ -666,8 +672,9 @@ AI SDK major. V2 targets AI SDK 5 and is also supported by AI SDK 6 through its
 V2 compatibility layer, but not by AI SDK 7.
 
 **Solution:** Use `/v2` or the standalone `-v2` package with AI SDK 5; use the
-root V3 entrypoint (or V2 compatibility) with AI SDK 6; use `/v4` with AI SDK 7.
-See [Installation](./README.md#installation) for matching install commands.
+V3 root or identical `/v3` subpath (unreleased), or V2 compatibility, with
+AI SDK 6; use `/v4` with AI SDK 7. See [Installation](./README.md#installation)
+for matching install commands.
 
 **Reference:** Check `package.json` for AI SDK version. See the [Migration Guide](./MIGRATION_GUIDE.md#version-3x-to-4x-breaking-changes) for V2/V3 compatibility.
 

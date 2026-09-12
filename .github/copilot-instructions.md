@@ -27,8 +27,8 @@ Always reference these instructions first and fallback to search or bash command
 ### Building
 
 - **Build main package**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
-  - Builds the V3 root, V2 subpath, and V4 subpath entrypoints.
-  - Produces CommonJS, ESM, declaration files, and sourcemaps for all three entrypoints.
+  - Builds V3, V2, and V4 artifact families serving root, `/v2`, `/v3`, and `/v4`.
+  - Root and `/v3` share the same CommonJS, ESM, declarations and sourcemaps.
 - **Build standalone V2 package**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
   - Builds only the V2 facade from `src/index-v2.ts`.
 - **Watch main build**: `npm run build:watch` -- continuous rebuild of all main entrypoints.
@@ -41,10 +41,10 @@ Always reference these instructions first and fallback to search or bash command
 
 This repository publishes two npm packages from the same codebase:
 
-- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2` and `/v4` subpaths.
+- `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2`, `/v3`, and `/v4` subpaths.
 - `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade wrapping the V3 core.
 
-Use the root V3 entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the V2 facade
+Use the root or identical `/v3` entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the V2 facade
 (`/v2` or standalone `-v2`) for AI SDK 5 and AI SDK 6 compatibility. Package
 release versions, provider specifications (V2/V3/V4), and AI SDK majors
 (5/6/7) are independent. Both build configurations clean `dist/`, so `build:v2`
@@ -248,7 +248,7 @@ All commands should pass; execution time depends on the environment.
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
 - **CI checks**: lint/format, type-check, default/Node/Edge tests, and builds, all using Node.js 24
-- **Build coverage**: `build && check-build` validates all three main entrypoints and ESM/CommonJS declaration routing; `build:v2 && check-build:v2` then validates the standalone build
+- **Build coverage**: `build && check-build` validates all four main entrypoints and ESM/CommonJS declaration routing; `build:v2 && check-build:v2` then validates the standalone build
 - **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes both packages on created releases; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
 - **Runtime coverage**: Node and Edge suites run sequentially, not in a Node-version or AI SDK-major matrix; Edge excludes `*.node.test.ts`
 
