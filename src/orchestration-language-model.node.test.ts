@@ -1,5 +1,6 @@
 /** Orchestration contract regressions using the real SAP SDK and a local HTTP endpoint. */
 import type { LanguageModelV4CallOptions, SharedV4Warning } from "@ai-sdk/provider";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -57,6 +58,8 @@ describe("Orchestration serialized HTTP configuration", () => {
   const bodies: WireBody[] = [];
   const headers: IncomingHttpHeaders[] = [];
   let reportUsage = true;
+  let completionMetadata: { created?: number; model?: string } = {};
+  let delayMetadata = false;
   let streamScenario: "default" | "idle" | "mixed" | "queued" = "default";
   let onStreamClosed: (() => void) | undefined;
   const server = createServer((request, response) => {
@@ -69,6 +72,8 @@ describe("Orchestration serialized HTTP configuration", () => {
       const foundationModels = request.url?.includes("/chat/completions") ?? false;
       if (body.config?.stream?.enabled || body.stream) {
         response.setHeader("content-type", "text/event-stream");
+        const event = (value: unknown) =>
+          `data: ${JSON.stringify(foundationModels ? value : { final_result: value, request_id: "http-request" })}\n\n`;
         if (streamScenario !== "default") {
           const first = {
             choices: [
@@ -125,16 +130,26 @@ describe("Orchestration serialized HTTP configuration", () => {
         const final = {
           choices: [{ delta: { content: "ok" }, finish_reason: "stop", index: 0 }],
           id: reply.id,
+          ...completionMetadata,
           ...(reportUsage ? { usage: reply.usage } : {}),
         };
-        response.end(
-          `data: ${JSON.stringify(foundationModels ? final : { final_result: final, request_id: "http-request" })}\n\ndata: [DONE]\n\n`,
-        );
+        if (delayMetadata) {
+          response.write(
+            event({
+              choices: [{ delta: {}, index: 0 }],
+              id: reply.id,
+            }),
+          );
+        }
+        response.write(event(final));
+        if (delayMetadata) response.write(event({ choices: [] }));
+        response.end("data: [DONE]\n\n");
       } else {
         response.setHeader("content-type", "application/json");
+        const result = { ...reply, ...completionMetadata };
         response.end(
           JSON.stringify(
-            foundationModels ? reply : { final_result: reply, request_id: "http-request" },
+            foundationModels ? result : { final_result: result, request_id: "http-request" },
           ),
         );
       }
@@ -157,6 +172,8 @@ describe("Orchestration serialized HTTP configuration", () => {
     bodies.length = 0;
     headers.length = 0;
     reportUsage = true;
+    completionMetadata = {};
+    delayMetadata = false;
     streamScenario = "default";
     onStreamClosed = undefined;
   });
@@ -220,6 +237,46 @@ describe("Orchestration serialized HTTP configuration", () => {
   }
 
   describe.each(["orchestration", "foundation-models"] as const)("%s stream contract", (api) => {
+    it.each([false, true])(
+      "reports only server model and timestamp (present=%s)",
+      async (present) => {
+        if (present) completionMetadata = { created: 1700000000, model: "actual-fallback-model" };
+        const model = provider("requested-model", { api });
+        const generated = await model.doGenerate({ prompt });
+        const { stream } = await model.doStream({ prompt });
+        const metadata = [];
+        for await (const part of stream) {
+          if (part.type === "error") throw part.error;
+          if (part.type === "response-metadata") metadata.push(part);
+        }
+        expect(metadata).toHaveLength(1);
+        for (const response of [generated.response, ...metadata]) {
+          expect(response?.modelId).toBe(present ? "actual-fallback-model" : undefined);
+          expect(response?.timestamp).toEqual(present ? new Date(1700000000000) : undefined);
+        }
+      },
+    );
+
+    it("updates late server metadata without losing it on later metadata-free chunks", async () => {
+      completionMetadata = { created: 1700000000, model: "actual-fallback-model" };
+      delayMetadata = true;
+      const { stream } = await provider("requested-model", { api }).doStream({ prompt });
+      const metadata = [];
+      for await (const part of stream) {
+        if (part.type === "error") throw part.error;
+        if (part.type === "response-metadata") metadata.push(part);
+      }
+      expect(metadata).toEqual([
+        { id: reply.id, type: "response-metadata" },
+        {
+          id: reply.id,
+          modelId: "actual-fallback-model",
+          timestamp: new Date(1700000000000),
+          type: "response-metadata",
+        },
+      ]);
+    });
+
     it.each([false, true])("merges per-call HTTP headers (streaming=%s)", async (streaming) => {
       const model = provider("gpt-4.1", { api });
       const options = {
@@ -241,6 +298,38 @@ describe("Orchestration serialized HTTP configuration", () => {
         "x-replace": "call",
       });
     });
+
+    it.each([false, true])(
+      "preserves suppressed provider headers (streaming=%s)",
+      async (streaming) => {
+        // SAP narrows header types to strings, but Axios accepts false to suppress default headers.
+        const requestConfig = {
+          headers: { Authorization: false, "User-Agent": false },
+        } as unknown as CustomRequestConfig;
+        const model = createSAPAIProviderV4({
+          deploymentId: "http-deployment",
+          destination: {
+            authentication: "NoAuthentication",
+            url: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
+          },
+          requestConfig,
+        })("gpt-4.1", { api });
+        for (const callHeaders of [undefined, { "x-marker": "call" }]) {
+          const options = { headers: callHeaders, prompt };
+          if (streaming) {
+            const { stream } = await model.doStream(options);
+            for await (const part of stream) {
+              if (part.type === "error") throw part.error;
+            }
+          } else {
+            await model.doGenerate(options);
+          }
+          expect(headers.at(-1)).not.toHaveProperty("authorization");
+          expect(headers.at(-1)).not.toHaveProperty("user-agent");
+          expect(headers.at(-1)?.["x-marker"]).toBe(callHeaders?.["x-marker"]);
+        }
+      },
+    );
 
     it("keeps usage unknown when no stream chunk reports it", async () => {
       reportUsage = false;
@@ -325,10 +414,21 @@ describe("Orchestration serialized HTTP configuration", () => {
       }
     });
 
-    it("does not dispatch an already-aborted request", async () => {
-      await expect(
-        provider("gpt-4.1", { api }).doStream({ abortSignal: AbortSignal.abort(), prompt }),
-      ).rejects.toMatchObject({ isRetryable: false, statusCode: 499 });
+    it.each([
+      { label: "default", reason: undefined },
+      { label: "custom Error", reason: new Error("Caller canceled generation") },
+      { label: "primitive", reason: "Caller canceled generation" },
+      { label: "timeout", reason: new DOMException("Deadline expired", "TimeoutError") },
+    ])("does not dispatch an already-aborted request ($label)", async ({ reason }) => {
+      const abortSignal = AbortSignal.abort(reason);
+      const model = provider("gpt-4.1", { api });
+      for (const operation of ["doGenerate", "doStream"] as const) {
+        await expect(model[operation]({ abortSignal, prompt })).rejects.toMatchObject({
+          cause: { cause: abortSignal.reason as unknown },
+          isRetryable: false,
+          statusCode: 499,
+        });
+      }
       expect(bodies).toEqual([]);
     });
 

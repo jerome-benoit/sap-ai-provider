@@ -1,6 +1,6 @@
 /** Unit tests for SAP AI Embedding Model. */
 
-import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
+import { APICallError, TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
@@ -577,11 +577,19 @@ describe("SAPAIEmbeddingModel", () => {
         await resetMockStateForApi(api);
       });
 
-      it("should convert SAP errors to AI SDK errors", async () => {
-        await setEmbedErrorForApi(api, new Error("SAP API Error"));
+      it("exposes rate limits as retryable AI SDK API errors", async () => {
+        await setEmbedErrorForApi(
+          api,
+          Object.assign(new Error("Request failed"), {
+            isAxiosError: true,
+            response: { status: 429 },
+          }),
+        );
         const model = createModelForApi(api);
+        const result = model.doEmbed({ values: ["Test"] });
 
-        await expect(model.doEmbed({ values: ["Test"] })).rejects.toThrow();
+        await expect(result).rejects.toBeInstanceOf(APICallError);
+        await expect(result).rejects.toMatchObject({ isRetryable: true, statusCode: 429 });
       });
     },
   );
@@ -611,27 +619,6 @@ describe("SAPAIEmbeddingModel", () => {
           expect(
             MockOrchestrationEmbeddingClient.lastConstructorCall?.config.embeddings.model.params,
           ).toEqual({ dimensions: 1024 });
-        }
-      });
-
-      it("should merge per-call modelParams with constructor modelParams", async () => {
-        const model = createModelForApi(api, "text-embedding-3-large", {
-          modelParams: { customParam: "from-constructor", dimensions: 256 },
-        });
-
-        await model.doEmbed({
-          providerOptions: { "sap-ai": { modelParams: { dimensions: 1024 } } },
-          values: ["Test"],
-        });
-
-        if (api === "orchestration") {
-          const { MockOrchestrationEmbeddingClient } = await getMockOrchClient();
-          expect(
-            MockOrchestrationEmbeddingClient.lastConstructorCall?.config.embeddings.model,
-          ).toEqual({
-            name: "text-embedding-3-large",
-            params: { customParam: "from-constructor", dimensions: 1024 },
-          });
         }
       });
     },

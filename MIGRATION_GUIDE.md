@@ -597,10 +597,10 @@ try {
 } catch (error) {
   if (error instanceof LoadAPIKeyError) {
     // Recognized authentication-message error
-    console.error("Auth Error:", error.message);
+    console.error("Auth Error:", error.name);
   } else if (error instanceof APICallError) {
     // Includes structured SAP 401/403/404 responses in v3.0.0
-    console.error("API Error:", error.statusCode, error.message);
+    console.error("API Error:", error.statusCode, error.name);
     try {
       const body: unknown = JSON.parse(error.responseBody ?? "");
       const details = z
@@ -628,9 +628,10 @@ Use guarded parsing and shape validation as above; plain-text responses, JSON
 `null` and unrelated envelopes are possible. The repository examples share
 [an optional-details parser](./examples/parse-sap-error-response-body.ts).
 
-Error messages and response bodies can contain sensitive backend details.
-Do not log whole error objects, request payloads or authentication headers;
-review diagnostics before sharing them.
+Error messages and response bodies can contain credentials, prompt data or other
+sensitive backend details. Prefer error names and HTTP status for routine logs.
+Do not log raw messages, whole error objects, request payloads or authentication
+headers automatically; inspect and redact detailed diagnostics privately first.
 
 #### 4. Automatic Retries
 

@@ -5,6 +5,9 @@ import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
+
+import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 import { createSAPAIProvider } from "./sap-ai-provider.js";
 
 const inputSchema = z.object({
@@ -13,8 +16,10 @@ const inputSchema = z.object({
 
 let abortRequest: (() => void) | undefined;
 let requestClosed: (() => void) | undefined;
+let requestCount = 0;
 
 const server = createServer((request, response) => {
+  requestCount++;
   void (async () => {
     let raw = "";
     for await (const chunk of request) raw += String(chunk);
@@ -69,6 +74,41 @@ afterAll(async () => {
 });
 
 describe("Embedding HTTP contracts", () => {
+  it("distinguishes invocation API conflicts from invalid model settings before dispatch", async () => {
+    const provider = createSAPAIProvider({
+      api: "orchestration",
+      deploymentId: "embedding-http",
+      destination: { authentication: "NoAuthentication", url },
+    });
+    const masking: SAPAIEmbeddingSettings["masking"] = {
+      providers: [
+        {
+          entities: [{ type: "profile-email" }],
+          method: "anonymization",
+          type: "sap_data_privacy_integration",
+        },
+      ],
+    };
+    const before = requestCount;
+    const switched = provider.embedding("text-embedding-3-small", { masking }).doEmbed({
+      providerOptions: { "sap-ai": { api: "foundation-models" } },
+      values: ["private@example.com"],
+    });
+
+    await expect(switched).rejects.toBeInstanceOf(ApiSwitchError);
+    await expect(switched).rejects.toMatchObject({
+      conflictingFeature: "masking",
+      fromApi: "orchestration",
+      toApi: "foundation-models",
+    });
+    await expect(
+      provider
+        .embedding("text-embedding-3-small", { api: "foundation-models", masking })
+        .doEmbed({ values: ["private@example.com"] }),
+    ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+    expect(requestCount).toBe(before);
+  });
+
   it("embeds the requested values even when model parameters contain a reserved input", async () => {
     const provider = createSAPAIProvider({
       api: "foundation-models",

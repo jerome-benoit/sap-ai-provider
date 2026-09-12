@@ -291,7 +291,7 @@ export function base64FromBytes(bytes: Uint8Array): string {
  * - `system` → `SystemChatMessage`
  * - `user` (text/images/files) → `UserChatMessage`
  * - `assistant` (text/tool-calls, optionally reasoning) → `AssistantChatMessage`
- * - `tool` (JSON-serialized tool-result outputs) → `ToolChatMessage`
+ * - `tool` (direct text values; other output variants as JSON) → `ToolChatMessage`
  * Unsupported assistant parts and non-result tool parts are ignored, with
  * warnings when a warning sink is supplied.
  * @param prompt - The Vercel AI SDK LanguageModelV3Prompt to convert.
@@ -352,19 +352,20 @@ export function convertToSAPMessages(
             }
             case "reasoning": {
               if (includeReasoning && part.text) {
-                const escaped = `<think>${maybeEscape(part.text)}</think>`;
-                text += escaped;
-                textParts?.push({ text: escaped });
+                const reasoning = `<think>${part.text}</think>`;
+                text += reasoning;
+                textParts?.push({ text: reasoning });
               }
               break;
             }
             case "text": {
-              const escaped = maybeEscape(part.text);
-              if (!escaped) break;
+              if (!part.text) break;
               const partOpts = parsePart(part.providerOptions);
               const cacheControl = partOpts?.cacheControl;
-              text += escaped;
-              textParts?.push(cacheControl ? { cacheControl, text: escaped } : { text: escaped });
+              text += part.text;
+              textParts?.push(
+                cacheControl ? { cacheControl, text: part.text } : { text: part.text },
+              );
               if (cacheControl) anyCacheControl = true;
               break;
             }
@@ -403,8 +404,8 @@ export function convertToSAPMessages(
           const assistantMessage: AssistantChatMessage = {
             content:
               anyCacheControl && textParts
-                ? textParts.map((p) => wrapAsTextContent(p.text, p.cacheControl))
-                : text,
+                ? textParts.map((p) => wrapAsTextContent(maybeEscape(p.text), p.cacheControl))
+                : maybeEscape(text),
             role: "assistant",
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
           };
@@ -430,8 +431,9 @@ export function convertToSAPMessages(
           if (part.type === "tool-result") {
             const partOpts = parsePart(part.providerOptions);
             const cacheControl = partOpts?.cacheControl;
-            const serializedOutput = safeJsonStringify(part.output);
-            const escaped = maybeEscape(serializedOutput);
+            const outputText =
+              part.output.type === "text" ? part.output.value : safeJsonStringify(part.output);
+            const escaped = maybeEscape(outputText);
             const toolMessage: ToolChatMessage = {
               content: cacheControl ? [wrapAsTextContent(escaped, cacheControl)] : escaped,
               role: "tool",

@@ -14,7 +14,7 @@ context: |
   - Formatting: Prettier + ESLint
 
   ### Key Dependencies
-  - Runtime: @ai-sdk/provider, @ai-sdk/provider-utils, @sap-ai-sdk/orchestration, @sap-ai-sdk/foundation-models, zod
+  - Runtime: AI SDK provider contracts/utilities, SAP AI and Cloud SDKs, and Zod (exact packages and ranges in package.json)
   - Peer: ai (main package: ^5.0.0 || ^6.0.0 || ^7.0.0; standalone V2: ^5.0.0 || ^6.0.0)
   - Development: @ai-sdk/provider-v2 (official V2 types bundled into declarations, never a consumer dependency), ai 7; ai is not a direct runtime dependency
 
@@ -56,6 +56,7 @@ context: |
   - src/foundation-models-language-model-strategy.ts - Foundation Models API language model
   - src/foundation-models-embedding-model-strategy.ts - Foundation Models API embedding model
   - src/strategy-utils.ts - Shared strategy utilities
+  - src/stream-transformer.ts - SAP stream lifecycle and V3 event conversion
   - src/convert-to-sap-messages.ts - Message format conversion
   - src/deep-merge.ts - Deep merge utility
   - src/version.ts - Package version constant

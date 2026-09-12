@@ -645,6 +645,12 @@ When replaying assistant tool calls through Orchestration, inputs must be
 JSON-serializable; already serialized strings must contain valid JSON. Invalid
 arguments throw `InvalidPromptError` before a request is sent.
 
+Tool results with `output.type: "text"` send `output.value` as SAP tool-message
+text, without the AI SDK envelope or output-level provider options. Other output
+variants retain JSON-envelope serialization, including nested V4 content and
+references. Orchestration escaping and valid tool-result-part cache directives
+apply after serialization.
+
 The AI SDK executes tools with an `execute` function. Enable subsequent model
 steps with `stopWhen` to let the model consume tool results:
 
@@ -1182,8 +1188,10 @@ const settings: SAPAIProviderSettings = {
 >   this provider; `providerOptions['sap-ai']` cannot override it. Standard AI SDK
 >   per-call `headers` are merged into `requestConfig.headers` for generation,
 >   streaming, and embeddings. Defined call headers win case-insensitively;
->   `undefined` call values preserve provider defaults. Other per-request
->   transport differences require separate provider instances.
+>   `undefined` call values preserve provider defaults. Provider header values
+>   retain Axios semantics, including `false` to suppress a header rather than
+>   send the string `"false"`. Other per-request transport differences require
+>   separate provider instances.
 > - **Runtime support.** The published package targets Node.js 22.12+;
 >   `httpAgent` and `httpsAgent` configure its Node HTTP transport. The provider
 >   does not strip these fields or guarantee that they are ignored elsewhere.
@@ -1193,8 +1201,10 @@ const settings: SAPAIProviderSettings = {
 >   `CustomRequestConfig` `Record<string, any>` index signature; it is honoured
 >   end-to-end but is not a first-class typed field.)
 > - **Abort semantics.** The AI SDK `abortSignal` option always wins over any `signal`
->   set on `requestConfig`; the latter is dropped before the request is forwarded via
->   the internal `mergeRequestConfig` helper.
+>   set on `requestConfig`; the latter is dropped before forwarding. An already
+>   aborted language-model call rejects with a non-retryable `APICallError`
+>   (status 499), including when the signal has a custom reason. For in-flight
+>   streaming cancellation, see [Request Cancellation](./ARCHITECTURE.md#request-cancellation).
 > - **SAP AI Core `AI-*` headers.** `requestConfig.headers` accepts service-specific
 >   headers that alter server-side behaviour:
 >   - **`AI-Object-Store-Secret-Name`** — names the object store secret used by the
@@ -1558,9 +1568,9 @@ const result = await streamText({
 });
 ```
 
-> **Note:** When using translation with streaming, it is recommended to set
-> `delimiters` to ensure proper sentence boundary detection. The provider will
-> emit a warning if translation is configured without delimiters.
+> **Note:** The SAP streaming schema requires a nonempty `delimiters` list
+> when input or output translation is configured. The provider warns when
+> delimiters are missing but forwards the request without adding them.
 
 ---
 
@@ -2590,21 +2600,21 @@ The stream emits the following event types. Text and tool-input events can
 interleave; the table describes each event's lifecycle rather than one fixed
 sequence for every response:
 
-| Event Type          | Description                                      | When Emitted                        |
-| ------------------- | ------------------------------------------------ | ----------------------------------- |
-| `stream-start`      | Stream initialization with warnings              | First, before any content           |
-| `response-metadata` | Model ID, timestamp, and response ID             | After first chunk received          |
-| `text-start`        | Text block begins (includes unique block ID)     | When text generation starts         |
-| `text-delta`        | Incremental text chunk                           | For each text token                 |
-| `text-end`          | Text block completes                             | When text generation ends           |
-| `tool-input-start`  | Tool input begins (includes tool ID and name)    | When tool call starts               |
-| `tool-input-delta`  | Incremental tool arguments                       | For each tool argument chunk        |
-| `tool-input-end`    | Tool input completes                             | When tool arguments complete        |
-| `tool-call`         | Complete tool call with ID, name, and full input | After tool-input-end                |
-| `source`            | URL citation returned by the SDK                 | Before finish, when available       |
-| `finish`            | Stream completes with usage and finish reason    | Last event on success               |
-| `error`             | Error occurred during streaming                  | On error (stream then closes)       |
-| `raw`               | Raw SDK chunk (when `includeRawChunks: true`)    | For each chunk, before other events |
+| Event Type          | Description                                        | When Emitted                                |
+| ------------------- | -------------------------------------------------- | ------------------------------------------- |
+| `stream-start`      | Stream initialization with warnings                | First, before any content                   |
+| `response-metadata` | Available server model, timestamp, and response ID | First chunk and subsequent metadata updates |
+| `text-start`        | Text block begins (includes unique block ID)       | When text generation starts                 |
+| `text-delta`        | Incremental text chunk                             | For each text token                         |
+| `text-end`          | Text block completes                               | When text generation ends                   |
+| `tool-input-start`  | Tool input begins (includes tool ID and name)      | When tool call starts                       |
+| `tool-input-delta`  | Incremental tool arguments                         | For each tool argument chunk                |
+| `tool-input-end`    | Tool input completes                               | When tool arguments complete                |
+| `tool-call`         | Complete tool call with ID, name, and full input   | After tool-input-end                        |
+| `source`            | URL citation returned by the SDK                   | Before finish, when available               |
+| `finish`            | Stream completes with usage and finish reason      | Last event on success                       |
+| `error`             | Error occurred during streaming                    | On error (stream then closes)               |
+| `raw`               | Raw SDK chunk (when `includeRawChunks: true`)      | For each chunk, before other events         |
 
 **Raw Chunks Option:**
 
@@ -2673,6 +2683,14 @@ the high-level `streamText` API, use `finish-step` events or await
 
 Token totals remain `undefined` when the backend does not report usage; the
 provider does not treat an absent streaming usage report as zero tokens.
+
+**Completion metadata:** Generation `response.modelId` and `response.timestamp`
+come from the server completion, not the requested model or the local clock.
+The Unix-seconds `created` value becomes a `Date`; unavailable model/timestamp
+fields are omitted. This preserves the actual model selected by a deployment
+or orchestration fallback. Streaming `response-metadata` events follow the same
+contract and update when a later chunk supplies or changes completion metadata;
+missing fields in later chunks do not erase earlier values.
 
 **Generation response body:** `doGenerate().response.body` is a provider-built
 summary containing `content`, `finishReason`, `tokenUsage`, and `toolCalls`
@@ -2870,6 +2888,12 @@ different response-body shape.
   }
 }
 ```
+
+Native parser failures, including malformed credential JSON, use the enclosing
+SAP SDK error summary rather than copying parser input fragments into the public
+message. This is not general redaction: error causes, response bodies, headers,
+and raw stream chunks can contain sensitive data. Redact diagnostics before
+logging or exposing them to users.
 
 #### Error Handling Examples
 
@@ -3580,6 +3604,11 @@ function escapeOrchestrationPlaceholders(text: string): string;
 
 **Returns:** Text with a zero-width space (`U+200B`) inserted after the opening
 brace of each delimiter (`{{` → `{\u200B{`, `{%` → `{\u200B%`, `{#` → `{\u200B#`).
+
+Orchestration applies escaping after concatenating assistant text parts, so
+delimiters formed across part boundaries are escaped too. When prompt caching
+keeps assistant content in separate SAP text blocks, each block is escaped
+independently without moving its cache directive.
 
 **Example:**
 

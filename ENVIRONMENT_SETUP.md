@@ -248,6 +248,9 @@ console.log("AI API URL:", key.serviceurls?.AI_API_URL);
 
 - Never log `AICORE_SERVICE_KEY` values
 - Redact credentials from error reports and crash logs
+- Error messages, response bodies and nested transport errors may contain secrets
+  or prompt data. Log error names and HTTP status by default; inspect and redact
+  raw diagnostics privately before enabling detailed logging or sharing reports.
 
 ✅ **Validate Configuration:**
 

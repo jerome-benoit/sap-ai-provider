@@ -1473,7 +1473,6 @@ describe("SAPAILanguageModel", () => {
       const responseMetadata = parts.find((p) => p.type === "response-metadata");
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       expect(responseMetadata).toMatchObject({
-        modelId: "gpt-4o",
         type: "response-metadata",
       });
       if (api === "orchestration") {

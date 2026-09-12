@@ -350,9 +350,10 @@ npm test             # Runs test suite
 
 ### Integration Tests
 
-- Test actual integration with SAP AI SDK
-- Require `AICORE_SERVICE_KEY` to run
-- Can be skipped in CI if credentials not available
+- Real SAP SDK contract tests use local HTTP fixtures without credentials and
+  run in the Node.js CI suite (`*.node.test.ts`).
+- Optional live SAP tenant smoke tests require `AICORE_SERVICE_KEY` or a service
+  binding; run them only in an appropriately configured environment.
 
 ### Test Coverage
 

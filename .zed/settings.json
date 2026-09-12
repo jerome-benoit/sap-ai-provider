@@ -7,7 +7,7 @@
   "language_servers": ["!biome", "..."],
 
   "languages": {
-    // ── TypeScript (covers .ts and .tsx) ──────────────────────
+    // ── TypeScript ───────────────────────────────────────────
     "TypeScript": {
       "formatter": ["prettier", { "code_action": "source.fixAll.eslint" }]
     },

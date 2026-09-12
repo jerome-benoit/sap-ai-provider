@@ -356,7 +356,10 @@ export function convertToAISDKError(
   const { aborted, response, rootError } = inspectError(error);
   const responseHeaders = context?.responseHeaders ?? normalizeHeaders(response?.headers);
   if (!aborted) {
-    const errorResponse = findStructuredErrorResponse(rootError, response?.data);
+    const errorResponse = findStructuredErrorResponse(
+      rootError instanceof SyntaxError ? undefined : rootError,
+      response?.data,
+    );
     if (errorResponse) {
       return convertSAPErrorToAPICallError(errorResponse, {
         ...context,
@@ -388,8 +391,30 @@ export function convertToAISDKError(
       error,
       {
         isRetryable: isRetryable(response.status),
-        message: rootError instanceof Error ? rootError.message : "SAP AI Core request failed",
+        message:
+          rootError instanceof SyntaxError && error instanceof Error
+            ? error.message
+            : rootError instanceof Error
+              ? rootError.message
+              : "SAP AI Core request failed",
         statusCode: response.status,
+      },
+      resolvedContext,
+    );
+  }
+
+  // Native parser messages can contain credential or response fragments. Keep the
+  // enclosing SDK message instead, with the original chain available only as cause.
+  if (rootError instanceof SyntaxError) {
+    return createAPICallError(
+      error,
+      {
+        isRetryable: false,
+        message:
+          error instanceof Error && error !== rootError
+            ? error.message
+            : "Failed to parse SAP AI Core data.",
+        statusCode: HTTP_STATUS.INTERNAL_ERROR,
       },
       resolvedContext,
     );

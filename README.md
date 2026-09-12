@@ -113,7 +113,8 @@ try {
 }
 ```
 
-> **Note:** Requires `AICORE_SERVICE_KEY` environment variable. See
+> **Note:** For local service-key setup, set `AICORE_SERVICE_KEY`. SAP BTP service
+> bindings and custom destinations are alternatives. See
 > [Environment Setup](./ENVIRONMENT_SETUP.md) for configuration.
 
 ## Quick Reference
@@ -776,8 +777,8 @@ See [Installation](#installation) for other AI SDK versions.
 npx tsx examples/example-generate-text.ts
 ```
 
-> **Note:** Examples require `AICORE_SERVICE_KEY` environment variable. See
-> [Environment Setup](./ENVIRONMENT_SETUP.md) for configuration.
+> **Note:** Configure `AICORE_SERVICE_KEY` locally or bind the application to
+> SAP AI Core on SAP BTP. See [Environment Setup](./ENVIRONMENT_SETUP.md).
 
 ## Migration Guides
 

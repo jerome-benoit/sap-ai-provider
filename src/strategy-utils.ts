@@ -11,6 +11,7 @@ import type {
   LanguageModelV3FinishReason,
   LanguageModelV3FunctionTool,
   LanguageModelV3GenerateResult,
+  LanguageModelV3ResponseMetadata,
   LanguageModelV3Usage,
   SharedV3ProviderMetadata,
   SharedV3Warning,
@@ -156,7 +157,6 @@ export interface FunctionToolWithParameters extends LanguageModelV3FunctionTool 
  * @internal
  */
 export interface GenerateResultConfig {
-  readonly modelId: string;
   readonly providerName: string;
   readonly requestBody: unknown;
   /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
@@ -265,7 +265,7 @@ export interface SDKResponse {
   rawResponse: { headers: Headers | Record<string, string> };
   /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
   requestId?: string;
-  responseId?: string;
+  responseMetadata?: LanguageModelV3ResponseMetadata;
 }
 
 /**
@@ -415,16 +415,8 @@ export function buildEmbeddingResult(config: EmbeddingResultConfig): EmbeddingMo
  * @internal
  */
 export function buildGenerateResult(config: GenerateResultConfig): LanguageModelV3GenerateResult {
-  const {
-    modelId,
-    providerName,
-    requestBody,
-    requestId,
-    response,
-    responseHeaders,
-    version,
-    warnings,
-  } = config;
+  const { providerName, requestBody, requestId, response, responseHeaders, version, warnings } =
+    config;
 
   const content: LanguageModelV3Content[] = [];
 
@@ -487,9 +479,7 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     response: {
       body: rawResponseBody,
       headers: responseHeaders,
-      id: response.responseId,
-      modelId,
-      timestamp: new Date(),
+      ...response.responseMetadata,
     },
     usage: mapTokenUsage(tokenUsage),
     warnings,
@@ -770,22 +760,31 @@ export function createAISDKRequestBodySummary(options: LanguageModelV3CallOption
 }
 
 /**
- * Resolves the SDK completion identifier from an internal `_data` payload, falling back to
- * the pipeline request id reported by `getRequestId()` when the path is not present.
- *
- * Tolerates SDKs that omit `_data` entirely or expose `getRequestId()` as a non-function.
- * @param response - SDK response object exposing `_data` and optionally `getRequestId()`.
- * @param response._data - Internal SDK payload that holds the completion id under `dataPath`.
- * @param response.getRequestId - Function returning the SAP AI Core pipeline request id.
- * @param dataPath - Dotted property path traversed under `_data` (e.g. `["final_result","id"]`).
- * @returns The first non-empty completion id found along the path, or `undefined`.
+ * Reads server completion metadata from the public HTTP payload or a stream chunk.
+ * @param response - SAP SDK response or chunk.
+ * @param response._data - Parsed payload exposed by stream chunks.
+ * @param response.getRequestId - Optional SAP request-ID accessor.
+ * @param response.rawResponse - Public HTTP response when available.
+ * @param response.rawResponse.data - Parsed HTTP response payload.
+ * @param dataPath - Path to the completion object within the payload.
+ * @returns Server metadata, with the existing request-ID fallback when no completion ID is sent.
  * @internal
  */
-export function extractCompletionId(
-  response: { _data?: unknown; getRequestId?: () => string | undefined },
+export function extractCompletionMetadata(
+  response: {
+    _data?: unknown;
+    getRequestId?: () => string | undefined;
+    rawResponse?: { data?: unknown };
+  },
   dataPath: readonly string[],
-): string | undefined {
-  let cursor: unknown = response._data;
+): LanguageModelV3ResponseMetadata {
+  let cursor: unknown;
+  try {
+    cursor = response.rawResponse?.data;
+  } catch {
+    // Chunk wrappers and older SDK stream constructors may not expose an HTTP response.
+  }
+  cursor ??= response._data;
   for (const key of dataPath) {
     if (cursor !== null && typeof cursor === "object" && key in cursor) {
       cursor = (cursor as Record<string, unknown>)[key];
@@ -794,19 +793,25 @@ export function extractCompletionId(
       break;
     }
   }
-  if (typeof cursor === "string" && cursor.length > 0) {
-    return cursor;
+  const metadata: LanguageModelV3ResponseMetadata = {};
+  if (cursor !== null && typeof cursor === "object") {
+    const data = cursor as Record<string, unknown>;
+    if (typeof data.id === "string" && data.id.length > 0) metadata.id = data.id;
+    if (typeof data.model === "string" && data.model.length > 0) metadata.modelId = data.model;
+    if (typeof data.created === "number" && Number.isFinite(data.created)) {
+      const timestamp = new Date(data.created * 1000);
+      if (Number.isFinite(timestamp.getTime())) metadata.timestamp = timestamp;
+    }
   }
-  const fn = response.getRequestId;
-  if (typeof fn !== "function") {
-    return undefined;
+  if (metadata.id === undefined && typeof response.getRequestId === "function") {
+    try {
+      const id = response.getRequestId();
+      if (typeof id === "string" && id.length > 0) metadata.id = id;
+    } catch {
+      // A request ID is optional and can be unavailable before stream consumption.
+    }
   }
-  try {
-    const rid = fn.call(response);
-    return typeof rid === "string" && rid.length > 0 ? rid : undefined;
-  } catch {
-    return undefined;
-  }
+  return metadata;
 }
 
 /**
@@ -1060,7 +1065,10 @@ export function mergeRequestConfig(
   const { signal: _dropped, ...rest } = requestConfig ?? {};
   const callHeaders = normalizeHeaders(headers);
   if (callHeaders) {
-    rest.headers = { ...normalizeHeaders(rest.headers), ...callHeaders };
+    const providerHeaders = Object.fromEntries(
+      Object.entries(rest.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]),
+    );
+    rest.headers = { ...providerHeaders, ...callHeaders };
   }
   if (abortSignal) return { ...rest, signal: abortSignal };
   return Object.keys(rest).length > 0 ? rest : undefined;

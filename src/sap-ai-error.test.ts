@@ -993,6 +993,36 @@ describe("convertToAISDKError", () => {
     });
   });
   describe("error boundary regressions", () => {
+    it("keeps parser input out of public summaries while retaining the original diagnostic cause", () => {
+      let parsingError: unknown;
+      try {
+        JSON.parse("credential-sentinel-network-timeout");
+      } catch (error) {
+        parsingError = error;
+      }
+      expect(parsingError).toBeInstanceOf(SyntaxError);
+      const wrapper = new Error("Could not parse service configuration", { cause: parsingError });
+      const converted = convertToAISDKError(wrapper) as APICallError;
+      expect(converted.statusCode).toBe(500);
+      expect(converted.isRetryable).toBe(false);
+      expect(converted.message).not.toContain("credential-sentinel");
+      expect(converted.cause).toBe(wrapper);
+
+      const transport = Object.assign(
+        new Error("Response parsing failed", { cause: parsingError }),
+        {
+          isAxiosError: true,
+          response: { headers: { "retry-after": "5" }, status: 429 },
+        },
+      );
+      const transportResult = convertToAISDKError(transport) as APICallError;
+      expect(transportResult.statusCode).toBe(429);
+      expect(transportResult.isRetryable).toBe(true);
+      expect(transportResult.message).not.toContain("credential-sentinel");
+      expect(transportResult.cause).toBe(transport);
+      expect(transportResult.responseHeaders?.["retry-after"]).toBe("5");
+    });
+
     it("should parse braces and escaped quotes inside a structured SSE error string", () => {
       const message = 'Unexpected } token with { and "quoted" text';
       const result = convertToAISDKError(

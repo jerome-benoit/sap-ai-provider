@@ -11,7 +11,7 @@ metadata:
 
 Sync delta specs from a change to main specs.
 
-This is an **agent-driven** operation - you will read delta specs and directly edit main specs to apply the changes. This allows intelligent merging (e.g., adding a scenario without copying the entire requirement).
+This is an **agent-driven** operation - you will read delta specs and directly edit main specs to apply the changes. Preserve existing content while keeping delta specs compatible with CLI validation and archiving.
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
@@ -54,10 +54,10 @@ This is an **agent-driven** operation - you will read delta specs and directly e
    **MODIFIED Requirements:**
    - Find the requirement in main spec
    - Apply the changes - this can be:
-     - Adding new scenarios (don't need to copy existing ones)
+     - Adding new scenarios
      - Modifying existing scenarios
      - Changing the requirement description
-   - Preserve scenarios/content not mentioned in the delta
+   - Preserve scenarios/content not mentioned in the delta. When authoring or updating a MODIFIED block, include the complete requirement text and retained scenarios; CLI archiving replaces the whole requirement block.
 
    **REMOVED Requirements:**
    - Remove the entire requirement block from main spec
@@ -94,6 +94,13 @@ The system SHALL do something new.
 
 ### Requirement: Existing Feature
 
+The system SHALL preserve the existing feature behavior.
+
+#### Scenario: Existing scenario
+
+- **WHEN** user does X
+- **THEN** system does Y
+
 #### Scenario: New scenario to add
 
 - **WHEN** user does A
@@ -111,11 +118,11 @@ The system SHALL do something new.
 
 **Key Principle: Intelligent Merging**
 
-Unlike programmatic merging, you can apply **partial updates**:
+Apply changes without losing existing requirements or scenarios:
 
-- To add a scenario, just include that scenario under MODIFIED - don't copy existing scenarios
-- The delta represents _intent_, not a wholesale replacement
-- Use your judgment to merge changes sensibly
+- MODIFIED blocks must include the complete requirement body and all retained scenarios, even when only adding one scenario.
+- Do not treat omitted scenarios as intentional removals; clarify the intent and preserve existing behavior.
+- Validate authored deltas with `openspec validate "<name>" --type change` before claiming they are ready for CLI archiving.
 
 **Output On Success**
 

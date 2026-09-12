@@ -397,7 +397,11 @@ describe("convertToSAPMessages", () => {
               type: "tool-result",
             },
             {
-              output: { type: "json" as const, value: { time: "12:00" } },
+              output: {
+                providerOptions: { "sap-ai": { internalRouting: "not model content" } },
+                type: "text",
+                value: "12:00",
+              },
               toolCallId: "call_2",
               toolName: "get_time",
               type: "tool-result",
@@ -414,7 +418,7 @@ describe("convertToSAPMessages", () => {
           tool_call_id: "call_1",
         },
         {
-          content: '{"type":"json","value":{"time":"12:00"}}',
+          content: "12:00",
           role: "tool",
           tool_call_id: "call_2",
         },
@@ -1100,6 +1104,29 @@ describe("convertToSAPMessages", () => {
         expect(content).not.toContain("{{");
       });
 
+      it.each(["{name}}", "% if name %}", "# note #}"])(
+        "should escape delimiters formed across assistant text parts (%s)",
+        (suffix) => {
+          const prompt: LanguageModelV3Prompt = [
+            {
+              content: [
+                { text: "{", type: "text" },
+                { text: suffix, type: "text" },
+              ],
+              role: "assistant",
+            },
+          ];
+          const options = { parsePartProviderOptions: parseSAPPartProviderOptions };
+          expect(convertToSAPMessages(prompt, options)[0]?.content).toBe(
+            `{${ZERO_WIDTH_SPACE}${suffix}`,
+          );
+          expect(
+            convertToSAPMessages(prompt, { ...options, escapeTemplatePlaceholders: false })[0]
+              ?.content,
+          ).toBe(`{${suffix}`);
+        },
+      );
+
       it("should escape tool result content", () => {
         const prompt: LanguageModelV3Prompt = [
           {
@@ -1591,12 +1618,12 @@ describe("convertToSAPMessages", () => {
       });
     });
 
-    it("should attach cache_control to a tool-result message", () => {
+    it("should escape text tool output while preserving its cache directive", () => {
       const prompt: LanguageModelV3Prompt = [
         {
           content: [
             {
-              output: { type: "json", value: { ok: true } },
+              output: { type: "text", value: "{{answer}}" },
               providerOptions: { "sap-ai": { cacheControl: { ttl: "1h", type: "ephemeral" } } },
               toolCallId: "c1",
               toolName: "lookup",
@@ -1607,9 +1634,13 @@ describe("convertToSAPMessages", () => {
         },
       ];
       const result = convertToSAPMessages(prompt, { parsePartProviderOptions });
-      const toolMsg = result[0] as { content: { cache_control?: unknown; text: string }[] };
-      expect(Array.isArray(toolMsg.content)).toBe(true);
-      expect(toolMsg.content[0]?.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+      expect(result[0]?.content).toEqual([
+        {
+          cache_control: { ttl: "1h", type: "ephemeral" },
+          text: "{\u200B{answer}}",
+          type: "text",
+        },
+      ]);
     });
 
     it("should keep tool-result content as a string when no cacheControl is set", () => {

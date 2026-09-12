@@ -74,22 +74,21 @@ async function simpleTest() {
     process.exitCode = 1;
     if (error instanceof LoadAPIKeyError) {
       // 401/403: Authentication or permission issue
-      console.error("❌ Authentication Error:", error.message);
+      console.error("❌ Authentication Error:", error.name);
     } else if (error instanceof NoSuchModelError) {
       // 404: Model or deployment not found
       console.error("❌ Model Not Found:", error.modelId);
     } else if (error instanceof APICallError) {
-      console.error("❌ API Call Error:", error.statusCode, error.message);
+      console.error("❌ API Call Error:", error.statusCode, error.name);
 
       // Parse SAP-specific metadata
       const sapError = parseSAPErrorResponseBody(error.responseBody);
       if (sapError?.error.request_id) {
         console.error("   SAP Request ID:", sapError.error.request_id);
-        console.error("   SAP Error Code:", sapError.error.code);
       }
     } else {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("❌ Test failed:", errorMessage);
+      const errorName = error instanceof Error ? error.name : "Unknown error";
+      console.error("❌ Test failed:", errorName);
     }
 
     console.error("\n💡 Troubleshooting tips:");

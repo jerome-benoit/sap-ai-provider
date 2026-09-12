@@ -144,6 +144,11 @@ For complete error handling examples with all error types and SAP-specific
 metadata fields, see
 [API Reference - Error Handling](./API_REFERENCE.md#error-handling--reference).
 
+Repository examples report error names, HTTP status and validated request IDs
+without automatically printing backend messages. Raw `error.message`,
+`responseBody` and nested transport diagnostics can contain credentials or prompt
+data; inspect them privately and redact sensitive values before logging or sharing.
+
 ### Problem: 400 Bad Request
 
 **Common Causes:** Invalid model parameters (temperature, maxTokens), malformed

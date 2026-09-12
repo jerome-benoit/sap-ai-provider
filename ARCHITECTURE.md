@@ -487,7 +487,7 @@ sequenceDiagram
             Provider->>Provider: Receive SDK-parsed SSE chunk
             Provider->>Provider: Shared stream transformer emits V3 events
 
-            opt First Chunk or Updated Response ID
+            opt First Chunk or Updated Completion Metadata
                 Provider-->>SDK: {type: "response-metadata"}
             end
             opt First Nonempty Text Delta
@@ -735,10 +735,12 @@ const stream = await client.stream(request, abortSignal, streamOptions, mergeReq
 
 The signal is forwarded to the SAP AI SDK, which passes it to the underlying
 Axios HTTP client to cancel the request. Canceling the returned provider stream
-also aborts its SDK transport before closing the iterator. An in-flight
-`abortSignal` produces a non-retryable error (status 499), not a successful
-`finish` event or a completed partial tool call. Neither path guarantees that
-SAP AI Core or the deployed model stops server-side processing.
+also aborts its SDK transport before closing the iterator. Already-aborted
+language-model calls and in-flight stream aborts produce a non-retryable
+`APICallError` (status 499), including with custom abort reasons. An aborted
+stream does not emit a successful `finish` or complete a partial tool call.
+Cancellation does not guarantee that SAP AI Core or the deployed model stops
+server-side processing.
 
 ### Tool Calling Flow
 
@@ -954,9 +956,11 @@ priority:
    `NoSuchModelError`, and other statuses to `APICallError`
 4. **HTTP response status?** → `APICallError` preserving the status, even if
    the body is not a structured SAP error
-5. **Recognized error message?** → Classify authentication/deployment failures,
+5. **Native parser failure?** → Retain the enclosing SDK summary, or a generic
+   parse-error message, instead of exposing parser input fragments
+6. **Recognized error message?** → Classify authentication/deployment failures,
    extract a status from `status code NNN`, or apply a category-specific mapping
-6. **Unknown error?** → Non-retryable `APICallError` with status 500
+7. **Unknown error?** → Non-retryable `APICallError` with status 500
 
 Converted `APICallError` instances carry the supplied URL and request summary,
 plus response headers/body when available. Authentication and model errors do
@@ -1233,129 +1237,33 @@ interface EmbeddingModelAPIStrategy {
 
 #### Template Method Pattern (Base Embedding Model Strategy)
 
-The `BaseEmbeddingModelStrategy` abstract class uses the Template Method pattern
-to consolidate shared logic for embedding generation while allowing API-specific
-customization:
+[`BaseEmbeddingModelStrategy`](./src/base-embedding-model-strategy.ts) centralizes
+batch-size validation, embedding options, request configuration, result assembly,
+and error conversion. Its API-specific subclasses supply these hooks:
 
-```typescript
-// Base class with Template Method pattern for embeddings
-abstract class BaseEmbeddingModelStrategy<TClient, TResponse> implements EmbeddingModelAPIStrategy {
-  // Template method - defines the embedding algorithm skeleton
-  async doEmbed(config, settings, options, maxEmbeddingsPerCall): Promise<EmbeddingModelV3Result> {
-    const { abortSignal, values } = options;
-
-    try {
-      if (values.length > maxEmbeddingsPerCall) {
-        throw new TooManyEmbeddingValuesForCallError({
-          maxEmbeddingsPerCall,
-          modelId: config.modelId,
-          provider: config.provider,
-          values,
-        });
-      }
-      const embeddingOptions = config.parsedProviderOptions;
-      const providerName = getProviderName(config.provider);
-      const embeddingType = embeddingOptions?.type ?? settings.type ?? "text";
-      const warnings: SharedV3Warning[] = [];
-      this.resolveWarnings(settings, warnings);
-      const client = this.createClient(config, settings, embeddingOptions);
-      const response = await this.executeCall(client, values, embeddingType, abortSignal, config.requestConfig);
-      const embeddings = this.extractEmbeddings(response);
-      const totalTokens = this.extractTokenCount(response);
-      const { headers: responseHeaders, requestId } = this.extractResponseMetadata(response);
-
-      return buildEmbeddingResult({
-        embeddings,
-        modelId: config.modelId,
-        providerName,
-        requestId,
-        responseHeaders,
-        totalTokens,
-        version: VERSION,
-        warnings,
-      });
-    } catch (error) {
-      if (error instanceof TooManyEmbeddingValuesForCallError) throw error;
-      throw convertToAISDKError(error, {
-        modelId: config.modelId,
-        modelType: "embeddingModel",
-        operation: "doEmbed",
-        requestBody: { values: values.length },
-        url: this.getUrl(),
-      });
-    }
-  }
-
-  // Primitive operations (hooks) - implemented by subclasses
-  protected abstract createClient(config: EmbeddingModelStrategyConfig, settings: SAPAIEmbeddingSettings, embeddingOptions: EmbeddingProviderOptions | undefined): TClient;
-  protected abstract executeCall(client: TClient, values: string[], embeddingType: EmbeddingType, abortSignal: AbortSignal | undefined, requestConfig: CustomRequestConfig | undefined): Promise<TResponse>;
-  protected abstract extractEmbeddings(response: TResponse): EmbeddingModelV3Embedding[];
-  protected abstract extractTokenCount(response: TResponse): number;
-  protected abstract getUrl(): string;
-}
-```
-
-The `doEmbed()` method orchestrates the embedding workflow, defining the sequence
-of operations. Concrete embedding strategies like `OrchestrationEmbeddingModelStrategy`
-and `FoundationModelsEmbeddingModelStrategy` extend this base class and implement
-the abstract primitive operations (hooks) to provide API-specific
-implementations for creating clients, executing calls, and extracting data.
-
-**Key Hooks:**
-
-1. `createClient(config, settings, embeddingOptions)`: Factory for the specific SDK client.
-2. `executeCall(client, values, embeddingType, abortSignal, requestConfig)`: Executes the API call.
+1. `createClient(config, settings, embeddingOptions)`: Creates the SAP SDK client.
+2. `executeCall(client, values, embeddingType, requestConfig)`: Sends the request.
 3. `extractEmbeddings(response)`: Extracts and normalizes embedding vectors.
-4. `extractTokenCount(response)`: Retrieves token usage from the response.
-5. `getUrl()`: Returns the API URL for error context.
+4. `extractTokenCount(response)`: Retrieves token usage.
+5. `getUrl()`: Supplies the API identifier for error context.
 
-The abbreviated class above omits the optional `resolveWarnings()` and
-`extractResponseMetadata()` hook definitions. Subclasses use them to surface
-warnings, request IDs, and response headers.
-
-**Benefits:**
-
-- **Code Reusability**: Eliminates approximately 50 lines of duplicate code
-  per strategy by centralizing the core embedding algorithm.
-- **Single Source of Truth**: Ensures consistent embedding logic across different
-  API implementations.
-- **Type Safety**: Utilizes generic type parameters (`<TClient, TResponse>`)
-  for enhanced type checking and developer experience.
-- **Extensibility**: Simplifies adding new embedding providers by requiring
-  only the implementation of a few abstract methods.
+The base class merges provider `requestConfig`, per-call headers, and
+`abortSignal` before calling `executeCall`; cancellation is not a separate hook
+argument. Optional `resolveWarnings()` and `extractResponseMetadata()` hooks
+surface API-specific warnings, request IDs, and response headers.
 
 #### Template Method Pattern (Base Language Model Strategy)
 
-The `BaseLanguageModelStrategy` abstract class uses the Template Method pattern
-to consolidate shared logic while allowing API-specific customization. The
-following pseudocode abbreviates generic types, error conversion, and metadata
-assembly; see the source for the complete implementation:
+[`BaseLanguageModelStrategy`](./src/base-language-model-strategy.ts) centralizes
+message conversion, parameter precedence, cancellation, response assembly, and
+error conversion for generation and streaming. The concrete Orchestration and
+Foundation Models strategies build API-specific requests and clients.
 
-```typescript
-// Base class with Template Method pattern
-abstract class BaseLanguageModelStrategy implements LanguageModelAPIStrategy {
-  // Template method - defines the algorithm skeleton
-  async doGenerate(config, settings, options): Promise<LanguageModelV3GenerateResult> {
-    const commonParts = this.buildCommonParts(config, settings, options);
-    const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
-    const client = this.createClient(config, settings, commonParts);
-    const response = await this.executeApiCall(client, request, options.abortSignal, config.requestConfig);
-    return buildGenerateResult({ modelId, providerName, request, response, warnings });
-  }
-
-  // Common logic shared by all strategies
-  protected buildCommonParts(config, settings, options): CommonParts { /* ... */ }
-
-  // Primitive operations - implemented by subclasses
-  protected abstract buildRequest(...): { request: ApiRequest; warnings: Warning[] };
-  protected abstract createClient(config, settings, commonParts): ApiClient;
-  protected abstract executeApiCall(client, request, abortSignal, requestConfig): Promise<ApiResponse>;
-}
-```
-
-The concrete strategies (`OrchestrationLanguageModelStrategy` and
-`FoundationModelsLanguageModelStrategy`) extend this base class and implement
-only the API-specific primitive operations.
+For nonstreaming calls, `executeApiCall(client, request, requestConfig)` receives
+the merged transport configuration, including per-call headers and cancellation.
+Streaming uses the SDK
+[cancellation signatures](#request-cancellation) and delegates event conversion
+to the [shared stream transformer](./src/stream-transformer.ts).
 
 #### API Selection Hierarchy
 

@@ -5,6 +5,7 @@
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3FinishReason,
+  LanguageModelV3ResponseMetadata,
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
   SharedV3Warning,
@@ -52,7 +53,7 @@ export interface StreamTransformerConfig {
   ) => unknown;
   readonly extractChunkMetadata: (chunk: SDKStreamChunk) => {
     requestId?: string;
-    responseId?: string;
+    responseMetadata: LanguageModelV3ResponseMetadata;
   };
   readonly idGenerator: StreamIdGenerator;
   readonly includeRawChunks: boolean;
@@ -61,7 +62,7 @@ export interface StreamTransformerConfig {
   readonly providerName: string;
   /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
   readonly requestId?: string;
-  readonly responseId: string;
+  readonly responseMetadata: LanguageModelV3ResponseMetadata & { id: string };
   readonly sdkStream: AsyncIterable<SDKStreamChunk>;
   readonly streamResponseGetCitations?: () => SDKCitation[] | undefined;
   readonly streamResponseGetFinishReason: () => null | string | undefined;
@@ -106,6 +107,18 @@ export class StreamIdGenerator {
   generateToolCallId(): string {
     return crypto.randomUUID();
   }
+}
+
+/**
+ * Preserves a caller-provided reason while retaining standard abort classification.
+ * @param reason - The original cancellation reason.
+ * @returns An AbortError carrying the reason as its cause.
+ * @internal
+ */
+export function createAbortError(reason: unknown): Error {
+  const error = new Error("The operation was aborted.", { cause: reason });
+  error.name = "AbortError";
+  return error;
 }
 
 /**
@@ -157,7 +170,7 @@ export function createStreamTransformer(
     options,
     providerName,
     requestId,
-    responseId,
+    responseMetadata,
     sdkStream,
     streamResponseGetCitations,
     streamResponseGetFinishReason,
@@ -170,7 +183,7 @@ export function createStreamTransformer(
   let textBlockId: null | string = null;
   const streamState = createInitialStreamState();
   const toolCallsInProgress = new Map<number, ToolCallInProgress>();
-  let resolvedResponseId = responseId;
+  const resolvedResponseMetadata = { ...responseMetadata };
   let resolvedRequestId = requestId;
   let tokenUsage: SDKTokenUsage | undefined;
   let citations: Map<string, SDKCitation> | undefined;
@@ -330,7 +343,7 @@ export function createStreamTransformer(
                   }
                 : {}),
               ...(resolvedRequestId ? { requestId: resolvedRequestId } : {}),
-              responseId: resolvedResponseId,
+              responseId: resolvedResponseMetadata.id,
               version,
             },
           },
@@ -364,18 +377,22 @@ export function createStreamTransformer(
 
         const metadata = extractChunkMetadata(chunk);
         if (metadata.requestId) resolvedRequestId = metadata.requestId;
-        const responseIdChanged =
-          metadata.responseId != null && metadata.responseId !== resolvedResponseId;
-        if (metadata.responseId) resolvedResponseId = metadata.responseId;
+        const incomingMetadata = metadata.responseMetadata;
+        const metadataChanged =
+          (incomingMetadata.id !== undefined &&
+            incomingMetadata.id !== resolvedResponseMetadata.id) ||
+          (incomingMetadata.modelId !== undefined &&
+            incomingMetadata.modelId !== resolvedResponseMetadata.modelId) ||
+          (incomingMetadata.timestamp !== undefined &&
+            incomingMetadata.timestamp.getTime() !== resolvedResponseMetadata.timestamp?.getTime());
+        Object.assign(resolvedResponseMetadata, incomingMetadata);
         collectUsage(chunk.getTokenUsage?.());
         collectCitations(chunk.getCitations?.());
 
-        if (streamState.isFirstChunk || responseIdChanged) {
+        if (streamState.isFirstChunk || metadataChanged) {
           streamState.isFirstChunk = false;
           controller.enqueue({
-            id: resolvedResponseId,
-            modelId,
-            timestamp: new Date(),
+            ...resolvedResponseMetadata,
             type: "response-metadata",
           });
         }
@@ -419,17 +436,6 @@ export function createStreamTransformer(
       },
     }),
   );
-}
-
-/**
- * Preserves a caller-provided reason while retaining standard abort classification.
- * @param reason - The original cancellation reason.
- * @returns An AbortError carrying the reason as its cause.
- */
-function createAbortError(reason: unknown): Error {
-  const error = new Error("The operation was aborted.", { cause: reason });
-  error.name = "AbortError";
-  return error;
 }
 
 /**

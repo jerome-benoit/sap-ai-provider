@@ -39,8 +39,8 @@ const TOP_LEVEL_REFERENCE_ERROR =
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
  *   `URL` object, `text` to a V3 text part. Top-level `reference` values are
  *   rejected explicitly (never fetched); tool-output references map to the
- *   equivalent V3 `file-id` shape. The SAP message converter serializes tool
- *   outputs as JSON; it does not resolve these references.
+ *   equivalent V3 `file-id` shape. The SAP converter sends text output values
+ *   directly and serializes other output variants as JSON; references are not resolved.
  * - Bare and wildcard media types on inline data are resolved from detectable
  *   bytes. Top-level `image` and `image/*` URLs are preserved as `image/*`;
  *   other incomplete top-level URL media types are rejected.

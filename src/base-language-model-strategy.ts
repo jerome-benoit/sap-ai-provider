@@ -2,6 +2,7 @@
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
+  LanguageModelV3ResponseMetadata,
   LanguageModelV3StreamResult,
   SharedV3Warning,
 } from "@ai-sdk/provider";
@@ -19,7 +20,7 @@ import {
   buildGenerateResult,
   buildModelParams,
   createAISDKRequestBodySummary,
-  extractCompletionId,
+  extractCompletionMetadata,
   extractResponseMetadata,
   mapToolChoice,
   mergeRequestConfig,
@@ -29,7 +30,11 @@ import {
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
-import { createStreamTransformer, StreamIdGenerator } from "./stream-transformer.js";
+import {
+  createAbortError,
+  createStreamTransformer,
+  StreamIdGenerator,
+} from "./stream-transformer.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -60,8 +65,7 @@ export interface StreamCallResponse {
   /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
   readonly requestId?: string;
   readonly responseHeaders?: Record<string, string>;
-  /** Server-provided completion ID extracted from _data, if available. */
-  readonly responseId?: string;
+  readonly responseMetadata?: LanguageModelV3ResponseMetadata;
   readonly stream: AsyncIterable<SDKStreamChunk>;
 }
 
@@ -106,6 +110,7 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
+      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
       const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
@@ -118,7 +123,6 @@ export abstract class BaseLanguageModelStrategy<
       );
 
       return buildGenerateResult({
-        modelId: config.modelId,
         providerName: commonParts.providerName,
         requestBody: request,
         requestId: response.requestId,
@@ -144,7 +148,7 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      options.abortSignal?.throwIfAborted();
+      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
       const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
@@ -159,7 +163,6 @@ export abstract class BaseLanguageModelStrategy<
       );
 
       const idGenerator = new StreamIdGenerator();
-      const responseId = streamResponse.responseId ?? idGenerator.generateResponseId();
 
       const streamWarnings = this.collectStreamWarnings(settings, commonParts.sapOptions);
 
@@ -173,7 +176,10 @@ export abstract class BaseLanguageModelStrategy<
         options,
         providerName: commonParts.providerName,
         requestId: streamResponse.requestId,
-        responseId,
+        responseMetadata: {
+          ...streamResponse.responseMetadata,
+          id: streamResponse.responseMetadata?.id ?? idGenerator.generateResponseId(),
+        },
         sdkStream: streamResponse.stream,
         streamResponseGetCitations: streamResponse.getCitations,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
@@ -336,7 +342,7 @@ export abstract class BaseLanguageModelStrategy<
   ): Promise<StreamCallResponse>;
 
   /**
-   * Resolves request id, completion id, and normalised headers from an SDK response.
+   * Resolves completion metadata, request ID, and normalised headers from an SDK response.
    * @param response - Raw SDK response or stream response.
    * @returns Combined metadata fragment.
    * @internal
@@ -344,23 +350,22 @@ export abstract class BaseLanguageModelStrategy<
   protected extractMetadata(response: unknown): {
     requestId?: string;
     responseHeaders?: Record<string, string>;
-    responseId?: string;
+    responseMetadata: LanguageModelV3ResponseMetadata;
   } {
-    const responseId = extractCompletionId(
+    const responseMetadata = extractCompletionMetadata(
       response as { _data?: unknown; getRequestId?: () => string | undefined },
-      this.getCompletionIdPath(),
+      this.getCompletionDataPath(),
     );
     const { headers, requestId } = extractResponseMetadata(response, "rawResponse");
-    return { requestId, responseHeaders: headers, responseId };
+    return { requestId, responseHeaders: headers, responseMetadata };
   }
 
   /**
-   * Returns the API-specific dotted path used to read the completion id off
-   * the SDK response's internal `_data` payload.
-   * @returns Path traversed under `_data` (e.g. `["final_result","id"]`, `["id"]`).
+   * Returns the API-specific path to the completion object in an SDK payload.
+   * @returns Completion path (`["final_result"]` for orchestration, `[]` for Foundation Models).
    * @internal
    */
-  protected abstract getCompletionIdPath(): readonly string[];
+  protected abstract getCompletionDataPath(): readonly string[];
 
   /**
    * Returns whether to escape template placeholders for this API.

@@ -9,7 +9,7 @@ import {
   buildAnthropicCacheMetadata,
   computeNoCache,
   convertToolsToSAPFormat,
-  extractCompletionId,
+  extractCompletionMetadata,
   extractToolParameters,
   mapFinishReason,
   mapTokenUsage,
@@ -223,48 +223,20 @@ describe("sanitizeAsJSONObject", () => {
   });
 });
 
-describe("extractCompletionId", () => {
-  it.each<
-    [string, { _data?: unknown; getRequestId?: unknown }, readonly string[], string | undefined]
-  >([
-    ["resolve a single-segment path", { _data: { id: "x1" } }, ["id"], "x1"],
-    [
-      "walk a dotted nested path",
-      { _data: { final_result: { id: "x2" } } },
-      ["final_result", "id"],
-      "x2",
-    ],
-    [
-      "fall back to getRequestId when path missing",
-      { _data: {}, getRequestId: () => "rid" },
-      ["id"],
-      "rid",
-    ],
-    [
-      "return undefined when both sources are absent",
-      { _data: {}, getRequestId: () => undefined },
-      ["id"],
-      undefined,
-    ],
-    ["tolerate non-function getRequestId", { _data: {}, getRequestId: 42 }, ["id"], undefined],
-    [
-      "tolerate throwing getRequestId",
-      {
-        _data: {},
-        getRequestId: () => {
-          throw new Error("nope");
-        },
-      },
-      ["id"],
-      undefined,
-    ],
-  ])("should %s", (_label, response, path, expected) => {
+describe("completion metadata boundaries", () => {
+  it("prefers public response data and omits invalid model names and timestamps", () => {
     expect(
-      extractCompletionId(
-        response as { _data?: unknown; getRequestId?: () => string | undefined },
-        path,
+      extractCompletionMetadata(
+        {
+          _data: { created: 1, id: "private", model: "private" },
+          rawResponse: { data: { created: 1e20, id: "public", model: 42 } },
+        },
+        [],
       ),
-    ).toBe(expected);
+    ).toEqual({ id: "public" });
+    expect(extractCompletionMetadata({ rawResponse: { data: { created: 0 } } }, [])).toEqual({
+      timestamp: new Date(0),
+    });
   });
 });
 
