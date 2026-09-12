@@ -104,11 +104,11 @@ try {
 
   console.log(result.text);
 } catch (error) {
-  if (error instanceof APICallError) {
-    console.error("SAP AI Core API error:", error.message);
-    console.error("Status:", error.statusCode);
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("SAP AI Core API error:", error.statusCode, error.name);
   } else {
-    console.error("Unexpected error:", error);
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
@@ -380,11 +380,12 @@ try {
   // streamText returns a result object; its usage property is a promise.
   console.log("\n\nUsage:", await result.usage);
 } catch (error) {
+  process.exitCode = 1;
   if (APICallError.isInstance(error)) {
-    console.error("API Error:", error.message);
-    // See Error Handling section for complete error type reference
+    console.error("API error:", error.statusCode, error.name);
+  } else {
+    console.error("Streaming failed:", error instanceof Error ? error.name : "Unknown error");
   }
-  throw error;
 }
 ```
 

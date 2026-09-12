@@ -254,11 +254,11 @@ try {
 
   console.log("Embedding dimensions:", embedding.length);
 } catch (error) {
-  if (error instanceof APICallError) {
-    console.error("SAP AI Core API error:", error.message);
-    console.error("Status:", error.statusCode);
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("SAP AI Core API error:", error.statusCode, error.name);
   } else {
-    console.error("Unexpected error:", error);
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
@@ -432,10 +432,12 @@ try {
 
   console.log(result.text);
 } catch (error) {
-  if (error instanceof APICallError) {
-    console.error("API error:", error.message, "- Status:", error.statusCode);
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("API error:", error.statusCode, error.name);
+  } else {
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
-  throw error;
 }
 ```
 
@@ -2639,29 +2641,40 @@ for await (const part of stream) {
 **Example:**
 
 ```typescript
-const { stream } = await model.doStream({
-  prompt: [
-    {
-      role: "user",
-      content: [{ type: "text", text: "Write a story" }],
-    },
-  ],
-});
+import { APICallError } from "@ai-sdk/provider";
 
-for await (const part of stream) {
-  switch (part.type) {
-    case "text-delta":
-      process.stdout.write(part.delta);
-      break;
-    case "tool-call":
-      console.log(`Tool called: ${part.toolName}`, part.input);
-      break;
-    case "finish":
-      console.log("Usage:", part.usage);
-      break;
-    case "error":
-      console.error("Stream error:", part.error);
-      break;
+try {
+  const { stream } = await model.doStream({
+    prompt: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Write a story" }],
+      },
+    ],
+  });
+
+  for await (const part of stream) {
+    switch (part.type) {
+      case "text-delta":
+        process.stdout.write(part.delta);
+        break;
+      case "tool-call":
+        console.log(`Tool called: ${part.toolName}`, part.input);
+        break;
+      case "finish":
+        console.log("Usage:", part.usage);
+        break;
+      case "error":
+        // Route stream error events through the same handler as setup failures.
+        throw part.error;
+    }
+  }
+} catch (error) {
+  process.exitCode = 1;
+  if (APICallError.isInstance(error)) {
+    console.error("Stream error:", error.statusCode, error.name);
+  } else {
+    console.error("Stream error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
@@ -2891,9 +2904,12 @@ different response-body shape.
 
 Native parser failures, including malformed credential JSON, use the enclosing
 SAP SDK error summary rather than copying parser input fragments into the public
-message. This is not general redaction: error causes, response bodies, headers,
-and raw stream chunks can contain sensitive data. Redact diagnostics before
-logging or exposing them to users.
+message. This is not general redaction: backend error messages, causes, response
+bodies, headers, and raw stream chunks can contain sensitive data. Routine logs
+should use error names, HTTP status, and retryability, as below. Keep detailed
+diagnostics private; validate their structure and redact their contents before
+logging or exposing them to users. Never log a raw response body as a fallback
+when parsing fails.
 
 #### Error Handling Examples
 
@@ -2906,32 +2922,21 @@ try {
     prompt: "Hello",
   });
 } catch (error) {
-  if (error instanceof LoadAPIKeyError) {
+  process.exitCode = 1;
+  if (LoadAPIKeyError.isInstance(error)) {
     // 401/403: Authentication/permission issue
-    console.error("Setup error:", error.message);
+    console.error("Setup error:", error.name);
     // Check AICORE_SERVICE_KEY environment variable
-  } else if (error instanceof NoSuchModelError) {
+  } else if (NoSuchModelError.isInstance(error)) {
     // 404: Model or deployment not found
-    console.error("Model not found:", error.modelId);
-  } else if (error instanceof APICallError) {
+    console.error("Model not found:", error.name);
+  } else if (APICallError.isInstance(error)) {
     // Other API/HTTP errors (400, 429, 5xx, etc.)
-    console.error("API error:", error.message);
+    console.error("API error:", error.name);
     console.error("Status:", error.statusCode);
     console.error("Retryable:", error.isRetryable);
-
-    const responseBody = error.responseBody;
-    if (responseBody) {
-      try {
-        const sapError = JSON.parse(responseBody) as {
-          error?: { code?: number; location?: string; request_id?: string };
-        };
-        console.error("SAP Error Code:", sapError.error?.code);
-        console.error("Location:", sapError.error?.location);
-        console.error("Request ID:", sapError.error?.request_id);
-      } catch {
-        console.error("SAP error body:", responseBody);
-      }
-    }
+  } else {
+    console.error("Unexpected error:", error instanceof Error ? error.name : "Unknown error");
   }
 }
 ```
