@@ -2625,17 +2625,23 @@ additional `raw` events containing each SDK chunk's `_data` payload when
 available, or the chunk itself otherwise. This is useful for debugging or
 accessing provider-specific data not exposed through standard events.
 
+Raw chunks can contain sensitive data. Keep them private, validate their structure,
+and redact sensitive fields before logging or exposing their contents. The example
+below counts raw chunks without logging their payloads.
+
 ```typescript
 const { stream } = await model.doStream({
   prompt: [...],
   includeRawChunks: true,
 });
 
+let rawChunkCount = 0;
 for await (const part of stream) {
   if (part.type === "raw") {
-    console.log("Raw chunk:", part.rawValue);
+    rawChunkCount++;
   }
 }
+console.log("Raw chunks received:", rawChunkCount);
 ```
 
 **Example:**
