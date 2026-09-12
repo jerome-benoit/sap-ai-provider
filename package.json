@@ -110,7 +110,7 @@
     "zod": "^4.6.2"
   },
   "devDependencies": {
-    "@ai-sdk/provider-v2": "npm:@ai-sdk/provider@^2.0.4",
+    "@ai-sdk/provider-v2": "npm:@ai-sdk/provider@^4.0.14",
     "@edge-runtime/vm": "^5.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.6",
