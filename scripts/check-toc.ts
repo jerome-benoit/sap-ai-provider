@@ -1,4 +1,4 @@
-import type Token from "markdown-it/lib/token.mjs";
+import type { Token } from "markdown-it";
 
 /** Validates Markdown tables of contents against rendered headings and list structure. */
 import GithubSlugger from "github-slugger";
@@ -163,7 +163,7 @@ function extractDocument(tokens: Token[]): {
       for (let index = 0; index < children.length; index++) {
         const child = children[index];
         const href = child?.type === "link_open" ? child.attrGet("href") : null;
-        if (!href?.startsWith("#")) continue;
+        if (typeof href !== "string" || !href.startsWith("#")) continue;
         let slug = href.slice(1);
         try {
           slug = decodeURIComponent(slug);
