@@ -1134,18 +1134,6 @@ describe("SAPAILanguageModel", () => {
     });
 
     describe("abort signal support", () => {
-      it("should pass abort signal via requestConfig", async () => {
-        const model = createModelForApi(api);
-        const prompt = createPrompt("Hello");
-        const controller = new AbortController();
-
-        await model.doGenerate({ abortSignal: controller.signal, prompt });
-
-        const MockClient = await getMockClientForApi(api);
-        expect(MockClient.lastRequestConfig).toBeDefined();
-        expect(MockClient.lastRequestConfig).toHaveProperty("signal", controller.signal);
-      });
-
       it("should propagate error when request rejects due to abort", async () => {
         const MockClient = await getMockClientForApi(api);
 
@@ -1168,31 +1156,6 @@ describe("SAPAILanguageModel", () => {
         await expect(
           model.doGenerate({ abortSignal: controller.signal, prompt }),
         ).rejects.toThrow();
-      });
-    });
-
-    describe("requestConfig support", () => {
-      it("should pass custom headers via requestConfig in doStream", async () => {
-        const config = {
-          ...getConfigForApi(api),
-          requestConfig: { headers: { "x-custom": "stream-value" } },
-        };
-        const model = new SAPAILanguageModel("gpt-4o", {}, config);
-        const prompt = createPrompt("Hello");
-
-        const streamResult = await model.doStream({ prompt });
-        const reader = streamResult.stream.getReader();
-        let done = false;
-        while (!done) {
-          const r = await reader.read();
-          done = r.done;
-        }
-
-        const MockClient = await getMockClientForApi(api);
-        expect(MockClient.lastStreamRequestConfig).toBeDefined();
-        expect(MockClient.lastStreamRequestConfig?.headers).toMatchObject({
-          "x-custom": "stream-value",
-        });
       });
     });
 

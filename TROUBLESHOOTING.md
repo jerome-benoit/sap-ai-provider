@@ -438,7 +438,8 @@ complete error details.
      model: provider("gpt-4.1"),
      prompt: "Write a story",
      onError({ error }) {
-       console.error("Stream error:", error);
+       // Whole errors may contain response bodies or transport credentials.
+       console.error("Stream error:", error instanceof Error ? error.name : "Unknown error");
      },
    });
 

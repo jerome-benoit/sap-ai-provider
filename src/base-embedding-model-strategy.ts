@@ -19,6 +19,7 @@ import {
   buildEmbeddingResult,
   type EmbeddingProviderOptions,
   type EmbeddingType,
+  mergeRequestConfig,
   type ResponseMetadata,
 } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
@@ -73,8 +74,7 @@ export abstract class BaseEmbeddingModelStrategy<
         client,
         values,
         embeddingType,
-        abortSignal,
-        config.requestConfig,
+        mergeRequestConfig(config.requestConfig, abortSignal, options.headers),
       );
 
       const embeddings = this.extractEmbeddings(response);
@@ -124,8 +124,7 @@ export abstract class BaseEmbeddingModelStrategy<
    * @param client - SDK client instance.
    * @param values - Input strings to embed.
    * @param embeddingType - Type of embedding (text, query, document).
-   * @param abortSignal - Optional abort signal.
-   * @param requestConfig - Optional custom request configuration (e.g. custom headers).
+   * @param requestConfig - Request configuration with merged headers and abort signal.
    * @returns SDK response containing embeddings.
    * @internal
    */
@@ -133,7 +132,6 @@ export abstract class BaseEmbeddingModelStrategy<
     client: TClient,
     values: string[],
     embeddingType: EmbeddingType,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<TResponse>;
 

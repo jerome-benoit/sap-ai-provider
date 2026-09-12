@@ -85,9 +85,10 @@ export interface SAPAIProviderSettings {
    *
    * Provider-level only (not overridable per-call via `providerOptions['sap-ai']`). The
    * AI SDK `abortSignal` option always wins over any `signal` on `requestConfig`; the
-   * latter is dropped before the request is forwarded. Other options, including
-   * Node-only agents (`httpAgent`, `httpsAgent`), are forwarded unchanged. The
-   * published package and SAP SDK transport require a Node-compatible runtime.
+   * latter is dropped before the request is forwarded. Standard AI SDK call-level
+   * `headers` override matching `requestConfig.headers` case-insensitively. Other
+   * options, including Node-only agents (`httpAgent`, `httpsAgent`), are forwarded
+   * unchanged. The published package and SAP SDK transport require a Node-compatible runtime.
    *
    * See the "Note on `requestConfig`" section under `SAPAIProviderSettings` in
    * `API_REFERENCE.md` for the full SAP AI Core `AI-*` header guidance.

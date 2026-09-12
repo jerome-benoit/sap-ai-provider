@@ -316,6 +316,7 @@ src/
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
+├── stream-transformer.ts                           # Shared stream lifecycle, tool input, and metadata conversion
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
 ├── base-embedding-model-strategy.ts                # Base class for embedding model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
@@ -452,7 +453,9 @@ sequenceDiagram
 This diagram illustrates the streaming text generation flow using Server-Sent
 Events (SSE). Unlike standard generation, streaming returns partial responses
 incrementally as the AI model generates content, enabling real-time display of
-results to users.
+results to users. Both API strategies delegate event conversion to
+`src/stream-transformer.ts`: the SAP SDK parses SSE, and the shared transformer
+maintains text/tool-input lifecycles, usage, citations, and response metadata.
 
 ```mermaid
 sequenceDiagram
@@ -481,8 +484,8 @@ sequenceDiagram
         loop For each token/chunk
             Model->>SAP: Generate token
             SAP-->>Provider: data: {<br/>  final_result: {<br/>    choices: [{<br/>      delta: {content: "token"}<br/>    }]<br/>  }<br/>}
-            Provider->>Provider: Parse SSE chunk
-            Provider->>Provider: Transform to StreamPart
+            Provider->>Provider: Receive SDK-parsed SSE chunk
+            Provider->>Provider: Shared stream transformer emits V3 events
 
             opt First Chunk or Updated Response ID
                 Provider-->>SDK: {type: "response-metadata"}
@@ -562,7 +565,7 @@ The v2 API uses a modular configuration structure:
           version: "latest",
           params: {
             temperature: 0.7,
-            max_tokens: 2000,
+            max_completion_tokens: 2000,
             // ... other params
           }
         }
@@ -732,8 +735,10 @@ const stream = await client.stream(request, abortSignal, streamOptions, mergeReq
 
 The signal is forwarded to the SAP AI SDK, which passes it to the underlying
 Axios HTTP client to cancel the request. Canceling the returned provider stream
-also aborts its SDK transport before closing the iterator. Neither path guarantees
-that SAP AI Core or the deployed model stops server-side processing.
+also aborts its SDK transport before closing the iterator. An in-flight
+`abortSignal` produces a non-retryable error (status 499), not a successful
+`finish` event or a completed partial tool call. Neither path guarantees that
+SAP AI Core or the deployed model stops server-side processing.
 
 ### Tool Calling Flow
 
@@ -941,13 +946,17 @@ try {
 The `convertToAISDKError()` function handles error conversion with a clear
 priority:
 
-1. **Existing `APICallError`, `LoadAPIKeyError`, or `NoSuchModelError`?** → Return as-is
-2. **Structured SAP error?** → Convert 401/403 to `LoadAPIKeyError`, 404 to
+1. **Existing standard request/API error?** → Preserve `APICallError`,
+   `LoadAPIKeyError`, `NoSuchModelError`, `InvalidPromptError`, and
+   `UnsupportedFunctionalityError` across SDK package versions
+2. **Aborted request?** → Non-retryable `APICallError` with status 499
+3. **Structured SAP error?** → Convert 401/403 to `LoadAPIKeyError`, 404 to
    `NoSuchModelError`, and other statuses to `APICallError`
-3. **Aborted request?** → Non-retryable `APICallError` with status 499
-4. **Recognized error message?** → Classify authentication/deployment failures,
+4. **HTTP response status?** → `APICallError` preserving the status, even if
+   the body is not a structured SAP error
+5. **Recognized error message?** → Classify authentication/deployment failures,
    extract a status from `status code NNN`, or apply a category-specific mapping
-5. **Unknown error?** → Non-retryable `APICallError` with status 500
+6. **Unknown error?** → Non-retryable `APICallError` with status 500
 
 Converted `APICallError` instances carry the supplied URL and request summary,
 plus response headers/body when available. Authentication and model errors do

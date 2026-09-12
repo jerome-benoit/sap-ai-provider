@@ -66,7 +66,6 @@ export interface StreamTransformerConfig {
   readonly streamResponseGetCitations?: () => SDKCitation[] | undefined;
   readonly streamResponseGetFinishReason: () => null | string | undefined;
   readonly streamResponseGetIntermediateFailures?: () => undefined | unknown[];
-  readonly streamResponseGetTokenUsage: () => null | SDKTokenUsage | undefined;
   readonly url: string;
   readonly version: string;
   readonly warnings: readonly SharedV3Warning[];
@@ -163,7 +162,6 @@ export function createStreamTransformer(
     streamResponseGetCitations,
     streamResponseGetFinishReason,
     streamResponseGetIntermediateFailures,
-    streamResponseGetTokenUsage,
     url,
     version,
     warnings,
@@ -190,8 +188,8 @@ export function createStreamTransformer(
   }
 
   /**
-   * Combines usage snapshots without losing details omitted by the SDK's final totals.
-   * @param incoming - Usage in a chunk or final response.
+   * Combines usage snapshots without losing details omitted by later chunks.
+   * @param incoming - Usage in the incoming chunk.
    */
   function collectUsage(incoming: null | SDKTokenUsage | undefined): void {
     if (!incoming) return;
@@ -250,7 +248,7 @@ export function createStreamTransformer(
     }
   }
 
-  const iterator = safeIterate(sdkStream)[Symbol.asyncIterator]();
+  const iterator = safeIterate(sdkStream, options.abortSignal)[Symbol.asyncIterator]();
   let canceled = false;
   return new ReadableStream<Error | SDKStreamChunk>({
     async cancel() {
@@ -268,6 +266,18 @@ export function createStreamTransformer(
   }).pipeThrough(
     new TransformStream<Error | SDKStreamChunk, LanguageModelV3StreamPart>({
       flush(controller) {
+        if (options.abortSignal?.aborted) {
+          handleStreamError(
+            createAbortError(options.abortSignal.reason),
+            controller,
+            convertToAISDKError,
+            options,
+            modelId,
+            url,
+          );
+          return;
+        }
+
         const didEmitAnyToolCalls = finalizeToolCalls(
           controller,
           toolCallsInProgress,
@@ -289,7 +299,7 @@ export function createStreamTransformer(
           };
         }
 
-        collectUsage(streamResponseGetTokenUsage());
+        // Use wire usage snapshots; SAP final aggregation can invent zero totals.
         streamState.usage = mapTokenUsage(tokenUsage);
 
         collectCitations(streamResponseGetCitations?.());
@@ -337,6 +347,9 @@ export function createStreamTransformer(
       },
 
       transform(chunk, controller) {
+        if (options.abortSignal?.aborted && !(chunk instanceof Error)) {
+          chunk = createAbortError(options.abortSignal.reason);
+        }
         if (chunk instanceof Error) {
           handleStreamError(chunk, controller, convertToAISDKError, options, modelId, url);
           return;
@@ -406,6 +419,17 @@ export function createStreamTransformer(
       },
     }),
   );
+}
+
+/**
+ * Preserves a caller-provided reason while retaining standard abort classification.
+ * @param reason - The original cancellation reason.
+ * @returns An AbortError carrying the reason as its cause.
+ */
+function createAbortError(reason: unknown): Error {
+  const error = new Error("The operation was aborted.", { cause: reason });
+  error.name = "AbortError";
+  return error;
 }
 
 /**
@@ -593,13 +617,25 @@ function handleToolCallDeltas(
  * After the first error, the transformer emits an error event and terminates without
  * a successful finish event.
  * @param iterable - The async iterable to wrap.
+ * @param abortSignal - Caller cancellation, which the SAP iterator can otherwise swallow.
  * @yields {Error | T} Original values or Error instances for caught exceptions.
  * @internal
  */
-async function* safeIterate<T>(iterable: AsyncIterable<T>): AsyncGenerator<Error | T, void> {
+async function* safeIterate<T>(
+  iterable: AsyncIterable<T>,
+  abortSignal: AbortSignal | undefined,
+): AsyncGenerator<Error | T, void> {
   try {
-    yield* iterable;
+    for await (const chunk of iterable) {
+      abortSignal?.throwIfAborted();
+      yield chunk;
+    }
+    abortSignal?.throwIfAborted();
   } catch (error) {
-    yield error instanceof Error ? error : new Error(String(error));
+    if (abortSignal?.aborted) {
+      yield createAbortError(abortSignal.reason);
+    } else {
+      yield error instanceof Error ? error : new Error(String(error));
+    }
   }
 }

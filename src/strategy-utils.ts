@@ -212,6 +212,7 @@ export interface SAPTool<P = SAPToolParameters> {
     description?: string;
     name: string;
     parameters?: P;
+    strict?: boolean | null;
   };
   type: "function";
 }
@@ -708,6 +709,7 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
           function: {
             name: tool.name,
             parameters,
+            ...(functionTool.strict !== undefined ? { strict: functionTool.strict } : {}),
             ...(tool.description ? { description: tool.description } : {}),
           },
           type: "function",
@@ -1038,21 +1040,28 @@ export function mapToolChoice(toolChoice: AISDKToolChoice | undefined): SAPToolC
 }
 
 /**
- * Merges provider-level `requestConfig` with the per-call `abortSignal`.
+ * Merges provider-level `requestConfig` with per-call cancellation and HTTP headers.
  *
  * The AI SDK `abortSignal` always wins: any `signal` present on `requestConfig` is
  * dropped so callers cannot accidentally bypass the abort contract described in the
- * JSDoc of `SAPAIProviderSettings.requestConfig`.
+ * JSDoc of `SAPAIProviderSettings.requestConfig`. Defined per-call headers override
+ * provider headers case-insensitively; undefined values leave defaults intact.
  * @param requestConfig - Provider-level custom request configuration.
  * @param abortSignal - Per-call abort signal from the AI SDK.
+ * @param headers - Additional per-call HTTP headers.
  * @returns Merged configuration, or `undefined` when there is nothing to forward.
  * @internal
  */
 export function mergeRequestConfig(
   requestConfig: CustomRequestConfig | undefined,
   abortSignal: AbortSignal | undefined,
+  headers?: Record<string, string | undefined>,
 ): CustomRequestConfig | undefined {
   const { signal: _dropped, ...rest } = requestConfig ?? {};
+  const callHeaders = normalizeHeaders(headers);
+  if (callHeaders) {
+    rest.headers = { ...normalizeHeaders(rest.headers), ...callHeaders };
+  }
   if (abortSignal) return { ...rest, signal: abortSignal };
   return Object.keys(rest).length > 0 ? rest : undefined;
 }

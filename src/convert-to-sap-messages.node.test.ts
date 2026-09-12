@@ -1,11 +1,12 @@
-/** Node-specific cross-realm tests for SAP message conversion. */
+/** Node-specific cross-realm and public error-boundary tests for SAP message conversion. */
 import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 
-import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+import { InvalidPromptError, UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
+import { createSAPAIProvider } from "./sap-ai-provider.js";
 
 describe("convertToSAPMessages across JavaScript realms", () => {
   it("should convert a Uint8Array created in another realm", () => {
@@ -91,4 +92,34 @@ describe("convertToSAPMessages across JavaScript realms", () => {
 
     expect(() => convertToSAPMessages(prompt)).toThrow("Unsupported file data type");
   });
+});
+
+describe("public model prompt errors", () => {
+  it.each(["doGenerate", "doStream"] as const)(
+    "should preserve standard prompt errors from %s",
+    async (method) => {
+      const model = createSAPAIProvider()("gpt-4.1");
+      const invalidArguments: LanguageModelV3Prompt = [
+        {
+          content: [
+            { input: "not json", toolCallId: "call", toolName: "lookup", type: "tool-call" },
+          ],
+          role: "assistant",
+        },
+      ];
+      await expect(model[method]({ prompt: invalidArguments })).rejects.toBeInstanceOf(
+        InvalidPromptError,
+      );
+
+      const unsupportedFile: LanguageModelV3Prompt = [
+        {
+          content: [{ data: null as unknown as Uint8Array, mediaType: "image/png", type: "file" }],
+          role: "user",
+        },
+      ];
+      await expect(model[method]({ prompt: unsupportedFile })).rejects.toBeInstanceOf(
+        UnsupportedFunctionalityError,
+      );
+    },
+  );
 });

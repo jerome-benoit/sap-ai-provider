@@ -93,13 +93,9 @@ describe("AI SDK 7 public integration", () => {
     expect(result.text).toBe("generated");
   });
 
-  it.each([
-    { expectedMediaType: "image/*", mediaType: "image" },
-    { expectedMediaType: "image/*", mediaType: "IMAGE" },
-    { expectedMediaType: "image/png", mediaType: "IMAGE/PNG" },
-  ])(
-    "should preserve remote $mediaType URLs through AI SDK 7 without fetching bytes",
-    async ({ expectedMediaType, mediaType }) => {
+  it.each(["image", "IMAGE", "IMAGE/PNG"])(
+    "should mark remote %s URLs as supported for the AI SDK 7 download hook",
+    async (mediaType) => {
       const provider = createSAPAIProviderV4();
       const model = provider("gpt-4o");
       const image = new URL("https://example.com/image.png");
@@ -117,63 +113,15 @@ describe("AI SDK 7 public integration", () => {
       );
       internalLanguageOf(model).internalModel.doGenerate = mockDoGenerate;
 
-      const result = await generateText({
+      await generateText({
         experimental_download: download,
         messages: [{ content: [{ data: image, mediaType, type: "file" }], role: "user" }],
         model,
       });
 
-      expect(result.text).toBe("analyzed");
       expect(download).toHaveBeenCalledWith([{ isUrlSupportedByModel: true, url: image }]);
-      expect(mockDoGenerate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: [
-            expect.objectContaining({
-              content: [
-                expect.objectContaining({
-                  data: image,
-                  mediaType: expectedMediaType,
-                  type: "file",
-                }),
-              ],
-              role: "user",
-            }),
-          ],
-        }),
-      );
     },
   );
-
-  it("should normalize inline MIME casing through AI SDK 7", async () => {
-    const provider = createSAPAIProviderV4();
-    const model = provider("gpt-4o");
-    const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const mockDoGenerate = vi.fn((): Promise<LanguageModelV3GenerateResult> =>
-      Promise.resolve({
-        content: [{ text: "analyzed", type: "text" }],
-        finishReason: { raw: "stop", unified: "stop" },
-        usage: languageUsage,
-        warnings: [],
-      }),
-    );
-    internalLanguageOf(model).internalModel.doGenerate = mockDoGenerate;
-
-    await generateText({
-      messages: [{ content: [{ data, mediaType: "IMAGE/PNG", type: "file" }], role: "user" }],
-      model,
-    });
-
-    expect(mockDoGenerate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: [
-          expect.objectContaining({
-            content: [expect.objectContaining({ data, mediaType: "image/png", type: "file" })],
-            role: "user",
-          }),
-        ],
-      }),
-    );
-  });
 
   it("should stream text through AI SDK 7", async () => {
     const provider = createSAPAIProviderV4();

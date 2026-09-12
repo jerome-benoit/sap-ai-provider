@@ -574,11 +574,13 @@ or wrap JSON Schema with the AI SDK's `jsonSchema` helper; raw SAP/OpenAI
 `{ type: "function", function: { parameters: ... } }` definitions belong to
 the provider's model-level `tools` setting, not the AI SDK `tools` map.
 
-Only function tools are converted. Provider-defined tools are omitted with an
-`unsupported` warning. On Orchestration, non-empty call-level `tools` take
-precedence over model-level SAP-format `tools`, with a warning when both are
-provided. An empty call-level list does not clear model-level tools. For tools
-defined only in model settings, the high-level SDK versions differ:
+Only function tools are converted. Their explicit `strict` flag is forwarded;
+backend/model support determines the accepted schema constraints. Provider-defined
+tools are omitted with an `unsupported` warning. On Orchestration, non-empty
+call-level `tools` take precedence over model-level SAP-format `tools`, with a
+warning when both are provided. An empty call-level list does not clear
+model-level tools. For tools defined only in model settings, the high-level SDK
+versions differ:
 
 - **AI SDK 5/6:** `generateText` and `streamText` drop `toolChoice` when their
   `tools` map is absent or empty. Set
@@ -898,6 +900,10 @@ async doEmbed(options: EmbeddingModelV3CallOptions): Promise<EmbeddingModelV3Res
 
 - `values`: Array of strings to embed
 - `abortSignal`: Optional signal to cancel the request
+- `headers`: Optional per-call HTTP headers; defined values override provider
+  `requestConfig.headers` case-insensitively
+- `providerOptions`: Optional embedding overrides described under
+  [Provider Options](#sapaiembeddingprovideroptions)
 
 **Returns:** Object containing `embeddings` (same order as input values),
 `usage.tokens`, `warnings`, and provider metadata. Response headers are included
@@ -1172,10 +1178,12 @@ const settings: SAPAIProviderSettings = {
 
 > **Note:**
 >
-> - **Provider-level scope only.** `requestConfig` is applied to every call from this
->   provider and is not currently overridable per-call via `providerOptions['sap-ai']`.
->   For per-request variation (e.g. different `AI-Object-Store-Secret-Name` per tenant),
->   create separate provider instances.
+> - **Scope and header precedence.** `requestConfig` applies to every call from
+>   this provider; `providerOptions['sap-ai']` cannot override it. Standard AI SDK
+>   per-call `headers` are merged into `requestConfig.headers` for generation,
+>   streaming, and embeddings. Defined call headers win case-insensitively;
+>   `undefined` call values preserve provider defaults. Other per-request
+>   transport differences require separate provider instances.
 > - **Runtime support.** The published package targets Node.js 22.12+;
 >   `httpAgent` and `httpsAgent` configure its Node HTTP transport. The provider
 >   does not strip these fields or guarantee that they are ignored elsewhere.
@@ -1453,6 +1461,9 @@ are left to the backend rather than filled with provider defaults.
 | `presencePenalty`     | `number`  | -2 to 2                       | Model-specific | Presence penalty                                       |
 | `n`                   | `number`  | Positive integer; model limit | Model-specific | Number of completions (not supported by Amazon models) |
 | `parallel_tool_calls` | `boolean` | -                             | Model-specific | Enable parallel tool execution (OpenAI models)         |
+
+The provider returns one completion (choice index 0), even when `n` requests
+multiple backend completions. Use the SAP SDK directly if you need every choice.
 
 #### Additional Foundation Models Parameters
 
@@ -1862,7 +1873,8 @@ Lazy AI SDK schema backed by Zod for validating embedding model provider options
 Known embedding parameters are validated: `dimensions` must be a positive
 integer, `encoding_format` must be `"base64"`, `"binary"`, or `"float"`, and
 `normalize` must be a boolean. Other `modelParams` keys pass through; actual
-parameter support depends on the backend and model.
+parameter support depends on the backend and model. `modelParams.input` cannot
+replace the texts supplied through `values`.
 
 **Example:**
 
@@ -1946,7 +1958,7 @@ const { text } = await generateText({
 ```typescript
 const model = provider("gpt-4.1", {
   grounding: buildDocumentGroundingConfig({
-    filters: [{ id: "vector-store-1", data_repositories: ["*"] }],
+    filters: [{ id: "knowledge-filter", data_repositories: ["*"] }],
     placeholders: { input: ["groundingRequest"], output: "groundingOutput" },
   }),
 });
@@ -2191,8 +2203,9 @@ import type { OrchestrationConfigRef, OrchestrationConfigRefById, OrchestrationC
 The `orchestrationConfigRef` allows you to reference a complete orchestration
 configuration stored in SAP AI Core instead of specifying individual modules
 (filtering, masking, grounding, etc.) in your code. When `orchestrationConfigRef`
-is provided, the configuration is fetched from SAP AI Core and used to create
-the `OrchestrationClient`.
+is provided, the reference is passed to `OrchestrationClient` and sent as
+`config_ref` in the completion request. SAP AI Core resolves it server-side;
+the provider does not fetch the stored configuration before creating the client.
 
 Each reference variant accepts an optional `overrideConfig`
 (`OrchestrationConfigRefOverride`, re-exported from `@sap-ai-sdk/orchestration`).
@@ -2395,7 +2408,7 @@ Parameters shared by both APIs:
 export interface CommonModelParams {
   readonly frequencyPenalty?: number; // -2.0 to 2.0
   readonly maxTokens?: number;
-  readonly n?: number; // Not supported by Amazon/Anthropic
+  readonly n?: number; // Support depends on the selected API and model
   readonly parallel_tool_calls?: boolean;
   readonly presencePenalty?: number; // -2.0 to 2.0
   readonly temperature?: number; // 0 to 2
@@ -2658,6 +2671,9 @@ metadata is on the stream `finish` event, not the returned result object. With
 the high-level `streamText` API, use `finish-step` events or await
 `result.providerMetadata`.
 
+Token totals remain `undefined` when the backend does not report usage; the
+provider does not treat an absent streaming usage report as zero tokens.
+
 **Generation response body:** `doGenerate().response.body` is a provider-built
 summary containing `content`, `finishReason`, `tokenUsage`, and `toolCalls`
 from SAP SDK accessors. It is not the complete raw SAP HTTP response.
@@ -2899,11 +2915,12 @@ try {
 #### HTTP Status Code Reference
 
 The error types below describe recognized structured SAP error responses.
-Without that structured envelope, classification also depends on the error
-message: for example, `Request failed with status code 401` produces a
-non-retryable `APICallError`, while authentication-keyword matches produce
-`LoadAPIKeyError`. Auto-Retry means eligible for high-level AI SDK retries
-subject to `maxRetries`, not a guarantee that the request succeeds.
+Without that envelope, an available HTTP response status produces an
+`APICallError`. If no response status survives, classification falls back to
+the message: `Request failed with status code 401` produces a non-retryable
+`APICallError`, while authentication-keyword matches produce `LoadAPIKeyError`.
+Auto-Retry means eligible for high-level AI SDK retries subject to `maxRetries`,
+not a guarantee that the request succeeds.
 
 The SDK can lose the original status and body before the provider receives an
 error. In particular, a non-JSON streaming error response can become a JSON
@@ -3433,7 +3450,9 @@ function buildDocumentGroundingConfig(config: DocumentGroundingServiceConfig): G
 
 **Parameters:**
 
-- `config`: Document grounding service configuration
+- `config`: Document grounding service configuration. Filter `id` identifies a
+  search filter within the request; `data_repositories` selects repository IDs
+  (`["*"]` searches all repositories).
 
 **Returns:** Full grounding module configuration
 
@@ -3446,7 +3465,7 @@ function buildDocumentGroundingConfig(config: DocumentGroundingServiceConfig): G
 const groundingConfig = buildDocumentGroundingConfig({
   filters: [
     {
-      id: "vector-store-1", // Your vector database ID
+      id: "knowledge-filter", // Filter identifier unique within this request
       data_repositories: ["*"], // Search all repositories
     },
   ],

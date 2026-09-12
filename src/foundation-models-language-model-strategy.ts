@@ -20,7 +20,6 @@ import {
   buildModelDeployment,
   convertResponseFormat,
   convertToolsToSAPFormat,
-  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKResponse,
@@ -116,10 +115,9 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
   protected async executeApiCall(
     client: FoundationModelsClient,
     request: AzureOpenAiChatCompletionParameters,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const response = await client.run(request, mergeRequestConfig(requestConfig, abortSignal));
+    const response = await client.run(request, requestConfig);
 
     const { requestId, responseId } = this.extractMetadata(response);
 
@@ -142,11 +140,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     _settings: FoundationModelsModelSettings,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<StreamCallResponse> {
-    const streamResponse = await client.stream(
-      request,
-      abortSignal,
-      mergeRequestConfig(requestConfig, undefined),
-    );
+    const streamResponse = await client.stream(request, abortSignal, requestConfig);
 
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
 
@@ -155,7 +149,6 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
         streamResponse.stream.controller.abort();
       },
       getFinishReason: () => streamResponse.getFinishReason(),
-      getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,
       responseHeaders,
       responseId,

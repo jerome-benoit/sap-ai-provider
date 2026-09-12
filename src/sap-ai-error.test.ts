@@ -4,6 +4,13 @@
 import type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+import {
+  APICallError as APICallErrorV2,
+  InvalidPromptError as InvalidPromptErrorV2,
+  LoadAPIKeyError as LoadAPIKeyErrorV2,
+  NoSuchModelError as NoSuchModelErrorV2,
+  UnsupportedFunctionalityError as UnsupportedFunctionalityErrorV2,
+} from "@ai-sdk/provider-v2";
 import { ErrorWithCause } from "@sap-cloud-sdk/util";
 import { describe, expect, it } from "vitest";
 
@@ -113,7 +120,7 @@ describe("normalizeHeaders", () => {
       });
     });
 
-    it("should handle Web Headers instances by iterating via forEach", () => {
+    it("should normalize Web Headers instances", () => {
       const headers = new Headers({
         "Content-Length": "512",
         "X-Request-Id": "rid-123",
@@ -126,6 +133,13 @@ describe("normalizeHeaders", () => {
 
     it("should return undefined for an empty Headers instance", () => {
       expect(normalizeHeaders(new Headers())).toBeUndefined();
+    });
+
+    it("should preserve prototype-named Web Headers as own data properties", () => {
+      const headers = new Headers([["__proto__", "trace"]]);
+      const result = normalizeHeaders(headers);
+      expect(result).toEqual({ ["__proto__"]: "trace" });
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
     });
   });
 });
@@ -364,6 +378,26 @@ describe("convertSAPErrorToAPICallError", () => {
 
 describe("convertToAISDKError", () => {
   describe("passthrough", () => {
+    it("should preserve SDK errors from another installed provider version", () => {
+      const errors = [
+        new APICallErrorV2({
+          message: "Capacity exhausted",
+          requestBodyValues: { prompt: "hello" },
+          responseHeaders: { "retry-after": "7" },
+          statusCode: 429,
+          url: "https://example.test/chat",
+        }),
+        new LoadAPIKeyErrorV2({ message: "Missing key" }),
+        new NoSuchModelErrorV2({ modelId: "missing", modelType: "languageModel" }),
+        new InvalidPromptErrorV2({ message: "Invalid arguments", prompt: "not json" }),
+        new UnsupportedFunctionalityErrorV2({ functionality: "file data" }),
+      ];
+
+      for (const error of errors) {
+        expect(convertToAISDKError(error)).toBe(error);
+      }
+    });
+
     it.each([
       {
         error: new APICallError({

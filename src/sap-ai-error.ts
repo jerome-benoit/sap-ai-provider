@@ -1,7 +1,13 @@
 /** Error conversion utilities for SAP AI Core to Vercel AI SDK error types. */
 import type { OrchestrationErrorResponse } from "@sap-ai-sdk/orchestration";
 
-import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+import {
+  APICallError,
+  InvalidPromptError,
+  LoadAPIKeyError,
+  NoSuchModelError,
+  UnsupportedFunctionalityError,
+} from "@ai-sdk/provider";
 import { isErrorWithCause } from "@sap-cloud-sdk/util";
 
 import type { SAPAIApiType } from "./sap-ai-settings.js";
@@ -317,7 +323,7 @@ export function convertSAPErrorToAPICallError(
 }
 
 /**
- * Converts a generic error to an appropriate Vercel AI SDK error.
+ * Converts SAP failures while preserving standard request and API errors across SDK versions.
  * @param error - Error to convert.
  * @param context - Request context.
  * @param context.modelId - Known requested model ID, preferred over message-based extraction.
@@ -331,11 +337,18 @@ export function convertSAPErrorToAPICallError(
 export function convertToAISDKError(
   error: unknown,
   context?: ErrorContext,
-): APICallError | LoadAPIKeyError | NoSuchModelError {
+):
+  | APICallError
+  | InvalidPromptError
+  | LoadAPIKeyError
+  | NoSuchModelError
+  | UnsupportedFunctionalityError {
   if (
-    error instanceof APICallError ||
-    error instanceof LoadAPIKeyError ||
-    error instanceof NoSuchModelError
+    APICallError.isInstance(error) ||
+    LoadAPIKeyError.isInstance(error) ||
+    NoSuchModelError.isInstance(error) ||
+    InvalidPromptError.isInstance(error) ||
+    UnsupportedFunctionalityError.isInstance(error)
   ) {
     return error;
   }
@@ -471,10 +484,7 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
   if (!headers || typeof headers !== "object") return undefined;
 
   if (typeof Headers !== "undefined" && headers instanceof Headers) {
-    const out: Record<string, string> = {};
-    headers.forEach((value, key) => {
-      out[key.toLowerCase()] = value;
-    });
+    const out = Object.fromEntries(headers.entries());
     return Object.keys(out).length === 0 ? undefined : out;
   }
 
@@ -673,18 +683,20 @@ function inspectError(error: unknown): {
 }
 
 /**
+ * Identifies native aborts and Axios cancellations retained in SAP error causes.
  * @param error - Error to check.
- * @returns True if error is an AbortError from AbortController.
+ * @returns Whether the error represents request cancellation.
  * @internal
  */
-function isAbortError(error: unknown): boolean {
+function isAbortError(error: object): boolean {
   if (error instanceof DOMException && error.name === "AbortError") {
     return true;
   }
   if (error instanceof Error && error.name === "AbortError") {
     return true;
   }
-  return false;
+  const transportError = error as { code?: unknown; isAxiosError?: unknown };
+  return transportError.isAxiosError === true && transportError.code === "ERR_CANCELED";
 }
 
 /**

@@ -1,54 +1,36 @@
-/** V4 facade normalizes tagged file prompts before entering the V3 core. */
+/** V4 facade rejects provider references before invoking the SAP transport. */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
 
 import { SAPAILanguageModelV4 } from "./sap-ai-language-model-v4.js";
-import { SAPAILanguageModel } from "./sap-ai-language-model.js";
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("SAPAILanguageModelV4", () => {
-  it("normalizes tagged file prompts before generation", async () => {
-    const generate = vi.spyOn(SAPAILanguageModel.prototype, "doGenerate").mockResolvedValue({
-      content: [],
-      finishReason: { raw: "stop", unified: "stop" },
-      usage: {
-        inputTokens: { cacheRead: 0, cacheWrite: 0, noCache: 1, total: 1 },
-        outputTokens: { reasoning: 0, text: 1, total: 1 },
-      },
-      warnings: [],
-    });
-    const model = new SAPAILanguageModelV4(
-      "gpt-4o",
-      {},
-      {
-        deploymentConfig: { resourceGroup: "default" },
-        provider: "sap-ai",
-      },
-    );
+  it.each(["doGenerate", "doStream"] as const)(
+    "rejects unresolved file references from %s",
+    async (method) => {
+      const model = new SAPAILanguageModelV4(
+        "gpt-4o",
+        {},
+        { deploymentConfig: { resourceGroup: "default" }, provider: "sap-ai" },
+      );
 
-    await model.doGenerate({
-      prompt: [
-        {
-          content: [
+      await expect(
+        model[method]({
+          prompt: [
             {
-              data: { data: "aGVsbG8=", type: "data" },
-              mediaType: "image/jpeg",
-              type: "file",
+              content: [
+                {
+                  data: { reference: { "sap-ai": "file-123" }, type: "reference" },
+                  mediaType: "image/png",
+                  type: "file",
+                },
+              ],
+              role: "user",
             },
           ],
-          role: "user",
-        },
-      ],
-    });
-
-    expect(generate.mock.calls[0]?.[0].prompt).toEqual([
-      {
-        content: [{ data: "aGVsbG8=", mediaType: "image/jpeg", type: "file" }],
-        role: "user",
-      },
-    ]);
-  });
+        }),
+      ).rejects.toBeInstanceOf(UnsupportedFunctionalityError);
+    },
+  );
 });

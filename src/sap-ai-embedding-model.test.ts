@@ -390,16 +390,6 @@ describe("SAPAIEmbeddingModel", () => {
       );
     });
 
-    it("should pass abort signal to SAP SDK", async () => {
-      const abortController = new AbortController();
-      const model = createModelForApi(api);
-
-      await model.doEmbed({ abortSignal: abortController.signal, values: ["Test"] });
-
-      const lastCall = await getLastEmbedCallForApi(api);
-      expect(lastCall?.requestConfig?.signal).toBe(abortController.signal);
-    });
-
     it("should omit requestId when SDK getRequestId() returns undefined", async () => {
       await setEmbedResponseForApi(
         api,

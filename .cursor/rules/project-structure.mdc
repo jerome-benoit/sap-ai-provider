@@ -41,6 +41,7 @@ src/
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
 ├── strategy-utils.ts                               # Shared strategy utilities
+├── stream-transformer.ts                           # SAP stream lifecycle and V3 event conversion
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
 ├── base-embedding-model-strategy.ts                # Base class for embedding model strategies (Template Method)
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
@@ -111,6 +112,7 @@ expose the same V2 facade for AI SDK 5 and AI SDK 6 compatibility.
 - Strategy factory: [src/sap-ai-strategy.ts](mdc:src/sap-ai-strategy.ts)
 - Strategy utilities: [src/strategy-utils.ts](mdc:src/strategy-utils.ts)
 - Base language model strategy: [src/base-language-model-strategy.ts](mdc:src/base-language-model-strategy.ts)
+- Stream conversion: [src/stream-transformer.ts](mdc:src/stream-transformer.ts)
 - Message conversion: [src/convert-to-sap-messages.ts](mdc:src/convert-to-sap-messages.ts)
 - Deep merge utility: [src/deep-merge.ts](mdc:src/deep-merge.ts)
 - Version constant: [src/version.ts](mdc:src/version.ts)

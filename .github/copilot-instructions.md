@@ -170,6 +170,7 @@ All commands should pass; execution time depends on the environment.
 │   ├── sap-ai-validation.ts                          # API resolution & validation
 │   ├── sap-ai-strategy.ts                            # Strategy factory (lazy loading)
 │   ├── strategy-utils.ts                             # Shared strategy utilities
+│   ├── stream-transformer.ts                         # SAP stream lifecycle and V3 event conversion
 │   ├── base-language-model-strategy.ts              # Base class for language model strategies (Template Method)
 │   ├── base-embedding-model-strategy.ts             # Base class for embedding model strategies (Template Method)
 │   ├── orchestration-language-model-strategy.ts     # Orchestration API strategy

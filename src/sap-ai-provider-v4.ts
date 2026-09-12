@@ -37,6 +37,7 @@ export interface SAPAIProviderV4 extends ProviderV4 {
   /** Always throws - SAP AI Core does not support image generation. */
   imageModel(modelId: string): ImageModelV4;
   languageModel(modelId: SAPAIModelId, settings?: SAPAISettings): SAPAILanguageModelV4;
+  /** @deprecated Use `embeddingModel()` instead. */
   textEmbeddingModel(
     modelId: SAPAIEmbeddingModelId,
     settings?: SAPAIEmbeddingSettings,

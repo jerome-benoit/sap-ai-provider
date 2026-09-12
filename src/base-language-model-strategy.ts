@@ -22,12 +22,12 @@ import {
   extractCompletionId,
   extractResponseMetadata,
   mapToolChoice,
+  mergeRequestConfig,
   type ParamMapping,
   type SAPToolChoice,
   type SDKCitation,
   type SDKResponse,
   type SDKStreamChunk,
-  type SDKTokenUsage,
 } from "./strategy-utils.js";
 import { createStreamTransformer, StreamIdGenerator } from "./stream-transformer.js";
 import { VERSION } from "./version.js";
@@ -57,7 +57,6 @@ export interface StreamCallResponse {
   readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
-  readonly getTokenUsage: () => null | SDKTokenUsage | undefined;
   /** SAP-pipeline request id resolved by `extractResponseMetadata`. */
   readonly requestId?: string;
   readonly responseHeaders?: Record<string, string>;
@@ -115,8 +114,7 @@ export abstract class BaseLanguageModelStrategy<
       const response = await this.executeApiCall(
         client,
         request,
-        options.abortSignal ?? undefined,
-        config.requestConfig,
+        mergeRequestConfig(config.requestConfig, options.abortSignal, options.headers),
       );
 
       return buildGenerateResult({
@@ -157,7 +155,7 @@ export abstract class BaseLanguageModelStrategy<
         request,
         options.abortSignal ?? undefined,
         settings,
-        config.requestConfig,
+        mergeRequestConfig(config.requestConfig, undefined, options.headers),
       );
 
       const idGenerator = new StreamIdGenerator();
@@ -180,7 +178,6 @@ export abstract class BaseLanguageModelStrategy<
         streamResponseGetCitations: streamResponse.getCitations,
         streamResponseGetFinishReason: streamResponse.getFinishReason,
         streamResponseGetIntermediateFailures: streamResponse.getIntermediateFailures,
-        streamResponseGetTokenUsage: streamResponse.getTokenUsage,
         url: this.getUrl(),
         version: VERSION,
         warnings: [...commonParts.warnings, ...warnings, ...streamWarnings],
@@ -310,7 +307,6 @@ export abstract class BaseLanguageModelStrategy<
    * Executes the non-streaming API call.
    * @param client - SDK client instance.
    * @param request - Request body.
-   * @param abortSignal - Optional abort signal.
    * @param requestConfig - Optional custom request configuration (e.g. custom headers).
    * @returns SDK response.
    * @internal
@@ -318,7 +314,6 @@ export abstract class BaseLanguageModelStrategy<
   protected abstract executeApiCall(
     client: TClient,
     request: TRequest,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse>;
 

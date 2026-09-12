@@ -579,7 +579,7 @@ Ground LLM responses in your own documents using vector databases.
 const provider = createSAPAIProvider({
   defaultSettings: {
     grounding: buildDocumentGroundingConfig({
-      filters: [{ id: "vector-store-1", data_repositories: ["*"] }],
+      filters: [{ id: "knowledge-filter", data_repositories: ["*"] }],
       placeholders: { input: ["groundingRequest"], output: "groundingOutput" },
     }),
   },
@@ -679,7 +679,8 @@ authentication, model parameters, data masking, content filtering, and more.
 - `deploymentId`: Specific deployment ID (auto-resolved if not set)
 - `requestConfig`: Custom HTTP request configuration (headers, params, timeout, etc.)
   forwarded to the underlying SAP AI SDK client on every call. Provider-level scope
-  only; use `requestConfig.headers` for SAP-specific headers such as
+  only; per-call `headers` can override individual headers. Use `requestConfig.headers`
+  for SAP-specific headers such as
   `AI-Object-Store-Secret-Name` (feedback service). See
   [API Reference](./API_REFERENCE.md#sapaiprovidersettings) for portability caveats.
 - `modelParams`: Temperature, maxTokens, topP, and other generation parameters

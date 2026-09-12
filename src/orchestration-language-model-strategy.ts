@@ -33,7 +33,6 @@ import {
   convertResponseFormat,
   convertToolsToSAPFormat,
   hasKeys,
-  mergeRequestConfig,
   type ParamMapping,
   type SAPResponseFormat,
   type SAPToolChoice,
@@ -281,13 +280,9 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   protected async executeApiCall(
     client: OrchestrationClientInstance,
     request: ChatCompletionRequest,
-    abortSignal: AbortSignal | undefined,
     requestConfig: CustomRequestConfig | undefined,
   ): Promise<SDKResponse> {
-    const response = await client.chatCompletion(
-      request,
-      mergeRequestConfig(requestConfig, abortSignal),
-    );
+    const response = await client.chatCompletion(request, requestConfig);
 
     const { requestId, responseId } = this.extractMetadata(response);
 
@@ -317,7 +312,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       request,
       abortSignal,
       sdkStreamOptions,
-      mergeRequestConfig(requestConfig, undefined),
+      requestConfig,
     );
 
     const { requestId, responseHeaders, responseId } = this.extractMetadata(streamResponse);
@@ -329,7 +324,6 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       getCitations: () => streamResponse.getCitations(),
       getFinishReason: () => streamResponse.getFinishReason(),
       getIntermediateFailures: () => streamResponse.getIntermediateFailures(),
-      getTokenUsage: () => streamResponse.getTokenUsage(),
       requestId,
       responseHeaders,
       responseId,
