@@ -525,7 +525,6 @@ describe("convertToAISDKError", () => {
 
       expect(result).toBeInstanceOf(APICallError);
       expect(result.statusCode).toBe(499);
-
       expect(result.isRetryable).toBe(false);
     });
 
