@@ -4,12 +4,7 @@ import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import {
-  getGlobalLogLevel,
-  getLogger,
-  type LogLevel,
-  setGlobalLogLevel,
-} from "@sap-cloud-sdk/util";
+import { getLogger } from "@sap-cloud-sdk/util";
 import { createServer } from "node:http";
 import { setImmediate } from "node:timers/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -718,26 +713,25 @@ describe("Orchestration serialized HTTP configuration", () => {
     });
   });
 
-  it("does not emit an SDK stream-options warning when streaming under a config reference", async () => {
-    const previousLevel = getGlobalLogLevel();
-    setGlobalLogLevel("warn");
+  it("surfaces a consumer warning for ignored streamOptions instead of the SDK's under a config reference", async () => {
     const logger = getLogger("orchestration-client");
     if (!logger) throw new Error("orchestration-client logger not initialized");
     const warn = vi.spyOn(logger, "warn");
     try {
-      const { stream } = await provider("gpt-4.1", {
+      const { warnings } = await call(true, {
         orchestrationConfigRef: { id: "server-config" },
         streamOptions: { chunkSize: 8, delimiters: ["."] },
-      }).doStream({ prompt });
-      for await (const part of stream) {
-        if (part.type === "error") throw part.error;
-      }
+      });
+      const messages = warnings
+        .filter((warning) => warning.type === "other")
+        .map((warning) => warning.message)
+        .join(" ");
+      expect(messages).toContain("local streamOptions are ignored");
       expect(warn).not.toHaveBeenCalledWith(
         expect.stringContaining("Request-level stream options"),
       );
     } finally {
       warn.mockRestore();
-      if (previousLevel) setGlobalLogLevel(previousLevel as LogLevel);
     }
   });
 
