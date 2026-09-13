@@ -223,11 +223,19 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
   ): SharedV3Warning[] {
     const warnings: SharedV3Warning[] = [];
 
-    // Skip warning if a valid orchestrationConfigRef is set in settings or providerOptions
-    // (local module settings are ignored when using server-side config)
+    // A valid configRef owns streaming server-side; flag only explicitly set
+    // streamOptions (other ignored settings are reported by buildConfigRefRequest).
     const configRefCandidate =
       sapOptions?.orchestrationConfigRef ?? settings.orchestrationConfigRef;
     if (configRefCandidate && isOrchestrationConfigRef(configRefCandidate)) {
+      if (settings.streamOptions && hasKeys(settings.streamOptions)) {
+        warnings.push({
+          message:
+            "orchestrationConfigRef is set; local streamOptions are ignored. " +
+            "Configure streaming in the referenced configuration or its overrideConfig.",
+          type: "other",
+        });
+      }
       return warnings;
     }
 
@@ -306,8 +314,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     abortSignal: AbortSignal | undefined,
     settings: OrchestrationModelSettings,
     requestConfig: CustomRequestConfig | undefined,
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): Promise<StreamCallResponse> {
-    const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
+    // A configRef owns streaming server-side; the SDK ignores (and warns about)
+    // request-level stream options, so omit them.
+    const { configRef } = commonParts.resolvedState as OrchestrationResolvedState;
+    const sdkStreamOptions = configRef
+      ? undefined
+      : this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(
       request,
       abortSignal,

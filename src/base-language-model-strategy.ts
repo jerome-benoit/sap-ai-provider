@@ -160,6 +160,7 @@ export abstract class BaseLanguageModelStrategy<
         options.abortSignal ?? undefined,
         settings,
         mergeRequestConfig(config.requestConfig, undefined, options.headers),
+        commonParts,
       );
 
       const idGenerator = new StreamIdGenerator();
@@ -330,6 +331,7 @@ export abstract class BaseLanguageModelStrategy<
    * @param abortSignal - Optional abort signal.
    * @param settings - Model settings for API-specific stream options.
    * @param requestConfig - Optional custom request configuration (e.g. custom headers).
+   * @param commonParts - Common build result (resolved state, provider options, etc.).
    * @returns Stream response with accessors.
    * @internal
    */
@@ -339,6 +341,7 @@ export abstract class BaseLanguageModelStrategy<
     abortSignal: AbortSignal | undefined,
     settings: TSettings,
     requestConfig: CustomRequestConfig | undefined,
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): Promise<StreamCallResponse>;
 
   /**
