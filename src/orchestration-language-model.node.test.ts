@@ -740,6 +740,7 @@ describe("Orchestration serialized HTTP configuration", () => {
       if (previousLevel) setGlobalLogLevel(previousLevel as LogLevel);
     }
   });
+
   it("preserves only valid per-tool cache directives in the serialized prompt", async () => {
     const directives = [
       { ttl: "5m", type: "ephemeral" },
