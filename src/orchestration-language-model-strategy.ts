@@ -306,8 +306,15 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     abortSignal: AbortSignal | undefined,
     settings: OrchestrationModelSettings,
     requestConfig: CustomRequestConfig | undefined,
+    commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): Promise<StreamCallResponse> {
-    const sdkStreamOptions = this.buildSdkStreamOptions(settings.streamOptions);
+    // Under an orchestration config reference the SDK manages streaming settings
+    // server-side and ignores request-level stream options (emitting a warning if
+    // any are passed). Omit them so the reference owns the streaming configuration.
+    const { configRef } = commonParts.resolvedState as OrchestrationResolvedState;
+    const sdkStreamOptions = configRef
+      ? undefined
+      : this.buildSdkStreamOptions(settings.streamOptions);
     const streamResponse = await client.stream(
       request,
       abortSignal,

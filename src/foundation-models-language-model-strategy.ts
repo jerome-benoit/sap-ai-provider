@@ -139,6 +139,7 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     abortSignal: AbortSignal | undefined,
     _settings: FoundationModelsModelSettings,
     requestConfig: CustomRequestConfig | undefined,
+    _commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): Promise<StreamCallResponse> {
     const streamResponse = await client.stream(request, abortSignal, requestConfig);
 
