@@ -13,6 +13,13 @@
       "matchFileNames": ["**/package.json"],
       "matchDepTypes": ["dependencies", "devDependencies", "optionalDependencies"],
       "rangeStrategy": "bump"
+    },
+    {
+      "description": "Pin the @ai-sdk/provider-v2 alias to @ai-sdk/provider v2 (LanguageModelV2/EmbeddingModelV2 types)",
+      "matchDepTypes": ["devDependencies"],
+      "matchDepNames": ["@ai-sdk/provider-v2"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ],
   "postUpdateOptions": ["npmDedupe"]
