@@ -130,7 +130,7 @@
     "@types/node": "^25.9.8",
     "@vitest/coverage-v8": "^5.0.1",
     "ai": "^7.0.107",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.1",
     "eslint": "^10.11.0",
     "eslint-plugin-jsdoc": "^64.5.4",
     "eslint-plugin-perfectionist": "^5.11.1",
