@@ -132,7 +132,7 @@
     "ai": "^7.0.123",
     "dotenv": "^18.0.4",
     "eslint": "^10.11.0",
-    "eslint-plugin-jsdoc": "^64.5.4",
+    "eslint-plugin-jsdoc": "^65.0.1",
     "eslint-plugin-perfectionist": "^5.12.1",
     "github-slugger": "^2.0.0",
     "globals": "^17.12.0",
