@@ -189,8 +189,7 @@ the main package afterward.
 ### Git Hooks (Lefthook)
 
 This project uses [lefthook](https://github.com/evilmartians/lefthook) to enforce
-code quality automatically via git hooks. Hooks are installed automatically when you
-run `npm install` (via the `prepare` lifecycle script).
+code quality automatically via git hooks. Hooks are installed automatically when you run `npm ci` or `npm install` (via the `prepare` lifecycle script).
 
 **Pre-commit hook** (runs on every `git commit`):
 

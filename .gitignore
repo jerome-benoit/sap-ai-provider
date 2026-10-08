@@ -61,6 +61,7 @@ coverage/
 lefthook-local.yml
 
 # mise local overrides
+.miserc.local.toml
 mise.local.toml
 mise.*.local.toml
 .mise.local.toml
@@ -69,3 +70,5 @@ mise.local.lock
 mise.*.local.lock
 .mise.local.lock
 .mise.*.local.lock
+.mise/locks/mise.local/
+.mise/locks/mise.*.local/
