@@ -125,13 +125,29 @@ export function checkAuditProcessResult(
 }
 
 /**
- * Return the platform-specific npm executable and invariant audit arguments.
+ * Return the npm CLI invocation and invariant audit arguments.
+ * @param npmExecPath - npm CLI entry point supplied by the parent npm process
+ * @param nodeExecPath - Node.js executable used to run the npm CLI
  * @returns npm audit invocation with an exit code independent of vulnerability severity
  */
-export function getNpmAuditInvocation(): { args: string[]; command: string } {
+export function getNpmAuditInvocation(
+  npmExecPath = process.env.npm_execpath,
+  nodeExecPath = process.execPath,
+): { args: string[]; command: string } {
+  if (!npmExecPath) {
+    throw new Error(
+      "Missing npm_execpath; run this checker through npm run check-dependency-audit",
+    );
+  }
   return {
-    args: ["audit", "--json", "--audit-level=none", `--registry=${PUBLIC_NPM_REGISTRY}`],
-    command: process.platform === "win32" ? "npm.cmd" : "npm",
+    args: [
+      npmExecPath,
+      "audit",
+      "--json",
+      "--audit-level=none",
+      `--registry=${PUBLIC_NPM_REGISTRY}`,
+    ],
+    command: nodeExecPath,
   };
 }
 

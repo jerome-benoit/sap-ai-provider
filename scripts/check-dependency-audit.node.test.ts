@@ -202,16 +202,24 @@ describe("npm audit process contract", () => {
     expect(() => checkAuditProcessResult(processResult("{"), lock, TODAY)).toThrow("valid JSON");
   });
 
-  it("accepts a valid zero-exit report and always requests audit-level none", () => {
+  it("accepts a valid zero-exit report and invokes npm through Node.js", () => {
     const { lock, report } = fixtures();
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(report)), lock, TODAY),
     ).toHaveLength(2);
-    expect(getNpmAuditInvocation().args).toEqual([
-      "audit",
-      "--json",
-      "--audit-level=none",
-      "--registry=https://registry.npmjs.org/",
-    ]);
+    expect(getNpmAuditInvocation("/npm-cli.js", "/node")).toEqual({
+      args: [
+        "/npm-cli.js",
+        "audit",
+        "--json",
+        "--audit-level=none",
+        "--registry=https://registry.npmjs.org/",
+      ],
+      command: "/node",
+    });
+  });
+
+  it("rejects direct execution without npm context", () => {
+    expect(() => getNpmAuditInvocation("", "/node")).toThrow("Missing npm_execpath");
   });
 });
