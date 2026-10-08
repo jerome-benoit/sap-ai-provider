@@ -125,10 +125,9 @@ Our development workflow follows these steps:
 3. **Run tests**
 
    ```bash
-   npm test              # Run all tests
-   npm run test:node     # Node.js environment
+   npm test              # Run the canonical Node.js suite (`test:node`)
    npm run test:edge     # Source tests in the Edge runtime VM
-   npm run test:watch    # Watch mode for development
+   npm run test:watch    # Watch the canonical Node.js suite
    ```
 
    The Edge VM suite exercises source behavior with mocked SAP dependencies;
@@ -170,8 +169,8 @@ and type-check + tests on push. For a full validation before opening a PR
 (including build), run:
 
 ```bash
+npm run check-dependency-audit && \
 npm run type-check && \
-npm run test && \
 npm run test:node && \
 npm run test:edge && \
 npm run prettier-check && \
@@ -182,10 +181,13 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. Lint
-and formatting run once on Ubuntu; dependency audit, types, tests, and builds run
-on every OS. `build:v2` replaces `dist/`, so rerun `npm run build` before using
-or packaging the main package afterward.
+CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. A
+pre-installation Linux gate first checks only lockfile artifacts introduced relative
+to the base revision; the autofix workflow runs the same gate before its install.
+Lint and formatting run once on Ubuntu; dependency audit,
+types, Node and Edge tests, and builds run on every OS. `build:v2` replaces
+`dist/`, so rerun `npm run build` before using or packaging the main package
+afterward.
 
 ### Git Hooks (Lefthook)
 
@@ -401,13 +403,22 @@ npm test             # Runs test suite
 - Validate all external inputs with zod schemas
 - Follow secure credential handling patterns
 - Check for injection vulnerabilities
-- Run `npx --no-install tsx scripts/check-dependency-audit.ts` after dependency
-  changes; exceptions are advisory-specific and expire.
+- Run `npm run check-dependency-audit` after dependency changes. It requires
+  registry access and validates advisory-specific, expiring exceptions against
+  exact package, severity, directness, immediate parent, and lockfile scope.
 - Use overrides to force a published version containing a security fix when
   parent dependency ranges do not yet admit it. Verify every affected dependency
   path, and remove the override once parent ranges admit a fixed version.
 - Apply audit remediations through reviewed dependency updates, then validate
   the lockfile and affected tool or runtime paths.
+- npm `min-release-age` filters dependency resolution, but `npm ci` installs the
+  existing lockfile verbatim. Repository policy fixes the age at 3 days and the
+  provenance registry at `https://registry.npmjs.org/`; the script rejects config
+  drift rather than treating mutable PR config as an anti-contributor boundary.
+  PR, push, and autofix CI attest newly introduced lockfile artifacts before install.
+  A release SHA must be on `main` and have a successful check run named exactly
+  `Lockfile release age`; release then relies on that SHA-specific result because
+  artifact age is monotonic.
 
 ## Advanced: Detailed Developer Instructions
 

@@ -52,14 +52,24 @@ replaces the main build outputs with V2-only artifacts.
 
 ### Testing
 
-- **Run all tests**: `npm run test` -- takes ~1 second. Set timeout to 15+ seconds.
-- **Run Node.js specific tests**: `npm run test:node` -- takes ~1 second. Set timeout to 15+ seconds.
+- **Run the canonical Node.js suite**: `npm run test:node` (`npm test` is an alias) -- takes ~1 second. Set timeout to 15+ seconds.
 - **Run Edge runtime tests**: `npm run test:edge` -- takes ~1 second. Set timeout to 15+ seconds.
-- **Watch mode for development**: `npm run test:watch`
+- **Watch Node.js tests**: `npm run test:node:watch` (`npm run test:watch` is an alias)
 
 The Edge suite tests provider source behavior. Published bundles still use
 Node built-ins through the ESM banner and SAP SDK dependencies; passing this
 suite does not establish deployability to an Edge isolate without Node compatibility.
+
+### Dependency Security
+
+- Run `npm run check-dependency-audit` with registry access to validate the full
+  audit report and its temporary, context-bound exceptions.
+- npm `min-release-age` filters resolution only; `npm ci` installs an existing
+  lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`;
+  the gate rejects accidental config/provenance drift.
+- PR, push, and autofix workflows attest new artifacts before installation. Release
+  requires its exact SHA to be on `main` with a successful `Lockfile release age`
+  check; it does not repeat the monotonic age calculation.
 
 ### Type Checking and Linting
 
@@ -83,7 +93,7 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 1. **Bootstrap**: `npm ci` (always first)
 2. **Make changes** in `/src`
-3. **Validate**: `npm run type-check && npm run test && npm run prettier-check`
+3. **Validate**: `npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check`
 4. **Build**: `npm run build && npm run check-build`
 
 ## Validation
@@ -93,7 +103,7 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 **ALWAYS run this command before committing (CI will fail otherwise):**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 **Detailed checklist and standards**: See [Contributing Guide - Pre-Commit Checklist](../CONTRIBUTING.md#pre-commit-checklist)
@@ -113,7 +123,7 @@ npm run type-check && npm run test && npm run test:node && npm run test:edge && 
 Since full example testing requires SAP credentials, validate changes using this comprehensive approach:
 
 1. **Install and setup**: `npm install` (or `npm ci` if lock file exists)
-2. **Run all tests**: `npm run test && npm run test:node && npm run test:edge`
+2. **Run all tests**: `npm run test:node && npm run test:edge`
 3. **Build successfully**: `npm run build && npm run check-build`
 4. **Type check passes**: `npm run type-check`
 5. **Formatting is correct**: `npm run prettier-check`
@@ -123,7 +133,7 @@ Since full example testing requires SAP credentials, validate changes using this
 **Complete CI-like validation command:**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 All commands should pass; execution time depends on the environment.
@@ -248,9 +258,9 @@ All commands should pass; execution time depends on the environment.
 ### CI/CD Pipeline
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
-- **CI checks**: `.github/workflows/check-pr.yaml` runs dependency audit, type-check, default/Node/Edge tests, and builds on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
+- **CI checks**: dependency-free gates run before installs in validation and autofix; after validation passes, dependency audit, type-check, Node/Edge tests, and builds run on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
 - **Build coverage**: portable artifact checks validate the main V3/V2/V4 build and the standalone V2 build on every OS; the main build also validates ESM/CommonJS declaration routing
-- **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes both packages on created releases; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful `Lockfile release age` check, then publishes both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
 - **Runtime coverage**: Node and Edge suites run sequentially within each OS job; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies
@@ -270,8 +280,7 @@ npm ci                    # Clean install + Lefthook hooks (no build)
 
 # Development
 npm run type-check        # ~2s - TypeScript validation
-npm run test             # ~1s - Run all tests
-npm run test:node        # ~1s - Node.js environment tests
+npm test                 # ~1s - Alias for the canonical Node.js suite
 npm run test:edge        # ~1s - Edge runtime tests
 npm run build            # ~3s - Build main V3/V2/V4 entrypoints
 npm run build:watch      # Continuous main-package rebuild
@@ -288,7 +297,7 @@ npm run lint:md:fix      # Auto-fix Markdown lint issues
 npm run clean            # Remove dist/ directory
 
 # Complete validation
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 # Run npm run build again if main-package artifacts are needed after build:v2
 
 # Examples (requires SAP service key)
@@ -395,8 +404,8 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
 Before approving any PR, verify ALL of these pass:
 
 ```bash
+npm run check-dependency-audit &&
 npm run type-check &&
-npm run test &&
 npm run test:node &&
 npm run test:edge &&
 npm run prettier-check &&

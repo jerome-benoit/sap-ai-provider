@@ -15,10 +15,9 @@ model and adapter tests.
 
 ## Commands
 
-- Run all tests: `npm test`
-- Watch mode: `npm run test:watch`
-- Node only: `npm run test:node`
-- Edge only: `npm run test:edge`
+- Canonical Node suite: `npm run test:node` (`npm test` is an alias)
+- Watch the Node suite: `npm run test:node:watch` (`npm run test:watch` is an alias)
+- Edge source suite: `npm run test:edge`
 
 ## Stubbing Network
 

@@ -71,11 +71,11 @@ context: |
   - npm ci installs dependencies and Lefthook hooks; build artifacts require npm run build
   - Main build emits V3/V2/V4 ESM, CommonJS, declarations, and sourcemaps; check-build verifies all artifacts and declaration routing
   - build:v2 cleans dist and replaces main outputs with V2-only artifacts; prepare:v2 rewrites manifests and renames artifacts for standalone publishing
-  - PR CI runs on Node.js 24: lint/format, type-check, default/Node/Edge suites, main build/check, standalone V2 build/check
+  - PR/push and autofix CI gate new public-registry lockfile artifacts before install; releases require the exact SHA on main with a successful Lockfile release age check
   - Edge excludes *.node.test.ts; CI has no Node-version or AI SDK-major matrix
 
   ### Validation Command
-  npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+  npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

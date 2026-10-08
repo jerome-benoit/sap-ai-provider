@@ -7,21 +7,41 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
+      - name: Verify release commit gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release commit $GITHUB_SHA is not an ancestor of origin/main" >&2
+            exit 1
+          fi
+          CHECK_OK=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            --jq 'any(.check_runs[]; .name == "Lockfile release age" and .conclusion == "success")')
+          if [ "$CHECK_OK" != "true" ]; then
+            echo "Release commit $GITHUB_SHA has no successful exact 'Lockfile release age' check run" >&2
+            exit 1
+          fi
       - name: Validate lockfile synchronization
         run: npm ci --dry-run --ignore-scripts
       - run: npm ci
       - name: Check dependency vulnerabilities
-        run: npx --no-install tsx scripts/check-dependency-audit.ts
+        run: npm run check-dependency-audit
       - run: npm run type-check
       - run: npm run lint
       - run: npm run build
       - run: npm run build:v2
-      - run: npm test
+      - run: npm run test:node
+      - run: npm run test:edge
 
   publish-npm:
     needs: build

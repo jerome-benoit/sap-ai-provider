@@ -34,7 +34,9 @@ description: Build, type-check, test, and publish workflow for the package
 - Lint-fix: `npm run lint-fix`
 - Prettier-check: `npm run prettier-check`
 - Prettier-fix: `npm run prettier-fix`
-- Test: `npm test`
+- Canonical Node tests: `npm run test:node` (`npm test` is an alias)
+- Edge source tests: `npm run test:edge`
+- Dependency advisory policy: `npm run check-dependency-audit` (requires registry access)
 
 ### Versioned Entrypoints and Packages
 
@@ -61,7 +63,11 @@ range to AI SDK 5/6, removes
 Run publish preparation only in a disposable publishing checkout.
 
 Dependency installation runs `prepare` (`lefthook install`), not a build.
-Use `npm run build` explicitly to create distribution artifacts.
+Use `npm run build` explicitly to create distribution artifacts. npm
+`min-release-age` applies while resolving, not when `npm ci` consumes the lockfile.
+Policy is 3 days on `https://registry.npmjs.org/`. PR/push and autofix workflows
+gate newly introduced artifacts before installation. A release requires its exact
+SHA on `main` and a successful `Lockfile release age` check run; age is monotonic.
 
 ## Node Engine
 

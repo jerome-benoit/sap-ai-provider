@@ -100,6 +100,7 @@
     "check-build": "tsx scripts/check-build-artifacts.ts main && tsx scripts/check-package-exports.ts",
     "check-build:v2": "tsx scripts/check-build-artifacts.ts v2",
     "check-build:v4": "tsx scripts/check-build-artifacts.ts v4",
+    "check-dependency-audit": "tsx scripts/check-dependency-audit.ts",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint . --cache",
     "lint-fix": "npm run lint:md:fix && eslint . --fix --cache",
@@ -113,12 +114,12 @@
     "prepublishOnly": "if [ \"$AI_SDK_VERSION\" = \"v2\" ]; then npm run build:v2 && npm run check-build:v2 && npm run prepare:v2 && tsx scripts/check-package-exports.ts; else npm run build && npm run check-build; fi",
     "prettier-check": "prettier --cache --check .",
     "prettier-fix": "prettier --cache --write .",
-    "test": "vitest run",
+    "test": "npm run test:node",
     "test:coverage": "vitest --config vitest.node.config.ts --run --coverage",
     "test:edge": "vitest --config vitest.edge.config.ts --run",
     "test:node": "vitest --config vitest.node.config.ts --run",
     "test:node:watch": "vitest --config vitest.node.config.ts",
-    "test:watch": "vitest",
+    "test:watch": "npm run test:node:watch",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

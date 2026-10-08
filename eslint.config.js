@@ -3,6 +3,7 @@ import eslint from "@eslint/js";
 import jsdoc from "eslint-plugin-jsdoc";
 import perfectionist from "eslint-plugin-perfectionist";
 import { defineConfig } from "eslint/config";
+import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
@@ -39,5 +40,12 @@ export default defineConfig(
   {
     extends: [tseslint.configs.disableTypeChecked],
     files: ["*.config.{js,mjs}"],
+  },
+  {
+    extends: [tseslint.configs.disableTypeChecked],
+    files: ["scripts/check-lockfile-release-age.mjs"],
+    languageOptions: {
+      globals: globals.node,
+    },
   },
 );
