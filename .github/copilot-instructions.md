@@ -15,7 +15,7 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Bootstrap and Install Dependencies
 
-- **Prerequisites**: Node.js 22.12+ and npm are required
+- **Prerequisites**: Node.js 22.12+ and npm 11.16+
 - **Fresh install**: `npm install` -- takes ~25 seconds. NEVER CANCEL. Set timeout to 60+ seconds.
   - Use `npm install` when no package-lock.json exists (fresh clone)
   - The prepare script installs Lefthook hooks; it does not build the package

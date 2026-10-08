@@ -61,7 +61,7 @@ accept pull requests.
 ### Prerequisites
 
 - Node.js 22.12 or higher
-- npm or yarn
+- npm 11.16 or higher
 - Git
 - SAP AI Core service key (for testing with real API)
 
@@ -392,8 +392,9 @@ npm test             # Runs test suite
 - Check for injection vulnerabilities
 - Run `npx --no-install tsx scripts/check-dependency-audit.ts` after dependency
   changes; exceptions are advisory-specific and expire.
-- Use transitive overrides only for released patches whose parent ranges have not
-  caught up, and verify every affected tool path.
+- Use overrides to force a published version containing a security fix when
+  parent dependency ranges do not yet admit it. Verify every affected dependency
+  path, and remove the override once parent ranges admit a fixed version.
 - Never use `npm audit fix --force`; it may replace current dependencies with
   incompatible older versions.
 

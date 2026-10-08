@@ -26,8 +26,14 @@ const allowedAdvisories: Record<string, AllowedAdvisory> = {
   },
 };
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const audit = spawnSync(npmCommand, ["audit", "--json"], {
+const npmInvocation =
+  process.platform === "win32"
+    ? {
+        args: ["/d", "/s", "/c", "npm.cmd audit --json"],
+        command: process.env.ComSpec ?? "cmd.exe",
+      }
+    : { args: ["audit", "--json"], command: "npm" };
+const audit = spawnSync(npmInvocation.command, npmInvocation.args, {
   encoding: "utf8",
   env: process.env,
 });
