@@ -60,8 +60,8 @@ accept pull requests.
 
 ### Prerequisites
 
-- Node.js 22.12 or higher
-- npm 11.16 or higher
+- [mise](https://mise.jdx.dev/)
+- Node.js 22.12 or higher and npm 11.16 or higher, if mise is not used
 - Git
 - SAP AI Core service key (for testing with real API)
 
@@ -74,13 +74,24 @@ accept pull requests.
    cd sap-ai-provider
    ```
 
-2. **Install dependencies**
+2. **Install the development runtime**
+
+   [Activate mise](https://mise.jdx.dev/getting-started.html#activate-mise) in
+   your shell, then install the Node.js version declared in `package.json`:
 
    ```bash
-   npm install  # or npm ci if package-lock.json exists
+   mise install
    ```
 
-3. **Set up environment variables** (optional, for testing)
+   Without mise, install Node.js 22.12 or newer manually.
+
+3. **Install dependencies**
+
+   ```bash
+   npm ci
+   ```
+
+4. **Set up environment variables** (optional, for testing)
 
    ```bash
    # Create .env file
@@ -89,7 +100,7 @@ accept pull requests.
    # Edit .env and add your AICORE_SERVICE_KEY
    ```
 
-4. **Verify installation**
+5. **Verify installation**
 
    ```bash
    npm run build
@@ -179,8 +190,7 @@ or packaging the main package afterward.
 ### Git Hooks (Lefthook)
 
 This project uses [lefthook](https://github.com/evilmartians/lefthook) to enforce
-code quality automatically via git hooks. Hooks are installed automatically when you
-run `npm install` (via the `prepare` lifecycle script).
+code quality automatically via git hooks. Hooks are installed automatically when you run `npm ci` or `npm install` (via the `prepare` lifecycle script).
 
 **Pre-commit hook** (runs on every `git commit`):
 

@@ -26,8 +26,17 @@
   },
   "license": "Apache-2.0",
   "author": "jerome-benoit",
-  "volta": {
-    "node": "24.21.0"
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.21.0",
+      "onFail": "ignore"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.16.0",
+      "onFail": "error"
+    }
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -164,13 +173,6 @@
   },
   "engines": {
     "node": ">=22.12.0"
-  },
-  "devEngines": {
-    "packageManager": {
-      "name": "npm",
-      "version": ">=11.16.0",
-      "onFail": "error"
-    }
   },
   "publishConfig": {
     "access": "public"
