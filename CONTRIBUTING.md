@@ -60,7 +60,7 @@ accept pull requests.
 
 ### Prerequisites
 
-- [mise](https://mise.jdx.dev/) (recommended for the pinned development runtime)
+- [mise](https://mise.jdx.dev/)
 - Node.js 22.12 or higher and npm, if mise is not used
 - Git
 - SAP AI Core service key (for testing with real API)
