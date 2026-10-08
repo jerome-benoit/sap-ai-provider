@@ -395,8 +395,8 @@ npm test             # Runs test suite
 - Use overrides to force a published version containing a security fix when
   parent dependency ranges do not yet admit it. Verify every affected dependency
   path, and remove the override once parent ranges admit a fixed version.
-- Never use `npm audit fix --force`; it may replace current dependencies with
-  incompatible older versions.
+- Apply audit remediations through reviewed dependency updates, then validate
+  the lockfile and affected tool or runtime paths.
 
 ## Advanced: Detailed Developer Instructions
 
