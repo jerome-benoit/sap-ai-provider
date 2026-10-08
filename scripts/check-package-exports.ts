@@ -62,7 +62,7 @@ function resolveDeclaration(
   if (result === undefined) {
     throw new Error(`Could not resolve ${entryPoint.specifier} for ${sourceExtension}`);
   }
-  return result.resolvedFileName;
+  return resolve(result.resolvedFileName);
 }
 
 for (const entryPoint of entryPoints) {
