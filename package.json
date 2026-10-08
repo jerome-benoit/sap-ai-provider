@@ -26,8 +26,12 @@
   },
   "license": "Apache-2.0",
   "author": "jerome-benoit",
-  "volta": {
-    "node": "24.21.0"
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.21.0",
+      "onFail": "ignore"
+    }
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
