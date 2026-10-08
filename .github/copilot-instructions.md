@@ -248,10 +248,10 @@ All commands should pass; execution time depends on the environment.
 ### CI/CD Pipeline
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
-- **CI checks**: lint/format, type-check, default/Node/Edge tests, and builds, all using Node.js 24
-- **Build coverage**: `build && check-build` validates all four main entrypoints and ESM/CommonJS declaration routing; `build:v2 && check-build:v2` then validates the standalone build
+- **CI checks**: `.github/workflows/check-pr.yaml` runs dependency audit, type-check, default/Node/Edge tests, and builds on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
+- **Build coverage**: portable artifact checks validate the main V3/V2/V4 build and the standalone V2 build on every OS; the main build also validates ESM/CommonJS declaration routing
 - **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes both packages on created releases; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
-- **Runtime coverage**: Node and Edge suites run sequentially, not in a Node-version or AI SDK-major matrix; Edge excludes `*.node.test.ts`
+- **Runtime coverage**: Node and Edge suites run sequentially within each OS job; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies
 

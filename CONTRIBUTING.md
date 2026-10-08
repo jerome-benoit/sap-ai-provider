@@ -171,9 +171,10 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-CI runs these checks on Node.js 24, including the Node.js and Edge VM suites.
-`build:v2` replaces `dist/`, so rerun `npm run build` before using or packaging
-the main package afterward.
+CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. Lint
+and formatting run once on Ubuntu; dependency audit, types, tests, and builds run
+on every OS. `build:v2` replaces `dist/`, so rerun `npm run build` before using
+or packaging the main package afterward.
 
 ### Git Hooks (Lefthook)
 
