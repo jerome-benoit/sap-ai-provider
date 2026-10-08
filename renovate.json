@@ -5,9 +5,15 @@
     "abandonments:recommended",
     ":configMigration",
     "group:allNonMajor",
+    "helpers:pinGitHubActionDigests",
     "schedule:daily",
+    "security:minimumReleaseAgeNpm",
     ":maintainLockFilesWeekly"
   ],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["security"]
+  },
   "packageRules": [
     {
       "matchFileNames": ["**/package.json"],

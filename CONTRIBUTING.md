@@ -390,6 +390,12 @@ npm test             # Runs test suite
 - Validate all external inputs with zod schemas
 - Follow secure credential handling patterns
 - Check for injection vulnerabilities
+- Run `npx --no-install tsx scripts/check-dependency-audit.ts` after dependency
+  changes; exceptions are advisory-specific and expire.
+- Use transitive overrides only for released patches whose parent ranges have not
+  caught up, and verify every affected tool path.
+- Never use `npm audit fix --force`; it may replace current dependencies with
+  incompatible older versions.
 
 ## Advanced: Detailed Developer Instructions
 
