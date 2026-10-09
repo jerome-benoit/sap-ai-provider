@@ -61,7 +61,7 @@ accept pull requests.
 ### Prerequisites
 
 - [mise](https://mise.jdx.dev/)
-- Node.js 22.12 or higher and npm, if mise is not used
+- Node.js 22.12 or higher and npm 11.16 or higher, if mise is not used
 - Git
 - SAP AI Core service key (for testing with real API)
 
@@ -87,7 +87,10 @@ accept pull requests.
 
 3. **Install dependencies**
 
+   Run the local non-authoritative candidate gate before installation:
+
    ```bash
+   npm run check-lockfile-release-age
    npm ci
    ```
 
@@ -104,7 +107,7 @@ accept pull requests.
 
    ```bash
    npm run build
-   npm test
+   npm run test:node
    ```
 
 ### Development Workflow
@@ -125,10 +128,9 @@ Our development workflow follows these steps:
 3. **Run tests**
 
    ```bash
-   npm test              # Run all tests
-   npm run test:node     # Node.js environment
+   npm run test:node     # Run the canonical Node.js suite
    npm run test:edge     # Source tests in the Edge runtime VM
-   npm run test:watch    # Watch mode for development
+   npm run test:watch    # Watch the canonical Node.js suite
    ```
 
    The Edge VM suite exercises source behavior with mocked SAP dependencies;
@@ -170,8 +172,9 @@ and type-check + tests on push. For a full validation before opening a PR
 (including build), run:
 
 ```bash
+npm run check-lockfile-release-age && \
+npm run check-dependency-audit && \
 npm run type-check && \
-npm run test && \
 npm run test:node && \
 npm run test:edge && \
 npm run prettier-check && \
@@ -182,9 +185,19 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-CI runs these checks on Node.js 24, including the Node.js and Edge VM suites.
-`build:v2` replaces `dist/`, so rerun `npm run build` before using or packaging
-the main package afterward.
+CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. The PR and
+autofix workflows run a non-authoritative candidate release-age gate before
+installation. The dedicated trusted workflow uses `pull_request_target` to run only
+the default-branch checker. It resolves the exact head and base commit SHAs through
+the GitHub API and downloads only their raw `package-lock.json` files as untrusted
+data; it never imports, checks out, or executes the head. It publishes pending then
+final commit status `dependency-security/trusted-lockfile-release-age` on the exact
+PR head; its `push` job checks `main` against the immutable policy baseline.
+Release jobs re-run that checker.
+Lint and formatting run once on Ubuntu; the complete-scope dependency audit,
+types, Node and Edge tests, and builds run on every OS. `build:v2` replaces
+`dist/`, so rerun `npm run build` before using or packaging the main package
+afterward.
 
 ### Git Hooks (Lefthook)
 
@@ -344,7 +357,7 @@ Before submitting a PR, run:
 
 ```bash
 npm run build         # Builds three artifact families for root, /v2, /v3, /v4
-npm test             # Runs test suite
+npm run test:node             # Runs test suite
 ```
 
 <!-- markdownlint-enable MD036 -->
@@ -400,6 +413,51 @@ npm test             # Runs test suite
 - Validate all external inputs with zod schemas
 - Follow secure credential handling patterns
 - Check for injection vulnerabilities
+- Run `npm run check-dependency-audit` after dependency changes. It forces the
+  production, development, optional, and peer scopes even when npm `omit`
+  configuration is inherited. Expiring exceptions are validated from exact npm
+  audit nodes against the lockfile-v3 instance graph using Node ancestor resolution.
+  Validation covers every edge up to the directly declared root anchor and the
+  identity coherence of every edge entering that anchor; coherent shared references
+  above it are not recursively treated as new provenance. Package, severity,
+  directness, scope, and audit `effects`/`via` links remain checked. npm 11
+  `fixAvailable` must be exactly `false`, `true`, or its strict named-version object;
+  literal `true` invalidates an exception, while `false` and force-required objects
+  remain eligible.
+- Use overrides to force a published version containing a security fix when
+  parent dependency ranges do not yet admit it. Verify every affected dependency
+  path, and remove the override once parent ranges admit a fixed version.
+- Apply audit remediations through reviewed dependency updates, then validate
+  the lockfile and affected tool or runtime paths.
+- npm `min-release-age` filters dependency resolution, but `npm ci` installs the
+  existing lockfile verbatim. Repository policy fixes the age at 3 days and the
+  registry at `https://registry.npmjs.org/`. The checker fetches each package's raw
+  canonical packument once, without redirects, and takes publication time only from
+  top-level `time[version]`; identity, integrity, and tarball come from the matching
+  `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
+  JSON, metadata, or provenance errors. Each decoded packument response body is
+  limited to 64 MiB. Each complete fetch and body read has a 10-second timeout;
+  the checker uses at most eight concurrent requests, aborts in-flight requests on
+  the first failure, accepts at most 1,024 selected artifacts, and limits every
+  lockfile input to 2 MiB of UTF-8 data. Default comparison lockfile:
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
+  artifacts absent from that lockfile are age-validated. `-- --all` validates
+  every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
+  The trusted workflow uses `--head-lockfile <path> --base-lockfile <path>` after
+  the GitHub API resolves both exact commit SHAs and downloads only their raw
+  lockfiles as data. Releases require a successful `push` run for their exact SHA and
+  literal `main` head branch from
+  `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker. The
+  trusted job has a 30-minute overall timeout.
+- Repository files cannot enforce the final GitHub trust boundary. A branch ruleset
+  must require the exact head status context
+  `dependency-security/trusted-lockfile-release-age` and restrict who may satisfy it.
+  Because a status context name and the shared GitHub Actions App identity do not
+  uniquely identify this workflow, an organization required workflow/Actions event
+  policy or a dedicated external GitHub App is needed to prevent an untrusted or
+  homonymous workflow from spoofing it. The same external policy must protect the
+  trusted and release workflows, checker scripts, `.npmrc`, and `package.json`.
+  This repository does not claim those external controls are active.
 
 ## Advanced: Detailed Developer Instructions
 

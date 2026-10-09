@@ -31,6 +31,11 @@
       "name": "node",
       "version": "24.21.0",
       "onFail": "ignore"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.16.0",
+      "onFail": "error"
     }
   },
   "main": "./dist/index.cjs",
@@ -92,9 +97,11 @@
     "build:watch": "tsup --watch",
     "build:v2": "tsup --config tsup.config.v2.ts",
     "build:v2:watch": "tsup --config tsup.config.v2.ts --watch",
-    "check-build": "ls -la dist/ && test -f dist/index.js && test -f dist/index.cjs && test -f dist/index.d.ts && test -f dist/index.d.cts && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts && test -f dist/index-v2.d.cts && test -f dist/index-v4.js && test -f dist/index-v4.cjs && test -f dist/index-v4.d.ts && test -f dist/index-v4.d.cts && tsx scripts/check-package-exports.ts",
-    "check-build:v2": "ls -la dist/ && test -f dist/index-v2.js && test -f dist/index-v2.cjs && test -f dist/index-v2.d.ts && test -f dist/index-v2.d.cts",
-    "check-build:v4": "ls -la dist/ && test -f dist/index-v4.js && test -f dist/index-v4.cjs && test -f dist/index-v4.d.ts && test -f dist/index-v4.d.cts",
+    "check-build": "tsx scripts/check-build-artifacts.ts main && tsx scripts/check-package-exports.ts",
+    "check-build:v2": "tsx scripts/check-build-artifacts.ts v2",
+    "check-build:v4": "tsx scripts/check-build-artifacts.ts v4",
+    "check-dependency-audit": "tsx scripts/check-dependency-audit.ts",
+    "check-lockfile-release-age": "node scripts/check-lockfile-release-age.mjs",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint . --cache",
     "lint-fix": "npm run lint:md:fix && eslint . --fix --cache",
@@ -108,12 +115,12 @@
     "prepublishOnly": "if [ \"$AI_SDK_VERSION\" = \"v2\" ]; then npm run build:v2 && npm run check-build:v2 && npm run prepare:v2 && tsx scripts/check-package-exports.ts; else npm run build && npm run check-build; fi",
     "prettier-check": "prettier --cache --check .",
     "prettier-fix": "prettier --cache --write .",
-    "test": "vitest run",
+    "test": "npm run test:node",
     "test:coverage": "vitest --config vitest.node.config.ts --run --coverage",
     "test:edge": "vitest --config vitest.edge.config.ts --run",
     "test:node": "vitest --config vitest.node.config.ts --run",
     "test:node:watch": "vitest --config vitest.node.config.ts",
-    "test:watch": "vitest",
+    "test:watch": "npm run test:node:watch",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -151,6 +158,17 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "basic-ftp": ">=6.2.2 <7.0.0",
+    "esbuild": ">=0.28.2 <0.29.0",
+    "katex": ">=0.18.2 <0.19.0",
+    "smol-toml": ">=1.9.0 <2.0.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "lefthook@2.2.1": true
   },
   "peerDependencies": {
     "ai": "^5.0.0 || ^6.0.0 || ^7.0.0"

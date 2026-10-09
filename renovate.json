@@ -1,17 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    "abandonments:recommended",
-    ":configMigration",
-    "group:allNonMajor",
-    "schedule:daily",
-    ":maintainLockFilesWeekly"
-  ],
+  "extends": ["config:best-practices", "schedule:daily"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["security"]
+  },
   "packageRules": [
     {
       "matchFileNames": ["**/package.json"],
-      "matchDepTypes": ["dependencies", "devDependencies", "optionalDependencies"],
+      "matchDepTypes": ["dependencies", "optionalDependencies"],
       "rangeStrategy": "bump"
     },
     {

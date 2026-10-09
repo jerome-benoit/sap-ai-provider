@@ -15,12 +15,14 @@ Always reference these instructions first and fallback to search or bash command
 
 ### Bootstrap and Install Dependencies
 
-- **Prerequisites**: Node.js 22.12+ and npm are required
+- **Prerequisites**: Node.js 22.12+ and npm 11.16+
 - **Fresh install**: `npm install` -- takes ~25 seconds. NEVER CANCEL. Set timeout to 60+ seconds.
   - Use `npm install` when no package-lock.json exists (fresh clone)
   - The prepare script installs Lefthook hooks; it does not build the package
   - Run `npm run build` explicitly to create `dist/` artifacts
-- **Existing install**: `npm ci` -- takes ~15 seconds. NEVER CANCEL. Set timeout to 30+ seconds.
+- **Existing install**: run `npm run check-lockfile-release-age` before `npm ci`; this local candidate
+  gate needs registry access but no installed dependencies. Then allow ~15 seconds for
+  `npm ci`; NEVER CANCEL and set timeout to 30+ seconds.
   - Use when package-lock.json already exists
   - Faster than `npm install` for CI/existing setups
 
@@ -52,14 +54,56 @@ replaces the main build outputs with V2-only artifacts.
 
 ### Testing
 
-- **Run all tests**: `npm run test` -- takes ~1 second. Set timeout to 15+ seconds.
-- **Run Node.js specific tests**: `npm run test:node` -- takes ~1 second. Set timeout to 15+ seconds.
+- **Run the canonical Node.js suite**: `npm run test:node` (`npm test` is an alias) -- takes ~1 second. Set timeout to 15+ seconds.
 - **Run Edge runtime tests**: `npm run test:edge` -- takes ~1 second. Set timeout to 15+ seconds.
-- **Watch mode for development**: `npm run test:watch`
+- **Watch Node.js tests**: `npm run test:node:watch` (`npm run test:watch` is an alias)
 
 The Edge suite tests provider source behavior. Published bundles still use
 Node built-ins through the ESM banner and SAP SDK dependencies; passing this
 suite does not establish deployability to an Edge isolate without Node compatibility.
+
+### Dependency Security
+
+- Run `npm run check-dependency-audit` with registry access. It forces production,
+  development, optional, and peer scopes despite inherited npm `omit` settings.
+  Temporary exceptions start only from npm audit's exact nodes in the lockfile-v3
+  package-instance graph, using Node ancestor resolution semantics. Validation covers
+  every edge up to the directly declared root anchor and the identity coherence of
+  every edge entering that anchor; coherent shared references above it are not
+  recursively treated as new provenance. Scope, severity, directness, and audit
+  `effects`/`via` meta-links are also checked. npm 11 `fixAvailable` is validated as
+  exactly `false`, `true`, or a strict named-version object; only literal `true`
+  invalidates an allowlisted root vulnerability.
+- npm `min-release-age` filters resolution only; `npm ci` installs an existing
+  lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`.
+  The checker fetches raw canonical packuments directly, without redirects, caching
+  one request per package. It uses only top-level `time[version]` and requires the
+  matching `versions[version]` name, version, integrity, and tarball to equal the
+  lockfile; unavailable, non-JSON, incomplete, or divergent metadata fails closed.
+  Every decoded packument response body is limited to 64 MiB, every lockfile input
+  to 2 MiB of UTF-8 data, and every deduplicated selection to 1,024 artifacts.
+  Metadata uses at most eight concurrent requests, a 10-second complete-request
+  timeout, and fail-fast cancellation.
+- Default comparison lockfile:
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
+  artifacts absent from that lockfile are age-validated. `-- --all` validates
+  every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
+  The trusted workflow resolves the exact PR head and base commits through the
+  GitHub API, downloads only their raw lockfiles as data, and invokes
+  `--head-lockfile <path> --base-lockfile <path>`. It never imports, checks out, or
+  executes the head, then publishes status context
+  `dependency-security/trusted-lockfile-release-age` on the exact PR head.
+  PR/autofix gates are explicitly non-authoritative candidate checks. Releases require
+  an exact-SHA successful `push` run on literal `main` of
+  `.github/workflows/trusted-lockfile-release-age.yml` and re-run the checker. The
+  trusted job has a 30-minute timeout.
+- A branch ruleset must externally require that exact status context and restrict its
+  source. The shared GitHub Actions App identity plus a context name cannot uniquely
+  identify this workflow, so an organization required workflow/Actions event policy
+  or dedicated external GitHub App is needed to prevent spoofing by a homonymous or
+  untrusted workflow. External policy must also protect the trusted/release workflows,
+  checker scripts, `.npmrc`, and `package.json`. No such external policy is
+  claimed active.
 
 ### Type Checking and Linting
 
@@ -81,9 +125,9 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 **Quick workflow summary:**
 
-1. **Bootstrap**: `npm ci` (always first)
+1. **Bootstrap**: `npm run check-lockfile-release-age && npm ci` (always first)
 2. **Make changes** in `/src`
-3. **Validate**: `npm run type-check && npm run test && npm run prettier-check`
+3. **Validate**: `npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check`
 4. **Build**: `npm run build && npm run check-build`
 
 ## Validation
@@ -93,7 +137,7 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 **ALWAYS run this command before committing (CI will fail otherwise):**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 **Detailed checklist and standards**: See [Contributing Guide - Pre-Commit Checklist](../CONTRIBUTING.md#pre-commit-checklist)
@@ -112,8 +156,9 @@ npm run type-check && npm run test && npm run test:node && npm run test:edge && 
 
 Since full example testing requires SAP credentials, validate changes using this comprehensive approach:
 
-1. **Install and setup**: `npm install` (or `npm ci` if lock file exists)
-2. **Run all tests**: `npm run test && npm run test:node && npm run test:edge`
+1. **Install and setup**: run `npm run check-lockfile-release-age`, then `npm ci`
+   when the lockfile exists (`npm install` is only for a checkout without one)
+2. **Run all tests**: `npm run test:node && npm run test:edge`
 3. **Build successfully**: `npm run build && npm run check-build`
 4. **Type check passes**: `npm run type-check`
 5. **Formatting is correct**: `npm run prettier-check`
@@ -123,7 +168,7 @@ Since full example testing requires SAP credentials, validate changes using this
 **Complete CI-like validation command:**
 
 ```bash
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 All commands should pass; execution time depends on the environment.
@@ -248,10 +293,10 @@ All commands should pass; execution time depends on the environment.
 ### CI/CD Pipeline
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
-- **CI checks**: lint/format, type-check, default/Node/Edge tests, and builds, all using Node.js 24
-- **Build coverage**: `build && check-build` validates all four main entrypoints and ESM/CommonJS declaration routing; `build:v2 && check-build:v2` then validates the standalone build
-- **Publishing**: `.github/workflows/npm-publish-packages.yml` publishes both packages on created releases; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
-- **Runtime coverage**: Node and Edge suites run sequentially, not in a Node-version or AI SDK-major matrix; Edge excludes `*.node.test.ts`
+- **CI checks**: candidate dependency-free gates run before installs in validation and autofix; the separate `pull_request_target`/`push` trusted workflow never checks out or executes PR head code and publishes its dedicated status context on the exact PR head; after validation passes, complete-scope dependency audit, type-check, Node/Edge tests, and builds run on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
+- **Build coverage**: portable artifact checks validate the main V3/V2/V4 build and the standalone V2 build on every OS; the main build also validates ESM/CommonJS declaration routing
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful exact-SHA `push` run of the dedicated trusted lockfile workflow, re-runs the checker, then publishes both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
+- **Runtime coverage**: Node and Edge suites run sequentially within each OS job; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies
 
@@ -266,12 +311,12 @@ All commands should pass; execution time depends on the environment.
 # Fresh setup (no package-lock.json)
 npm install               # Install deps + Lefthook hooks (no build)
 # or existing setup (with package-lock.json)
+npm run check-lockfile-release-age # Local candidate policy-baseline attestation
 npm ci                    # Clean install + Lefthook hooks (no build)
 
 # Development
 npm run type-check        # ~2s - TypeScript validation
-npm run test             # ~1s - Run all tests
-npm run test:node        # ~1s - Node.js environment tests
+npm run test:node        # ~1s - Canonical Node.js suite
 npm run test:edge        # ~1s - Edge runtime tests
 npm run build            # ~3s - Build main V3/V2/V4 entrypoints
 npm run build:watch      # Continuous main-package rebuild
@@ -288,7 +333,7 @@ npm run lint:md:fix      # Auto-fix Markdown lint issues
 npm run clean            # Remove dist/ directory
 
 # Complete validation
-npm run type-check && npm run test && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 # Run npm run build again if main-package artifacts are needed after build:v2
 
 # Examples (requires SAP service key)
@@ -317,7 +362,7 @@ npx tsx examples/example-foundation-models.ts
 - **Build fails**: Check TypeScript errors with `npm run type-check`
 - **Tests fail**: Run `npm run test:watch` for detailed test output
 - **Formatting issues**: Use `npm run prettier-fix` to auto-fix
-- **Missing dependencies**: Run `npm ci` to restore the locked dependency tree; do not delete `package-lock.json` as routine troubleshooting
+- **Missing dependencies**: Run `npm run check-lockfile-release-age && npm ci` to attest and restore the locked dependency tree; do not delete `package-lock.json` as routine troubleshooting
 - **Example errors**: Verify `.env` file exists with valid `AICORE_SERVICE_KEY`
 
 ## Pull Request Review Guidelines
@@ -395,8 +440,9 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
 Before approving any PR, verify ALL of these pass:
 
 ```bash
+npm run check-lockfile-release-age &&
+npm run check-dependency-audit &&
 npm run type-check &&
-npm run test &&
 npm run test:node &&
 npm run test:edge &&
 npm run prettier-check &&

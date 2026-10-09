@@ -1,6 +1,7 @@
 name: autofix.ci
 on:
   push:
+    branches: ["**"]
   pull_request:
     branches: [main]
 permissions:
@@ -11,12 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: "npm"
+      - name: Non-authoritative candidate attestation of pull request lockfile artifacts
+        if: github.event_name == 'pull_request'
+        run: npm run check-lockfile-release-age -- --base "${{ github.event.pull_request.base.sha }}"
+      - name: Non-authoritative candidate attestation of policy-new pushed artifacts
+        if: github.event_name == 'push'
+        run: npm run check-lockfile-release-age
       - run: npm ci
       - run: npm run lint-fix
       - run: npm run prettier-fix
-      - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a
+      - uses: autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a # main

@@ -7,19 +7,49 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
+      - name: Verify release commit gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release commit $GITHUB_SHA is not an ancestor of origin/main" >&2
+            exit 1
+          fi
+          WORKFLOW_OK=$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/trusted-lockfile-release-age.yml/runs" \
+            -f head_sha="$GITHUB_SHA" \
+            -f branch=main \
+            -f event=push \
+            -f status=completed \
+            -f per_page=100 \
+            --jq 'any(.workflow_runs[]; .head_sha == "'"$GITHUB_SHA"'" and .head_branch == "main" and .event == "push" and .conclusion == "success" and .path == ".github/workflows/trusted-lockfile-release-age.yml")')
+          if [ "$WORKFLOW_OK" != "true" ]; then
+            echo "Release commit $GITHUB_SHA has no successful exact trusted lockfile workflow run" >&2
+            exit 1
+          fi
+      - name: Re-attest release artifacts against policy baseline
+        run: npm run check-lockfile-release-age
       - name: Validate lockfile synchronization
         run: npm ci --dry-run --ignore-scripts
       - run: npm ci
+      - name: Check dependency vulnerabilities
+        run: npm run check-dependency-audit
       - run: npm run type-check
       - run: npm run lint
       - run: npm run build
       - run: npm run build:v2
-      - run: npm test
+      - run: npm run test:node
+      - run: npm run test:edge
 
   publish-npm:
     needs: build
@@ -28,8 +58,10 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
       - name: Set package version from release
@@ -37,6 +69,8 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Setting version to $VERSION"
           npm version $VERSION --no-git-tag-version --allow-same-version
+      - name: Attest release artifacts against policy baseline
+        run: npm run check-lockfile-release-age
       - run: npm ci
       - name: Determine npm tag
         id: tag
@@ -73,8 +107,10 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
       - name: Set package version from release
@@ -82,6 +118,8 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Setting version to $VERSION"
           npm version $VERSION --no-git-tag-version --allow-same-version
+      - name: Attest release artifacts against policy baseline
+        run: npm run check-lockfile-release-age
       - run: npm ci
       - name: Determine npm tag
         id: tag

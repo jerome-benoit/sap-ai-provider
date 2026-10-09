@@ -429,7 +429,7 @@ const provider = createSAPAIProvider({
 1. **Run your tests:**
 
    ```bash
-   npm test
+   npm run test:node
    ```
 
 2. **Check for TypeScript errors:**
