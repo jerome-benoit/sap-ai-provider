@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      checks: read
+      actions: read
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -25,13 +25,18 @@ jobs:
             echo "Release commit $GITHUB_SHA is not an ancestor of origin/main" >&2
             exit 1
           fi
-          CHECK_OK=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-            --jq 'any(.check_runs[]; .name == "Lockfile release age" and .conclusion == "success")')
-          if [ "$CHECK_OK" != "true" ]; then
-            echo "Release commit $GITHUB_SHA has no successful exact 'Lockfile release age' check run" >&2
+          WORKFLOW_OK=$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/trusted-lockfile-release-age.yml/runs" \
+            -f head_sha="$GITHUB_SHA" \
+            -f event=push \
+            -f status=completed \
+            -f per_page=100 \
+            --jq 'any(.workflow_runs[]; .head_sha == "'"$GITHUB_SHA"'" and .event == "push" and .conclusion == "success" and .path == ".github/workflows/trusted-lockfile-release-age.yml")')
+          if [ "$WORKFLOW_OK" != "true" ]; then
+            echo "Release commit $GITHUB_SHA has no successful exact trusted lockfile workflow run" >&2
             exit 1
           fi
-      - name: Attest release artifacts against policy baseline
+      - name: Re-attest release artifacts against policy baseline
         run: npm run check-lockfile-release-age
       - name: Validate lockfile synchronization
         run: npm ci --dry-run --ignore-scripts

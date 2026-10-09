@@ -36,12 +36,17 @@ description: Build, type-check, test, and publish workflow for the package
 - Prettier-fix: `npm run prettier-fix`
 - Canonical Node tests: `npm run test:node` (`npm test` is an alias)
 - Edge source tests: `npm run test:edge`
-- Lockfile release age: `npm run check-lockfile-release-age` checks artifacts added
-  since policy baseline `62cd5dab23e0b8c0faf3b843943013a608318c36`;
-  `-- --all` checks the complete lock, and `-- --base <full-git-sha>` selects an
-  explicit comparison base (all modes require registry access, fail closed, and run
-  without installed dependencies)
-- Dependency advisory policy: `npm run check-dependency-audit` (requires registry access)
+- Lockfile release age: `npm run check-lockfile-release-age` fetches canonical raw
+  packuments and checks artifacts added since policy baseline
+  `62cd5dab23e0b8c0faf3b843943013a608318c36`; `-- --all` checks the complete
+  lock and `-- --base <full-git-sha>` is a local candidate comparison. The trusted
+  workflow alone uses exact `--head <sha> --base <sha>` Git objects (all modes need
+  registry access, fail closed, and run without installed dependencies)
+- Dependency advisory policy: `npm run check-dependency-audit` forces production,
+  development, optional, and peer npm scopes. For exact audited instances it validates
+  every edge up to the direct root anchor plus every edge identity entering that
+  anchor; coherent shared references above it are not recursively traversed
+  (requires registry access)
 
 ### Versioned Entrypoints and Packages
 
@@ -67,16 +72,24 @@ range to AI SDK 5/6, removes
 `/v2`, `/v3`, and `/v4` exports from the manifest, and updates the lockfile.
 Run publish preparation only in a disposable publishing checkout.
 
-Before `npm ci`, run `npm run check-lockfile-release-age`; it needs the public
-registry, runs without `node_modules`, and fails closed if metadata is unavailable or
-incomplete. Dependency installation runs `prepare` (`lefthook install`), not a build.
+Before `npm ci`, run `npm run check-lockfile-release-age` as a local
+non-authoritative candidate gate; it needs the public registry, runs without
+`node_modules`, and fails closed if metadata is unavailable or incomplete. Dependency installation runs `prepare` (`lefthook install`), not a build.
 Use `npm run build` explicitly to create distribution artifacts. npm
 `min-release-age` applies while resolving, not when `npm ci` consumes the lockfile.
-Policy is 3 days on `https://registry.npmjs.org/`. Pull requests use their
-explicit base SHA; pushes, autofix pushes, and releases use the cumulative policy
-baseline before installation. Advance the immutable baseline only after the exact
-gate succeeds and the baseline change is reviewed. Releases also require their exact
-SHA on `main` and a successful `Lockfile release age` check run.
+Policy is 3 days on `https://registry.npmjs.org/`. The checker uses top-level
+packument `time[version]` and the matching version manifest fingerprint. PR and
+autofix workflows run non-authoritative candidate gates. The dedicated
+`pull_request_target` workflow runs only trusted default-branch code, reads PR
+lockfiles with exact `git show` object names, and publishes status context
+`dependency-security/trusted-lockfile-release-age` on the exact PR head; its
+`push` job covers `main`. Releases require that exact-SHA trusted push run and
+then re-run the checker. A branch ruleset must require the exact status context and
+restrict its source. Since a shared GitHub Actions App identity cannot uniquely bind
+that context to this workflow, an organization required workflow/Actions event policy
+or dedicated external App must prevent homonymous/untrusted status writers. External
+policy must protect the trusted/release workflows and CODEOWNERS-covered policy files;
+CODEOWNERS is not enforcement and no external policy is claimed active.
 
 ## Node Engine
 

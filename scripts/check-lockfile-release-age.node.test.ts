@@ -1,32 +1,59 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import type {
+  LockArtifact,
+  PackumentFetch,
+  PackumentResponse,
+} from "./check-lockfile-release-age.mjs";
 
 import {
   extractLockArtifacts,
+  fetchPackagePackument,
   findAllLockArtifacts,
   findNewLockArtifacts,
+  loadLockfiles,
   parseCliArguments,
   POLICY_BASE_SHA,
   selectLockArtifacts,
   validateArtifactMetadata,
+  validateArtifactsConcurrently,
   validateMinimumReleaseAge,
 } from "./check-lockfile-release-age.mjs";
 
 const BASE_SHA = "a".repeat(40);
-const OLD_DATE = "2026-09-01T00:00:00.000Z";
+const HEAD_SHA = "b".repeat(40);
 const NOW = Date.parse("2026-10-09T00:00:00.000Z");
+const OLD_DATE = "2026-09-01T00:00:00.000Z";
+const REGISTRY = "https://registry.npmjs.org/";
+
+/** Mutable packument fixture. */
+interface PackumentFixture {
+  time: Record<string, string>;
+  versions: Record<string, PackumentManifest>;
+}
+
+/** Mutable version-manifest fixture. */
+interface PackumentManifest {
+  dist: { integrity: string; tarball: null | string };
+  name: string;
+  time?: string;
+  version: string;
+}
 
 /**
- * Build one registry artifact lock entry.
+ * Build one exact registry artifact lock entry.
  * @param version - Exact package version
  * @param name - Real package name
  * @returns Registry lock entry
  */
-function artifactEntry(version: string, name: string) {
+function artifactEntry(version: string, name = "example"): LockArtifact {
+  const packageFileName = name.split("/").at(-1);
+  if (!packageFileName) throw new Error("Invalid test package name");
   return {
     inBundle: false,
     integrity: `sha512-${version}`,
     name,
-    resolved: `https://registry.npmjs.org/example/-/example-${version}.tgz`,
+    resolved: `${REGISTRY}${name}/-/${packageFileName}-${version}.tgz`,
     version,
   };
 }
@@ -41,46 +68,117 @@ function lock(packages: Record<string, unknown>) {
 }
 
 /**
- * Require an indexed fixture value.
- * @param value - Possibly absent indexed value
- * @returns Present fixture value
+ * Build a complete canonical packument for exact artifacts.
+ * @param artifacts - Exact package artifacts
+ * @returns Complete packument fixture
  */
-function requireFixtureValue<T>(value: T | undefined): T {
-  if (value === undefined) throw new Error("Invalid test fixture");
-  return value;
+function packument(...artifacts: LockArtifact[]): PackumentFixture {
+  return {
+    time: Object.fromEntries(artifacts.map((artifact) => [artifact.version, OLD_DATE])),
+    versions: Object.fromEntries(
+      artifacts.map((artifact) => [
+        artifact.version,
+        {
+          dist: { integrity: artifact.integrity, tarball: artifact.resolved },
+          name: artifact.name,
+          version: artifact.version,
+        },
+      ]),
+    ),
+  };
+}
+
+/**
+ * Require one exact manifest from a packument fixture.
+ * @param metadata - Packument fixture
+ * @param version - Exact package version
+ * @returns Present manifest fixture
+ */
+function requireManifest(metadata: PackumentFixture, version: string): PackumentManifest {
+  const manifest = metadata.versions[version];
+  if (!manifest) throw new Error(`Missing test manifest ${version}`);
+  return manifest;
+}
+
+/**
+ * Build a minimal fetch response accepted by the checker.
+ * @param body - JSON response body or parsing error
+ * @param options - Response status and URL overrides
+ * @param options.ok - HTTP success state
+ * @param options.status - HTTP status code
+ * @param options.url - Final response URL
+ * @returns Minimal packument response
+ */
+function response(
+  body: unknown,
+  options: { ok?: boolean; status?: number; url?: string } = {},
+): PackumentResponse {
+  return {
+    json() {
+      return body instanceof Error ? Promise.reject(body) : Promise.resolve(body);
+    },
+    ok: options.ok ?? true,
+    status: options.status ?? 200,
+    url: options.url ?? REGISTRY,
+  };
 }
 
 describe("lockfile release-age gate modes", () => {
-  it("defaults to the cumulative policy baseline and accepts explicit modes", () => {
+  it("preserves policy/all/base modes and parses the exact trusted head/base mode", () => {
     expect(POLICY_BASE_SHA).toBe("62cd5dab23e0b8c0faf3b843943013a608318c36");
-    expect(parseCliArguments([])).toEqual({ baseSha: POLICY_BASE_SHA, mode: "policy" });
+    expect(parseCliArguments([])).toEqual({
+      baseSha: POLICY_BASE_SHA,
+      mode: "policy",
+    });
     expect(parseCliArguments(["--all"])).toEqual({ mode: "all" });
     expect(parseCliArguments(["--base", BASE_SHA])).toEqual({
       baseSha: BASE_SHA,
       mode: "differential",
     });
+    expect(parseCliArguments(["--head", HEAD_SHA, "--base", BASE_SHA])).toEqual({
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      mode: "trusted",
+    });
   });
 
-  it("rejects ambiguous or malformed arguments", () => {
+  it("rejects ambiguous, reordered, short, or malformed SHA arguments", () => {
     for (const args of [
       ["--base"],
-      [BASE_SHA],
       ["--base", "abc"],
-      ["--base", BASE_SHA, "extra"],
+      ["--head", HEAD_SHA],
+      ["--base", BASE_SHA, "--head", HEAD_SHA],
+      ["--head", "abc", "--base", BASE_SHA],
+      ["--head", HEAD_SHA, "--base", "abc"],
+      ["--head", HEAD_SHA, "--base", BASE_SHA, "extra"],
       ["--all", "extra"],
-      ["--unknown", BASE_SHA],
     ]) {
       expect(() => parseCliArguments(args)).toThrow("Usage:");
     }
   });
 
+  it("loads both trusted revisions only through exact git object names", () => {
+    const shown: string[] = [];
+    const current = lock({ "node_modules/example": artifactEntry("2.0.0") });
+    const base = lock({});
+    const loaded = loadLockfiles(
+      { baseSha: BASE_SHA, headSha: HEAD_SHA, mode: "trusted" },
+      () => {
+        throw new Error("working tree must not be read");
+      },
+      (objectName) => {
+        shown.push(objectName);
+        return JSON.stringify(objectName.startsWith(HEAD_SHA) ? current : base);
+      },
+    );
+    expect(shown).toEqual([`${HEAD_SHA}:package-lock.json`, `${BASE_SHA}:package-lock.json`]);
+    expect(loaded).toEqual({ baseLock: base, currentLock: current });
+  });
+
   it("prevents a follow-up commit from laundering an artifact past the policy baseline", () => {
     const policyBase = lock({});
-    const introduced = lock({
-      "node_modules/example": artifactEntry("2.0.0", "example"),
-    });
+    const introduced = lock({ "node_modules/example": artifactEntry("2.0.0") });
     const unchangedFollowUp = structuredClone(introduced);
-
     expect(
       selectLockArtifacts(
         { baseSha: BASE_SHA, mode: "differential" },
@@ -95,120 +193,79 @@ describe("lockfile release-age gate modes", () => {
 });
 
 describe("lockfile artifact extraction", () => {
-  it("attests a complete bundled child as a normal registry artifact", () => {
+  it("attests complete bundled children and deduplicates moved artifacts", () => {
     const bundled = { ...artifactEntry("1.0.0", "bundled"), inBundle: true };
     expect(
       extractLockArtifacts(lock({ "node_modules/parent/node_modules/bundled": bundled })),
-    ).toEqual({
-      artifacts: [bundled],
-      remoteSources: [],
-    });
+    ).toEqual({ artifacts: [bundled], remoteSources: [] });
+    expect(
+      findAllLockArtifacts(
+        lock({
+          "node_modules/bundled": bundled,
+          "node_modules/parent/node_modules/bundled": bundled,
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      findNewLockArtifacts(
+        lock({ "node_modules/parent/node_modules/bundled": bundled }),
+        lock({ "node_modules/bundled": bundled }),
+      ),
+    ).toEqual([]);
   });
 
-  it("rejects an incomplete bundled child in complete mode", () => {
-    const current = lock({
-      "node_modules/parent/node_modules/bundled": {
-        inBundle: true,
-        name: "bundled",
-        version: "1.0.0",
-      },
-    });
-    expect(() => findAllLockArtifacts(current)).toThrow("cannot be attested");
+  it("fails closed for incomplete bundled or remote sources", () => {
+    expect(() =>
+      findAllLockArtifacts(
+        lock({
+          "node_modules/parent/node_modules/bundled": {
+            inBundle: true,
+            name: "bundled",
+            version: "1.0.0",
+          },
+        }),
+      ),
+    ).toThrow("cannot be attested");
+    expect(() =>
+      findNewLockArtifacts(
+        lock({}),
+        lock({
+          "node_modules/example": {
+            resolved: "git+https://github.com/example/project.git",
+            version: "1.0.0",
+          },
+        }),
+      ),
+    ).toThrow("cannot be attested");
   });
 
-  it("rejects a newly introduced incomplete bundled child in differential mode", () => {
-    const current = lock({
-      "node_modules/parent/node_modules/bundled": {
-        inBundle: true,
-        name: "bundled",
-        version: "1.0.0",
-      },
-    });
-    expect(() => findNewLockArtifacts(lock({}), current)).toThrow("cannot be attested");
+  it("rejects changed fingerprints and registry origins", () => {
+    const base = lock({ "node_modules/example": artifactEntry("1.0.0") });
+    expect(() =>
+      findNewLockArtifacts(
+        base,
+        lock({
+          "node_modules/example": {
+            ...artifactEntry("1.0.0"),
+            integrity: "sha512-changed",
+          },
+        }),
+      ),
+    ).toThrow("fingerprint changed");
+    expect(() =>
+      findNewLockArtifacts(
+        lock({}),
+        lock({
+          "node_modules/example": {
+            ...artifactEntry("1.0.0"),
+            resolved: "https://packages.example.test/example-1.0.0.tgz",
+          },
+        }),
+      ),
+    ).toThrow("cannot be attested");
   });
 
-  it("detects a transition into bundled state as a fingerprint change", () => {
-    const base = lock({ "node_modules/example": artifactEntry("1.0.0", "example") });
-    const current = lock({
-      "node_modules/example": {
-        ...artifactEntry("1.0.0", "example"),
-        inBundle: true,
-      },
-    });
-    expect(() => findNewLockArtifacts(base, current)).toThrow("fingerprint changed");
-  });
-
-  it("ignores an unchanged artifact moved by deduplication", () => {
-    const entry = artifactEntry("1.0.0", "example");
-    const base = lock({ "node_modules/parent/node_modules/example": entry });
-    const current = lock({ "node_modules/example": entry });
-    expect(findNewLockArtifacts(base, current)).toEqual([]);
-  });
-
-  it("deduplicates identical artifacts in complete mode", () => {
-    const entry = artifactEntry("1.0.0", "example");
-    const current = lock({
-      "node_modules/example": entry,
-      "node_modules/parent/node_modules/example": entry,
-    });
-    expect(findAllLockArtifacts(current)).toHaveLength(1);
-  });
-
-  it("rejects a newly omitted resolved URL as unattestable", () => {
-    const entry = artifactEntry("1.0.0", "example");
-    const { resolved: _resolved, ...withoutResolved } = entry;
-    const base = lock({ "node_modules/example": entry });
-    const current = lock({ "node_modules/example": withoutResolved });
-    expect(() => findNewLockArtifacts(base, current)).toThrow("cannot be attested");
-  });
-
-  it("accepts metadata for a sufficiently old new version", () => {
-    const artifact = artifactEntry("2.0.0", "example");
-    expect(() => {
-      validateArtifactMetadata(
-        artifact,
-        {
-          "dist.integrity": artifact.integrity,
-          "dist.tarball": artifact.resolved,
-          time: { "2.0.0": OLD_DATE },
-        },
-        3,
-        NOW,
-      );
-    }).not.toThrow();
-  });
-
-  it("rejects a new registry entry with no resolved URL", () => {
-    const entry = artifactEntry("2.0.0", "example");
-    const { resolved: _resolved, ...withoutResolved } = entry;
-    const current = lock({ "node_modules/example": withoutResolved });
-    expect(() => findNewLockArtifacts(lock({}), current)).toThrow("cannot be attested");
-  });
-
-  it("rejects a version that is too recent", () => {
-    const artifact = artifactEntry("2.0.0", "example");
-    expect(() => {
-      validateArtifactMetadata(
-        artifact,
-        {
-          dist: { integrity: artifact.integrity, tarball: artifact.resolved },
-          time: { "2.0.0": "2026-10-08T00:00:00.000Z" },
-        },
-        3,
-        NOW,
-      );
-    }).toThrow("newer than");
-  });
-
-  it("treats a non-monotone exact version change as new", () => {
-    const base = lock({ "node_modules/example": artifactEntry("2.0.0", "example") });
-    const current = lock({ "node_modules/example": artifactEntry("1.5.0", "example") });
-    expect(findNewLockArtifacts(base, current)).toMatchObject([
-      { name: "example", version: "1.5.0" },
-    ]);
-  });
-
-  it("infers scoped names from nested node_modules paths", () => {
+  it("infers scoped names from exact nested paths", () => {
     const scoped = {
       inBundle: false,
       integrity: "sha512-1.0.0",
@@ -216,72 +273,125 @@ describe("lockfile artifact extraction", () => {
       version: "1.0.0",
     };
     expect(
-      requireFixtureValue(
-        extractLockArtifacts(lock({ "node_modules/parent/node_modules/@scope/pkg": scoped }))
-          .artifacts[0],
-      ).name,
+      extractLockArtifacts(lock({ "node_modules/parent/node_modules/@scope/pkg": scoped }))
+        .artifacts[0]?.name,
     ).toBe("@scope/pkg");
   });
+});
 
-  it("rejects an HTTP artifact outside the approved registry origin", () => {
-    const current = lock({
-      "node_modules/example": {
-        ...artifactEntry("1.0.0", "example"),
-        resolved: "https://packages.example.test/example-1.0.0.tgz",
-      },
-    });
-    expect(() => findNewLockArtifacts(lock({}), current)).toThrow("cannot be attested");
-  });
-
-  it("rejects a newly introduced unattestable remote source", () => {
-    const base = lock({});
-    const current = lock({
-      "node_modules/example": {
-        resolved: "git+https://github.com/example/project.git",
-        version: "1.0.0",
-      },
-    });
-    expect(() => findNewLockArtifacts(base, current)).toThrow("cannot be attested");
-  });
-
-  it("rejects a changed integrity for an existing name and version", () => {
-    const base = lock({ "node_modules/example": artifactEntry("1.0.0", "example") });
-    const current = lock({
-      "node_modules/example": { ...artifactEntry("1.0.0", "example"), integrity: "sha512-changed" },
-    });
-    expect(() => findNewLockArtifacts(base, current)).toThrow("fingerprint changed");
-  });
-
-  it("rejects registry metadata with mismatched integrity", () => {
-    const artifact = artifactEntry("2.0.0", "example");
+describe("canonical npm packument validation", () => {
+  it("uses only top-level packument time even when a manifest time contradicts it", () => {
+    const artifact = artifactEntry("2.0.0");
+    const metadata = packument(artifact);
+    metadata.versions[artifact.version] = {
+      ...requireManifest(metadata, artifact.version),
+      time: "2026-10-08T00:00:00.000Z",
+    };
     expect(() => {
-      validateArtifactMetadata(
-        artifact,
-        {
-          "dist.integrity": "sha512-different",
-          "dist.tarball": artifact.resolved,
-          time: { "2.0.0": OLD_DATE },
-        },
-        3,
-        NOW,
-      );
-    }).toThrow("fingerprint mismatch");
+      validateArtifactMetadata(artifact, metadata, 3, NOW);
+    }).not.toThrow();
   });
 
-  it("rejects release-age configuration below repository policy", () => {
+  it("rejects a recent top-level time even when manifest time is old", () => {
+    const artifact = artifactEntry("2.0.0");
+    const metadata = packument(artifact);
+    metadata.time[artifact.version] = "2026-10-08T00:00:00.000Z";
+    metadata.versions[artifact.version] = {
+      ...requireManifest(metadata, artifact.version),
+      time: OLD_DATE,
+    };
+    expect(() => {
+      validateArtifactMetadata(artifact, metadata, 3, NOW);
+    }).toThrow("newer than");
+  });
+
+  it("rejects manifest name, version, integrity, and tarball divergence", () => {
+    const artifact = artifactEntry("2.0.0");
+    const canonical = packument(artifact);
+    const manifest = requireManifest(canonical, artifact.version);
+    for (const divergentManifest of [
+      { ...manifest, name: "other" },
+      { ...manifest, version: "2.0.1" },
+      {
+        ...manifest,
+        dist: { integrity: "sha512-other", tarball: artifact.resolved },
+      },
+      {
+        ...manifest,
+        dist: {
+          integrity: artifact.integrity,
+          tarball: `${REGISTRY}other.tgz`,
+        },
+      },
+    ]) {
+      const metadata = packument(artifact);
+      metadata.versions[artifact.version] = divergentManifest;
+      expect(() => {
+        validateArtifactMetadata(artifact, metadata, 3, NOW);
+      }).toThrow();
+    }
+  });
+
+  it("rejects incomplete, invalid, and too-recent top-level timestamps", () => {
+    const artifact = artifactEntry("2.0.0");
+    const incomplete = packument(artifact);
+    incomplete.time = {};
+    expect(() => {
+      validateArtifactMetadata(artifact, incomplete, 3, NOW);
+    }).toThrow("Incomplete");
+    const invalid = packument(artifact);
+    invalid.time[artifact.version] = "not-a-date";
+    expect(() => {
+      validateArtifactMetadata(artifact, invalid, 3, NOW);
+    }).toThrow("Invalid publication");
+    const recent = packument(artifact);
+    recent.time[artifact.version] = "2026-10-08T00:00:00.000Z";
+    expect(() => {
+      validateArtifactMetadata(artifact, recent, 3, NOW);
+    }).toThrow("newer than");
+  });
+
+  it("URL-encodes scoped names and rejects HTTP, JSON, and off-origin responses", async () => {
+    const artifact = artifactEntry("1.0.0", "@scope/pkg");
+    const requests: string[] = [];
+    const successfulFetch: PackumentFetch = (input, init) => {
+      requests.push(input.toString());
+      expect(init.redirect).toBe("error");
+      return Promise.resolve(response(packument(artifact), { url: input.toString() }));
+    };
+    await expect(fetchPackagePackument("@scope/pkg", successfulFetch)).resolves.toEqual(
+      packument(artifact),
+    );
+    expect(requests).toEqual(["https://registry.npmjs.org/%40scope%2Fpkg"]);
+
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(response({}, { ok: false, status: 503, url: `${REGISTRY}example` })),
+      ),
+    ).rejects.toThrow("HTTP 503");
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(response(new SyntaxError("bad json"), { url: `${REGISTRY}example` })),
+      ),
+    ).rejects.toThrow("valid JSON");
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(response({}, { url: "https://packages.example.test/example" })),
+      ),
+    ).rejects.toThrow("response origin changed");
+  });
+
+  it("fetches one packument per package while validating multiple exact versions", async () => {
+    const artifacts = [artifactEntry("1.0.0"), artifactEntry("2.0.0")];
+    const fetchMock = vi.fn<PackumentFetch>((input) =>
+      Promise.resolve(response(packument(...artifacts), { url: input.toString() })),
+    );
+    await validateArtifactsConcurrently(artifacts, 3, NOW, fetchMock);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the exact repository minimum release-age configuration", () => {
     expect(() => validateMinimumReleaseAge(2)).toThrow("must equal repository policy 3 days");
     expect(validateMinimumReleaseAge(3)).toBe(3);
-  });
-
-  it("rejects incomplete or invalid registry metadata", () => {
-    const artifact = artifactEntry("2.0.0", "example");
-    expect(() => {
-      validateArtifactMetadata(
-        artifact,
-        { dist: { integrity: artifact.integrity, tarball: artifact.resolved }, time: {} },
-        3,
-        NOW,
-      );
-    }).toThrow("Incomplete npm metadata");
   });
 });

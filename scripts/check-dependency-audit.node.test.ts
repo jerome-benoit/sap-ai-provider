@@ -10,11 +10,44 @@ import {
 
 const TODAY = "2026-10-09";
 
+/** Mutable advisory fixture. */
+interface Advisory {
+  dependency: string;
+  name: string;
+  severity: string;
+  url: string;
+}
+
+/** Mutable lockfile package fixture. */
+interface LockEntry {
+  dependencies?: Record<string, string>;
+  dev?: boolean;
+  devDependencies?: Record<string, string>;
+  name?: string;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+  version?: string;
+}
+
+/** Mutable npm vulnerability fixture. */
+interface Vulnerability {
+  effects?: string[];
+  isDirect: boolean;
+  name: string;
+  nodes: string[];
+  severity: string;
+  via: (Advisory | string)[];
+}
+
 /**
- * Build an isolated mutable report and lockfile fixture.
- * @returns Mutable report and lockfile
+ * Build an isolated mutable report and lockfile fixture with all approved routes.
+ * @returns Mutable report and lockfile fixtures
  */
-function fixtures() {
+function fixtures(): {
+  lock: { lockfileVersion: 3; packages: Record<string, LockEntry> };
+  report: { vulnerabilities: Record<string, Vulnerability> };
+} {
   return {
     lock: {
       lockfileVersion: 3,
@@ -27,8 +60,23 @@ function fixtures() {
           dependencies: { "jks-js": "^1.1.7" },
         },
         "node_modules/braces": { dev: true, version: "3.0.2" },
+        "node_modules/fast-glob": {
+          dependencies: { micromatch: "^4.0.8" },
+          dev: true,
+        },
+        "node_modules/globby": {
+          dependencies: { "fast-glob": "^3.3.3", micromatch: "^4.0.8" },
+          dev: true,
+        },
         "node_modules/jks-js": { dependencies: { "node-forge": "^1.4.0" } },
-        "node_modules/micromatch": { dependencies: { braces: "^3.0.3" }, dev: true },
+        "node_modules/markdownlint-cli2": {
+          dependencies: { globby: "16.2.4", micromatch: "4.0.8" },
+          dev: true,
+        },
+        "node_modules/micromatch": {
+          dependencies: { braces: "^3.0.3" },
+          dev: true,
+        },
         "node_modules/node-forge": { version: "1.4.0" },
       },
     },
@@ -43,6 +91,7 @@ function fixtures() {
           via: ["jks-js"],
         },
         braces: {
+          effects: ["micromatch"],
           isDirect: false,
           name: "braces",
           nodes: ["node_modules/braces"],
@@ -56,6 +105,22 @@ function fixtures() {
             },
           ],
         },
+        "fast-glob": {
+          effects: ["globby"],
+          isDirect: false,
+          name: "fast-glob",
+          nodes: ["node_modules/fast-glob"],
+          severity: "high",
+          via: ["micromatch"],
+        },
+        globby: {
+          effects: ["markdownlint-cli2"],
+          isDirect: false,
+          name: "globby",
+          nodes: ["node_modules/globby"],
+          severity: "high",
+          via: ["fast-glob", "micromatch"],
+        },
         "jks-js": {
           effects: ["@sap-cloud-sdk/connectivity"],
           isDirect: false,
@@ -63,6 +128,22 @@ function fixtures() {
           nodes: ["node_modules/jks-js"],
           severity: "high",
           via: ["node-forge"],
+        },
+        "markdownlint-cli2": {
+          effects: [],
+          isDirect: true,
+          name: "markdownlint-cli2",
+          nodes: ["node_modules/markdownlint-cli2"],
+          severity: "high",
+          via: ["globby", "micromatch"],
+        },
+        micromatch: {
+          effects: ["fast-glob", "globby", "markdownlint-cli2"],
+          isDirect: false,
+          name: "micromatch",
+          nodes: ["node_modules/micromatch"],
+          severity: "high",
+          via: ["braces"],
         },
         "node-forge": {
           effects: ["jks-js"],
@@ -94,134 +175,362 @@ function processResult(stdout: string): AuditProcessResult {
 }
 
 /**
- * Require an indexed fixture value.
- * @param value - Possibly absent indexed value
- * @returns Present fixture value
+ * Require an advisory occurrence from a fixture.
+ * @param value - Possibly absent advisory value
+ * @returns Present advisory occurrence
  */
-function requireFixtureValue<T>(value: T | undefined): T {
-  if (value === undefined) throw new Error("Invalid test fixture");
+function requireAdvisory(value: Advisory | string | undefined): Advisory {
+  if (!value || typeof value === "string") throw new Error("Invalid test fixture");
   return value;
 }
 
-describe("dependency audit policy", () => {
-  it("accepts only the two advisories in their attested contexts", () => {
+/**
+ * Require an exact lockfile package fixture.
+ * @param packages - Mutable package fixtures
+ * @param path - Exact package path
+ * @returns Present lockfile entry
+ */
+function requireLockEntry(packages: Record<string, LockEntry>, path: string): LockEntry {
+  const entry = packages[path];
+  if (!entry) throw new Error(`Missing test lockfile entry ${path}`);
+  return entry;
+}
+
+/**
+ * Require an exact vulnerability fixture.
+ * @param vulnerabilities - Mutable vulnerability fixtures
+ * @param name - Exact vulnerability package name
+ * @returns Present vulnerability fixture
+ */
+function requireVulnerability(
+  vulnerabilities: Record<string, Vulnerability>,
+  name: string,
+): Vulnerability {
+  const vulnerability = vulnerabilities[name];
+  if (!vulnerability) throw new Error(`Missing test vulnerability ${name}`);
+  return vulnerability;
+}
+
+describe("dependency audit instance graph policy", () => {
+  it("accepts the runtime route and all three real Markdownlint routes", () => {
     const { lock, report } = fixtures();
     expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
   });
 
-  it("rejects an advisory attached to the wrong package", () => {
+  it("rejects an alias instance of the vulnerable package outside an approved route", () => {
     const { lock, report } = fixtures();
-    const advisory = requireFixtureValue(report.vulnerabilities["node-forge"].via[0]);
-    advisory.name = "different-package";
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("package does not match");
-  });
-
-  it("rejects npm error reports even if vulnerabilities are present", () => {
-    const { lock, report } = fixtures();
-    expect(() =>
-      validateDependencyAudit({ ...report, error: { code: "EAUDIT" } }, lock, TODAY),
-    ).toThrow("valid vulnerability report");
-  });
-
-  it("rejects severity escalation to critical", () => {
-    const { lock, report } = fixtures();
-    const advisory = requireFixtureValue(report.vulnerabilities["node-forge"].via[0]);
-    advisory.severity = "critical";
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("severity critical");
-  });
-
-  it("rejects a direct occurrence", () => {
-    const { lock, report } = fixtures();
-    report.vulnerabilities["node-forge"].isDirect = true;
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("directness");
-  });
-
-  it("rejects an additional immediate parent for an allowed advisory", () => {
-    const { lock, report } = fixtures();
-    const extraParentLock = {
-      ...lock,
-      packages: {
-        ...lock.packages,
-        "node_modules/other-parent": { dependencies: { "node-forge": "^1.4.0" } },
-      },
+    requireLockEntry(lock.packages, "").dependencies = {
+      ...requireLockEntry(lock.packages, "").dependencies,
+      "forge-alias": "npm:node-forge",
     };
-    expect(() => validateDependencyAudit(report, extraParentLock, TODAY)).toThrow(
-      "parent packages",
+    lock.packages["node_modules/forge-alias"] = {
+      name: "node-forge",
+      version: "1.4.0",
+    };
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes.push(
+      "node_modules/forge-alias",
+    );
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("unapproved direct root");
+  });
+
+  it("rejects an incoherent alias edge to an audited instance", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").dependencies = {
+      ...requireLockEntry(lock.packages, "").dependencies,
+      "forge-alias": "npm:different-package@1.4.0",
+    };
+    lock.packages["node_modules/forge-alias"] = {
+      name: "node-forge",
+      version: "1.4.0",
+    };
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes.push(
+      "node_modules/forge-alias",
+    );
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "incoherent or ambiguous alias edge",
     );
   });
 
-  it("rejects an additional immediate parent using an npm alias", () => {
+  it("rejects conflicting alias identities across dependency fields", () => {
     const { lock, report } = fixtures();
-    const aliasedParentLock = {
-      ...lock,
-      packages: {
-        ...lock.packages,
-        "node_modules/alias-parent": {
-          dependencies: { "forge-alias": "npm:node-forge@1.4.0" },
-        },
-      },
+    const root = requireLockEntry(lock.packages, "");
+    root.dependencies = { ...root.dependencies, alias: "npm:node-forge" };
+    root.devDependencies = {
+      ...root.devDependencies,
+      alias: "npm:different-package@1.0.0",
     };
-    expect(() => validateDependencyAudit(report, aliasedParentLock, TODAY)).toThrow(
-      "parent packages",
+    lock.packages["node_modules/alias"] = {
+      name: "node-forge",
+      version: "1.4.0",
+    };
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes.push("node_modules/alias");
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "incoherent or ambiguous alias edge",
     );
   });
 
-  it("rejects an unrelated package that also declares the intermediate JKS dependency", () => {
+  it("ignores a safe aliased instance that npm audit did not report", () => {
     const { lock, report } = fixtures();
-    const unrelatedParentLock = {
-      ...lock,
-      packages: {
-        ...lock.packages,
-        "node_modules/unrelated": { dependencies: { "jks-js": "^1.1.7" } },
-      },
+    requireLockEntry(lock.packages, "").dependencies = {
+      ...requireLockEntry(lock.packages, "").dependencies,
+      "forge-alias": "npm:node-forge@2.0.0",
     };
-    expect(() => validateDependencyAudit(report, unrelatedParentLock, TODAY)).toThrow(
-      "parent packages for jks-js",
+    lock.packages["node_modules/forge-alias"] = {
+      name: "node-forge",
+      version: "2.0.0",
+    };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("accepts bare and versioned scoped aliases for safe instances", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").dependencies = {
+      ...requireLockEntry(lock.packages, "").dependencies,
+      "scoped-bare": "npm:@scope/pkg",
+      "scoped-versioned": "npm:@scope/pkg@^1.0.0",
+    };
+    lock.packages["node_modules/scoped-bare"] = {
+      name: "@scope/pkg",
+      version: "1.0.0",
+    };
+    lock.packages["node_modules/scoped-versioned"] = {
+      name: "@scope/pkg",
+      version: "1.1.0",
+    };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("ignores a nested safe version while validating the exact audited node", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").devDependencies = {
+      ...requireLockEntry(lock.packages, "").devDependencies,
+      "safe-tool": "1.0.0",
+    };
+    lock.packages["node_modules/safe-tool"] = {
+      dependencies: { braces: "4.0.0" },
+      dev: true,
+    };
+    lock.packages["node_modules/safe-tool/node_modules/braces"] = {
+      dev: true,
+      version: "4.0.0",
+    };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("rejects substitution of declarations from a different package instance", () => {
+    const { lock, report } = fixtures();
+    lock.packages["node_modules/unrelated/node_modules/node-forge"] = {
+      name: "node-forge",
+      version: "1.4.0",
+    };
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes = [
+      "node_modules/unrelated/node_modules/node-forge",
+    ];
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("direct root declaration");
+  });
+
+  it("rejects Markdownlint being absent from the root declaration", () => {
+    const { lock, report } = fixtures();
+    delete requireLockEntry(lock.packages, "").devDependencies?.["markdownlint-cli2"];
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("direct root declaration");
+  });
+
+  it("rejects Markdownlint being rooted under another top-level dependency", () => {
+    const { lock, report } = fixtures();
+    const root = requireLockEntry(lock.packages, "");
+    delete root.devDependencies?.["markdownlint-cli2"];
+    root.devDependencies = {
+      ...root.devDependencies,
+      "other-linter": "1.0.0",
+    };
+    lock.packages["node_modules/other-linter"] = {
+      dependencies: { "markdownlint-cli2": "0.23.3" },
+      dev: true,
+    };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "additional incoming route to markdownlint-cli2",
     );
   });
 
-  it("rejects transitive reporting for a direct lockfile dependency", () => {
+  it("stops at a coherently root-declared anchor shared by another dependency", () => {
     const { lock, report } = fixtures();
-    const directLock = {
-      ...lock,
-      packages: {
-        ...lock.packages,
-        "": { ...lock.packages[""], dependencies: { "node-forge": "1.4.0" } },
-      },
+    requireLockEntry(lock.packages, "").dependencies = {
+      ...requireLockEntry(lock.packages, "").dependencies,
+      "@sap-ai-sdk/core": "2.16.0",
     };
-    expect(() => validateDependencyAudit(report, directLock, TODAY)).toThrow("declared directly");
+    lock.packages["node_modules/@sap-ai-sdk/core"] = {
+      dependencies: { "@sap-cloud-sdk/connectivity": "^4.9.1" },
+    };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
   });
 
-  it("rejects a development exception that reaches runtime", () => {
+  it("rejects an incoherent shared reference entering a direct anchor", () => {
     const { lock, report } = fixtures();
-    lock.packages["node_modules/braces"].dev = false;
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("scope runtime");
+    requireLockEntry(lock.packages, "").dependencies = {
+      ...requireLockEntry(lock.packages, "").dependencies,
+      "@sap-ai-sdk/core": "2.16.0",
+    };
+    lock.packages["node_modules/@sap-ai-sdk/core"] = {
+      dependencies: {
+        "@sap-cloud-sdk/connectivity": "npm:different-package@1.0.0",
+      },
+    };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "incoherent or ambiguous alias edge",
+    );
+  });
+
+  it("rejects an additional route anchored at another root dependency", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").devDependencies = {
+      ...requireLockEntry(lock.packages, "").devDependencies,
+      "other-linter": "1.0.0",
+    };
+    lock.packages["node_modules/other-linter"] = {
+      dependencies: { micromatch: "4.0.8" },
+      dev: true,
+    };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "unapproved dependency route",
+    );
+  });
+
+  it("includes optional dependencies as provenance edges", () => {
+    const { lock, report } = fixtures();
+    const connectivity = requireLockEntry(
+      lock.packages,
+      "node_modules/@sap-cloud-sdk/connectivity",
+    );
+    connectivity.dependencies = undefined;
+    connectivity.optionalDependencies = { "jks-js": "^1.1.7" };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("includes peer dependencies as provenance edges", () => {
+    const { lock, report } = fixtures();
+    const jks = requireLockEntry(lock.packages, "node_modules/jks-js");
+    jks.dependencies = undefined;
+    jks.peerDependencies = { "node-forge": "^1.4.0" };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("ignores the real Markdownlint formatter peer back-edge", () => {
+    const { lock, report } = fixtures();
+    const markdownlint = requireLockEntry(lock.packages, "node_modules/markdownlint-cli2");
+    markdownlint.dependencies = {
+      ...markdownlint.dependencies,
+      "markdownlint-cli2-formatter-default": "0.0.6",
+    };
+    lock.packages["node_modules/markdownlint-cli2-formatter-default"] = {
+      dev: true,
+      peerDependencies: { "markdownlint-cli2": ">=0.0.4" },
+    };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("fails closed on absent targets in every dependency field", () => {
+    for (const field of [
+      "dependencies",
+      "devDependencies",
+      "optionalDependencies",
+      "peerDependencies",
+    ] as const) {
+      const { lock, report } = fixtures();
+      const root = requireLockEntry(lock.packages, "");
+      root[field] = { ...root[field], missing: "1.0.0" };
+      expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+        "Missing dependency target missing declared by <root>",
+      );
+    }
+  });
+
+  it("rejects an unresolved peer dependency target", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").peerDependencies = { missing: "1.0.0" };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "Missing dependency target missing declared by <root>",
+    );
+  });
+
+  it("allows an unresolved optional peer dependency target", () => {
+    const { lock, report } = fixtures();
+    const root = requireLockEntry(lock.packages, "");
+    root.peerDependencies = { missing: "1.0.0" };
+    root.peerDependenciesMeta = { missing: { optional: true } };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("resolves nested instances below a scoped package with Node hoisting semantics", () => {
+    const { lock, report } = fixtures();
+    delete lock.packages["node_modules/jks-js"];
+    delete lock.packages["node_modules/node-forge"];
+    const jksPath = "node_modules/@sap-cloud-sdk/connectivity/node_modules/jks-js";
+    const forgePath = `${jksPath}/node_modules/node-forge`;
+    lock.packages[jksPath] = { dependencies: { "node-forge": "^1.4.0" } };
+    lock.packages[forgePath] = { version: "1.4.0" };
+    requireVulnerability(report.vulnerabilities, "jks-js").nodes = [jksPath];
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes = [forgePath];
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("rejects cycles before reaching an approved root anchor", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "node_modules/micromatch").dependencies = {
+      ...requireLockEntry(lock.packages, "node_modules/micromatch").dependencies,
+      globby: "^16.2.4",
+    };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "unapproved dependency route",
+    );
   });
 
   it("rejects an audit node absent from the lockfile", () => {
     const { lock, report } = fixtures();
-    report.vulnerabilities["node-forge"].nodes = ["node_modules/missing"];
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes = ["node_modules/missing"];
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("missing lockfile node");
   });
 
-  it("does not let a duplicate GHSA overwrite a contradictory occurrence", () => {
+  it("retains audit effects and via checks as secondary defenses", () => {
     const { lock, report } = fixtures();
-    const via = report.vulnerabilities["node-forge"].via;
-    via.push({ ...requireFixtureValue(via[0]), severity: "critical" });
+    requireVulnerability(report.vulnerabilities, "micromatch").effects = [
+      "globby",
+      "markdownlint-cli2",
+    ];
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "effects for micromatch do not include fast-glob",
+    );
+  });
+
+  it("rejects development exceptions that reach runtime", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "node_modules/braces").dev = false;
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("scope runtime");
+  });
+
+  it("rejects a contradictory duplicate advisory occurrence", () => {
+    const { lock, report } = fixtures();
+    const via = requireVulnerability(report.vulnerabilities, "node-forge").via;
+    via.push({ ...requireAdvisory(via[0]), severity: "critical" });
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("severity critical");
   });
 });
 
 describe("npm audit process contract", () => {
-  it("rejects exit status 2 before interpreting output", () => {
+  it("rejects process failures and invalid JSON before policy validation", () => {
     const { lock, report } = fixtures();
+    expect(() =>
+      checkAuditProcessResult(
+        {
+          ...processResult(JSON.stringify(report)),
+          error: new Error("spawn failed"),
+        },
+        lock,
+        TODAY,
+      ),
+    ).toThrow("Unable to run npm audit");
     expect(() =>
       checkAuditProcessResult({ ...processResult(JSON.stringify(report)), status: 2 }, lock, TODAY),
     ).toThrow("status 2");
-  });
-
-  it("rejects signal termination", () => {
-    const { lock, report } = fixtures();
     expect(() =>
       checkAuditProcessResult(
         { ...processResult(JSON.stringify(report)), signal: "SIGTERM" },
@@ -229,31 +538,31 @@ describe("npm audit process contract", () => {
         TODAY,
       ),
     ).toThrow("signal SIGTERM");
-  });
-
-  it("rejects invalid JSON even after a zero exit", () => {
-    const { lock } = fixtures();
     expect(() => checkAuditProcessResult(processResult("{"), lock, TODAY)).toThrow("valid JSON");
   });
 
-  it("accepts a valid zero-exit report and invokes npm through Node.js", () => {
-    const { lock, report } = fixtures();
-    expect(
-      checkAuditProcessResult(processResult(JSON.stringify(report)), lock, TODAY),
-    ).toHaveLength(2);
+  it("forces every dependency scope even when npm omit configuration is inherited", () => {
     expect(getNpmAuditInvocation("/npm-cli.js", "/node")).toEqual({
       args: [
         "/npm-cli.js",
         "audit",
         "--json",
         "--audit-level=none",
+        "--include=prod",
+        "--include=dev",
+        "--include=optional",
+        "--include=peer",
         "--registry=https://registry.npmjs.org/",
       ],
       command: "/node",
     });
   });
 
-  it("rejects direct execution without npm context", () => {
+  it("accepts a valid zero-exit report and rejects direct execution without npm context", () => {
+    const { lock, report } = fixtures();
+    expect(
+      checkAuditProcessResult(processResult(JSON.stringify(report)), lock, TODAY),
+    ).toHaveLength(2);
     expect(() => getNpmAuditInvocation("", "/node")).toThrow("Missing npm_execpath");
   });
 });

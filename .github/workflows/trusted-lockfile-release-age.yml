@@ -1,0 +1,109 @@
+name: Trusted Lockfile Release Age
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, reopened, synchronize]
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: trusted-lockfile-release-age-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lockfile-release-age:
+    name: Trusted lockfile status publisher (base code)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish pending trusted status on the exact PR head
+        if: github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "GitHub event did not provide an exact PR head SHA" >&2
+            exit 1
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state=pending \
+            -f context=dependency-security/trusted-lockfile-release-age \
+            -f description="Trusted lockfile attestation is running" \
+            -f target_url="$RUN_URL"
+      - name: Checkout trusted default branch
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Checkout exact trusted push
+        if: github.event_name == 'push'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - name: Fetch untrusted PR ref as Git objects and verify its SHA
+        if: github.event_name == 'pull_request_target'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "GitHub event did not provide exact PR SHAs and number" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "refs/pull/$PR_NUMBER/head"
+          FETCHED_SHA=$(git rev-parse FETCH_HEAD)
+          if [ "$FETCHED_SHA" != "$HEAD_SHA" ]; then
+            echo "Fetched PR SHA $FETCHED_SHA does not match event SHA $HEAD_SHA" >&2
+            exit 1
+          fi
+          git cat-file -e "$HEAD_SHA^{commit}"
+      - name: Attest exact PR lockfile with the trusted base checker
+        if: github.event_name == 'pull_request_target'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npm run check-lockfile-release-age -- --head "$HEAD_SHA" --base "$BASE_SHA"
+      - name: Attest exact trusted push against the policy baseline
+        if: github.event_name == 'push'
+        run: npm run check-lockfile-release-age
+      - name: Publish final trusted status on the exact PR head
+        if: always() && github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "GitHub event did not provide an exact PR head SHA" >&2
+            exit 1
+          fi
+          if [ "$JOB_STATUS" = "success" ]; then
+            STATE=success
+            DESCRIPTION="Trusted lockfile attestation succeeded"
+          else
+            STATE=failure
+            DESCRIPTION="Trusted lockfile attestation failed"
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
+            -f state="$STATE" \
+            -f context=dependency-security/trusted-lockfile-release-age \
+            -f description="$DESCRIPTION" \
+            -f target_url="$RUN_URL"

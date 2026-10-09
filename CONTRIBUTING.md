@@ -87,6 +87,8 @@ accept pull requests.
 
 3. **Install dependencies**
 
+   Run the local non-authoritative candidate gate before installation:
+
    ```bash
    npm run check-lockfile-release-age
    npm ci
@@ -183,11 +185,15 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. Before
-installation, pull requests differentially check artifacts against their base SHA;
-push, autofix-push, and release workflows check every artifact introduced since
-the immutable policy baseline.
-Lint and formatting run once on Ubuntu; dependency audit,
+CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. The PR and
+autofix workflows run a non-authoritative candidate release-age gate before
+installation. The dedicated trusted workflow uses `pull_request_target` to run only
+the default-branch checker, reads the untrusted head lockfile only with `git show`,
+and checks its exact head and base SHAs. It publishes pending then final commit status
+`dependency-security/trusted-lockfile-release-age` on the exact PR head without
+executing it; its `push` job checks `main` against the immutable policy baseline.
+Release jobs re-run that checker.
+Lint and formatting run once on Ubuntu; the complete-scope dependency audit,
 types, Node and Edge tests, and builds run on every OS. `build:v2` replaces
 `dist/`, so rerun `npm run build` before using or packaging the main package
 afterward.
@@ -406,10 +412,14 @@ npm test             # Runs test suite
 - Validate all external inputs with zod schemas
 - Follow secure credential handling patterns
 - Check for injection vulnerabilities
-- Run `npm run check-dependency-audit` after dependency changes. It requires
-  registry access and validates advisory-specific, expiring exceptions against
-  exact package, severity, directness, complete approved parent path, audit
-  meta-links, and lockfile scope.
+- Run `npm run check-dependency-audit` after dependency changes. It forces the
+  production, development, optional, and peer scopes even when npm `omit`
+  configuration is inherited. Expiring exceptions are validated from exact npm
+  audit nodes against the lockfile-v3 instance graph using Node ancestor resolution.
+  Validation covers every edge up to the directly declared root anchor and the
+  identity coherence of every edge entering that anchor; coherent shared references
+  above it are not recursively treated as new provenance. Package, severity,
+  directness, scope, and audit `effects`/`via` links remain checked.
 - Use overrides to force a published version containing a security fix when
   parent dependency ranges do not yet admit it. Verify every affected dependency
   path, and remove the override once parent ranges admit a fixed version.
@@ -417,16 +427,27 @@ npm test             # Runs test suite
   the lockfile and affected tool or runtime paths.
 - npm `min-release-age` filters dependency resolution, but `npm ci` installs the
   existing lockfile verbatim. Repository policy fixes the age at 3 days and the
-  provenance registry at `https://registry.npmjs.org/`;
-  `npm run check-lockfile-release-age` needs registry access and fails closed on
-  unavailable or incomplete metadata. With no arguments it checks every artifact
-  introduced since policy baseline `62cd5dab23e0b8c0faf3b843943013a608318c36`;
-  `-- --all` explicitly checks the complete lockfile, and
-  `-- --base <full-git-sha>` selects a different comparison base. Pull requests use
-  their explicit base; pushes, autofix pushes, and releases use the cumulative policy
-  baseline before installation. Advance that immutable baseline only after the exact
-  gate succeeds and the baseline change is reviewed. A release SHA must also be on
-  `main` and have a successful check run named exactly `Lockfile release age`.
+  registry at `https://registry.npmjs.org/`. The checker fetches each package's raw
+  canonical packument once, without redirects, and takes publication time only from
+  top-level `time[version]`; identity, integrity, and tarball come from the matching
+  `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
+  JSON, metadata, or provenance errors. With no arguments it uses policy baseline
+  `62cd5dab23e0b8c0faf3b843943013a608318c36`; `-- --all` checks the complete
+  lockfile and `-- --base <full-git-sha>` is the local candidate differential mode.
+  The dedicated trusted workflow alone uses `--head <full-git-sha> --base
+<full-git-sha>` so both lockfiles are loaded by exact `git show` object names.
+  Releases require a successful `push` run for their exact SHA from
+  `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker.
+- Repository files cannot enforce the final GitHub trust boundary. A branch ruleset
+  must require the exact head status context
+  `dependency-security/trusted-lockfile-release-age` and restrict who may satisfy it.
+  Because a status context name and the shared GitHub Actions App identity do not
+  uniquely identify this workflow, an organization required workflow/Actions event
+  policy or a dedicated external GitHub App is needed to prevent an untrusted or
+  homonymous workflow from spoofing it. The same external policy must protect the
+  trusted and release workflows, checker scripts, `.npmrc`, `package.json`, and
+  `.github/CODEOWNERS`. CODEOWNERS only records intended reviewers; it does not
+  enforce those controls, and this repository does not claim they are active.
 
 ## Advanced: Detailed Developer Instructions
 

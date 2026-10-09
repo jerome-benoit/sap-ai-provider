@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   lockfile-release-age:
-    name: Lockfile release age
+    name: Candidate lockfile release age (non-authoritative)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code and base history
@@ -28,10 +28,10 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-      - name: Attest new pull request lockfile artifacts
+      - name: Non-authoritative candidate attestation of pull request lockfile artifacts
         if: github.event_name == 'pull_request'
         run: npm run check-lockfile-release-age -- --base "${{ github.event.pull_request.base.sha }}"
-      - name: Attest policy-new pushed lockfile artifacts
+      - name: Non-authoritative candidate attestation of policy-new pushed artifacts
         if: github.event_name == 'push'
         run: npm run check-lockfile-release-age
 

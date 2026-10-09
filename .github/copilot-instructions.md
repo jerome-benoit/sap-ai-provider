@@ -20,7 +20,7 @@ Always reference these instructions first and fallback to search or bash command
   - Use `npm install` when no package-lock.json exists (fresh clone)
   - The prepare script installs Lefthook hooks; it does not build the package
   - Run `npm run build` explicitly to create `dist/` artifacts
-- **Existing install**: run `npm run check-lockfile-release-age` before `npm ci`; the
+- **Existing install**: run `npm run check-lockfile-release-age` before `npm ci`; this local candidate
   gate needs registry access but no installed dependencies. Then allow ~15 seconds for
   `npm ci`; NEVER CANCEL and set timeout to 30+ seconds.
   - Use when package-lock.json already exists
@@ -64,19 +64,38 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 ### Dependency Security
 
-- Run `npm run check-dependency-audit` with registry access to validate the full
-  audit report and its temporary, context-bound exceptions.
+- Run `npm run check-dependency-audit` with registry access. It forces production,
+  development, optional, and peer scopes despite inherited npm `omit` settings.
+  Temporary exceptions start only from npm audit's exact nodes in the lockfile-v3
+  package-instance graph, using Node ancestor resolution semantics. Validation covers
+  every edge up to the directly declared root anchor and the identity coherence of
+  every edge entering that anchor; coherent shared references above it are not
+  recursively treated as new provenance. Scope, severity, directness, and audit
+  `effects`/`via` meta-links are also checked.
 - npm `min-release-age` filters resolution only; `npm ci` installs an existing
-  lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`;
-  the gate rejects accidental config/provenance drift.
-- `npm run check-lockfile-release-age` requires the public registry and fails closed
-  on unavailable or incomplete metadata. Its default policy mode checks artifacts
-  introduced since baseline `62cd5dab23e0b8c0faf3b843943013a608318c36`;
-  `-- --all` explicitly checks the complete lock, while
-  `-- --base <full-git-sha>` selects a comparison base. Pull requests use their base;
-  pushes, autofix pushes, and releases use policy mode before installation. Advance
-  the baseline only after an exact successful gate and review. Releases also retain
-  the exact-SHA `main` and check-run defenses.
+  lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`.
+  The checker fetches raw canonical packuments directly, without redirects, caching
+  one request per package. It uses only top-level `time[version]` and requires the
+  matching `versions[version]` name, version, integrity, and tarball to equal the
+  lockfile; unavailable, non-JSON, incomplete, or divergent metadata fails closed.
+- The default release-age mode checks artifacts introduced since baseline
+  `62cd5dab23e0b8c0faf3b843943013a608318c36`; `-- --all` checks the complete
+  lock, and `-- --base <full-git-sha>` is the local candidate differential mode.
+  The dedicated trusted workflow uses `--head <full-git-sha> --base <full-git-sha>`
+  so the default-branch checker reads both exact lockfiles only through `git show`,
+  then publishes the status context
+  `dependency-security/trusted-lockfile-release-age` on the exact PR head.
+  PR/autofix gates are explicitly non-authoritative candidate checks. Releases require
+  an exact-SHA successful `push` run of
+  `.github/workflows/trusted-lockfile-release-age.yml` and re-run the checker.
+- A branch ruleset must externally require that exact status context and restrict its
+  source. The shared GitHub Actions App identity plus a context name cannot uniquely
+  identify this workflow, so an organization required workflow/Actions event policy
+  or dedicated external GitHub App is needed to prevent spoofing by a homonymous or
+  untrusted workflow. External policy must also protect the trusted/release workflows,
+  checker scripts, `.npmrc`, `package.json`, and `.github/CODEOWNERS`.
+  CODEOWNERS is reviewer intent, not enforcement; no such external policy is claimed
+  active.
 
 ### Type Checking and Linting
 
@@ -266,9 +285,9 @@ All commands should pass; execution time depends on the environment.
 ### CI/CD Pipeline
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
-- **CI checks**: dependency-free gates run before installs in validation and autofix; after validation passes, dependency audit, type-check, Node/Edge tests, and builds run on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
+- **CI checks**: candidate dependency-free gates run before installs in validation and autofix; the separate `pull_request_target`/`push` trusted workflow never checks out or executes PR head code and publishes its dedicated status context on the exact PR head; after validation passes, complete-scope dependency audit, type-check, Node/Edge tests, and builds run on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
 - **Build coverage**: portable artifact checks validate the main V3/V2/V4 build and the standalone V2 build on every OS; the main build also validates ESM/CommonJS declaration routing
-- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful `Lockfile release age` check, then publishes both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful exact-SHA `push` run of the dedicated trusted lockfile workflow, re-runs the checker, then publishes both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
 - **Runtime coverage**: Node and Edge suites run sequentially within each OS job; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies
@@ -284,7 +303,7 @@ All commands should pass; execution time depends on the environment.
 # Fresh setup (no package-lock.json)
 npm install               # Install deps + Lefthook hooks (no build)
 # or existing setup (with package-lock.json)
-npm run check-lockfile-release-age # Fail-closed policy-baseline attestation
+npm run check-lockfile-release-age # Local candidate policy-baseline attestation
 npm ci                    # Clean install + Lefthook hooks (no build)
 
 # Development

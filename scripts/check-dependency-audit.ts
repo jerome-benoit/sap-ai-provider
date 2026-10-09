@@ -7,7 +7,7 @@ import { z } from "zod";
 
 /** Contract for one temporary dependency advisory exception. */
 export interface AllowedAdvisory {
-  dependencyPath: readonly string[];
+  dependencyPaths: readonly (readonly string[])[];
   direct: boolean;
   expires: string;
   packageName: string;
@@ -60,21 +60,61 @@ const lockPackageSchema = z.object({
   name: z.string().optional(),
   optionalDependencies: dependencyMapSchema,
   peerDependencies: dependencyMapSchema,
+  peerDependenciesMeta: z
+    .record(z.string(), z.object({ optional: z.boolean().optional() }))
+    .optional(),
 });
 const packageLockSchema = z.object({
+  lockfileVersion: z.literal(3),
   packages: z.record(z.string(), lockPackageSchema),
 });
 
 type AuditAdvisory = z.infer<typeof auditAdvisorySchema>;
 type AuditReport = z.infer<typeof auditReportSchema>;
+
+/** One resolved dependency edge between exact lockfile instances. */
+interface DependencyEdge {
+  coherent: boolean;
+  declaredName: string;
+  parentPath: string;
+}
+
+/** Exact lockfile instances and their reverse dependency edges. */
+interface DependencyGraph {
+  incoming: Map<string, DependencyEdge[]>;
+  instances: Map<string, PackageInstance>;
+}
+
+type LockPackage = z.infer<typeof lockPackageSchema>;
+
+/** One exact package instance from the lockfile packages map. */
+interface PackageInstance {
+  entry: LockPackage;
+  name: string;
+  path: string;
+}
+
 type PackageLock = z.infer<typeof packageLockSchema>;
 
+/** One active position in an approved dependency route. */
+interface PolicyState {
+  index: number;
+  route: readonly string[];
+  routeIndex: number;
+}
+
+const DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+] as const;
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 /** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
 export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {
   "GHSA-86w9-cpqp-85rv": {
-    dependencyPath: ["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"],
+    dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
     direct: false,
     expires: "2026-11-08",
     packageName: "node-forge",
@@ -83,7 +123,11 @@ export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {
     severity: "high",
   },
   "GHSA-vfj7-8cjw-p6xm": {
-    dependencyPath: ["micromatch", "braces"],
+    dependencyPaths: [
+      ["markdownlint-cli2", "micromatch", "braces"],
+      ["markdownlint-cli2", "globby", "micromatch", "braces"],
+      ["markdownlint-cli2", "globby", "fast-glob", "micromatch", "braces"],
+    ],
     direct: false,
     expires: "2026-11-08",
     packageName: "braces",
@@ -105,8 +149,12 @@ export function checkAuditProcessResult(
   lockValue: unknown,
   today = new Date().toISOString().slice(0, 10),
 ): ValidatedAdvisory[] {
-  if (audit.error) throw new Error(`Unable to run npm audit: ${audit.error.message}`);
-  if (audit.signal !== null) throw new Error(`npm audit terminated by signal ${audit.signal}`);
+  if (audit.error) {
+    throw new Error(`Unable to run npm audit: ${audit.error.message}`);
+  }
+  if (audit.signal !== null) {
+    throw new Error(`npm audit terminated by signal ${audit.signal}`);
+  }
   if (audit.status !== 0) {
     const diagnostic = audit.stderr.trim();
     throw new Error(
@@ -146,6 +194,10 @@ export function getNpmAuditInvocation(
       "audit",
       "--json",
       "--audit-level=none",
+      "--include=prod",
+      "--include=dev",
+      "--include=optional",
+      "--include=peer",
       `--registry=${PUBLIC_NPM_REGISTRY}`,
     ],
     command: nodeExecPath,
@@ -170,11 +222,11 @@ export function validateDependencyAudit(
   }
   const lockResult = packageLockSchema.safeParse(lockValue);
   if (!lockResult.success) {
-    throw new Error("package-lock.json does not contain a valid packages map");
+    throw new Error("package-lock.json is not a valid v3 packages map");
   }
 
   const report = reportResult.data;
-  const lock = lockResult.data;
+  const graph = buildDependencyGraph(lockResult.data);
   const foundIds = new Set<string>();
   const validated: ValidatedAdvisory[] = [];
 
@@ -183,7 +235,7 @@ export function validateDependencyAudit(
       if (typeof via === "string") continue;
       const id = parseAdvisoryId(via.url);
       const policy = getAllowedAdvisory(id);
-      validateAdvisoryOccurrence(id, via, report, lock, policy);
+      validateAdvisoryOccurrence(id, via, report, graph, policy);
       foundIds.add(id);
       validated.push({ id, policy });
     }
@@ -205,19 +257,60 @@ export function validateDependencyAudit(
 }
 
 /**
- * Check whether one dependency map declares or aliases a package.
- * @param dependencies - Optional dependency map
- * @param packageName - Real vulnerable package name
- * @returns Whether the package is referenced directly or by npm alias
+ * Construct exact lockfile-v3 package instances and resolved Node dependency edges.
+ * Optional peer targets may be absent; every other declared target must resolve.
+ * @param lock - Validated package lock
+ * @returns Exact instance graph
  */
-function dependencyMapReferencesPackage(
-  dependencies: Record<string, string> | undefined,
-  packageName: string,
-): boolean {
-  return Object.entries(dependencies ?? {}).some(
-    ([declaredName, specification]) =>
-      declaredName === packageName || specification.startsWith(`npm:${packageName}@`),
-  );
+function buildDependencyGraph(lock: PackageLock): DependencyGraph {
+  const instances = new Map<string, PackageInstance>();
+  for (const [path, entry] of Object.entries(lock.packages)) {
+    const name = path === "" ? "<root>" : inferLockPackageName(path, entry);
+    if (!name) {
+      throw new Error(`Cannot identify lockfile package instance ${path}`);
+    }
+    instances.set(path, { entry, name, path });
+  }
+  if (!instances.has("")) {
+    throw new Error("package-lock.json is missing its root package entry");
+  }
+
+  const incoming = new Map<string, DependencyEdge[]>();
+  for (const parent of instances.values()) {
+    const declarations = new Map<string, { expectedNames: Set<string>; required: boolean }>();
+    for (const field of DEPENDENCY_FIELDS) {
+      for (const [declaredName, specification] of Object.entries(parent.entry[field] ?? {})) {
+        const expectedName = inferDeclaredPackageName(declaredName, specification);
+        const declaration = declarations.get(declaredName) ?? {
+          expectedNames: new Set<string>(),
+          required: false,
+        };
+        declaration.expectedNames.add(expectedName);
+        const optionalPeer =
+          field === "peerDependencies" &&
+          parent.entry.peerDependenciesMeta?.[declaredName]?.optional === true;
+        declaration.required ||= !optionalPeer;
+        declarations.set(declaredName, declaration);
+      }
+    }
+
+    for (const [declaredName, declaration] of declarations) {
+      const target = resolveDependencyInstance(parent.path, declaredName, instances);
+      if (!target) {
+        if (!declaration.required) continue;
+        const parentPath = parent.path === "" ? undefined : parent.path;
+        throw new Error(
+          `Missing dependency target ${declaredName} declared by ${parentPath ?? "<root>"}`,
+        );
+      }
+      const coherent =
+        declaration.expectedNames.size === 1 && declaration.expectedNames.has(target.name);
+      const edges = incoming.get(target.path) ?? [];
+      edges.push({ coherent, declaredName, parentPath: parent.path });
+      incoming.set(target.path, edges);
+    }
+  }
+  return { incoming, instances };
 }
 
 /**
@@ -240,27 +333,6 @@ function findAuditVulnerability(
 }
 
 /**
- * Return every lockfile package that declares a child dependency.
- * @param lock - Validated package lock
- * @param packageName - Declared child package name
- * @returns Declaring package names
- */
-function findDeclaringPackages(lock: PackageLock, packageName: string): Set<string> {
-  return new Set(
-    Object.entries(lock.packages)
-      .filter(([, entry]) =>
-        [
-          entry.dependencies,
-          entry.devDependencies,
-          entry.optionalDependencies,
-          entry.peerDependencies,
-        ].some((dependencies) => dependencyMapReferencesPackage(dependencies, packageName)),
-      )
-      .map(([path, entry]) => inferLockPackageName(path, entry) ?? "<root>"),
-  );
-}
-
-/**
  * Resolve one advisory policy without weakening indexed-access checks.
  * @param id - GitHub Security Advisory ID
  * @returns Structured temporary exception
@@ -272,22 +344,43 @@ function getAllowedAdvisory(id: string): AllowedAdvisory {
 }
 
 /**
- * Infer a lockfile package name from explicit metadata or its node_modules path.
- * @param path - Lockfile package path
- * @param entry - Validated lockfile package entry
- * @returns Real package name when identifiable
+ * Resolve an npm alias to its true package identity.
+ * @param declaredName - Dependency-map key and installation location
+ * @param specification - Dependency specification
+ * @returns Expected package identity
  */
-function inferLockPackageName(
-  path: string,
-  entry: PackageLock["packages"][string],
-): string | undefined {
+function inferDeclaredPackageName(declaredName: string, specification: string): string {
+  if (!specification.startsWith("npm:")) return declaredName;
+  const alias = specification.slice(4);
+  const lastAt = alias.lastIndexOf("@");
+  const scopeSeparator = alias.startsWith("@") ? alias.indexOf("/") : -1;
+  const versionSeparator = alias.startsWith("@") ? (lastAt > scopeSeparator ? lastAt : -1) : lastAt;
+  const targetName = versionSeparator > 0 ? alias.slice(0, versionSeparator) : alias;
+  const suffix = versionSeparator > 0 ? alias.slice(versionSeparator + 1) : undefined;
+  const validTarget = targetName.startsWith("@")
+    ? /^@[^/]+\/[^/@]+$/.test(targetName)
+    : /^[^/@]+$/.test(targetName);
+  if (!validTarget || suffix === "") {
+    throw new Error(`Invalid npm alias ${declaredName}: ${specification}`);
+  }
+  return targetName;
+}
+
+/**
+ * Infer a package identity from explicit metadata or its exact node_modules path.
+ * @param path - Exact lockfile package path
+ * @param entry - Validated lockfile package entry
+ * @returns Real package identity when one can be inferred
+ */
+function inferLockPackageName(path: string, entry: LockPackage): string | undefined {
   if (entry.name) return entry.name;
   const marker = "node_modules/";
   const markerIndex = path.lastIndexOf(marker);
   if (markerIndex < 0) return undefined;
   const suffix = path.slice(markerIndex + marker.length);
   const segments = suffix.split("/");
-  return suffix.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0];
+  const name = suffix.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0];
+  return name === "" ? undefined : name;
 }
 
 /** Run the dependency audit command-line checker. */
@@ -314,8 +407,20 @@ function main(): void {
 }
 
 /**
+ * Return the containing package-instance path for one exact lockfile path.
+ * @param path - Package instance path, or the root path
+ * @returns Containing package path, or undefined above the root
+ */
+function parentInstancePath(path: string): string | undefined {
+  if (path === "") return undefined;
+  const markerIndex = path.lastIndexOf("node_modules/");
+  if (markerIndex < 0) return undefined;
+  return path.slice(0, markerIndex).replace(/\/$/, "");
+}
+
+/**
  * Parse an exact GitHub advisory URL.
- * @param url - Advisory URL from npm
+ * @param url - Advisory URL from npm audit
  * @returns GitHub Security Advisory ID
  */
 function parseAdvisoryId(url: string): string {
@@ -327,18 +432,42 @@ function parseAdvisoryId(url: string): string {
 }
 
 /**
- * Validate one advisory occurrence against its report and lockfile context.
+ * Resolve one dependency-map key with Node's nearest-node_modules lookup semantics.
+ * @param parentPath - Exact parent package instance path
+ * @param declaredName - Dependency installation name
+ * @param instances - Exact lockfile package instances
+ * @returns Nearest installed target, if present
+ */
+function resolveDependencyInstance(
+  parentPath: string,
+  declaredName: string,
+  instances: Map<string, PackageInstance>,
+): PackageInstance | undefined {
+  let prefix: string | undefined = parentPath;
+  while (prefix !== undefined) {
+    const candidate = prefix
+      ? `${prefix}/node_modules/${declaredName}`
+      : `node_modules/${declaredName}`;
+    const instance = instances.get(candidate);
+    if (instance) return instance;
+    prefix = parentInstancePath(prefix);
+  }
+  return undefined;
+}
+
+/**
+ * Validate one advisory occurrence against its report and exact lockfile instances.
  * @param id - GitHub Security Advisory ID
  * @param advisory - Advisory occurrence
  * @param report - Validated npm audit report
- * @param lock - Validated package lock
+ * @param graph - Exact lockfile instance graph
  * @param policy - Temporary exception contract
  */
 function validateAdvisoryOccurrence(
   id: string,
   advisory: AuditAdvisory,
   report: AuditReport,
-  lock: PackageLock,
+  graph: DependencyGraph,
   policy: AllowedAdvisory,
 ): void {
   const advisoryNames = [advisory.name, advisory.dependency].filter(
@@ -368,34 +497,21 @@ function validateAdvisoryOccurrence(
   if (vulnerability.isDirect !== policy.direct) {
     throw new Error(`${id} directness does not match the exception policy`);
   }
-
-  const root = lock.packages[""];
-  if (!root) throw new Error("package-lock.json is missing its root package entry");
-  const declaredDirectly = [
-    root.dependencies,
-    root.devDependencies,
-    root.optionalDependencies,
-    root.peerDependencies,
-  ].some((dependencies) => dependencyMapReferencesPackage(dependencies, policy.packageName));
-  if (!vulnerability.isDirect && declaredDirectly) {
-    throw new Error(
-      `${id} is reported as transitive but ${policy.packageName} is declared directly`,
-    );
-  }
-
-  validateDependencyPath(id, report, lock, policy);
-
   if (vulnerability.nodes.length === 0) {
     throw new Error(`${id} has no lockfile nodes`);
   }
+
+  validateDependencyPaths(id, report, graph, policy, vulnerability.nodes);
+
   const entries = vulnerability.nodes.map((node) => {
-    const entry = lock.packages[node];
-    if (!entry) throw new Error(`${id} references missing lockfile node ${node}`);
-    const actualName = inferLockPackageName(node, entry);
-    if (actualName !== policy.packageName) {
-      throw new Error(`${id} lockfile node ${node} is ${actualName ?? "unidentifiable"}`);
+    const instance = graph.instances.get(node);
+    if (!instance) {
+      throw new Error(`${id} references missing lockfile node ${node}`);
     }
-    return entry;
+    if (instance.name !== policy.packageName) {
+      throw new Error(`${id} lockfile node ${node} is ${instance.name}`);
+    }
+    return instance.entry;
   });
   const scope: DependencyScope = entries.every((entry) => entry.dev === true)
     ? "development"
@@ -406,59 +522,151 @@ function validateAdvisoryOccurrence(
 }
 
 /**
- * Validate every edge of an approved dependency path against lockfile declarations
- * and any corresponding npm audit meta-vulnerability links.
+ * Preserve npm audit effects/via validation for an approved graph edge.
  * @param id - GitHub Security Advisory ID
  * @param report - Validated npm audit report
- * @param lock - Validated package lock
- * @param policy - Temporary exception contract
+ * @param parentName - Approved parent package identity
+ * @param childName - Approved child package identity
  */
-function validateDependencyPath(
+function validateAuditMetaEdge(
   id: string,
   report: AuditReport,
-  lock: PackageLock,
-  policy: AllowedAdvisory,
+  parentName: string,
+  childName: string,
 ): void {
-  const vulnerablePackage = policy.dependencyPath.at(-1);
-  if (vulnerablePackage !== policy.packageName || policy.dependencyPath.length < 2) {
-    throw new Error(`${id} has an invalid dependency path policy`);
+  const childVulnerability = findAuditVulnerability(report, childName);
+  if (
+    childVulnerability?.effects !== undefined &&
+    !childVulnerability.effects.includes(parentName)
+  ) {
+    throw new Error(`${id} audit effects for ${childName} do not include ${parentName}`);
   }
+  const parentVulnerability = findAuditVulnerability(report, parentName);
+  if (
+    parentVulnerability !== undefined &&
+    !parentVulnerability.via.some((via) => typeof via === "string" && via === childName)
+  ) {
+    throw new Error(`${id} audit via for ${parentName} does not include ${childName}`);
+  }
+}
 
-  for (let index = 0; index < policy.dependencyPath.length - 1; index += 1) {
-    const parentPackageName = policy.dependencyPath[index];
-    const childPackageName = policy.dependencyPath[index + 1];
-    if (!parentPackageName || !childPackageName) {
+/**
+ * Validate all incoming routes to every npm-audited instance.
+ * @param id - GitHub Security Advisory ID
+ * @param report - Validated npm audit report
+ * @param graph - Exact lockfile instance graph
+ * @param policy - Temporary exception contract
+ * @param vulnerableNodes - Exact npm audit lockfile nodes
+ */
+function validateDependencyPaths(
+  id: string,
+  report: AuditReport,
+  graph: DependencyGraph,
+  policy: AllowedAdvisory,
+  vulnerableNodes: readonly string[],
+): void {
+  const states: PolicyState[] = policy.dependencyPaths.map((route, routeIndex) => {
+    if (route.length < 2 || route.at(-1) !== policy.packageName) {
       throw new Error(`${id} has an invalid dependency path policy`);
     }
+    return { index: route.length - 1, route, routeIndex };
+  });
+  const memo = new Set<string>();
+  const visiting = new Set<string>();
+  for (const node of vulnerableNodes) {
+    validateIncomingRoutes(id, graph, node, states, memo, visiting);
+  }
 
-    const declaringPackages = findDeclaringPackages(lock, childPackageName);
-    if (declaringPackages.size !== 1 || !declaringPackages.has(parentPackageName)) {
-      const parentDiagnostic =
-        declaringPackages.size === 0 ? "none" : [...declaringPackages].join(", ");
-      throw new Error(
-        `${id} parent packages for ${childPackageName} do not match ${parentPackageName}: ${parentDiagnostic}`,
-      );
-    }
-
-    const childVulnerability = findAuditVulnerability(report, childPackageName);
-    if (
-      childVulnerability?.effects !== undefined &&
-      !childVulnerability.effects.includes(parentPackageName)
-    ) {
-      throw new Error(
-        `${id} audit effects for ${childPackageName} do not include ${parentPackageName}`,
-      );
-    }
-    const parentVulnerability = findAuditVulnerability(report, parentPackageName);
-    if (
-      parentVulnerability !== undefined &&
-      !parentVulnerability.via.some((via) => typeof via === "string" && via === childPackageName)
-    ) {
-      throw new Error(
-        `${id} audit via for ${parentPackageName} does not include ${childPackageName}`,
-      );
+  const checkedAuditEdges = new Set<string>();
+  for (const route of policy.dependencyPaths) {
+    for (let index = 0; index < route.length - 1; index += 1) {
+      const parentName = route[index];
+      const childName = route[index + 1];
+      if (!parentName || !childName) {
+        throw new Error(`${id} has an invalid dependency path policy`);
+      }
+      const edgeKey = `${parentName}\0${childName}`;
+      if (checkedAuditEdges.has(edgeKey)) continue;
+      checkedAuditEdges.add(edgeKey);
+      validateAuditMetaEdge(id, report, parentName, childName);
     }
   }
+}
+
+/**
+ * Validate every reverse edge from one instance and memoized policy-state set.
+ * @param id - GitHub Security Advisory ID
+ * @param graph - Exact lockfile instance graph
+ * @param nodePath - Current exact package instance path
+ * @param states - Matching approved-route positions
+ * @param memo - Successfully validated instance/state pairs
+ * @param visiting - Active instance/state pairs for cycle detection
+ */
+function validateIncomingRoutes(
+  id: string,
+  graph: DependencyGraph,
+  nodePath: string,
+  states: readonly PolicyState[],
+  memo: Set<string>,
+  visiting: Set<string>,
+): void {
+  const instance = graph.instances.get(nodePath);
+  if (!instance) {
+    throw new Error(`${id} references missing lockfile node ${nodePath}`);
+  }
+  const matchingStates = states.filter((state) => state.route[state.index] === instance.name);
+  if (matchingStates.length === 0) {
+    throw new Error(`${id} has an unapproved dependency route through ${instance.name}`);
+  }
+  const stateKey = matchingStates
+    .map((state) => `${String(state.routeIndex)}:${String(state.index)}`)
+    .sort()
+    .join(",");
+  const memoKey = `${nodePath}\0${stateKey}`;
+  if (memo.has(memoKey)) return;
+  if (visiting.has(memoKey)) {
+    throw new Error(`${id} has an unresolved dependency cycle at ${nodePath}`);
+  }
+  visiting.add(memoKey);
+
+  const incoming = graph.incoming.get(nodePath) ?? [];
+  let hasCoherentRootEdge = false;
+  for (const edge of incoming) {
+    if (!edge.coherent) {
+      throw new Error(`${id} has an incoherent or ambiguous alias edge for ${edge.declaredName}`);
+    }
+    hasCoherentRootEdge ||= edge.parentPath === "";
+  }
+  const isDirectAnchor = hasCoherentRootEdge && matchingStates.some((state) => state.index === 0);
+  if (isDirectAnchor) {
+    visiting.delete(memoKey);
+    memo.add(memoKey);
+    return;
+  }
+  if (incoming.length === 0) {
+    visiting.delete(memoKey);
+    throw new Error(
+      `${id} dependency route for ${nodePath} does not reach a direct root declaration`,
+    );
+  }
+  for (const edge of incoming) {
+    if (edge.parentPath === "") {
+      if (!matchingStates.some((state) => state.index === 0)) {
+        throw new Error(`${id} has an unapproved direct root route to ${instance.name}`);
+      }
+      continue;
+    }
+    const parentStates = matchingStates
+      .filter((state) => state.index > 0)
+      .map((state) => ({ ...state, index: state.index - 1 }));
+    if (parentStates.length === 0) {
+      throw new Error(`${id} has an additional incoming route to ${instance.name}`);
+    }
+    validateIncomingRoutes(id, graph, edge.parentPath, parentStates, memo, visiting);
+  }
+
+  visiting.delete(memoKey);
+  memo.add(memoKey);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

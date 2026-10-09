@@ -12,14 +12,37 @@ export interface LockArtifacts {
 }
 
 export type LockfileReleaseAgeMode =
-  { baseSha: string; mode: "differential" | "policy" } | { mode: "all" };
+  | { baseSha: string; headSha: string; mode: "trusted" }
+  | { baseSha: string; mode: "differential" | "policy" }
+  | { mode: "all" };
+
+export type PackumentFetch = (
+  input: URL,
+  init: { headers: { accept: string }; redirect: "error" },
+) => Promise<PackumentResponse>;
+
+export interface PackumentResponse {
+  json(): Promise<unknown>;
+  ok: boolean;
+  status: number;
+  url: string;
+}
 
 export const POLICY_BASE_SHA: string;
 
 export function extractLockArtifacts(lockValue: unknown): LockArtifacts;
+export function fetchPackagePackument(
+  packageName: string,
+  fetchImplementation?: PackumentFetch,
+): Promise<Record<string, unknown>>;
 export function findAllLockArtifacts(lockValue: unknown): LockArtifact[];
 export function findNewLockArtifacts(baseLock: unknown, currentLock: unknown): LockArtifact[];
 export function inferPackageName(path: string, entry: Record<string, unknown>): string;
+export function loadLockfiles(
+  mode: LockfileReleaseAgeMode,
+  readCurrentLock?: () => string,
+  showGitObject?: (objectName: string) => string,
+): { baseLock?: unknown; currentLock: unknown };
 export function parseCliArguments(args: string[]): LockfileReleaseAgeMode;
 export function selectLockArtifacts(
   mode: LockfileReleaseAgeMode,
@@ -28,8 +51,14 @@ export function selectLockArtifacts(
 ): LockArtifact[];
 export function validateArtifactMetadata(
   artifact: LockArtifact,
-  metadata: unknown,
+  packument: unknown,
   minimumAgeDays: number,
   nowMs: number,
 ): void;
+export function validateArtifactsConcurrently(
+  artifacts: LockArtifact[],
+  minimumAgeDays: number,
+  nowMs: number,
+  fetchImplementation?: PackumentFetch,
+): Promise<void>;
 export function validateMinimumReleaseAge(configuredAge: unknown): number;
