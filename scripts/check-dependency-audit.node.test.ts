@@ -477,15 +477,49 @@ describe("dependency audit instance graph policy", () => {
     expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
   });
 
-  it("fails closed on absent targets in every dependency field", () => {
-    for (const field of [
-      "dependencies",
-      "devDependencies",
-      "optionalDependencies",
-      "peerDependencies",
-    ] as const) {
+  it("fails closed on absent required dependency targets", () => {
+    for (const field of ["dependencies", "devDependencies", "peerDependencies"] as const) {
       const { lock, report } = fixtures();
       const root = requireLockEntry(lock.packages, "");
+      root[field] = { ...root[field], missing: "1.0.0" };
+      expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+        "Missing dependency target missing declared by <root>",
+      );
+    }
+  });
+
+  it("allows an unresolved optional dependency target", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").optionalDependencies = { missing: "1.0.0" };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("applies an optional dependency override before target resolution", () => {
+    const { lock, report } = fixtures();
+    const root = requireLockEntry(lock.packages, "");
+    root.dependencies = { ...root.dependencies, missing: "npm:required-name@1.0.0" };
+    root.optionalDependencies = { missing: "npm:optional-name@1.0.0" };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("uses only the optional alias identity when overriding a dependency", () => {
+    const { lock, report } = fixtures();
+    const root = requireLockEntry(lock.packages, "");
+    root.dependencies = {
+      ...root.dependencies,
+      "@sap-cloud-sdk/connectivity": "npm:different-package@1.0.0",
+    };
+    root.optionalDependencies = {
+      "@sap-cloud-sdk/connectivity": "npm:@sap-cloud-sdk/connectivity@4.9.1",
+    };
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+  });
+
+  it("keeps dev dependencies and required peers strict beside an optional declaration", () => {
+    for (const field of ["devDependencies", "peerDependencies"] as const) {
+      const { lock, report } = fixtures();
+      const root = requireLockEntry(lock.packages, "");
+      root.optionalDependencies = { missing: "1.0.0" };
       root[field] = { ...root[field], missing: "1.0.0" };
       expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
         "Missing dependency target missing declared by <root>",

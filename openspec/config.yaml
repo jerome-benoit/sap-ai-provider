@@ -68,7 +68,7 @@ context: |
   - Tests mirror source file structure (*.test.ts)
 
   ### Build and CI
-  - Run npm run check-lockfile-release-age before npm ci as a local candidate gate; it runs without node_modules, fetches canonical raw npm packuments without redirects, checks top-level time[version] plus exact version-manifest fingerprints, limits lockfiles to 2 MiB UTF-8 and selected artifacts to 1,024, uses eight concurrent 10-second complete requests with fail-fast aborts, and fails closed. Default comparison lockfile: 3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json. Only registry artifacts absent from that lockfile are age-validated; --all validates every artifact
+  - Run npm run check-lockfile-release-age before npm ci as a local candidate gate; it runs without node_modules, fetches canonical raw npm packuments without redirects, checks top-level time[version] plus exact version-manifest fingerprints, limits each decoded packument to 64 MiB, lockfiles to 2 MiB UTF-8, and selected artifacts to 1,024, uses eight concurrent 10-second complete requests with fail-fast aborts, and fails closed. Default comparison lockfile: 3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json. Only registry artifacts absent from that lockfile are age-validated; --all validates every artifact
   - npm ci installs dependencies and Lefthook hooks; build artifacts require npm run build
   - Main build emits V3/V2/V4 ESM, CommonJS, declarations, and sourcemaps; check-build verifies all artifacts and declaration routing
   - build:v2 cleans dist and replaces main outputs with V2-only artifacts; prepare:v2 rewrites manifests and renames artifacts for standalone publishing

@@ -18,6 +18,7 @@ import {
   loadLockfiles,
   MAXIMUM_ATTESTED_ARTIFACTS,
   MAXIMUM_LOCKFILE_BYTES,
+  MAXIMUM_PACKUMENT_BYTES,
   parseCliArguments,
   POLICY_BASE_SHA,
   selectLockArtifacts,
@@ -46,6 +47,14 @@ interface PackumentManifest {
   name: string;
   time?: string;
   version: string;
+}
+
+interface PackumentResponseOptions {
+  contentEncoding?: string;
+  contentLength?: string;
+  ok?: boolean;
+  status?: number;
+  url?: string;
 }
 
 /**
@@ -166,27 +175,35 @@ function requireManifest(metadata: PackumentFixture, version: string): Packument
   return manifest;
 }
 
+const TEXT_ENCODER = new TextEncoder();
+
 /**
- * Build a minimal fetch response accepted by the checker.
- * @param body - JSON response body or parsing error
- * @param options - Response status and URL overrides
- * @param options.ok - HTTP success state
- * @param options.status - HTTP status code
- * @param options.url - Final response URL
+ * Build a response whose body emits exact byte chunks.
+ * @param chunks - Decoded response byte chunks
+ * @param options - Response status, URL, and header overrides
  * @returns Minimal packument response
  */
-function response(
-  body: unknown,
-  options: { ok?: boolean; status?: number; url?: string } = {},
+function chunkedResponse(
+  chunks: readonly Uint8Array[],
+  options: PackumentResponseOptions = {},
 ): PackumentResponse {
-  return {
-    json() {
-      return body instanceof Error ? Promise.reject(body) : Promise.resolve(body);
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
     },
-    ok: options.ok ?? true,
-    status: options.status ?? 200,
-    url: options.url ?? REGISTRY,
-  };
+  });
+  return streamResponse(body, options);
+}
+
+/**
+ * Build a minimal JSON fetch response accepted by the checker.
+ * @param value - JSON response value
+ * @param options - Response status, URL, and header overrides
+ * @returns Minimal packument response
+ */
+function response(value: unknown, options: PackumentResponseOptions = {}): PackumentResponse {
+  return textResponse(JSON.stringify(value), options);
 }
 
 /**
@@ -206,6 +223,40 @@ function sizedLockfile(byteLength: number, includeMultibyte = false): string {
     throw new Error("Incorrect fixture byte length");
   }
   return text;
+}
+
+/**
+ * Build a minimal response around an exact Web stream.
+ * @param body - Decoded response stream
+ * @param options - Response status, URL, and header overrides
+ * @returns Minimal packument response
+ */
+function streamResponse(
+  body: null | ReadableStream<Uint8Array>,
+  options: PackumentResponseOptions = {},
+): PackumentResponse {
+  const headers = new Headers();
+  if (options.contentEncoding !== undefined) {
+    headers.set("content-encoding", options.contentEncoding);
+  }
+  if (options.contentLength !== undefined) headers.set("content-length", options.contentLength);
+  return {
+    body,
+    headers,
+    ok: options.ok ?? true,
+    status: options.status ?? 200,
+    url: options.url ?? REGISTRY,
+  };
+}
+
+/**
+ * Build a streamed UTF-8 text response.
+ * @param body - Raw response text
+ * @param options - Response status, URL, and header overrides
+ * @returns Minimal packument response
+ */
+function textResponse(body: string, options: PackumentResponseOptions = {}): PackumentResponse {
+  return chunkedResponse([TEXT_ENCODER.encode(body)], options);
 }
 
 describe("lockfile release-age gate modes", () => {
@@ -575,6 +626,70 @@ describe("release-age resource contracts", () => {
     }
   });
 
+  it("accepts the exact packument byte limit and rejects the next byte", async () => {
+    const prefix = '{"padding":"';
+    const suffix = '"}';
+    const paddingLength =
+      MAXIMUM_PACKUMENT_BYTES - Buffer.byteLength(prefix) - Buffer.byteLength(suffix);
+    const exactBody = prefix + "a".repeat(paddingLength) + suffix;
+    const exact = await fetchPackagePackument("example", () =>
+      Promise.resolve(
+        textResponse(exactBody, {
+          contentLength: String(MAXIMUM_PACKUMENT_BYTES),
+          url: `${REGISTRY}example`,
+        }),
+      ),
+    );
+    expect(typeof exact.padding).toBe("string");
+    expect((exact.padding as string).length).toBe(paddingLength);
+
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(
+          chunkedResponse([new Uint8Array(MAXIMUM_PACKUMENT_BYTES + 1)], {
+            contentLength: String(MAXIMUM_PACKUMENT_BYTES),
+            url: `${REGISTRY}example`,
+          }),
+        ),
+      ),
+    ).rejects.toThrow(`response body exceeded ${String(MAXIMUM_PACKUMENT_BYTES)} bytes`);
+  }, 15_000);
+
+  it("rejects a declared oversized packument before reading its body", async () => {
+    const cancel = vi.fn(() => Promise.resolve());
+    const getReader = vi.fn();
+    const body = { cancel, getReader } as unknown as ReadableStream<Uint8Array>;
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(
+          streamResponse(body, {
+            contentLength: String(MAXIMUM_PACKUMENT_BYTES + 1),
+            url: `${REGISTRY}example`,
+          }),
+        ),
+      ),
+    ).rejects.toThrow(`response body larger than ${String(MAXIMUM_PACKUMENT_BYTES)} bytes`);
+    expect(getReader).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("uses streamed bytes for content-encoded responses", async () => {
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(
+          response(
+            {},
+            {
+              contentEncoding: "gzip",
+              contentLength: String(MAXIMUM_PACKUMENT_BYTES + 1),
+              url: `${REGISTRY}example`,
+            },
+          ),
+        ),
+      ),
+    ).resolves.toEqual({});
+  });
+
   it("times out both the request and packument body read", async () => {
     vi.useFakeTimers();
     try {
@@ -587,12 +702,14 @@ describe("release-age resource contracts", () => {
       await fetchExpectation;
 
       const bodyRequest = fetchPackagePackument("example", () =>
-        Promise.resolve({
-          json: () => new Promise<never>(() => undefined),
-          ok: true,
-          status: 200,
-          url: `${REGISTRY}example`,
-        }),
+        Promise.resolve(
+          streamResponse(
+            new ReadableStream<Uint8Array>({
+              pull: () => new Promise<void>(() => undefined),
+            }),
+            { url: `${REGISTRY}example` },
+          ),
+        ),
       );
       const bodyExpectation = expect(bodyRequest).rejects.toThrow("timed out");
       await vi.advanceTimersByTimeAsync(10_000);
@@ -600,6 +717,37 @@ describe("release-age resource contracts", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("preserves an external abort reason during a stalled body read", async () => {
+    let markReading: (() => void) | undefined;
+    const reading = new Promise<void>((resolve) => {
+      markReading = resolve;
+    });
+    const cancel = vi.fn();
+    const controller = new AbortController();
+    const request = fetchPackagePackument(
+      "example",
+      () =>
+        Promise.resolve(
+          streamResponse(
+            new ReadableStream<Uint8Array>({
+              cancel,
+              pull() {
+                markReading?.();
+                return new Promise<void>(() => undefined);
+              },
+            }),
+            { url: `${REGISTRY}example` },
+          ),
+        ),
+      controller.signal,
+    );
+    await reading;
+    const reason = new Error("caller stopped metadata validation");
+    controller.abort(reason);
+    await expect(request).rejects.toBe(reason);
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
 
@@ -675,6 +823,22 @@ describe("canonical npm packument validation", () => {
     }).toThrow("newer than");
   });
 
+  it("decodes chunked UTF-8 without a Content-Length header", async () => {
+    const artifact = artifactEntry("1.0.0");
+    const metadata = { ...packument(artifact), label: "café" };
+    const encoded = TEXT_ENCODER.encode(JSON.stringify(metadata));
+    const split = encoded.indexOf(0xc3) + 1;
+    expect(split).toBeGreaterThan(0);
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(
+          chunkedResponse([encoded.subarray(0, split), encoded.subarray(split)], {
+            url: `${REGISTRY}example`,
+          }),
+        ),
+      ),
+    ).resolves.toEqual(metadata);
+  });
   it("URL-encodes scoped names and rejects HTTP, JSON, and off-origin responses", async () => {
     const artifact = artifactEntry("1.0.0", "@scope/pkg");
     const requests: string[] = [];
@@ -695,7 +859,7 @@ describe("canonical npm packument validation", () => {
     ).rejects.toThrow("HTTP 503");
     await expect(
       fetchPackagePackument("example", () =>
-        Promise.resolve(response(new SyntaxError("bad json"), { url: `${REGISTRY}example` })),
+        Promise.resolve(textResponse("{", { url: `${REGISTRY}example` })),
       ),
     ).rejects.toThrow("valid JSON");
     await expect(
@@ -703,6 +867,25 @@ describe("canonical npm packument validation", () => {
         Promise.resolve(response({}, { url: "https://packages.example.test/example" })),
       ),
     ).rejects.toThrow("response origin changed");
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(
+          streamResponse(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.error(new Error("body transport failed"));
+              },
+            }),
+            { url: `${REGISTRY}example` },
+          ),
+        ),
+      ),
+    ).rejects.toThrow("Unable to read npm packument response body");
+    await expect(
+      fetchPackagePackument("example", () =>
+        Promise.resolve(textResponse("[]", { url: `${REGISTRY}example` })),
+      ),
+    ).rejects.toThrow("did not return a JSON object");
   });
 
   it("fetches one packument per package while validating multiple exact versions", async () => {

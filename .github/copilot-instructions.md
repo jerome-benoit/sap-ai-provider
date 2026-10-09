@@ -80,9 +80,10 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   one request per package. It uses only top-level `time[version]` and requires the
   matching `versions[version]` name, version, integrity, and tarball to equal the
   lockfile; unavailable, non-JSON, incomplete, or divergent metadata fails closed.
-  Every lockfile input is limited to 2 MiB of UTF-8 data and every deduplicated
-  selection to 1,024 artifacts. Metadata uses at most eight concurrent requests,
-  a 10-second complete-request timeout, and fail-fast cancellation.
+  Every decoded packument response body is limited to 64 MiB, every lockfile input
+  to 2 MiB of UTF-8 data, and every deduplicated selection to 1,024 artifacts.
+  Metadata uses at most eight concurrent requests, a 10-second complete-request
+  timeout, and fail-fast cancellation.
 - Default comparison lockfile:
   `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
   artifacts absent from that lockfile are age-validated. `-- --all` validates

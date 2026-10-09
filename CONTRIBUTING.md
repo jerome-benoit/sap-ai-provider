@@ -435,9 +435,10 @@ npm test             # Runs test suite
   canonical packument once, without redirects, and takes publication time only from
   top-level `time[version]`; identity, integrity, and tarball come from the matching
   `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
-  JSON, metadata, or provenance errors. Each complete fetch and body read has a
-  10-second timeout; the checker uses at most eight concurrent requests, aborts
-  in-flight requests on the first failure, accepts at most 1,024 selected artifacts, and limits every
+  JSON, metadata, or provenance errors. Each decoded packument response body is
+  limited to 64 MiB. Each complete fetch and body read has a 10-second timeout;
+  the checker uses at most eight concurrent requests, aborts in-flight requests on
+  the first failure, accepts at most 1,024 selected artifacts, and limits every
   lockfile input to 2 MiB of UTF-8 data. Default comparison lockfile:
   `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
   artifacts absent from that lockfile are age-validated. `-- --all` validates

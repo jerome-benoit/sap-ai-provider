@@ -270,7 +270,8 @@ export function validateDependencyAudit(
 
 /**
  * Construct exact lockfile-v3 package instances and resolved Node dependency edges.
- * Optional peer targets may be absent; every other declared target must resolve.
+ * Effective optional dependencies and optional peer targets may be absent; any
+ * required declaration for the same name still requires a resolved target.
  * @param lock - Validated package lock
  * @returns Exact instance graph
  */
@@ -290,18 +291,21 @@ function buildDependencyGraph(lock: PackageLock): DependencyGraph {
   const incoming = new Map<string, DependencyEdge[]>();
   for (const parent of instances.values()) {
     const declarations = new Map<string, { expectedNames: Set<string>; required: boolean }>();
+    const optionalDependencies = parent.entry.optionalDependencies ?? {};
     for (const field of DEPENDENCY_FIELDS) {
       for (const [declaredName, specification] of Object.entries(parent.entry[field] ?? {})) {
+        if (field === "dependencies" && Object.hasOwn(optionalDependencies, declaredName)) continue;
         const expectedName = inferDeclaredPackageName(declaredName, specification);
         const declaration = declarations.get(declaredName) ?? {
           expectedNames: new Set<string>(),
           required: false,
         };
         declaration.expectedNames.add(expectedName);
-        const optionalPeer =
-          field === "peerDependencies" &&
-          parent.entry.peerDependenciesMeta?.[declaredName]?.optional === true;
-        declaration.required ||= !optionalPeer;
+        const optionalDeclaration =
+          field === "optionalDependencies" ||
+          (field === "peerDependencies" &&
+            parent.entry.peerDependenciesMeta?.[declaredName]?.optional === true);
+        declaration.required ||= !optionalDeclaration;
         declarations.set(declaredName, declaration);
       }
     }

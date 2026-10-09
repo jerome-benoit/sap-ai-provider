@@ -26,7 +26,8 @@ export type PackumentFetch = (
 ) => Promise<PackumentResponse>;
 
 export interface PackumentResponse {
-  json(): Promise<unknown>;
+  body: null | ReadableStream<Uint8Array>;
+  headers: Pick<Headers, "get">;
   ok: boolean;
   status: number;
   url: string;
@@ -36,6 +37,8 @@ export interface PackumentResponse {
 export const MAXIMUM_ATTESTED_ARTIFACTS: number;
 /** Maximum UTF-8 byte size accepted for every package-lock.json input. */
 export const MAXIMUM_LOCKFILE_BYTES: number;
+/** Maximum decoded UTF-8 byte size accepted for each canonical npm packument. */
+export const MAXIMUM_PACKUMENT_BYTES: number;
 export const POLICY_BASE_SHA: string;
 
 export function extractLockArtifacts(lockValue: unknown): LockArtifacts;

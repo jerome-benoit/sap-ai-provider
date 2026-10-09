@@ -43,8 +43,9 @@ description: Build, type-check, test, and publish workflow for the package
   every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
   The trusted workflow accepts raw head/base lockfile data via
   `--head-lockfile <path> --base-lockfile <path>` (all modes need registry access,
-  fail closed, run without installed dependencies, limit each UTF-8 lockfile to 2 MiB,
-  and cap deduplicated selected artifacts at 1,024)
+  fail closed, run without installed dependencies, limit each decoded packument to
+  64 MiB and each UTF-8 lockfile to 2 MiB, and cap deduplicated selected artifacts
+  at 1,024)
 - Dependency advisory policy: `npm run check-dependency-audit` forces production,
   development, optional, and peer npm scopes. For exact audited instances it validates
   every edge up to the direct root anchor plus every edge identity entering that
@@ -82,9 +83,10 @@ non-authoritative candidate gate; it needs the public registry, runs without
 Use `npm run build` explicitly to create distribution artifacts. npm
 `min-release-age` applies while resolving, not when `npm ci` consumes the lockfile.
 Policy is 3 days on `https://registry.npmjs.org/`. The checker uses top-level
-packument `time[version]` and the matching version manifest fingerprint, with eight
-metadata requests at a time, a 10-second fetch-and-body timeout, and fail-fast
-aborts. PR and autofix workflows run non-authoritative candidate gates. The dedicated
+packument `time[version]` and the matching version manifest fingerprint, limits
+each decoded packument to 64 MiB, and uses eight metadata requests at a time, a
+10-second fetch-and-body timeout, and fail-fast aborts. PR and autofix workflows
+run non-authoritative candidate gates. The dedicated
 `pull_request_target` workflow runs only trusted default-branch code, resolves exact
 head/base commits through the GitHub API, and downloads only raw lockfiles as data.
 It never imports, checks out, or executes the head and publishes status context

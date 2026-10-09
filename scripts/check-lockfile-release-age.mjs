@@ -11,6 +11,8 @@ const LOCAL_PROTOCOL = /^(?:file|link|workspace):/i;
 export const MAXIMUM_ATTESTED_ARTIFACTS = 1024;
 /** Maximum UTF-8 byte size accepted for every package-lock.json input. */
 export const MAXIMUM_LOCKFILE_BYTES = 2 * 1024 * 1024;
+/** Maximum decoded UTF-8 byte size accepted for each canonical npm packument. */
+export const MAXIMUM_PACKUMENT_BYTES = 64 * 1024 * 1024;
 const MAXIMUM_METADATA_CONCURRENCY = 8;
 const PACKUMENT_TIMEOUT_MS = 10_000;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
@@ -149,20 +151,7 @@ export async function fetchPackagePackument(
         { cause: error },
       );
     }
-    let packument;
-    try {
-      packument = await raceWithAbort(response.json(), signal);
-    } catch (error) {
-      if (signal.aborted) {
-        const reason = signal.reason;
-        throw reason instanceof Error
-          ? reason
-          : new Error(String(reason ?? "npm packument request aborted"));
-      }
-      throw new Error(`npm packument for ${packageName} did not return valid JSON`, {
-        cause: error,
-      });
-    }
+    const packument = await readPackumentResponse(response, packageName, signal);
     if (!packument || typeof packument !== "object" || Array.isArray(packument)) {
       throw new Error(`npm packument for ${packageName} did not return a JSON object`);
     }
@@ -501,6 +490,19 @@ function assertLockfileSize(text, description) {
 }
 
 /**
+ * Cancel a response body without trusting cancellation to settle.
+ * @param reader - Active response body reader
+ * @param reason - Primary cancellation reason
+ */
+function cancelBodyRead(reader, reason) {
+  try {
+    void reader.cancel(reason).catch(() => undefined);
+  } catch {
+    // Cancellation is best-effort and must not mask the primary failure.
+  }
+}
+
+/**
  * Deduplicate identical lockfile artifacts and reject conflicting fingerprints.
  * @param artifacts - Extracted registry artifacts
  * @returns Unique artifacts in lockfile order
@@ -585,10 +587,10 @@ function parseLockfileJson(text, description, sizeDescription = description) {
 }
 
 /**
- * Await a response body while honoring the request's complete-operation signal.
- * @param promise - Body parsing promise
+ * Await an asynchronous operation while honoring the request's complete-operation signal.
+ * @param promise - Operation promise
  * @param signal - Combined timeout and caller signal
- * @returns Parsed body
+ * @returns Operation result
  */
 function raceWithAbort(promise, signal) {
   if (signal.aborted) return Promise.reject(signal.reason);
@@ -619,6 +621,91 @@ function readBoundedLockfile(lockfilePath, description) {
     throw new Error(`${description} exceeds maximum size of ${MAXIMUM_LOCKFILE_BYTES} UTF-8 bytes`);
   }
   return readFileSync(lockfilePath, "utf8");
+}
+
+/**
+ * Decode one bounded canonical packument response body.
+ * @param response - Successful same-origin response
+ * @param packageName - Exact npm package name
+ * @param signal - Combined timeout and caller signal
+ * @returns Parsed response body
+ */
+async function readPackumentResponse(response, packageName, signal) {
+  const contentEncoding = response.headers.get("content-encoding");
+  const declaredLength = response.headers.get("content-length");
+  const hasDecodedLength =
+    contentEncoding === null || contentEncoding.trim().toLowerCase() === "identity";
+  if (
+    hasDecodedLength &&
+    /^\d+$/u.test(declaredLength ?? "") &&
+    BigInt(declaredLength) > BigInt(MAXIMUM_PACKUMENT_BYTES)
+  ) {
+    const error = new Error(
+      `npm packument for ${packageName} declared a response body larger than ${MAXIMUM_PACKUMENT_BYTES} bytes`,
+    );
+    if (response.body) {
+      try {
+        void response.body.cancel(error).catch(() => undefined);
+      } catch {
+        // Cancellation is best-effort and must not mask the size failure.
+      }
+    }
+    throw error;
+  }
+  if (!response.body) {
+    throw new Error(`npm packument for ${packageName} did not provide a response body`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const fragments = [];
+  let bytesRead = 0;
+  let bodyComplete = false;
+  try {
+    while (true) {
+      let result;
+      try {
+        result = await raceWithAbort(reader.read(), signal);
+      } catch (error) {
+        cancelBodyRead(reader, error);
+        if (signal.aborted) {
+          const reason = signal.reason;
+          throw reason instanceof Error
+            ? reason
+            : new Error(String(reason ?? "npm packument request aborted"));
+        }
+        throw new Error(`Unable to read npm packument response body for ${packageName}`, {
+          cause: error,
+        });
+      }
+      if (result.done) {
+        bodyComplete = true;
+        break;
+      }
+      if (result.value.byteLength > MAXIMUM_PACKUMENT_BYTES - bytesRead) {
+        const error = new Error(
+          `npm packument for ${packageName} response body exceeded ${MAXIMUM_PACKUMENT_BYTES} bytes`,
+        );
+        cancelBodyRead(reader, error);
+        throw error;
+      }
+      bytesRead += result.value.byteLength;
+      fragments.push(decoder.decode(result.value, { stream: true }));
+    }
+    fragments.push(decoder.decode());
+  } finally {
+    if (bodyComplete) reader.releaseLock();
+  }
+
+  let packument;
+  try {
+    packument = JSON.parse(fragments.join(""));
+  } catch (error) {
+    throw new Error(`npm packument for ${packageName} did not return valid JSON`, {
+      cause: error,
+    });
+  }
+  return packument;
 }
 
 /**
