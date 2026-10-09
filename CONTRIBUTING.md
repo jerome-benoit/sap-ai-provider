@@ -432,14 +432,13 @@ npm test             # Runs test suite
   canonical packument once, without redirects, and takes publication time only from
   top-level `time[version]`; identity, integrity, and tarball come from the matching
   `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
-  JSON, metadata, or provenance errors. With no arguments it uses policy baseline
-  `3f869c5f5371b35e53ef38bae2173541ab6c209a`; `-- --all` checks the complete
-  lockfile and `-- --base <full-git-sha>` is the local candidate differential mode.
-  This baseline intentionally grandfathers the dependency state already merged on
-  `main`, including `@ai-sdk/gateway@4.0.110`; inclusion is not a release-age
-  attestation. The dedicated trusted workflow uses `--head-lockfile <path>
---base-lockfile <path>` after the GitHub API resolves both exact commit SHAs and
-  downloads only their raw lockfiles as data. Releases require a successful `push`
+  JSON, metadata, or provenance errors. Default comparison lockfile:
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
+  artifacts absent from that lockfile are age-validated. `-- --all` validates
+  every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
+  The trusted workflow uses `--head-lockfile <path> --base-lockfile <path>` after
+  the GitHub API resolves both exact commit SHAs and downloads only their raw
+  lockfiles as data. Releases require a successful `push`
   run for their exact SHA from
   `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker.
 - Repository files cannot enforce the final GitHub trust boundary. A branch ruleset
@@ -449,9 +448,8 @@ npm test             # Runs test suite
   uniquely identify this workflow, an organization required workflow/Actions event
   policy or a dedicated external GitHub App is needed to prevent an untrusted or
   homonymous workflow from spoofing it. The same external policy must protect the
-  trusted and release workflows, checker scripts, `.npmrc`, `package.json`, and
-  `.github/CODEOWNERS`. CODEOWNERS only records intended reviewers; it does not
-  enforce those controls, and this repository does not claim they are active.
+  trusted and release workflows, checker scripts, `.npmrc`, and `package.json`.
+  This repository does not claim those external controls are active.
 
 ## Advanced: Detailed Developer Instructions
 

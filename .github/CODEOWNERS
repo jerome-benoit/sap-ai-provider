@@ -1,8 +1,0 @@
-* @jerome-benoit
-/.github/workflows/trusted-lockfile-release-age.yml @jerome-benoit
-/.github/workflows/npm-publish-packages.yml @jerome-benoit
-/scripts/check-dependency-audit* @jerome-benoit
-/scripts/check-lockfile-release-age* @jerome-benoit
-/.npmrc @jerome-benoit
-/package.json @jerome-benoit
-/.github/CODEOWNERS @jerome-benoit

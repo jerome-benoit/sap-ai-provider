@@ -9,10 +9,7 @@ const FULL_GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const LOCAL_PROTOCOL = /^(?:file|link|workspace):/i;
 const MAXIMUM_METADATA_CONCURRENCY = 8;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
-/**
- * Immutable comparison point after intentionally grandfathering the dependency state
- * on main at this commit; presence in the baseline is not a release-age attestation.
- */
+/** Default comparison commit; artifacts present in its lockfile are not age-validated. */
 export const POLICY_BASE_SHA = "3f869c5f5371b35e53ef38bae2173541ab6c209a";
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const PUBLIC_NPM_REGISTRY_ORIGIN = new URL(PUBLIC_NPM_REGISTRY).origin;

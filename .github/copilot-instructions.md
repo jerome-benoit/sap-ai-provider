@@ -78,13 +78,12 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   one request per package. It uses only top-level `time[version]` and requires the
   matching `versions[version]` name, version, integrity, and tarball to equal the
   lockfile; unavailable, non-JSON, incomplete, or divergent metadata fails closed.
-- The default release-age mode checks artifacts introduced since baseline
-  `3f869c5f5371b35e53ef38bae2173541ab6c209a`; `-- --all` checks the complete
-  lock, and `-- --base <full-git-sha>` is the local candidate differential mode.
-  This baseline intentionally grandfathers the dependency state already merged on
-  `main`, including `@ai-sdk/gateway@4.0.110`; it does not attest that artifact's
-  age. The dedicated trusted workflow resolves the exact PR head and base commits
-  through the GitHub API, downloads only their raw lockfiles as data, and invokes
+- Default comparison lockfile:
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
+  artifacts absent from that lockfile are age-validated. `-- --all` validates
+  every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
+  The trusted workflow resolves the exact PR head and base commits through the
+  GitHub API, downloads only their raw lockfiles as data, and invokes
   `--head-lockfile <path> --base-lockfile <path>`. It never imports, checks out, or
   executes the head, then publishes status context
   `dependency-security/trusted-lockfile-release-age` on the exact PR head.
@@ -96,9 +95,8 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   identify this workflow, so an organization required workflow/Actions event policy
   or dedicated external GitHub App is needed to prevent spoofing by a homonymous or
   untrusted workflow. External policy must also protect the trusted/release workflows,
-  checker scripts, `.npmrc`, `package.json`, and `.github/CODEOWNERS`.
-  CODEOWNERS is reviewer intent, not enforcement; no such external policy is claimed
-  active.
+  checker scripts, `.npmrc`, and `package.json`. No such external policy is
+  claimed active.
 
 ### Type Checking and Linting
 

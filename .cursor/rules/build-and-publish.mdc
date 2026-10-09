@@ -37,13 +37,13 @@ description: Build, type-check, test, and publish workflow for the package
 - Canonical Node tests: `npm run test:node` (`npm test` is an alias)
 - Edge source tests: `npm run test:edge`
 - Lockfile release age: `npm run check-lockfile-release-age` fetches canonical raw
-  packuments and checks artifacts added since policy baseline
-  `3f869c5f5371b35e53ef38bae2173541ab6c209a`; `-- --all` checks the complete
-  lock and `-- --base <full-git-sha>` is a local candidate comparison. This baseline
-  grandfathers the dependency state already on `main`, including
-  `@ai-sdk/gateway@4.0.110`, without attesting its age. The trusted workflow uses raw
-  head/base lockfile data via `--head-lockfile <path> --base-lockfile <path>` (all
-  modes need registry access, fail closed, and run without installed dependencies)
+  packuments and compares against
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
+  artifacts absent from that lockfile are age-validated. `-- --all` validates
+  every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
+  The trusted workflow accepts raw head/base lockfile data via
+  `--head-lockfile <path> --base-lockfile <path>` (all modes need registry access,
+  fail closed, and run without installed dependencies)
 - Dependency advisory policy: `npm run check-dependency-audit` forces production,
   development, optional, and peer npm scopes. For exact audited instances it validates
   every edge up to the direct root anchor plus every edge identity entering that
@@ -91,8 +91,8 @@ then re-run the checker. A branch ruleset must require the exact status context 
 restrict its source. Since a shared GitHub Actions App identity cannot uniquely bind
 that context to this workflow, an organization required workflow/Actions event policy
 or dedicated external App must prevent homonymous/untrusted status writers. External
-policy must protect the trusted/release workflows and CODEOWNERS-covered policy files;
-CODEOWNERS is not enforcement and no external policy is claimed active.
+policy must protect the trusted/release workflows and policy files; no external policy
+is claimed active.
 
 ## Node Engine
 
