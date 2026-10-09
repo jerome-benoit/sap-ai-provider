@@ -624,13 +624,14 @@ describe("npm audit process contract", () => {
     expect(() => checkAuditProcessResult(processResult("{"), lock, TODAY)).toThrow("valid JSON");
   });
 
-  it("forces every dependency scope even when npm omit configuration is inherited", () => {
+  it("forces the lockfile and every scope despite inherited npm configuration", () => {
     expect(getNpmAuditInvocation("/npm-cli.js", "/node")).toEqual({
       args: [
         "/npm-cli.js",
         "audit",
         "--json",
         "--audit-level=none",
+        "--package-lock=true",
         "--include=prod",
         "--include=dev",
         "--include=optional",

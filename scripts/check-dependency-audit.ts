@@ -206,6 +206,7 @@ export function getNpmAuditInvocation(
       "audit",
       "--json",
       "--audit-level=none",
+      "--package-lock=true",
       "--include=prod",
       "--include=dev",
       "--include=optional",

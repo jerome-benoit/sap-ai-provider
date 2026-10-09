@@ -14,7 +14,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: trusted-lockfile-release-age-${{ github.event.pull_request.number || github.ref }}
+  group: trusted-lockfile-release-age-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
