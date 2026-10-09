@@ -1,15 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    "abandonments:recommended",
-    ":configMigration",
-    "group:allNonMajor",
-    "helpers:pinGitHubActionDigests",
-    "schedule:daily",
-    "security:minimumReleaseAgeNpm",
-    ":maintainLockFilesWeekly"
-  ],
+  "extends": ["config:best-practices", "schedule:daily"],
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "labels": ["security"]
@@ -17,7 +8,7 @@
   "packageRules": [
     {
       "matchFileNames": ["**/package.json"],
-      "matchDepTypes": ["dependencies", "devDependencies", "optionalDependencies"],
+      "matchDepTypes": ["dependencies", "optionalDependencies"],
       "rangeStrategy": "bump"
     },
     {
