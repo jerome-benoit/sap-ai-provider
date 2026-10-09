@@ -107,7 +107,7 @@ accept pull requests.
 
    ```bash
    npm run build
-   npm test
+   npm run test:node
    ```
 
 ### Development Workflow
@@ -128,7 +128,7 @@ Our development workflow follows these steps:
 3. **Run tests**
 
    ```bash
-   npm test              # Run the canonical Node.js suite (`test:node`)
+   npm run test:node     # Run the canonical Node.js suite
    npm run test:edge     # Source tests in the Edge runtime VM
    npm run test:watch    # Watch the canonical Node.js suite
    ```
@@ -357,7 +357,7 @@ Before submitting a PR, run:
 
 ```bash
 npm run build         # Builds three artifact families for root, /v2, /v3, /v4
-npm test             # Runs test suite
+npm run test:node             # Runs test suite
 ```
 
 <!-- markdownlint-enable MD036 -->
