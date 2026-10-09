@@ -420,7 +420,10 @@ npm test             # Runs test suite
   Validation covers every edge up to the directly declared root anchor and the
   identity coherence of every edge entering that anchor; coherent shared references
   above it are not recursively treated as new provenance. Package, severity,
-  directness, scope, and audit `effects`/`via` links remain checked.
+  directness, scope, and audit `effects`/`via` links remain checked. npm 11
+  `fixAvailable` must be exactly `false`, `true`, or its strict named-version object;
+  literal `true` invalidates an exception, while `false` and force-required objects
+  remain eligible.
 - Use overrides to force a published version containing a security fix when
   parent dependency ranges do not yet admit it. Verify every affected dependency
   path, and remove the override once parent ranges admit a fixed version.
@@ -432,15 +435,19 @@ npm test             # Runs test suite
   canonical packument once, without redirects, and takes publication time only from
   top-level `time[version]`; identity, integrity, and tarball come from the matching
   `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
-  JSON, metadata, or provenance errors. Default comparison lockfile:
+  JSON, metadata, or provenance errors. Each complete fetch and body read has a
+  10-second timeout; the checker uses at most eight concurrent requests, aborts
+  in-flight requests on the first failure, accepts at most 1,024 selected artifacts, and limits every
+  lockfile input to 2 MiB of UTF-8 data. Default comparison lockfile:
   `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
   artifacts absent from that lockfile are age-validated. `-- --all` validates
   every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
   The trusted workflow uses `--head-lockfile <path> --base-lockfile <path>` after
   the GitHub API resolves both exact commit SHAs and downloads only their raw
-  lockfiles as data. Releases require a successful `push`
-  run for their exact SHA from
-  `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker.
+  lockfiles as data. Releases require a successful `push` run for their exact SHA and
+  literal `main` head branch from
+  `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker. The
+  trusted job has a 30-minute overall timeout.
 - Repository files cannot enforce the final GitHub trust boundary. A branch ruleset
   must require the exact head status context
   `dependency-security/trusted-lockfile-release-age` and restrict who may satisfy it.

@@ -22,7 +22,7 @@ export type LockfileReleaseAgeMode =
 
 export type PackumentFetch = (
   input: URL,
-  init: { headers: { accept: string }; redirect: "error" },
+  init: { headers: { accept: string }; redirect: "error"; signal: AbortSignal },
 ) => Promise<PackumentResponse>;
 
 export interface PackumentResponse {
@@ -32,12 +32,17 @@ export interface PackumentResponse {
   url: string;
 }
 
+/** Maximum number of unique registry artifacts accepted from one selection. */
+export const MAXIMUM_ATTESTED_ARTIFACTS: number;
+/** Maximum UTF-8 byte size accepted for every package-lock.json input. */
+export const MAXIMUM_LOCKFILE_BYTES: number;
 export const POLICY_BASE_SHA: string;
 
 export function extractLockArtifacts(lockValue: unknown): LockArtifacts;
 export function fetchPackagePackument(
   packageName: string,
   fetchImplementation?: PackumentFetch,
+  externalSignal?: AbortSignal,
 ): Promise<Record<string, unknown>>;
 export function findAllLockArtifacts(lockValue: unknown): LockArtifact[];
 export function findNewLockArtifacts(baseLock: unknown, currentLock: unknown): LockArtifact[];
@@ -45,7 +50,7 @@ export function inferPackageName(path: string, entry: Record<string, unknown>): 
 export function loadLockfiles(
   mode: LockfileReleaseAgeMode,
   readCurrentLock?: () => string,
-  readLockfile?: (lockfilePath: string) => string,
+  readLockfile?: (lockfilePath: string, description: string) => string,
   showGitObject?: (objectName: string) => string,
 ): { baseLock?: unknown; currentLock: unknown };
 export function parseCliArguments(args: string[]): LockfileReleaseAgeMode;

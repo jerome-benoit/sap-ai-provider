@@ -33,6 +33,7 @@ interface LockEntry {
 /** Mutable npm vulnerability fixture. */
 interface Vulnerability {
   effects?: string[];
+  fixAvailable?: unknown;
   isDirect: boolean;
   name: string;
   nodes: string[];
@@ -84,6 +85,7 @@ function fixtures(): {
       vulnerabilities: {
         "@sap-cloud-sdk/connectivity": {
           effects: [],
+          fixAvailable: false,
           isDirect: true,
           name: "@sap-cloud-sdk/connectivity",
           nodes: ["node_modules/@sap-cloud-sdk/connectivity"],
@@ -92,6 +94,7 @@ function fixtures(): {
         },
         braces: {
           effects: ["micromatch"],
+          fixAvailable: false,
           isDirect: false,
           name: "braces",
           nodes: ["node_modules/braces"],
@@ -107,6 +110,7 @@ function fixtures(): {
         },
         "fast-glob": {
           effects: ["globby"],
+          fixAvailable: false,
           isDirect: false,
           name: "fast-glob",
           nodes: ["node_modules/fast-glob"],
@@ -115,6 +119,7 @@ function fixtures(): {
         },
         globby: {
           effects: ["markdownlint-cli2"],
+          fixAvailable: false,
           isDirect: false,
           name: "globby",
           nodes: ["node_modules/globby"],
@@ -123,6 +128,7 @@ function fixtures(): {
         },
         "jks-js": {
           effects: ["@sap-cloud-sdk/connectivity"],
+          fixAvailable: false,
           isDirect: false,
           name: "jks-js",
           nodes: ["node_modules/jks-js"],
@@ -131,6 +137,7 @@ function fixtures(): {
         },
         "markdownlint-cli2": {
           effects: [],
+          fixAvailable: false,
           isDirect: true,
           name: "markdownlint-cli2",
           nodes: ["node_modules/markdownlint-cli2"],
@@ -139,6 +146,7 @@ function fixtures(): {
         },
         micromatch: {
           effects: ["fast-glob", "globby", "markdownlint-cli2"],
+          fixAvailable: false,
           isDirect: false,
           name: "micromatch",
           nodes: ["node_modules/micromatch"],
@@ -147,6 +155,7 @@ function fixtures(): {
         },
         "node-forge": {
           effects: ["jks-js"],
+          fixAvailable: false,
           isDirect: false,
           name: "node-forge",
           nodes: ["node_modules/node-forge"],
@@ -210,6 +219,46 @@ function requireVulnerability(
   if (!vulnerability) throw new Error(`Missing test vulnerability ${name}`);
   return vulnerability;
 }
+
+describe("npm audit fix availability contract", () => {
+  it("rejects a non-forced fix for an allowlisted root vulnerability", () => {
+    const { lock, report } = fixtures();
+    requireVulnerability(report.vulnerabilities, "node-forge").fixAvailable = true;
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "non-forced npm audit fix available",
+    );
+  });
+
+  it("accepts false and forced fix objects for both major-version states", () => {
+    for (const fixAvailable of [
+      false,
+      { isSemVerMajor: false, name: "node-forge", version: "1.4.1" },
+      { isSemVerMajor: true, name: "node-forge", version: "2.0.0" },
+    ]) {
+      const { lock, report } = fixtures();
+      requireVulnerability(report.vulnerabilities, "node-forge").fixAvailable = fixAvailable;
+      expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    }
+  });
+
+  it("rejects missing and malformed fix availability fields", () => {
+    for (const fixAvailable of [
+      undefined,
+      {},
+      { isSemVerMajor: false, name: "node-forge" },
+      { isSemVerMajor: false, name: "", version: "1.4.1" },
+      { isSemVerMajor: false, name: "node-forge", version: "" },
+      { isSemVerMajor: "false", name: "node-forge", version: "1.4.1" },
+      { extra: true, isSemVerMajor: false, name: "node-forge", version: "1.4.1" },
+    ]) {
+      const { lock, report } = fixtures();
+      requireVulnerability(report.vulnerabilities, "node-forge").fixAvailable = fixAvailable;
+      expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+        "valid vulnerability report",
+      );
+    }
+  });
+});
 
 describe("dependency audit instance graph policy", () => {
   it("accepts the runtime route and all three real Markdownlint routes", () => {

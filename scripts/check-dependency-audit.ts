@@ -34,6 +34,17 @@ export interface ValidatedAdvisory {
   policy: AllowedAdvisory;
 }
 
+const auditFixAvailableSchema = z.union([
+  z.literal(false),
+  z.literal(true),
+  z
+    .object({
+      isSemVerMajor: z.boolean(),
+      name: z.string().min(1),
+      version: z.string().min(1),
+    })
+    .strict(),
+]);
 const auditAdvisorySchema = z.object({
   dependency: z.string().optional(),
   name: z.string().optional(),
@@ -42,6 +53,7 @@ const auditAdvisorySchema = z.object({
 });
 const auditVulnerabilitySchema = z.object({
   effects: z.array(z.string()).optional(),
+  fixAvailable: auditFixAvailableSchema,
   isDirect: z.boolean(),
   name: z.string().optional(),
   nodes: z.array(z.string()),
@@ -496,6 +508,9 @@ function validateAdvisoryOccurrence(
   }
   if (vulnerability.isDirect !== policy.direct) {
     throw new Error(`${id} directness does not match the exception policy`);
+  }
+  if (vulnerability.fixAvailable === true) {
+    throw new Error(`${id} has a non-forced npm audit fix available`);
   }
   if (vulnerability.nodes.length === 0) {
     throw new Error(`${id} has no lockfile nodes`);

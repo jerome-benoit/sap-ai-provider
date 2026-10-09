@@ -71,13 +71,18 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   every edge up to the directly declared root anchor and the identity coherence of
   every edge entering that anchor; coherent shared references above it are not
   recursively treated as new provenance. Scope, severity, directness, and audit
-  `effects`/`via` meta-links are also checked.
+  `effects`/`via` meta-links are also checked. npm 11 `fixAvailable` is validated as
+  exactly `false`, `true`, or a strict named-version object; only literal `true`
+  invalidates an allowlisted root vulnerability.
 - npm `min-release-age` filters resolution only; `npm ci` installs an existing
   lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`.
   The checker fetches raw canonical packuments directly, without redirects, caching
   one request per package. It uses only top-level `time[version]` and requires the
   matching `versions[version]` name, version, integrity, and tarball to equal the
   lockfile; unavailable, non-JSON, incomplete, or divergent metadata fails closed.
+  Every lockfile input is limited to 2 MiB of UTF-8 data and every deduplicated
+  selection to 1,024 artifacts. Metadata uses at most eight concurrent requests,
+  a 10-second complete-request timeout, and fail-fast cancellation.
 - Default comparison lockfile:
   `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
   artifacts absent from that lockfile are age-validated. `-- --all` validates
@@ -88,8 +93,9 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   executes the head, then publishes status context
   `dependency-security/trusted-lockfile-release-age` on the exact PR head.
   PR/autofix gates are explicitly non-authoritative candidate checks. Releases require
-  an exact-SHA successful `push` run of
-  `.github/workflows/trusted-lockfile-release-age.yml` and re-run the checker.
+  an exact-SHA successful `push` run on literal `main` of
+  `.github/workflows/trusted-lockfile-release-age.yml` and re-run the checker. The
+  trusted job has a 30-minute timeout.
 - A branch ruleset must externally require that exact status context and restrict its
   source. The shared GitHub Actions App identity plus a context name cannot uniquely
   identify this workflow, so an organization required workflow/Actions event policy

@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /** Policy-baseline, complete, differential, or trusted gate for package-lock artifacts. */
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FULL_GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const LOCAL_PROTOCOL = /^(?:file|link|workspace):/i;
+/** Maximum number of unique registry artifacts accepted from one lockfile selection. */
+export const MAXIMUM_ATTESTED_ARTIFACTS = 1024;
+/** Maximum UTF-8 byte size accepted for every package-lock.json input. */
+export const MAXIMUM_LOCKFILE_BYTES = 2 * 1024 * 1024;
 const MAXIMUM_METADATA_CONCURRENCY = 8;
+const PACKUMENT_TIMEOUT_MS = 10_000;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
 /** Default comparison commit; artifacts present in its lockfile are not age-validated. */
 export const POLICY_BASE_SHA = "3f869c5f5371b35e53ef38bae2173541ab6c209a";
@@ -94,50 +99,77 @@ export function extractLockArtifacts(lockValue) {
  * Fetch one raw canonical npm packument without permitting redirects.
  * @param packageName - Exact npm package name
  * @param fetchImplementation - Fetch implementation
+ * @param externalSignal - Optional caller cancellation signal
  * @returns Raw canonical packument
  */
-export async function fetchPackagePackument(packageName, fetchImplementation = globalThis.fetch) {
+export async function fetchPackagePackument(
+  packageName,
+  fetchImplementation = globalThis.fetch,
+  externalSignal,
+) {
   if (typeof fetchImplementation !== "function") {
     throw new Error("This Node.js runtime does not provide fetch");
   }
   const requestUrl = new URL(encodeURIComponent(packageName), PUBLIC_NPM_REGISTRY);
-  let response;
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(
+    () => timeoutController.abort(new Error("npm packument request timed out")),
+    PACKUMENT_TIMEOUT_MS,
+  );
+  const signal = externalSignal
+    ? AbortSignal.any([externalSignal, timeoutController.signal])
+    : timeoutController.signal;
   try {
-    response = await fetchImplementation(requestUrl, {
-      headers: { accept: "application/json" },
-      redirect: "error",
-    });
-  } catch (error) {
-    throw new Error(
-      `Unable to fetch npm packument for ${packageName}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-  if (!response.ok) {
-    throw new Error(`npm packument for ${packageName} returned HTTP ${response.status}`);
-  }
-  try {
-    if (new URL(response.url).origin !== PUBLIC_NPM_REGISTRY_ORIGIN) {
-      throw new Error("response origin changed");
+    let response;
+    try {
+      response = await raceWithAbort(
+        fetchImplementation(requestUrl, {
+          headers: { accept: "application/json" },
+          redirect: "error",
+          signal,
+        }),
+        signal,
+      );
+    } catch (error) {
+      throw new Error(
+        `Unable to fetch npm packument for ${packageName}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
-  } catch (error) {
-    throw new Error(
-      `Invalid npm packument response URL for ${packageName}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
+    if (!response.ok) {
+      throw new Error(`npm packument for ${packageName} returned HTTP ${response.status}`);
+    }
+    try {
+      if (new URL(response.url).origin !== PUBLIC_NPM_REGISTRY_ORIGIN) {
+        throw new Error("response origin changed");
+      }
+    } catch (error) {
+      throw new Error(
+        `Invalid npm packument response URL for ${packageName}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+    let packument;
+    try {
+      packument = await raceWithAbort(response.json(), signal);
+    } catch (error) {
+      if (signal.aborted) {
+        const reason = signal.reason;
+        throw reason instanceof Error
+          ? reason
+          : new Error(String(reason ?? "npm packument request aborted"));
+      }
+      throw new Error(`npm packument for ${packageName} did not return valid JSON`, {
+        cause: error,
+      });
+    }
+    if (!packument || typeof packument !== "object" || Array.isArray(packument)) {
+      throw new Error(`npm packument for ${packageName} did not return a JSON object`);
+    }
+    return packument;
+  } finally {
+    clearTimeout(timeout);
   }
-  let packument;
-  try {
-    packument = await response.json();
-  } catch (error) {
-    throw new Error(`npm packument for ${packageName} did not return valid JSON`, {
-      cause: error,
-    });
-  }
-  if (!packument || typeof packument !== "object" || Array.isArray(packument)) {
-    throw new Error(`npm packument for ${packageName} did not return a JSON object`);
-  }
-  return packument;
 }
 
 /**
@@ -222,24 +254,30 @@ export function inferPackageName(path, entry) {
  */
 export function loadLockfiles(
   mode,
-  readCurrentLock = () => readFileSync("package-lock.json", "utf8"),
-  readLockfile = (lockfilePath) => readFileSync(lockfilePath, "utf8"),
-  showGitObject = (objectName) => runSync("git", ["show", objectName]),
+  readCurrentLock = () => readBoundedLockfile("package-lock.json", "Current package-lock.json"),
+  readLockfile = (lockfilePath, description) => readBoundedLockfile(lockfilePath, description),
+  showGitObject = (objectName) =>
+    runSync("git", ["show", objectName], {
+      maxBuffer: MAXIMUM_LOCKFILE_BYTES + 1,
+      oversizedDescription: "Base package-lock.json",
+    }),
 ) {
   if (mode.mode === "trusted-files") {
-    const currentLock = parseJson(
-      readLockfile(mode.headLockfilePath),
+    const currentLock = parseLockfileJson(
+      readLockfile(mode.headLockfilePath, "Head package-lock.json"),
       "Head package-lock.json data file",
+      "Head package-lock.json",
     );
-    const baseLock = parseJson(
-      readLockfile(mode.baseLockfilePath),
+    const baseLock = parseLockfileJson(
+      readLockfile(mode.baseLockfilePath, "Base package-lock.json"),
       "Base package-lock.json data file",
+      "Base package-lock.json",
     );
     return { baseLock, currentLock };
   }
-  const currentLock = parseJson(readCurrentLock(), "Current package-lock.json");
+  const currentLock = parseLockfileJson(readCurrentLock(), "Current package-lock.json");
   if (mode.mode === "all") return { currentLock };
-  const baseLock = parseJson(
+  const baseLock = parseLockfileJson(
     showGitObject(`${mode.baseSha}:package-lock.json`),
     "Base package-lock.json",
   );
@@ -284,11 +322,17 @@ export function parseCliArguments(args) {
  * @returns Artifacts requiring registry attestation
  */
 export function selectLockArtifacts(mode, currentLock, baseLock) {
-  if (mode.mode === "all") return findAllLockArtifacts(currentLock);
-  if (baseLock === undefined) {
-    throw new Error("Differential release-age mode requires a base package-lock.json");
+  let artifacts;
+  if (mode.mode === "all") {
+    artifacts = findAllLockArtifacts(currentLock);
+  } else {
+    if (baseLock === undefined) {
+      throw new Error("Differential release-age mode requires a base package-lock.json");
+    }
+    artifacts = findNewLockArtifacts(baseLock, currentLock);
   }
-  return findNewLockArtifacts(baseLock, currentLock);
+  assertArtifactLimit(artifacts);
+  return artifacts;
 }
 
 /**
@@ -366,45 +410,38 @@ export async function validateArtifactsConcurrently(
   nowMs,
   fetchImplementation = globalThis.fetch,
 ) {
-  let nextIndex = 0;
-  const failures = new Array(artifacts.length);
-  const packuments = new Map();
-
-  /**
-   * Return the cached packument request for a package name.
-   * @param name - Exact package name
-   * @returns Shared packument request
-   */
-  const getPackument = (name) => {
-    let request = packuments.get(name);
-    if (!request) {
-      request = fetchPackagePackument(name, fetchImplementation);
-      packuments.set(name, request);
-    }
-    return request;
-  };
-
-  /**
-   * Validate artifacts assigned to one bounded worker.
-   * @returns Completion after assigned artifacts are validated
-   */
-  const worker = async () => {
-    while (nextIndex < artifacts.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const artifact = artifacts[index];
-      try {
-        const packument = await getPackument(artifact.name);
-        validateArtifactMetadata(artifact, packument, minimumAgeDays, nowMs);
-      } catch (error) {
-        failures[index] = error instanceof Error ? error : new Error(String(error));
-      }
-    }
-  };
-  const workerCount = Math.min(MAXIMUM_METADATA_CONCURRENCY, artifacts.length);
-  await Promise.all(Array.from({ length: workerCount }, worker));
-  for (const failure of failures) {
-    if (failure) throw failure;
+  assertArtifactLimit(artifacts);
+  const artifactsByName = new Map();
+  for (const artifact of artifacts) {
+    const packageArtifacts = artifactsByName.get(artifact.name);
+    if (packageArtifacts) packageArtifacts.push(artifact);
+    else artifactsByName.set(artifact.name, [artifact]);
+  }
+  const packages = [...artifactsByName.entries()];
+  for (let offset = 0; offset < packages.length; offset += MAXIMUM_METADATA_CONCURRENCY) {
+    const controller = new AbortController();
+    let firstFailure;
+    const batch = packages.slice(offset, offset + MAXIMUM_METADATA_CONCURRENCY);
+    await Promise.all(
+      batch.map(async ([name, packageArtifacts]) => {
+        try {
+          const packument = await fetchPackagePackument(
+            name,
+            fetchImplementation,
+            controller.signal,
+          );
+          for (const artifact of packageArtifacts) {
+            validateArtifactMetadata(artifact, packument, minimumAgeDays, nowMs);
+          }
+        } catch (error) {
+          if (!firstFailure) {
+            firstFailure = error instanceof Error ? error : new Error(String(error));
+            controller.abort(firstFailure);
+          }
+        }
+      }),
+    );
+    if (firstFailure) throw firstFailure;
   }
 }
 
@@ -438,6 +475,29 @@ function artifactFingerprint(artifact) {
  */
 function artifactIdentity(artifact) {
   return `${artifact.name}\0${artifact.version}`;
+}
+
+/**
+ * Reject lockfile selections that exceed the registry-attestation resource contract.
+ * @param artifacts - Deduplicated artifacts selected for attestation
+ */
+function assertArtifactLimit(artifacts) {
+  if (artifacts.length > MAXIMUM_ATTESTED_ARTIFACTS) {
+    throw new Error(
+      `Lockfile selects ${artifacts.length} artifacts; maximum is ${MAXIMUM_ATTESTED_ARTIFACTS}`,
+    );
+  }
+}
+
+/**
+ * Reject oversized lockfile text with a transport-independent diagnostic.
+ * @param text - Complete UTF-8 lockfile text
+ * @param description - Diagnostic source name
+ */
+function assertLockfileSize(text, description) {
+  if (Buffer.byteLength(text, "utf8") > MAXIMUM_LOCKFILE_BYTES) {
+    throw new Error(`${description} exceeds maximum size of ${MAXIMUM_LOCKFILE_BYTES} UTF-8 bytes`);
+  }
 }
 
 /**
@@ -513,6 +573,55 @@ function parseJson(text, description) {
 }
 
 /**
+ * Parse bounded lockfile JSON, including values supplied by injected readers.
+ * @param text - Lockfile JSON text
+ * @param description - JSON syntax diagnostic source name
+ * @param sizeDescription - Size diagnostic source name
+ * @returns Parsed lockfile value
+ */
+function parseLockfileJson(text, description, sizeDescription = description) {
+  assertLockfileSize(text, sizeDescription);
+  return parseJson(text, description);
+}
+
+/**
+ * Await a response body while honoring the request's complete-operation signal.
+ * @param promise - Body parsing promise
+ * @param signal - Combined timeout and caller signal
+ * @returns Parsed body
+ */
+function raceWithAbort(promise, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Read a normal lockfile after a cheap filesystem-size check.
+ * @param lockfilePath - Lockfile path
+ * @param description - Diagnostic source name
+ * @returns Complete UTF-8 lockfile text
+ */
+function readBoundedLockfile(lockfilePath, description) {
+  if (statSync(lockfilePath).size > MAXIMUM_LOCKFILE_BYTES) {
+    throw new Error(`${description} exceeds maximum size of ${MAXIMUM_LOCKFILE_BYTES} UTF-8 bytes`);
+  }
+  return readFileSync(lockfilePath, "utf8");
+}
+
+/**
  * Reject the first source that cannot be attested against the public registry.
  * @param sources - Unattestable lockfile entries
  * @param label - Diagnostic prefix
@@ -529,14 +638,21 @@ function rejectUnattestableSources(sources, label) {
  * Run one subprocess synchronously without a shell and require normal success.
  * @param command - Executable name
  * @param args - Separate process arguments
+ * @param options - Optional subprocess output bound
  * @returns Standard output
  */
-function runSync(command, args) {
+function runSync(command, args, options = {}) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     env: process.env,
+    ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }),
   });
   if (result.error) {
+    if (result.error.code === "ENOBUFS" && options.oversizedDescription) {
+      throw new Error(
+        `${options.oversizedDescription} exceeds maximum size of ${MAXIMUM_LOCKFILE_BYTES} UTF-8 bytes`,
+      );
+    }
     throw new Error(`Unable to run ${command}: ${result.error.message}`);
   }
   if (result.signal !== null) {

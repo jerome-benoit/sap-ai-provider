@@ -28,10 +28,11 @@ jobs:
           WORKFLOW_OK=$(gh api --method GET \
             "repos/$GITHUB_REPOSITORY/actions/workflows/trusted-lockfile-release-age.yml/runs" \
             -f head_sha="$GITHUB_SHA" \
+            -f branch=main \
             -f event=push \
             -f status=completed \
             -f per_page=100 \
-            --jq 'any(.workflow_runs[]; .head_sha == "'"$GITHUB_SHA"'" and .event == "push" and .conclusion == "success" and .path == ".github/workflows/trusted-lockfile-release-age.yml")')
+            --jq 'any(.workflow_runs[]; .head_sha == "'"$GITHUB_SHA"'" and .head_branch == "main" and .event == "push" and .conclusion == "success" and .path == ".github/workflows/trusted-lockfile-release-age.yml")')
           if [ "$WORKFLOW_OK" != "true" ]; then
             echo "Release commit $GITHUB_SHA has no successful exact trusted lockfile workflow run" >&2
             exit 1

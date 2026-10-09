@@ -43,12 +43,14 @@ description: Build, type-check, test, and publish workflow for the package
   every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
   The trusted workflow accepts raw head/base lockfile data via
   `--head-lockfile <path> --base-lockfile <path>` (all modes need registry access,
-  fail closed, and run without installed dependencies)
+  fail closed, run without installed dependencies, limit each UTF-8 lockfile to 2 MiB,
+  and cap deduplicated selected artifacts at 1,024)
 - Dependency advisory policy: `npm run check-dependency-audit` forces production,
   development, optional, and peer npm scopes. For exact audited instances it validates
   every edge up to the direct root anchor plus every edge identity entering that
-  anchor; coherent shared references above it are not recursively traversed
-  (requires registry access)
+  anchor; coherent shared references above it are not recursively traversed. npm 11
+  `fixAvailable` must be its exact boolean/object union, and literal `true` rejects an
+  exception (requires registry access)
 
 ### Versioned Entrypoints and Packages
 
@@ -80,15 +82,16 @@ non-authoritative candidate gate; it needs the public registry, runs without
 Use `npm run build` explicitly to create distribution artifacts. npm
 `min-release-age` applies while resolving, not when `npm ci` consumes the lockfile.
 Policy is 3 days on `https://registry.npmjs.org/`. The checker uses top-level
-packument `time[version]` and the matching version manifest fingerprint. PR and
-autofix workflows run non-authoritative candidate gates. The dedicated
+packument `time[version]` and the matching version manifest fingerprint, with eight
+metadata requests at a time, a 10-second fetch-and-body timeout, and fail-fast
+aborts. PR and autofix workflows run non-authoritative candidate gates. The dedicated
 `pull_request_target` workflow runs only trusted default-branch code, resolves exact
 head/base commits through the GitHub API, and downloads only raw lockfiles as data.
 It never imports, checks out, or executes the head and publishes status context
 `dependency-security/trusted-lockfile-release-age` on the exact PR head; its
-`push` job covers `main`. Releases require that exact-SHA trusted push run and
-then re-run the checker. A branch ruleset must require the exact status context and
-restrict its source. Since a shared GitHub Actions App identity cannot uniquely bind
+`push` job covers `main` with a 30-minute job timeout. Releases require that
+exact-SHA trusted push run to report literal `main`, then re-run the checker. A
+branch ruleset must require the exact status context and restrict its source. Since a shared GitHub Actions App identity cannot uniquely bind
 that context to this workflow, an organization required workflow/Actions event policy
 or dedicated external App must prevent homonymous/untrusted status writers. External
 policy must protect the trusted/release workflows and policy files; no external policy

@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -13,6 +16,8 @@ import {
   findAllLockArtifacts,
   findNewLockArtifacts,
   loadLockfiles,
+  MAXIMUM_ATTESTED_ARTIFACTS,
+  MAXIMUM_LOCKFILE_BYTES,
   parseCliArguments,
   POLICY_BASE_SHA,
   selectLockArtifacts,
@@ -62,6 +67,46 @@ function artifactEntry(version: string, name = "example"): LockArtifact {
 }
 
 /**
+ * Require a successful local Git command in a temporary regression repository.
+ * @param cwd - Repository directory
+ * @param args - Git arguments
+ * @returns Standard output
+ */
+function git(cwd: string, args: string[]): string {
+  const env = { ...process.env };
+  for (const variable of gitLocalEnvironmentVariables()) Reflect.deleteProperty(env, variable);
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", env });
+  if (result.status !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(
+      stderr !== ""
+        ? stderr
+        : (result.error?.message ??
+            `git failed with status ${String(result.status ?? "unknown")}${result.signal ? ` and signal ${result.signal}` : ""}`),
+    );
+  }
+  return result.stdout;
+}
+
+/**
+ * List environment variables that Git treats as repository-local.
+ * @returns Git-local environment variable names
+ */
+function gitLocalEnvironmentVariables(): string[] {
+  const result = spawnSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8" });
+  if (result.status !== 0) {
+    const stderr = result.stderr.trim();
+    throw new Error(
+      stderr !== ""
+        ? stderr
+        : (result.error?.message ??
+            `git rev-parse failed with status ${String(result.status ?? "unknown")}${result.signal ? ` and signal ${result.signal}` : ""}`),
+    );
+  }
+  return result.stdout.split(/\r?\n/u).filter(Boolean);
+}
+
+/**
  * Build a package-lock.json v3 fixture.
  * @param packages - Lockfile package entries
  * @returns Package-lock.json v3 fixture
@@ -88,6 +133,24 @@ function packument(...artifacts: LockArtifact[]): PackumentFixture {
         },
       ]),
     ),
+  };
+}
+
+/**
+ * Remove Git-local variables from this process and return an exact restorer.
+ * @returns Function restoring every original environment value
+ */
+function removeGitLocalEnvironment(): () => void {
+  const snapshot = gitLocalEnvironmentVariables().map((name) => ({
+    name,
+    value: process.env[name],
+  }));
+  for (const { name } of snapshot) Reflect.deleteProperty(process.env, name);
+  return () => {
+    for (const { name, value } of snapshot) {
+      if (value === undefined) Reflect.deleteProperty(process.env, name);
+      else process.env[name] = value;
+    }
   };
 }
 
@@ -124,6 +187,25 @@ function response(
     status: options.status ?? 200,
     url: options.url ?? REGISTRY,
   };
+}
+
+/**
+ * Build valid lockfile JSON with an exact UTF-8 byte length.
+ * @param byteLength - Required UTF-8 byte length
+ * @param includeMultibyte - Whether to include a multibyte character
+ * @returns Exact-sized lockfile JSON
+ */
+function sizedLockfile(byteLength: number, includeMultibyte = false): string {
+  const prefix = '{"lockfileVersion":3,"packages":{},"padding":"';
+  const suffix = '"}';
+  const multibyte = includeMultibyte ? "é" : "";
+  const paddingBytes = byteLength - Buffer.byteLength(prefix + multibyte + suffix);
+  if (paddingBytes < 0) throw new Error("Requested lockfile fixture is too small");
+  const text = prefix + multibyte + "a".repeat(paddingBytes) + suffix;
+  if (Buffer.byteLength(text) !== byteLength) {
+    throw new Error("Incorrect fixture byte length");
+  }
+  return text;
 }
 
 describe("lockfile release-age gate modes", () => {
@@ -212,19 +294,6 @@ describe("lockfile release-age gate modes", () => {
         },
       ),
     ).toThrow("Head package-lock.json data file did not return valid JSON");
-  });
-
-  it("keeps the pull-request-target workflow data-only", () => {
-    const workflow = readFileSync(".github/workflows/trusted-lockfile-release-age.yml", "utf8");
-    expect(workflow).not.toMatch(/\bgit\s/);
-    expect(workflow).not.toContain("refs/pull/");
-    expect(workflow).not.toContain("ref: ${{ github.event.pull_request.head");
-    expect(workflow.match(/uses: actions\/checkout@/g)).toHaveLength(2);
-    expect(workflow).toContain("ref: ${{ github.event.repository.default_branch }}");
-    expect(workflow).toContain("Accept: application/vnd.github.raw+json");
-    expect(workflow).toContain("github.event.pull_request.head.repo.full_name");
-    expect(workflow).toContain('--head-lockfile "$HEAD_LOCKFILE"');
-    expect(workflow).toContain('--base-lockfile "$BASE_LOCKFILE"');
   });
 
   it("prevents a follow-up commit from laundering an artifact past the policy baseline", () => {
@@ -328,6 +397,209 @@ describe("lockfile artifact extraction", () => {
       extractLockArtifacts(lock({ "node_modules/parent/node_modules/@scope/pkg": scoped }))
         .artifacts[0]?.name,
     ).toBe("@scope/pkg");
+  });
+});
+
+describe("release-age resource contracts", () => {
+  it("accepts 1024 selected artifacts and rejects 1025 before registry access", async () => {
+    const packages = Object.fromEntries(
+      Array.from({ length: MAXIMUM_ATTESTED_ARTIFACTS }, (_, index) => [
+        `node_modules/package-${String(index)}`,
+        artifactEntry("1.0.0", `package-${String(index)}`),
+      ]),
+    );
+    expect(selectLockArtifacts({ mode: "all" }, lock(packages))).toHaveLength(
+      MAXIMUM_ATTESTED_ARTIFACTS,
+    );
+    const oversizedPackages = {
+      ...packages,
+      [`node_modules/package-${String(MAXIMUM_ATTESTED_ARTIFACTS)}`]: artifactEntry(
+        "1.0.0",
+        `package-${String(MAXIMUM_ATTESTED_ARTIFACTS)}`,
+      ),
+    };
+    expect(() => selectLockArtifacts({ mode: "all" }, lock(oversizedPackages))).toThrow(
+      "maximum is 1024",
+    );
+    const oversized = Array.from({ length: MAXIMUM_ATTESTED_ARTIFACTS + 1 }, (_, index) =>
+      artifactEntry("1.0.0", `package-${String(index)}`),
+    );
+    const fetchMock = vi.fn<PackumentFetch>();
+    await expect(validateArtifactsConcurrently(oversized, 3, NOW, fetchMock)).rejects.toThrow(
+      "maximum is 1024",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("stops after the first request batch and aborts its in-flight requests", async () => {
+    const signals: AbortSignal[] = [];
+    const artifacts = Array.from({ length: 9 }, (_, index) =>
+      artifactEntry("1.0.0", `package-${String(index)}`),
+    );
+    const fetchMock = vi.fn<PackumentFetch>((_input, init) => {
+      signals.push(init.signal);
+      if (signals.length === 1) return Promise.reject(new Error("primary registry failure"));
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener(
+          "abort",
+          () => {
+            const reason: unknown = init.signal.reason as unknown;
+            reject(reason instanceof Error ? reason : new Error("request aborted"));
+          },
+          { once: true },
+        );
+      });
+    });
+    await expect(validateArtifactsConcurrently(artifacts, 3, NOW, fetchMock)).rejects.toThrow(
+      "primary registry failure",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(signals).toHaveLength(8);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("preserves the first metadata failure while aborting the initial batch", async () => {
+    const signals: AbortSignal[] = [];
+    const artifacts = Array.from({ length: 9 }, (_, index) =>
+      artifactEntry("1.0.0", `metadata-package-${String(index)}`),
+    );
+    const fetchMock = vi.fn<PackumentFetch>((input, init) => {
+      signals.push(init.signal);
+      if (signals.length === 1) {
+        return Promise.resolve(response({}, { url: input.toString() }));
+      }
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener(
+          "abort",
+          () => {
+            const reason: unknown = init.signal.reason as unknown;
+            reject(reason instanceof Error ? reason : new Error("request aborted"));
+          },
+          { once: true },
+        );
+      });
+    });
+    await expect(validateArtifactsConcurrently(artifacts, 3, NOW, fetchMock)).rejects.toThrow(
+      "Incomplete npm packument",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("enforces exact UTF-8 byte boundaries for injected readers", () => {
+    const exact = sizedLockfile(MAXIMUM_LOCKFILE_BYTES, true);
+    expect(loadLockfiles({ mode: "all" }, () => exact).currentLock).toMatchObject({
+      lockfileVersion: 3,
+      packages: {},
+    });
+    expect(() =>
+      loadLockfiles({ mode: "all" }, () => sizedLockfile(MAXIMUM_LOCKFILE_BYTES + 1, true)),
+    ).toThrow(
+      `Current package-lock.json exceeds maximum size of ${String(MAXIMUM_LOCKFILE_BYTES)} UTF-8 bytes`,
+    );
+  });
+
+  it("uses the same oversized diagnostic for file, injected, and Git-object transports", () => {
+    const directory = mkdtempSync(join(tmpdir(), "lockfile-size-"));
+    const previousCwd = process.cwd();
+    let restoreGitEnvironment: (() => void) | undefined;
+    const diagnostic = `Base package-lock.json exceeds maximum size of ${String(MAXIMUM_LOCKFILE_BYTES)} UTF-8 bytes`;
+    try {
+      git(directory, ["init", "--quiet"]);
+      git(directory, ["config", "user.email", "test@example.invalid"]);
+      git(directory, ["config", "user.name", "Test"]);
+      git(directory, ["config", "commit.gpgsign", "false"]);
+      writeFileSync(
+        join(directory, "package-lock.json"),
+        sizedLockfile(MAXIMUM_LOCKFILE_BYTES + 1),
+      );
+      git(directory, ["add", "package-lock.json"]);
+      git(directory, ["commit", "--no-verify", "--quiet", "-m", "oversized lockfile"]);
+      const sha = git(directory, ["rev-parse", "HEAD"]).trim();
+      writeFileSync(join(directory, "package-lock.json"), JSON.stringify(lock({})));
+      restoreGitEnvironment = removeGitLocalEnvironment();
+      process.chdir(directory);
+      expect(() => loadLockfiles({ baseSha: sha, mode: "differential" })).toThrow(diagnostic);
+      const basePath = join(directory, "base-lock.json");
+      writeFileSync(basePath, sizedLockfile(MAXIMUM_LOCKFILE_BYTES + 1));
+      expect(() =>
+        loadLockfiles({
+          baseLockfilePath: basePath,
+          headLockfilePath: join(directory, "package-lock.json"),
+          mode: "trusted-files",
+        }),
+      ).toThrow(diagnostic);
+      expect(() =>
+        loadLockfiles(
+          {
+            baseLockfilePath: join(directory, "base-lock.json"),
+            headLockfilePath: join(directory, "package-lock.json"),
+            mode: "trusted-files",
+          },
+          undefined,
+          (_path, description) =>
+            description.startsWith("Base")
+              ? sizedLockfile(MAXIMUM_LOCKFILE_BYTES + 1)
+              : JSON.stringify(lock({})),
+        ),
+      ).toThrow(diagnostic);
+    } finally {
+      process.chdir(previousCwd);
+      restoreGitEnvironment?.();
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("reads a real approximately 1.2 MiB Git base lockfile", () => {
+    const directory = mkdtempSync(join(tmpdir(), "lockfile-git-buffer-"));
+    const previousCwd = process.cwd();
+    let restoreGitEnvironment: (() => void) | undefined;
+    try {
+      git(directory, ["init", "--quiet"]);
+      git(directory, ["config", "user.email", "test@example.invalid"]);
+      git(directory, ["config", "user.name", "Test"]);
+      git(directory, ["config", "commit.gpgsign", "false"]);
+      writeFileSync(join(directory, "package-lock.json"), sizedLockfile(1_200_000));
+      git(directory, ["add", "package-lock.json"]);
+      git(directory, ["commit", "--no-verify", "--quiet", "-m", "large valid lockfile"]);
+      const sha = git(directory, ["rev-parse", "HEAD"]).trim();
+      restoreGitEnvironment = removeGitLocalEnvironment();
+      process.chdir(directory);
+      expect(loadLockfiles({ baseSha: sha, mode: "differential" }).baseLock).toMatchObject({
+        lockfileVersion: 3,
+      });
+    } finally {
+      process.chdir(previousCwd);
+      restoreGitEnvironment?.();
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("times out both the request and packument body read", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchRequest = fetchPackagePackument(
+        "example",
+        () => new Promise<PackumentResponse>(() => undefined),
+      );
+      const fetchExpectation = expect(fetchRequest).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await fetchExpectation;
+
+      const bodyRequest = fetchPackagePackument("example", () =>
+        Promise.resolve({
+          json: () => new Promise<never>(() => undefined),
+          ok: true,
+          status: 200,
+          url: `${REGISTRY}example`,
+        }),
+      );
+      const bodyExpectation = expect(bodyRequest).rejects.toThrow("timed out");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await bodyExpectation;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

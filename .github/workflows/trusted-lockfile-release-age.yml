@@ -21,6 +21,7 @@ jobs:
   lockfile-release-age:
     name: Trusted lockfile status publisher (base code)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Publish pending trusted status on the exact PR head
         if: github.event_name == 'pull_request_target'
