@@ -28,8 +28,12 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-      - name: Attest new lockfile artifacts
-        run: node scripts/check-lockfile-release-age.mjs "${{ github.event.pull_request.base.sha || github.event.before }}"
+      - name: Attest new pull request lockfile artifacts
+        if: github.event_name == 'pull_request'
+        run: npm run check-lockfile-release-age -- --base "${{ github.event.pull_request.base.sha }}"
+      - name: Attest policy-new pushed lockfile artifacts
+        if: github.event_name == 'push'
+        run: npm run check-lockfile-release-age
 
   validation:
     name: Validation (${{ matrix.os }})

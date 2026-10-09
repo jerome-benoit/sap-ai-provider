@@ -7,10 +7,10 @@ import { z } from "zod";
 
 /** Contract for one temporary dependency advisory exception. */
 export interface AllowedAdvisory {
+  dependencyPath: readonly string[];
   direct: boolean;
   expires: string;
   packageName: string;
-  parentPackageName: string;
   reason: string;
   scope: DependencyScope;
   severity: string;
@@ -41,6 +41,7 @@ const auditAdvisorySchema = z.object({
   url: z.string(),
 });
 const auditVulnerabilitySchema = z.object({
+  effects: z.array(z.string()).optional(),
   isDirect: z.boolean(),
   name: z.string().optional(),
   nodes: z.array(z.string()),
@@ -73,19 +74,19 @@ const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 /** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
 export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {
   "GHSA-86w9-cpqp-85rv": {
+    dependencyPath: ["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"],
     direct: false,
     expires: "2026-11-08",
     packageName: "node-forge",
-    parentPackageName: "jks-js",
     reason: "No patched node-forge release; transitive through SAP Cloud SDK JKS support.",
     scope: "runtime",
     severity: "high",
   },
   "GHSA-vfj7-8cjw-p6xm": {
+    dependencyPath: ["micromatch", "braces"],
     direct: false,
     expires: "2026-11-08",
     packageName: "braces",
-    parentPackageName: "micromatch",
     reason: "No patched braces release; development-only fixed Markdownlint glob patterns.",
     scope: "development",
     severity: "high",
@@ -220,6 +221,46 @@ function dependencyMapReferencesPackage(
 }
 
 /**
+ * Resolve the unique audit vulnerability for a package when npm reports one.
+ * @param report - Validated npm audit report
+ * @param packageName - Dependency package name
+ * @returns Matching vulnerability, when present
+ */
+function findAuditVulnerability(
+  report: AuditReport,
+  packageName: string,
+): AuditReport["vulnerabilities"][string] | undefined {
+  const matches = Object.entries(report.vulnerabilities).filter(
+    ([name, vulnerability]) => name === packageName || vulnerability.name === packageName,
+  );
+  if (matches.length > 1) {
+    throw new Error(`npm audit has multiple vulnerability records for ${packageName}`);
+  }
+  return matches[0]?.[1];
+}
+
+/**
+ * Return every lockfile package that declares a child dependency.
+ * @param lock - Validated package lock
+ * @param packageName - Declared child package name
+ * @returns Declaring package names
+ */
+function findDeclaringPackages(lock: PackageLock, packageName: string): Set<string> {
+  return new Set(
+    Object.entries(lock.packages)
+      .filter(([, entry]) =>
+        [
+          entry.dependencies,
+          entry.devDependencies,
+          entry.optionalDependencies,
+          entry.peerDependencies,
+        ].some((dependencies) => dependencyMapReferencesPackage(dependencies, packageName)),
+      )
+      .map(([path, entry]) => inferLockPackageName(path, entry) ?? "<root>"),
+  );
+}
+
+/**
  * Resolve one advisory policy without weakening indexed-access checks.
  * @param id - GitHub Security Advisory ID
  * @returns Structured temporary exception
@@ -342,22 +383,7 @@ function validateAdvisoryOccurrence(
     );
   }
 
-  const parentPackageNames = new Set(
-    Object.entries(lock.packages)
-      .filter(([, entry]) =>
-        [entry.dependencies, entry.optionalDependencies, entry.peerDependencies].some(
-          (dependencies) => dependencyMapReferencesPackage(dependencies, policy.packageName),
-        ),
-      )
-      .map(([path, entry]) => inferLockPackageName(path, entry) ?? "<unidentifiable>"),
-  );
-  if (parentPackageNames.size !== 1 || !parentPackageNames.has(policy.parentPackageName)) {
-    const parentDiagnostic =
-      parentPackageNames.size === 0 ? "none" : [...parentPackageNames].join(", ");
-    throw new Error(
-      `${id} immediate parent packages do not match ${policy.parentPackageName}: ${parentDiagnostic}`,
-    );
-  }
+  validateDependencyPath(id, report, lock, policy);
 
   if (vulnerability.nodes.length === 0) {
     throw new Error(`${id} has no lockfile nodes`);
@@ -376,6 +402,62 @@ function validateAdvisoryOccurrence(
     : "runtime";
   if (scope !== policy.scope) {
     throw new Error(`${id} scope ${scope} does not match ${policy.scope}`);
+  }
+}
+
+/**
+ * Validate every edge of an approved dependency path against lockfile declarations
+ * and any corresponding npm audit meta-vulnerability links.
+ * @param id - GitHub Security Advisory ID
+ * @param report - Validated npm audit report
+ * @param lock - Validated package lock
+ * @param policy - Temporary exception contract
+ */
+function validateDependencyPath(
+  id: string,
+  report: AuditReport,
+  lock: PackageLock,
+  policy: AllowedAdvisory,
+): void {
+  const vulnerablePackage = policy.dependencyPath.at(-1);
+  if (vulnerablePackage !== policy.packageName || policy.dependencyPath.length < 2) {
+    throw new Error(`${id} has an invalid dependency path policy`);
+  }
+
+  for (let index = 0; index < policy.dependencyPath.length - 1; index += 1) {
+    const parentPackageName = policy.dependencyPath[index];
+    const childPackageName = policy.dependencyPath[index + 1];
+    if (!parentPackageName || !childPackageName) {
+      throw new Error(`${id} has an invalid dependency path policy`);
+    }
+
+    const declaringPackages = findDeclaringPackages(lock, childPackageName);
+    if (declaringPackages.size !== 1 || !declaringPackages.has(parentPackageName)) {
+      const parentDiagnostic =
+        declaringPackages.size === 0 ? "none" : [...declaringPackages].join(", ");
+      throw new Error(
+        `${id} parent packages for ${childPackageName} do not match ${parentPackageName}: ${parentDiagnostic}`,
+      );
+    }
+
+    const childVulnerability = findAuditVulnerability(report, childPackageName);
+    if (
+      childVulnerability?.effects !== undefined &&
+      !childVulnerability.effects.includes(parentPackageName)
+    ) {
+      throw new Error(
+        `${id} audit effects for ${childPackageName} do not include ${parentPackageName}`,
+      );
+    }
+    const parentVulnerability = findAuditVulnerability(report, parentPackageName);
+    if (
+      parentVulnerability !== undefined &&
+      !parentVulnerability.via.some((via) => typeof via === "string" && via === childPackageName)
+    ) {
+      throw new Error(
+        `${id} audit via for ${parentPackageName} does not include ${childPackageName}`,
+      );
+    }
   }
 }
 

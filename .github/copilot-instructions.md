@@ -20,7 +20,9 @@ Always reference these instructions first and fallback to search or bash command
   - Use `npm install` when no package-lock.json exists (fresh clone)
   - The prepare script installs Lefthook hooks; it does not build the package
   - Run `npm run build` explicitly to create `dist/` artifacts
-- **Existing install**: `npm ci` -- takes ~15 seconds. NEVER CANCEL. Set timeout to 30+ seconds.
+- **Existing install**: run `npm run check-lockfile-release-age` before `npm ci`; the
+  gate needs registry access but no installed dependencies. Then allow ~15 seconds for
+  `npm ci`; NEVER CANCEL and set timeout to 30+ seconds.
   - Use when package-lock.json already exists
   - Faster than `npm install` for CI/existing setups
 
@@ -67,9 +69,14 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 - npm `min-release-age` filters resolution only; `npm ci` installs an existing
   lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`;
   the gate rejects accidental config/provenance drift.
-- PR, push, and autofix workflows attest new artifacts before installation. Release
-  requires its exact SHA to be on `main` with a successful `Lockfile release age`
-  check; it does not repeat the monotonic age calculation.
+- `npm run check-lockfile-release-age` requires the public registry and fails closed
+  on unavailable or incomplete metadata. Its default policy mode checks artifacts
+  introduced since baseline `62cd5dab23e0b8c0faf3b843943013a608318c36`;
+  `-- --all` explicitly checks the complete lock, while
+  `-- --base <full-git-sha>` selects a comparison base. Pull requests use their base;
+  pushes, autofix pushes, and releases use policy mode before installation. Advance
+  the baseline only after an exact successful gate and review. Releases also retain
+  the exact-SHA `main` and check-run defenses.
 
 ### Type Checking and Linting
 
@@ -91,9 +98,9 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 **Quick workflow summary:**
 
-1. **Bootstrap**: `npm ci` (always first)
+1. **Bootstrap**: `npm run check-lockfile-release-age && npm ci` (always first)
 2. **Make changes** in `/src`
-3. **Validate**: `npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check`
+3. **Validate**: `npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check`
 4. **Build**: `npm run build && npm run check-build`
 
 ## Validation
@@ -103,7 +110,7 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 **ALWAYS run this command before committing (CI will fail otherwise):**
 
 ```bash
-npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 **Detailed checklist and standards**: See [Contributing Guide - Pre-Commit Checklist](../CONTRIBUTING.md#pre-commit-checklist)
@@ -122,7 +129,8 @@ npm run check-dependency-audit && npm run type-check && npm run test:node && npm
 
 Since full example testing requires SAP credentials, validate changes using this comprehensive approach:
 
-1. **Install and setup**: `npm install` (or `npm ci` if lock file exists)
+1. **Install and setup**: run `npm run check-lockfile-release-age`, then `npm ci`
+   when the lockfile exists (`npm install` is only for a checkout without one)
 2. **Run all tests**: `npm run test:node && npm run test:edge`
 3. **Build successfully**: `npm run build && npm run check-build`
 4. **Type check passes**: `npm run type-check`
@@ -133,7 +141,7 @@ Since full example testing requires SAP credentials, validate changes using this
 **Complete CI-like validation command:**
 
 ```bash
-npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 ```
 
 All commands should pass; execution time depends on the environment.
@@ -276,6 +284,7 @@ All commands should pass; execution time depends on the environment.
 # Fresh setup (no package-lock.json)
 npm install               # Install deps + Lefthook hooks (no build)
 # or existing setup (with package-lock.json)
+npm run check-lockfile-release-age # Fail-closed policy-baseline attestation
 npm ci                    # Clean install + Lefthook hooks (no build)
 
 # Development
@@ -297,7 +306,7 @@ npm run lint:md:fix      # Auto-fix Markdown lint issues
 npm run clean            # Remove dist/ directory
 
 # Complete validation
-npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
 # Run npm run build again if main-package artifacts are needed after build:v2
 
 # Examples (requires SAP service key)
@@ -326,7 +335,7 @@ npx tsx examples/example-foundation-models.ts
 - **Build fails**: Check TypeScript errors with `npm run type-check`
 - **Tests fail**: Run `npm run test:watch` for detailed test output
 - **Formatting issues**: Use `npm run prettier-fix` to auto-fix
-- **Missing dependencies**: Run `npm ci` to restore the locked dependency tree; do not delete `package-lock.json` as routine troubleshooting
+- **Missing dependencies**: Run `npm run check-lockfile-release-age && npm ci` to attest and restore the locked dependency tree; do not delete `package-lock.json` as routine troubleshooting
 - **Example errors**: Verify `.env` file exists with valid `AICORE_SERVICE_KEY`
 
 ## Pull Request Review Guidelines
@@ -404,6 +413,7 @@ When acting as a PR reviewer, you must first thoroughly analyze and understand t
 Before approving any PR, verify ALL of these pass:
 
 ```bash
+npm run check-lockfile-release-age &&
 npm run check-dependency-audit &&
 npm run type-check &&
 npm run test:node &&

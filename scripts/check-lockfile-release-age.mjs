@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-/** Differential release-age gate for new registry artifacts in package-lock.json. */
-import { spawnSync } from "node:child_process";
+/** Policy-baseline, complete, or differential gate for registry artifacts in package-lock.json. */
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LOCAL_PROTOCOL = /^(?:file|link|workspace):/i;
+const MAXIMUM_METADATA_CONCURRENCY = 8;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
+export const POLICY_BASE_SHA = "62cd5dab23e0b8c0faf3b843943013a608318c36";
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const PUBLIC_NPM_REGISTRY_ORIGIN = new URL(PUBLIC_NPM_REGISTRY).origin;
 
@@ -36,25 +38,29 @@ export function extractLockArtifacts(lockValue) {
       throw new Error(`Invalid lockfile entry ${path}`);
     }
     const resolved = entry.resolved;
-    if (
-      entry.inBundle === true ||
-      entry.link === true ||
-      (typeof resolved === "string" && LOCAL_PROTOCOL.test(resolved))
-    ) {
+    if (entry.link === true || (typeof resolved === "string" && LOCAL_PROTOCOL.test(resolved))) {
       continue;
     }
     if (resolved !== undefined && typeof resolved !== "string") {
       throw new Error(`Invalid resolved source at ${path}`);
     }
+    if (entry.inBundle !== undefined && typeof entry.inBundle !== "boolean") {
+      throw new Error(`Invalid inBundle state at ${path}`);
+    }
 
+    const inBundle = entry.inBundle === true;
     const name = inferPackageName(path, entry);
     const version = entry.version;
     const integrity = entry.integrity;
     const resolvedUrl = resolved ?? null;
-    const approvedResolved =
-      resolvedUrl === null ||
-      (/^https?:\/\//i.test(resolvedUrl) &&
-        new URL(resolvedUrl).origin === PUBLIC_NPM_REGISTRY_ORIGIN);
+    let approvedResolved = false;
+    if (resolvedUrl !== null && /^https?:\/\//i.test(resolvedUrl)) {
+      try {
+        approvedResolved = new URL(resolvedUrl).origin === PUBLIC_NPM_REGISTRY_ORIGIN;
+      } catch {
+        approvedResolved = false;
+      }
+    }
     if (
       approvedResolved &&
       typeof version === "string" &&
@@ -62,10 +68,11 @@ export function extractLockArtifacts(lockValue) {
       typeof integrity === "string" &&
       integrity.length > 0
     ) {
-      artifacts.push({ integrity, name, resolved: resolvedUrl, version });
+      artifacts.push({ inBundle, integrity, name, resolved: resolvedUrl, version });
       continue;
     }
     remoteSources.push({
+      inBundle,
       integrity: typeof integrity === "string" ? integrity : "",
       name,
       resolved: resolvedUrl,
@@ -73,6 +80,18 @@ export function extractLockArtifacts(lockValue) {
     });
   }
   return { artifacts, remoteSources };
+}
+
+/**
+ * Find every unique attestable registry artifact in a lockfile.
+ * Unattestable entries fail closed in complete mode.
+ * @param lockValue - Parsed current lockfile
+ * @returns Unique registry artifacts
+ */
+export function findAllLockArtifacts(lockValue) {
+  const current = extractLockArtifacts(lockValue);
+  rejectUnattestableSources(current.remoteSources, "Lockfile source");
+  return deduplicateArtifacts(current.artifacts);
 }
 
 /**
@@ -85,41 +104,28 @@ export function extractLockArtifacts(lockValue) {
 export function findNewLockArtifacts(baseLock, currentLock) {
   const base = extractLockArtifacts(baseLock);
   const current = extractLockArtifacts(currentLock);
-  const artifactFingerprint = (artifact) =>
-    `${artifact.name}\0${artifact.version}\0${String(artifact.resolved)}\0${artifact.integrity}`;
-  const sourceFingerprint = (source) =>
-    `${source.name}\0${source.version}\0${String(source.resolved)}\0${source.integrity}`;
   const baseFingerprints = new Set(base.artifacts.map(artifactFingerprint));
-  const baseRemoteFingerprints = new Set(base.remoteSources.map(sourceFingerprint));
+  const baseRemoteFingerprints = new Set(base.remoteSources.map(artifactFingerprint));
   const baseByNameVersion = new Map();
   for (const artifact of base.artifacts) {
-    const key = `${artifact.name}\0${artifact.version}`;
+    const key = artifactIdentity(artifact);
     const versions = baseByNameVersion.get(key) ?? [];
     versions.push(artifact);
     baseByNameVersion.set(key, versions);
   }
 
-  for (const source of current.remoteSources) {
-    if (!baseRemoteFingerprints.has(sourceFingerprint(source))) {
-      throw new Error(
-        `New source cannot be attested by ${PUBLIC_NPM_REGISTRY}: ${source.name}@${source.version || "unknown"} (${source.resolved ?? "no resolved URL"})`,
-      );
-    }
-  }
+  const newRemoteSources = current.remoteSources.filter(
+    (source) => !baseRemoteFingerprints.has(artifactFingerprint(source)),
+  );
+  rejectUnattestableSources(newRemoteSources, "New source");
 
   const newByNameVersion = new Map();
   for (const artifact of current.artifacts) {
     const fingerprint = artifactFingerprint(artifact);
     if (baseFingerprints.has(fingerprint)) continue;
-    const key = `${artifact.name}\0${artifact.version}`;
+    const key = artifactIdentity(artifact);
     const baseVersions = baseByNameVersion.get(key);
     if (baseVersions) {
-      const matchesOmittedResolved = baseVersions.some(
-        (baseArtifact) =>
-          baseArtifact.integrity === artifact.integrity &&
-          (baseArtifact.resolved === null || artifact.resolved === null),
-      );
-      if (matchesOmittedResolved) continue;
       throw new Error(`Artifact fingerprint changed for ${artifact.name}@${artifact.version}`);
     }
     const existing = newByNameVersion.get(key);
@@ -151,6 +157,41 @@ export function inferPackageName(path, entry) {
     throw new Error(`Cannot infer package name from lockfile path ${path}`);
   }
   return name;
+}
+
+/**
+ * Parse the default cumulative policy mode or an explicit complete/differential mode.
+ * @param args - Command-line arguments after the script name
+ * @returns Validated gate mode
+ */
+export function parseCliArguments(args) {
+  if (args.length === 0) return { baseSha: POLICY_BASE_SHA, mode: "policy" };
+  if (args.length === 1 && args[0] === "--all") return { mode: "all" };
+  const [option, baseSha] = args;
+  if (
+    args.length !== 2 ||
+    option !== "--base" ||
+    !baseSha ||
+    !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(baseSha)
+  ) {
+    throw new Error("Usage: npm run check-lockfile-release-age -- [--all | --base <full-git-sha>]");
+  }
+  return { baseSha, mode: "differential" };
+}
+
+/**
+ * Select artifacts for a policy-baseline, complete, or differential gate without process I/O.
+ * @param mode - Validated gate mode
+ * @param currentLock - Parsed current lockfile
+ * @param baseLock - Parsed base lockfile required in differential mode
+ * @returns Unique artifacts requiring registry attestation
+ */
+export function selectLockArtifacts(mode, currentLock, baseLock) {
+  if (mode.mode === "all") return findAllLockArtifacts(currentLock);
+  if (baseLock === undefined) {
+    throw new Error("Differential release-age mode requires a base package-lock.json");
+  }
+  return findNewLockArtifacts(baseLock, currentLock);
 }
 
 /**
@@ -217,43 +258,85 @@ export function validateMinimumReleaseAge(configuredAge) {
   return MINIMUM_RELEASE_AGE_DAYS;
 }
 
-/** Run the differential release-age command-line gate. */
-function main() {
-  const baseSha = process.argv[2];
-  if (!baseSha || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(baseSha)) {
-    throw new Error("Expected a full hexadecimal base Git SHA");
+/**
+ * Build a stable full artifact fingerprint, including bundled state.
+ * @param artifact - Extracted lockfile artifact or source
+ * @returns Stable fingerprint
+ */
+function artifactFingerprint(artifact) {
+  return `${artifact.name}\0${artifact.version}\0${String(artifact.resolved)}\0${artifact.integrity}\0${String(artifact.inBundle)}`;
+}
+
+/**
+ * Build a package identity used to reject conflicting duplicate artifacts.
+ * @param artifact - Extracted lockfile artifact
+ * @returns Name and exact version identity
+ */
+function artifactIdentity(artifact) {
+  return `${artifact.name}\0${artifact.version}`;
+}
+
+/**
+ * Deduplicate identical lockfile artifacts and reject conflicting fingerprints.
+ * @param artifacts - Extracted registry artifacts
+ * @returns Unique artifacts in lockfile order
+ */
+function deduplicateArtifacts(artifacts) {
+  const unique = new Map();
+  for (const artifact of artifacts) {
+    const key = artifactIdentity(artifact);
+    const existing = unique.get(key);
+    if (existing && artifactFingerprint(existing) !== artifactFingerprint(artifact)) {
+      throw new Error(`Conflicting artifact fingerprints for ${artifact.name}@${artifact.version}`);
+    }
+    unique.set(key, artifact);
   }
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  return [...unique.values()];
+}
+
+/**
+ * Return a portable npm CLI invocation supplied by the parent npm process.
+ * @returns Node.js command and npm CLI prefix arguments
+ */
+function getNpmInvocation() {
+  const npmExecPath = process.env.npm_execpath;
+  if (!npmExecPath) {
+    throw new Error(
+      "Missing npm_execpath; run this checker through npm run check-lockfile-release-age",
+    );
+  }
+  return { args: [npmExecPath], command: process.execPath };
+}
+
+/** Run the release-age command-line gate. */
+async function main() {
+  const mode = parseCliArguments(process.argv.slice(2));
+  const npmInvocation = getNpmInvocation();
   const configuredAge = validateMinimumReleaseAge(
     parseJson(
-      run(npmCommand, ["config", "get", "min-release-age", "--json"]),
+      runSync(npmInvocation.command, [
+        ...npmInvocation.args,
+        "config",
+        "get",
+        "min-release-age",
+        "--json",
+      ]),
       "npm min-release-age configuration",
     ),
   );
 
   const currentLock = parseJson(readFileSync("package-lock.json", "utf8"), "package-lock.json");
-  const baseLock = parseJson(
-    run("git", ["show", `${baseSha}:package-lock.json`]),
-    "Base package-lock.json",
-  );
-  const newArtifacts = findNewLockArtifacts(baseLock, currentLock);
-  const nowMs = Date.now();
-  for (const artifact of newArtifacts) {
-    const metadata = parseJson(
-      run(npmCommand, [
-        "view",
-        `${artifact.name}@${artifact.version}`,
-        "time",
-        "dist.integrity",
-        "dist.tarball",
-        "--json",
-        `--registry=${PUBLIC_NPM_REGISTRY}`,
-      ]),
-      `npm metadata for ${artifact.name}@${artifact.version}`,
-    );
-    validateArtifactMetadata(artifact, metadata, configuredAge, nowMs);
-  }
-  console.log(`Verified release age for ${newArtifacts.length} new lockfile artifact(s).`);
+  const baseLock =
+    mode.mode !== "all"
+      ? parseJson(
+          runSync("git", ["show", `${mode.baseSha}:package-lock.json`]),
+          "Base package-lock.json",
+        )
+      : undefined;
+  const artifacts = selectLockArtifacts(mode, currentLock, baseLock);
+  await validateArtifactsConcurrently(artifacts, npmInvocation, configuredAge, Date.now());
+  const qualifier = mode.mode === "all" ? "lockfile" : "new lockfile";
+  console.log(`Verified release age for ${artifacts.length} ${qualifier} artifact(s).`);
 }
 
 /**
@@ -271,12 +354,64 @@ function parseJson(text, description) {
 }
 
 /**
- * Run one subprocess without a shell and require normal success.
+ * Reject sources that cannot be attested against the configured public registry.
+ * @param sources - Unattestable lockfile entries
+ * @param label - Diagnostic prefix
+ */
+function rejectUnattestableSources(sources, label) {
+  const source = sources[0];
+  if (!source) return;
+  throw new Error(
+    `${label} cannot be attested by ${PUBLIC_NPM_REGISTRY}: ${source.name}@${source.version || "unknown"} (${source.resolved ?? "no resolved URL"})`,
+  );
+}
+
+/**
+ * Run one subprocess asynchronously without a shell and require normal success.
  * @param command - Executable name
  * @param args - Separate process arguments
  * @returns Standard output
  */
 function run(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { env: process.env });
+    let stderr = "";
+    let stdout = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.on("error", (error) => {
+      reject(new Error(`Unable to run ${command}: ${error.message}`));
+    });
+    child.on("close", (status, signal) => {
+      if (signal !== null) {
+        reject(new Error(`${command} terminated by signal ${signal}`));
+      } else if (status !== 0) {
+        const diagnostic = stderr.trim();
+        reject(
+          new Error(
+            `${command} exited with status ${status ?? "unknown"}${diagnostic ? `: ${diagnostic}` : ""}`,
+          ),
+        );
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
+
+/**
+ * Run one subprocess synchronously without a shell and require normal success.
+ * @param command - Executable name
+ * @param args - Separate process arguments
+ * @returns Standard output
+ */
+function runSync(command, args) {
   const result = spawnSync(command, args, { encoding: "utf8", env: process.env });
   if (result.error) throw new Error(`Unable to run ${command}: ${result.error.message}`);
   if (result.signal !== null) throw new Error(`${command} terminated by signal ${result.signal}`);
@@ -289,9 +424,51 @@ function run(command, args) {
   return result.stdout;
 }
 
+/**
+ * Validate registry metadata with bounded concurrency and deterministic errors.
+ * @param artifacts - Unique artifacts requiring attestation
+ * @param npmInvocation - Portable npm CLI invocation
+ * @param minimumAgeDays - Required age in days
+ * @param nowMs - Current Unix timestamp in milliseconds
+ */
+async function validateArtifactsConcurrently(artifacts, npmInvocation, minimumAgeDays, nowMs) {
+  let nextIndex = 0;
+  const failures = new Array(artifacts.length);
+  const worker = async () => {
+    while (nextIndex < artifacts.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const artifact = artifacts[index];
+      try {
+        const metadata = parseJson(
+          await run(npmInvocation.command, [
+            ...npmInvocation.args,
+            "view",
+            `${artifact.name}@${artifact.version}`,
+            "time",
+            "dist.integrity",
+            "dist.tarball",
+            "--json",
+            `--registry=${PUBLIC_NPM_REGISTRY}`,
+          ]),
+          `npm metadata for ${artifact.name}@${artifact.version}`,
+        );
+        validateArtifactMetadata(artifact, metadata, minimumAgeDays, nowMs);
+      } catch (error) {
+        failures[index] = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+  };
+  const workerCount = Math.min(MAXIMUM_METADATA_CONCURRENCY, artifacts.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  for (const failure of failures) {
+    if (failure) throw failure;
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    main();
+    await main();
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

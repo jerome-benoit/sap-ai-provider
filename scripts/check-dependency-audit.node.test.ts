@@ -23,6 +23,9 @@ function fixtures() {
           dependencies: { "@sap-cloud-sdk/connectivity": "^4.9.1" },
           devDependencies: { "markdownlint-cli2": "^0.23.3" },
         },
+        "node_modules/@sap-cloud-sdk/connectivity": {
+          dependencies: { "jks-js": "^1.1.7" },
+        },
         "node_modules/braces": { dev: true, version: "3.0.2" },
         "node_modules/jks-js": { dependencies: { "node-forge": "^1.4.0" } },
         "node_modules/micromatch": { dependencies: { braces: "^3.0.3" }, dev: true },
@@ -31,6 +34,14 @@ function fixtures() {
     },
     report: {
       vulnerabilities: {
+        "@sap-cloud-sdk/connectivity": {
+          effects: [],
+          isDirect: true,
+          name: "@sap-cloud-sdk/connectivity",
+          nodes: ["node_modules/@sap-cloud-sdk/connectivity"],
+          severity: "high",
+          via: ["jks-js"],
+        },
         braces: {
           isDirect: false,
           name: "braces",
@@ -45,7 +56,16 @@ function fixtures() {
             },
           ],
         },
+        "jks-js": {
+          effects: ["@sap-cloud-sdk/connectivity"],
+          isDirect: false,
+          name: "jks-js",
+          nodes: ["node_modules/jks-js"],
+          severity: "high",
+          via: ["node-forge"],
+        },
         "node-forge": {
+          effects: ["jks-js"],
           isDirect: false,
           name: "node-forge",
           nodes: ["node_modules/node-forge"],
@@ -126,7 +146,7 @@ describe("dependency audit policy", () => {
       },
     };
     expect(() => validateDependencyAudit(report, extraParentLock, TODAY)).toThrow(
-      "immediate parent packages",
+      "parent packages",
     );
   });
 
@@ -142,7 +162,21 @@ describe("dependency audit policy", () => {
       },
     };
     expect(() => validateDependencyAudit(report, aliasedParentLock, TODAY)).toThrow(
-      "immediate parent packages",
+      "parent packages",
+    );
+  });
+
+  it("rejects an unrelated package that also declares the intermediate JKS dependency", () => {
+    const { lock, report } = fixtures();
+    const unrelatedParentLock = {
+      ...lock,
+      packages: {
+        ...lock.packages,
+        "node_modules/unrelated": { dependencies: { "jks-js": "^1.1.7" } },
+      },
+    };
+    expect(() => validateDependencyAudit(report, unrelatedParentLock, TODAY)).toThrow(
+      "parent packages for jks-js",
     );
   });
 

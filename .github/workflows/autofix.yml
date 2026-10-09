@@ -19,22 +19,12 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
-      - name: Attest new lockfile artifacts
-        env:
-          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          BASE_SHA="$EVENT_BASE_SHA"
-          if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            if ! BASE_SHA=$(git merge-base "$GITHUB_SHA" origin/main); then
-              echo "Unable to determine a base commit for first push $GITHUB_SHA" >&2
-              exit 1
-            fi
-          fi
-          if [ -z "$BASE_SHA" ]; then
-            echo "Missing base commit for lockfile release-age gate" >&2
-            exit 1
-          fi
-          node scripts/check-lockfile-release-age.mjs "$BASE_SHA"
+      - name: Attest new pull request lockfile artifacts
+        if: github.event_name == 'pull_request'
+        run: npm run check-lockfile-release-age -- --base "${{ github.event.pull_request.base.sha }}"
+      - name: Attest policy-new pushed lockfile artifacts
+        if: github.event_name == 'push'
+        run: npm run check-lockfile-release-age
       - run: npm ci
       - run: npm run lint-fix
       - run: npm run prettier-fix

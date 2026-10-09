@@ -36,6 +36,11 @@ description: Build, type-check, test, and publish workflow for the package
 - Prettier-fix: `npm run prettier-fix`
 - Canonical Node tests: `npm run test:node` (`npm test` is an alias)
 - Edge source tests: `npm run test:edge`
+- Lockfile release age: `npm run check-lockfile-release-age` checks artifacts added
+  since policy baseline `62cd5dab23e0b8c0faf3b843943013a608318c36`;
+  `-- --all` checks the complete lock, and `-- --base <full-git-sha>` selects an
+  explicit comparison base (all modes require registry access, fail closed, and run
+  without installed dependencies)
 - Dependency advisory policy: `npm run check-dependency-audit` (requires registry access)
 
 ### Versioned Entrypoints and Packages
@@ -62,12 +67,16 @@ range to AI SDK 5/6, removes
 `/v2`, `/v3`, and `/v4` exports from the manifest, and updates the lockfile.
 Run publish preparation only in a disposable publishing checkout.
 
-Dependency installation runs `prepare` (`lefthook install`), not a build.
+Before `npm ci`, run `npm run check-lockfile-release-age`; it needs the public
+registry, runs without `node_modules`, and fails closed if metadata is unavailable or
+incomplete. Dependency installation runs `prepare` (`lefthook install`), not a build.
 Use `npm run build` explicitly to create distribution artifacts. npm
 `min-release-age` applies while resolving, not when `npm ci` consumes the lockfile.
-Policy is 3 days on `https://registry.npmjs.org/`. PR/push and autofix workflows
-gate newly introduced artifacts before installation. A release requires its exact
-SHA on `main` and a successful `Lockfile release age` check run; age is monotonic.
+Policy is 3 days on `https://registry.npmjs.org/`. Pull requests use their
+explicit base SHA; pushes, autofix pushes, and releases use the cumulative policy
+baseline before installation. Advance the immutable baseline only after the exact
+gate succeeds and the baseline change is reviewed. Releases also require their exact
+SHA on `main` and a successful `Lockfile release age` check run.
 
 ## Node Engine
 

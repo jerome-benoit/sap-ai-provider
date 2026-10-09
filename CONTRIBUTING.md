@@ -88,6 +88,7 @@ accept pull requests.
 3. **Install dependencies**
 
    ```bash
+   npm run check-lockfile-release-age
    npm ci
    ```
 
@@ -169,6 +170,7 @@ and type-check + tests on push. For a full validation before opening a PR
 (including build), run:
 
 ```bash
+npm run check-lockfile-release-age && \
 npm run check-dependency-audit && \
 npm run type-check && \
 npm run test:node && \
@@ -181,9 +183,10 @@ npm run build:v2 && \
 npm run check-build:v2
 ```
 
-CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. A
-pre-installation Linux gate first checks only lockfile artifacts introduced relative
-to the base revision; the autofix workflow runs the same gate before its install.
+CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. Before
+installation, pull requests differentially check artifacts against their base SHA;
+push, autofix-push, and release workflows check every artifact introduced since
+the immutable policy baseline.
 Lint and formatting run once on Ubuntu; dependency audit,
 types, Node and Edge tests, and builds run on every OS. `build:v2` replaces
 `dist/`, so rerun `npm run build` before using or packaging the main package
@@ -405,7 +408,8 @@ npm test             # Runs test suite
 - Check for injection vulnerabilities
 - Run `npm run check-dependency-audit` after dependency changes. It requires
   registry access and validates advisory-specific, expiring exceptions against
-  exact package, severity, directness, immediate parent, and lockfile scope.
+  exact package, severity, directness, complete approved parent path, audit
+  meta-links, and lockfile scope.
 - Use overrides to force a published version containing a security fix when
   parent dependency ranges do not yet admit it. Verify every affected dependency
   path, and remove the override once parent ranges admit a fixed version.
@@ -413,12 +417,16 @@ npm test             # Runs test suite
   the lockfile and affected tool or runtime paths.
 - npm `min-release-age` filters dependency resolution, but `npm ci` installs the
   existing lockfile verbatim. Repository policy fixes the age at 3 days and the
-  provenance registry at `https://registry.npmjs.org/`; the script rejects config
-  drift rather than treating mutable PR config as an anti-contributor boundary.
-  PR, push, and autofix CI attest newly introduced lockfile artifacts before install.
-  A release SHA must be on `main` and have a successful check run named exactly
-  `Lockfile release age`; release then relies on that SHA-specific result because
-  artifact age is monotonic.
+  provenance registry at `https://registry.npmjs.org/`;
+  `npm run check-lockfile-release-age` needs registry access and fails closed on
+  unavailable or incomplete metadata. With no arguments it checks every artifact
+  introduced since policy baseline `62cd5dab23e0b8c0faf3b843943013a608318c36`;
+  `-- --all` explicitly checks the complete lockfile, and
+  `-- --base <full-git-sha>` selects a different comparison base. Pull requests use
+  their explicit base; pushes, autofix pushes, and releases use the cumulative policy
+  baseline before installation. Advance that immutable baseline only after the exact
+  gate succeeds and the baseline change is reviewed. A release SHA must also be on
+  `main` and have a successful check run named exactly `Lockfile release age`.
 
 ## Advanced: Detailed Developer Instructions
 

@@ -101,6 +101,7 @@
     "check-build:v2": "tsx scripts/check-build-artifacts.ts v2",
     "check-build:v4": "tsx scripts/check-build-artifacts.ts v4",
     "check-dependency-audit": "tsx scripts/check-dependency-audit.ts",
+    "check-lockfile-release-age": "node scripts/check-lockfile-release-age.mjs",
     "clean": "rm -rf dist",
     "lint": "npm run lint:md:all && eslint . --cache",
     "lint-fix": "npm run lint:md:fix && eslint . --fix --cache",
