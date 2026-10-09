@@ -9,7 +9,11 @@ const FULL_GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const LOCAL_PROTOCOL = /^(?:file|link|workspace):/i;
 const MAXIMUM_METADATA_CONCURRENCY = 8;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
-export const POLICY_BASE_SHA = "62cd5dab23e0b8c0faf3b843943013a608318c36";
+/**
+ * Immutable comparison point after intentionally grandfathering the dependency state
+ * on main at this commit; presence in the baseline is not a release-age attestation.
+ */
+export const POLICY_BASE_SHA = "3f869c5f5371b35e53ef38bae2173541ab6c209a";
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const PUBLIC_NPM_REGISTRY_ORIGIN = new URL(PUBLIC_NPM_REGISTRY).origin;
 
@@ -215,19 +219,28 @@ export function inferPackageName(path, entry) {
  * Load the exact lockfile revisions selected by a validated mode.
  * @param mode - Validated command-line mode
  * @param readCurrentLock - Working-tree lockfile reader
- * @param showGitObject - Exact Git object reader
+ * @param readLockfile - Data-only lockfile reader
+ * @param showGitObject - Exact trusted Git object reader
  * @returns Selected parsed lockfiles
  */
 export function loadLockfiles(
   mode,
   readCurrentLock = () => readFileSync("package-lock.json", "utf8"),
+  readLockfile = (lockfilePath) => readFileSync(lockfilePath, "utf8"),
   showGitObject = (objectName) => runSync("git", ["show", objectName]),
 ) {
-  const currentText =
-    mode.mode === "trusted"
-      ? showGitObject(`${mode.headSha}:package-lock.json`)
-      : readCurrentLock();
-  const currentLock = parseJson(currentText, "Current package-lock.json");
+  if (mode.mode === "trusted-files") {
+    const currentLock = parseJson(
+      readLockfile(mode.headLockfilePath),
+      "Head package-lock.json data file",
+    );
+    const baseLock = parseJson(
+      readLockfile(mode.baseLockfilePath),
+      "Base package-lock.json data file",
+    );
+    return { baseLock, currentLock };
+  }
+  const currentLock = parseJson(readCurrentLock(), "Current package-lock.json");
   if (mode.mode === "all") return { currentLock };
   const baseLock = parseJson(
     showGitObject(`${mode.baseSha}:package-lock.json`),
@@ -237,7 +250,7 @@ export function loadLockfiles(
 }
 
 /**
- * Parse policy, complete, candidate differential, or exact trusted-head mode.
+ * Parse policy, complete, candidate differential, or data-only trusted mode.
  * @param args - Command-line arguments after the script name
  * @returns Validated gate mode
  */
@@ -249,15 +262,20 @@ export function parseCliArguments(args) {
   }
   if (
     args.length === 4 &&
-    args[0] === "--head" &&
-    FULL_GIT_SHA.test(args[1] ?? "") &&
-    args[2] === "--base" &&
-    FULL_GIT_SHA.test(args[3] ?? "")
+    args[0] === "--head-lockfile" &&
+    args[1] !== "" &&
+    args[2] === "--base-lockfile" &&
+    args[3] !== "" &&
+    args[1] !== args[3]
   ) {
-    return { baseSha: args[3], headSha: args[1], mode: "trusted" };
+    return {
+      baseLockfilePath: args[3],
+      headLockfilePath: args[1],
+      mode: "trusted-files",
+    };
   }
   throw new Error(
-    "Usage: npm run check-lockfile-release-age -- [--all | --base <full-git-sha> | --head <full-git-sha> --base <full-git-sha>]",
+    "Usage: npm run check-lockfile-release-age -- [--all | --base <full-git-sha> | --head-lockfile <path> --base-lockfile <path>]",
   );
 }
 

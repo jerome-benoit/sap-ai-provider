@@ -79,11 +79,14 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   matching `versions[version]` name, version, integrity, and tarball to equal the
   lockfile; unavailable, non-JSON, incomplete, or divergent metadata fails closed.
 - The default release-age mode checks artifacts introduced since baseline
-  `62cd5dab23e0b8c0faf3b843943013a608318c36`; `-- --all` checks the complete
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a`; `-- --all` checks the complete
   lock, and `-- --base <full-git-sha>` is the local candidate differential mode.
-  The dedicated trusted workflow uses `--head <full-git-sha> --base <full-git-sha>`
-  so the default-branch checker reads both exact lockfiles only through `git show`,
-  then publishes the status context
+  This baseline intentionally grandfathers the dependency state already merged on
+  `main`, including `@ai-sdk/gateway@4.0.110`; it does not attest that artifact's
+  age. The dedicated trusted workflow resolves the exact PR head and base commits
+  through the GitHub API, downloads only their raw lockfiles as data, and invokes
+  `--head-lockfile <path> --base-lockfile <path>`. It never imports, checks out, or
+  executes the head, then publishes status context
   `dependency-security/trusted-lockfile-release-age` on the exact PR head.
   PR/autofix gates are explicitly non-authoritative candidate checks. Releases require
   an exact-SHA successful `push` run of

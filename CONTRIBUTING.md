@@ -188,10 +188,11 @@ npm run check-build:v2
 CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. The PR and
 autofix workflows run a non-authoritative candidate release-age gate before
 installation. The dedicated trusted workflow uses `pull_request_target` to run only
-the default-branch checker, reads the untrusted head lockfile only with `git show`,
-and checks its exact head and base SHAs. It publishes pending then final commit status
-`dependency-security/trusted-lockfile-release-age` on the exact PR head without
-executing it; its `push` job checks `main` against the immutable policy baseline.
+the default-branch checker. It resolves the exact head and base commit SHAs through
+the GitHub API and downloads only their raw `package-lock.json` files as untrusted
+data; it never imports, checks out, or executes the head. It publishes pending then
+final commit status `dependency-security/trusted-lockfile-release-age` on the exact
+PR head; its `push` job checks `main` against the immutable policy baseline.
 Release jobs re-run that checker.
 Lint and formatting run once on Ubuntu; the complete-scope dependency audit,
 types, Node and Edge tests, and builds run on every OS. `build:v2` replaces
@@ -432,11 +433,14 @@ npm test             # Runs test suite
   top-level `time[version]`; identity, integrity, and tarball come from the matching
   `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
   JSON, metadata, or provenance errors. With no arguments it uses policy baseline
-  `62cd5dab23e0b8c0faf3b843943013a608318c36`; `-- --all` checks the complete
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a`; `-- --all` checks the complete
   lockfile and `-- --base <full-git-sha>` is the local candidate differential mode.
-  The dedicated trusted workflow alone uses `--head <full-git-sha> --base
-<full-git-sha>` so both lockfiles are loaded by exact `git show` object names.
-  Releases require a successful `push` run for their exact SHA from
+  This baseline intentionally grandfathers the dependency state already merged on
+  `main`, including `@ai-sdk/gateway@4.0.110`; inclusion is not a release-age
+  attestation. The dedicated trusted workflow uses `--head-lockfile <path>
+--base-lockfile <path>` after the GitHub API resolves both exact commit SHAs and
+  downloads only their raw lockfiles as data. Releases require a successful `push`
+  run for their exact SHA from
   `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker.
 - Repository files cannot enforce the final GitHub trust boundary. A branch ruleset
   must require the exact head status context

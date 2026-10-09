@@ -12,7 +12,11 @@ export interface LockArtifacts {
 }
 
 export type LockfileReleaseAgeMode =
-  | { baseSha: string; headSha: string; mode: "trusted" }
+  | {
+      baseLockfilePath: string;
+      headLockfilePath: string;
+      mode: "trusted-files";
+    }
   | { baseSha: string; mode: "differential" | "policy" }
   | { mode: "all" };
 
@@ -41,6 +45,7 @@ export function inferPackageName(path: string, entry: Record<string, unknown>): 
 export function loadLockfiles(
   mode: LockfileReleaseAgeMode,
   readCurrentLock?: () => string,
+  readLockfile?: (lockfilePath: string) => string,
   showGitObject?: (objectName: string) => string,
 ): { baseLock?: unknown; currentLock: unknown };
 export function parseCliArguments(args: string[]): LockfileReleaseAgeMode;

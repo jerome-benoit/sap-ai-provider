@@ -38,10 +38,12 @@ description: Build, type-check, test, and publish workflow for the package
 - Edge source tests: `npm run test:edge`
 - Lockfile release age: `npm run check-lockfile-release-age` fetches canonical raw
   packuments and checks artifacts added since policy baseline
-  `62cd5dab23e0b8c0faf3b843943013a608318c36`; `-- --all` checks the complete
-  lock and `-- --base <full-git-sha>` is a local candidate comparison. The trusted
-  workflow alone uses exact `--head <sha> --base <sha>` Git objects (all modes need
-  registry access, fail closed, and run without installed dependencies)
+  `3f869c5f5371b35e53ef38bae2173541ab6c209a`; `-- --all` checks the complete
+  lock and `-- --base <full-git-sha>` is a local candidate comparison. This baseline
+  grandfathers the dependency state already on `main`, including
+  `@ai-sdk/gateway@4.0.110`, without attesting its age. The trusted workflow uses raw
+  head/base lockfile data via `--head-lockfile <path> --base-lockfile <path>` (all
+  modes need registry access, fail closed, and run without installed dependencies)
 - Dependency advisory policy: `npm run check-dependency-audit` forces production,
   development, optional, and peer npm scopes. For exact audited instances it validates
   every edge up to the direct root anchor plus every edge identity entering that
@@ -80,8 +82,9 @@ Use `npm run build` explicitly to create distribution artifacts. npm
 Policy is 3 days on `https://registry.npmjs.org/`. The checker uses top-level
 packument `time[version]` and the matching version manifest fingerprint. PR and
 autofix workflows run non-authoritative candidate gates. The dedicated
-`pull_request_target` workflow runs only trusted default-branch code, reads PR
-lockfiles with exact `git show` object names, and publishes status context
+`pull_request_target` workflow runs only trusted default-branch code, resolves exact
+head/base commits through the GitHub API, and downloads only raw lockfiles as data.
+It never imports, checks out, or executes the head and publishes status context
 `dependency-security/trusted-lockfile-release-age` on the exact PR head; its
 `push` job covers `main`. Releases require that exact-SHA trusted push run and
 then re-run the checker. A branch ruleset must require the exact status context and

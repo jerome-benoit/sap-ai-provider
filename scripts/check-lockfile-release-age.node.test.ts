@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -20,7 +21,9 @@ import {
   validateMinimumReleaseAge,
 } from "./check-lockfile-release-age.mjs";
 
+const BASE_LOCKFILE_PATH = "/tmp/base-package-lock.json";
 const BASE_SHA = "a".repeat(40);
+const HEAD_LOCKFILE_PATH = "/tmp/head-package-lock.json";
 const HEAD_SHA = "b".repeat(40);
 const NOW = Date.parse("2026-10-09T00:00:00.000Z");
 const OLD_DATE = "2026-09-01T00:00:00.000Z";
@@ -124,8 +127,8 @@ function response(
 }
 
 describe("lockfile release-age gate modes", () => {
-  it("preserves policy/all/base modes and parses the exact trusted head/base mode", () => {
-    expect(POLICY_BASE_SHA).toBe("62cd5dab23e0b8c0faf3b843943013a608318c36");
+  it("preserves policy/all/base modes and parses the data-only trusted mode", () => {
+    expect(POLICY_BASE_SHA).toBe("3f869c5f5371b35e53ef38bae2173541ab6c209a");
     expect(parseCliArguments([])).toEqual({
       baseSha: POLICY_BASE_SHA,
       mode: "policy",
@@ -135,44 +138,93 @@ describe("lockfile release-age gate modes", () => {
       baseSha: BASE_SHA,
       mode: "differential",
     });
-    expect(parseCliArguments(["--head", HEAD_SHA, "--base", BASE_SHA])).toEqual({
-      baseSha: BASE_SHA,
-      headSha: HEAD_SHA,
-      mode: "trusted",
+    expect(
+      parseCliArguments([
+        "--head-lockfile",
+        HEAD_LOCKFILE_PATH,
+        "--base-lockfile",
+        BASE_LOCKFILE_PATH,
+      ]),
+    ).toEqual({
+      baseLockfilePath: BASE_LOCKFILE_PATH,
+      headLockfilePath: HEAD_LOCKFILE_PATH,
+      mode: "trusted-files",
     });
   });
 
-  it("rejects ambiguous, reordered, short, or malformed SHA arguments", () => {
+  it("rejects ambiguous, reordered, incomplete, or legacy trusted arguments", () => {
     for (const args of [
       ["--base"],
       ["--base", "abc"],
-      ["--head", HEAD_SHA],
-      ["--base", BASE_SHA, "--head", HEAD_SHA],
-      ["--head", "abc", "--base", BASE_SHA],
-      ["--head", HEAD_SHA, "--base", "abc"],
-      ["--head", HEAD_SHA, "--base", BASE_SHA, "extra"],
+      ["--head", HEAD_SHA, "--base", BASE_SHA],
+      ["--head-lockfile", HEAD_LOCKFILE_PATH],
+      ["--base-lockfile", BASE_LOCKFILE_PATH, "--head-lockfile", HEAD_LOCKFILE_PATH],
+      ["--head-lockfile", "", "--base-lockfile", BASE_LOCKFILE_PATH],
+      ["--head-lockfile", HEAD_LOCKFILE_PATH, "--base-lockfile", ""],
+      ["--head-lockfile", HEAD_LOCKFILE_PATH, "--base-lockfile", HEAD_LOCKFILE_PATH],
+      ["--head-lockfile", HEAD_LOCKFILE_PATH, "--base-lockfile", BASE_LOCKFILE_PATH, "extra"],
       ["--all", "extra"],
     ]) {
       expect(() => parseCliArguments(args)).toThrow("Usage:");
     }
   });
 
-  it("loads both trusted revisions only through exact git object names", () => {
-    const shown: string[] = [];
+  it("loads trusted revisions only from the selected data files", () => {
+    const readPaths: string[] = [];
     const current = lock({ "node_modules/example": artifactEntry("2.0.0") });
     const base = lock({});
     const loaded = loadLockfiles(
-      { baseSha: BASE_SHA, headSha: HEAD_SHA, mode: "trusted" },
+      {
+        baseLockfilePath: BASE_LOCKFILE_PATH,
+        headLockfilePath: HEAD_LOCKFILE_PATH,
+        mode: "trusted-files",
+      },
       () => {
         throw new Error("working tree must not be read");
       },
-      (objectName) => {
-        shown.push(objectName);
-        return JSON.stringify(objectName.startsWith(HEAD_SHA) ? current : base);
+      (lockfilePath) => {
+        readPaths.push(lockfilePath);
+        return JSON.stringify(lockfilePath === HEAD_LOCKFILE_PATH ? current : base);
+      },
+      () => {
+        throw new Error("Git objects must not be read");
       },
     );
-    expect(shown).toEqual([`${HEAD_SHA}:package-lock.json`, `${BASE_SHA}:package-lock.json`]);
+    expect(readPaths).toEqual([HEAD_LOCKFILE_PATH, BASE_LOCKFILE_PATH]);
     expect(loaded).toEqual({ baseLock: base, currentLock: current });
+  });
+
+  it("fails closed when a trusted lockfile data file is not JSON", () => {
+    expect(() =>
+      loadLockfiles(
+        {
+          baseLockfilePath: BASE_LOCKFILE_PATH,
+          headLockfilePath: HEAD_LOCKFILE_PATH,
+          mode: "trusted-files",
+        },
+        () => {
+          throw new Error("working tree must not be read");
+        },
+        (lockfilePath) =>
+          lockfilePath === HEAD_LOCKFILE_PATH ? "not-json" : JSON.stringify(lock({})),
+        () => {
+          throw new Error("Git objects must not be read");
+        },
+      ),
+    ).toThrow("Head package-lock.json data file did not return valid JSON");
+  });
+
+  it("keeps the pull-request-target workflow data-only", () => {
+    const workflow = readFileSync(".github/workflows/trusted-lockfile-release-age.yml", "utf8");
+    expect(workflow).not.toMatch(/\bgit\s/);
+    expect(workflow).not.toContain("refs/pull/");
+    expect(workflow).not.toContain("ref: ${{ github.event.pull_request.head");
+    expect(workflow.match(/uses: actions\/checkout@/g)).toHaveLength(2);
+    expect(workflow).toContain("ref: ${{ github.event.repository.default_branch }}");
+    expect(workflow).toContain("Accept: application/vnd.github.raw+json");
+    expect(workflow).toContain("github.event.pull_request.head.repo.full_name");
+    expect(workflow).toContain('--head-lockfile "$HEAD_LOCKFILE"');
+    expect(workflow).toContain('--base-lockfile "$BASE_LOCKFILE"');
   });
 
   it("prevents a follow-up commit from laundering an artifact past the policy baseline", () => {

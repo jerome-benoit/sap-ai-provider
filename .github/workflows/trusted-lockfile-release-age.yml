@@ -56,30 +56,44 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
-      - name: Fetch untrusted PR ref as Git objects and verify its SHA
+      - name: Download exact PR lockfiles as untrusted data
         if: github.event_name == 'pull_request_target'
         env:
+          BASE_LOCKFILE: ${{ runner.temp }}/base-package-lock.json
+          BASE_REPOSITORY: ${{ github.repository }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_LOCKFILE: ${{ runner.temp }}/head-package-lock.json
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
-            echo "GitHub event did not provide exact PR SHAs and number" >&2
+          REPOSITORY_PATTERN='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+          if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "GitHub event did not provide exact PR SHAs" >&2
             exit 1
           fi
-          git fetch --no-tags --depth=1 origin "refs/pull/$PR_NUMBER/head"
-          FETCHED_SHA=$(git rev-parse FETCH_HEAD)
-          if [ "$FETCHED_SHA" != "$HEAD_SHA" ]; then
-            echo "Fetched PR SHA $FETCHED_SHA does not match event SHA $HEAD_SHA" >&2
+          if [[ ! "$HEAD_REPOSITORY" =~ $REPOSITORY_PATTERN ]] || [[ ! "$BASE_REPOSITORY" =~ $REPOSITORY_PATTERN ]]; then
+            echo "GitHub event did not provide valid head and base repositories" >&2
             exit 1
           fi
-          git cat-file -e "$HEAD_SHA^{commit}"
-      - name: Attest exact PR lockfile with the trusted base checker
+          RESOLVED_HEAD_SHA=$(gh api --method GET "repos/$HEAD_REPOSITORY/commits/$HEAD_SHA" --jq .sha)
+          RESOLVED_BASE_SHA=$(gh api --method GET "repos/$BASE_REPOSITORY/commits/$BASE_SHA" --jq .sha)
+          if [ "$RESOLVED_HEAD_SHA" != "$HEAD_SHA" ] || [ "$RESOLVED_BASE_SHA" != "$BASE_SHA" ]; then
+            echo "GitHub API did not resolve the exact PR commits" >&2
+            exit 1
+          fi
+          gh api --method GET \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/$HEAD_REPOSITORY/contents/package-lock.json?ref=$HEAD_SHA" > "$HEAD_LOCKFILE"
+          gh api --method GET \
+            -H "Accept: application/vnd.github.raw+json" \
+            "repos/$BASE_REPOSITORY/contents/package-lock.json?ref=$BASE_SHA" > "$BASE_LOCKFILE"
+      - name: Attest exact PR lockfile data with the trusted base checker
         if: github.event_name == 'pull_request_target'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: npm run check-lockfile-release-age -- --head "$HEAD_SHA" --base "$BASE_SHA"
+          BASE_LOCKFILE: ${{ runner.temp }}/base-package-lock.json
+          HEAD_LOCKFILE: ${{ runner.temp }}/head-package-lock.json
+        run: npm run check-lockfile-release-age -- --head-lockfile "$HEAD_LOCKFILE" --base-lockfile "$BASE_LOCKFILE"
       - name: Attest exact trusted push against the policy baseline
         if: github.event_name == 'push'
         run: npm run check-lockfile-release-age
