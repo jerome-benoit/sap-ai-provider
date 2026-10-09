@@ -316,7 +316,7 @@ npm ci                    # Clean install + Lefthook hooks (no build)
 
 # Development
 npm run type-check        # ~2s - TypeScript validation
-npm test                 # ~1s - Alias for the canonical Node.js suite
+npm run test:node        # ~1s - Canonical Node.js suite
 npm run test:edge        # ~1s - Edge runtime tests
 npm run build            # ~3s - Build main V3/V2/V4 entrypoints
 npm run build:watch      # Continuous main-package rebuild
