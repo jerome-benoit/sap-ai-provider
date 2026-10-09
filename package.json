@@ -168,7 +168,7 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "fsevents@2.3.3": true,
-    "lefthook@2.2.0": true
+    "lefthook@2.2.1": true
   },
   "peerDependencies": {
     "ai": "^5.0.0 || ^6.0.0 || ^7.0.0"
