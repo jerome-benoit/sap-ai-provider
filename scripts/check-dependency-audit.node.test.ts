@@ -8,7 +8,7 @@ import {
   validateDependencyAudit,
 } from "./check-dependency-audit";
 
-const TODAY = "2026-10-09";
+const TODAY = "2026-10-23";
 
 /** Mutable advisory fixture. */
 interface Advisory {
@@ -42,7 +42,7 @@ interface Vulnerability {
 }
 
 /**
- * Build an isolated mutable report and lockfile fixture with all approved routes.
+ * Build an isolated mutable report and lockfile fixture with the approved runtime route.
  * @returns Mutable report and lockfile fixtures
  */
 function fixtures(): {
@@ -55,29 +55,11 @@ function fixtures(): {
       packages: {
         "": {
           dependencies: { "@sap-cloud-sdk/connectivity": "^4.9.1" },
-          devDependencies: { "markdownlint-cli2": "^0.23.3" },
         },
         "node_modules/@sap-cloud-sdk/connectivity": {
           dependencies: { "jks-js": "^1.1.7" },
         },
-        "node_modules/braces": { dev: true, version: "3.0.2" },
-        "node_modules/fast-glob": {
-          dependencies: { micromatch: "^4.0.8" },
-          dev: true,
-        },
-        "node_modules/globby": {
-          dependencies: { "fast-glob": "^3.3.3", micromatch: "^4.0.8" },
-          dev: true,
-        },
         "node_modules/jks-js": { dependencies: { "node-forge": "^1.4.0" } },
-        "node_modules/markdownlint-cli2": {
-          dependencies: { globby: "16.2.4", micromatch: "4.0.8" },
-          dev: true,
-        },
-        "node_modules/micromatch": {
-          dependencies: { braces: "^3.0.3" },
-          dev: true,
-        },
         "node_modules/node-forge": { version: "1.4.0" },
       },
     },
@@ -92,40 +74,6 @@ function fixtures(): {
           severity: "high",
           via: ["jks-js"],
         },
-        braces: {
-          effects: ["micromatch"],
-          fixAvailable: false,
-          isDirect: false,
-          name: "braces",
-          nodes: ["node_modules/braces"],
-          severity: "high",
-          via: [
-            {
-              dependency: "braces",
-              name: "braces",
-              severity: "high",
-              url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
-            },
-          ],
-        },
-        "fast-glob": {
-          effects: ["globby"],
-          fixAvailable: false,
-          isDirect: false,
-          name: "fast-glob",
-          nodes: ["node_modules/fast-glob"],
-          severity: "high",
-          via: ["micromatch"],
-        },
-        globby: {
-          effects: ["markdownlint-cli2"],
-          fixAvailable: false,
-          isDirect: false,
-          name: "globby",
-          nodes: ["node_modules/globby"],
-          severity: "high",
-          via: ["fast-glob", "micromatch"],
-        },
         "jks-js": {
           effects: ["@sap-cloud-sdk/connectivity"],
           fixAvailable: false,
@@ -134,24 +82,6 @@ function fixtures(): {
           nodes: ["node_modules/jks-js"],
           severity: "high",
           via: ["node-forge"],
-        },
-        "markdownlint-cli2": {
-          effects: [],
-          fixAvailable: false,
-          isDirect: true,
-          name: "markdownlint-cli2",
-          nodes: ["node_modules/markdownlint-cli2"],
-          severity: "high",
-          via: ["globby", "micromatch"],
-        },
-        micromatch: {
-          effects: ["fast-glob", "globby", "markdownlint-cli2"],
-          fixAvailable: false,
-          isDirect: false,
-          name: "micromatch",
-          nodes: ["node_modules/micromatch"],
-          severity: "high",
-          via: ["braces"],
         },
         "node-forge": {
           effects: ["jks-js"],
@@ -237,7 +167,7 @@ describe("npm audit fix availability contract", () => {
     ]) {
       const { lock, report } = fixtures();
       requireVulnerability(report.vulnerabilities, "node-forge").fixAvailable = fixAvailable;
-      expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+      expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
     }
   });
 
@@ -261,9 +191,32 @@ describe("npm audit fix availability contract", () => {
 });
 
 describe("dependency audit instance graph policy", () => {
-  it("accepts the runtime route and all three real Markdownlint routes", () => {
+  it("accepts the approved SAP Cloud SDK runtime route", () => {
     const { lock, report } = fixtures();
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
+  });
+
+  it("does not allow the withdrawn braces advisory", () => {
+    const { lock, report } = fixtures();
+    requireLockEntry(lock.packages, "").devDependencies = { braces: "3.0.3" };
+    lock.packages["node_modules/braces"] = { dev: true, version: "3.0.3" };
+    report.vulnerabilities.braces = {
+      effects: [],
+      fixAvailable: false,
+      isDirect: true,
+      name: "braces",
+      nodes: ["node_modules/braces"],
+      severity: "high",
+      via: [
+        {
+          dependency: "braces",
+          name: "braces",
+          severity: "high",
+          url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        },
+      ],
+    };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("GHSA-vfj7-8cjw-p6xm");
   });
 
   it("rejects an alias instance of the vulnerable package outside an approved route", () => {
@@ -328,7 +281,7 @@ describe("dependency audit instance graph policy", () => {
       name: "node-forge",
       version: "2.0.0",
     };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("accepts bare and versioned scoped aliases for safe instances", () => {
@@ -346,7 +299,7 @@ describe("dependency audit instance graph policy", () => {
       name: "@scope/pkg",
       version: "1.1.0",
     };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("ignores a nested safe version while validating the exact audited node", () => {
@@ -356,14 +309,14 @@ describe("dependency audit instance graph policy", () => {
       "safe-tool": "1.0.0",
     };
     lock.packages["node_modules/safe-tool"] = {
-      dependencies: { braces: "4.0.0" },
+      dependencies: { "node-forge": "2.0.0" },
       dev: true,
     };
-    lock.packages["node_modules/safe-tool/node_modules/braces"] = {
+    lock.packages["node_modules/safe-tool/node_modules/node-forge"] = {
       dev: true,
-      version: "4.0.0",
+      version: "2.0.0",
     };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("rejects substitution of declarations from a different package instance", () => {
@@ -378,26 +331,26 @@ describe("dependency audit instance graph policy", () => {
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("direct root declaration");
   });
 
-  it("rejects Markdownlint being absent from the root declaration", () => {
+  it("rejects SAP connectivity being absent from the root declaration", () => {
     const { lock, report } = fixtures();
-    delete requireLockEntry(lock.packages, "").devDependencies?.["markdownlint-cli2"];
+    delete requireLockEntry(lock.packages, "").dependencies?.["@sap-cloud-sdk/connectivity"];
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("direct root declaration");
   });
 
-  it("rejects Markdownlint being rooted under another top-level dependency", () => {
+  it("rejects SAP connectivity being rooted under another top-level dependency", () => {
     const { lock, report } = fixtures();
     const root = requireLockEntry(lock.packages, "");
-    delete root.devDependencies?.["markdownlint-cli2"];
+    delete root.dependencies?.["@sap-cloud-sdk/connectivity"];
     root.devDependencies = {
       ...root.devDependencies,
       "other-linter": "1.0.0",
     };
     lock.packages["node_modules/other-linter"] = {
-      dependencies: { "markdownlint-cli2": "0.23.3" },
+      dependencies: { "@sap-cloud-sdk/connectivity": "^4.9.1" },
       dev: true,
     };
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
-      "additional incoming route to markdownlint-cli2",
+      "additional incoming route to @sap-cloud-sdk/connectivity",
     );
   });
 
@@ -410,7 +363,7 @@ describe("dependency audit instance graph policy", () => {
     lock.packages["node_modules/@sap-ai-sdk/core"] = {
       dependencies: { "@sap-cloud-sdk/connectivity": "^4.9.1" },
     };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("rejects an incoherent shared reference entering a direct anchor", () => {
@@ -436,7 +389,7 @@ describe("dependency audit instance graph policy", () => {
       "other-linter": "1.0.0",
     };
     lock.packages["node_modules/other-linter"] = {
-      dependencies: { micromatch: "4.0.8" },
+      dependencies: { "node-forge": "^1.4.0" },
       dev: true,
     };
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
@@ -452,7 +405,7 @@ describe("dependency audit instance graph policy", () => {
     );
     connectivity.dependencies = undefined;
     connectivity.optionalDependencies = { "jks-js": "^1.1.7" };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("includes peer dependencies as provenance edges", () => {
@@ -460,21 +413,23 @@ describe("dependency audit instance graph policy", () => {
     const jks = requireLockEntry(lock.packages, "node_modules/jks-js");
     jks.dependencies = undefined;
     jks.peerDependencies = { "node-forge": "^1.4.0" };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
-  it("ignores the real Markdownlint formatter peer back-edge", () => {
+  it("stops at the direct anchor despite a coherent peer back-edge", () => {
     const { lock, report } = fixtures();
-    const markdownlint = requireLockEntry(lock.packages, "node_modules/markdownlint-cli2");
-    markdownlint.dependencies = {
-      ...markdownlint.dependencies,
-      "markdownlint-cli2-formatter-default": "0.0.6",
+    const connectivity = requireLockEntry(
+      lock.packages,
+      "node_modules/@sap-cloud-sdk/connectivity",
+    );
+    connectivity.dependencies = {
+      ...connectivity.dependencies,
+      formatter: "1.0.0",
     };
-    lock.packages["node_modules/markdownlint-cli2-formatter-default"] = {
-      dev: true,
-      peerDependencies: { "markdownlint-cli2": ">=0.0.4" },
+    lock.packages["node_modules/formatter"] = {
+      peerDependencies: { "@sap-cloud-sdk/connectivity": "^4.9.1" },
     };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("fails closed on absent required dependency targets", () => {
@@ -491,7 +446,7 @@ describe("dependency audit instance graph policy", () => {
   it("allows an unresolved optional dependency target", () => {
     const { lock, report } = fixtures();
     requireLockEntry(lock.packages, "").optionalDependencies = { missing: "1.0.0" };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("applies an optional dependency override before target resolution", () => {
@@ -499,7 +454,7 @@ describe("dependency audit instance graph policy", () => {
     const root = requireLockEntry(lock.packages, "");
     root.dependencies = { ...root.dependencies, missing: "npm:required-name@1.0.0" };
     root.optionalDependencies = { missing: "npm:optional-name@1.0.0" };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("uses only the optional alias identity when overriding a dependency", () => {
@@ -512,7 +467,7 @@ describe("dependency audit instance graph policy", () => {
     root.optionalDependencies = {
       "@sap-cloud-sdk/connectivity": "npm:@sap-cloud-sdk/connectivity@4.9.1",
     };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("keeps dev dependencies and required peers strict beside an optional declaration", () => {
@@ -540,7 +495,7 @@ describe("dependency audit instance graph policy", () => {
     const root = requireLockEntry(lock.packages, "");
     root.peerDependencies = { missing: "1.0.0" };
     root.peerDependenciesMeta = { missing: { optional: true } };
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("resolves nested instances below a scoped package with Node hoisting semantics", () => {
@@ -553,14 +508,13 @@ describe("dependency audit instance graph policy", () => {
     lock.packages[forgePath] = { version: "1.4.0" };
     requireVulnerability(report.vulnerabilities, "jks-js").nodes = [jksPath];
     requireVulnerability(report.vulnerabilities, "node-forge").nodes = [forgePath];
-    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(2);
+    expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
   it("rejects cycles before reaching an approved root anchor", () => {
     const { lock, report } = fixtures();
-    requireLockEntry(lock.packages, "node_modules/micromatch").dependencies = {
-      ...requireLockEntry(lock.packages, "node_modules/micromatch").dependencies,
-      globby: "^16.2.4",
+    requireLockEntry(lock.packages, "node_modules/node-forge").dependencies = {
+      "jks-js": "^1.1.7",
     };
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
       "unapproved dependency route",
@@ -575,19 +529,16 @@ describe("dependency audit instance graph policy", () => {
 
   it("retains audit effects and via checks as secondary defenses", () => {
     const { lock, report } = fixtures();
-    requireVulnerability(report.vulnerabilities, "micromatch").effects = [
-      "globby",
-      "markdownlint-cli2",
-    ];
+    requireVulnerability(report.vulnerabilities, "node-forge").effects = [];
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
-      "effects for micromatch do not include fast-glob",
+      "effects for node-forge do not include jks-js",
     );
   });
 
-  it("rejects development exceptions that reach runtime", () => {
+  it("rejects a runtime exception whose audited instance becomes development-only", () => {
     const { lock, report } = fixtures();
-    requireLockEntry(lock.packages, "node_modules/braces").dev = false;
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("scope runtime");
+    requireLockEntry(lock.packages, "node_modules/node-forge").dev = true;
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("scope development");
   });
 
   it("rejects a contradictory duplicate advisory occurrence", () => {
@@ -646,7 +597,7 @@ describe("npm audit process contract", () => {
     const { lock, report } = fixtures();
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(report)), lock, TODAY),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(() => getNpmAuditInvocation("", "/node")).toThrow("Missing npm_execpath");
   });
 });

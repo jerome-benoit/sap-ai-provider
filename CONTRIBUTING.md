@@ -424,9 +424,15 @@ npm run test:node             # Runs test suite
   `fixAvailable` must be exactly `false`, `true`, or its strict named-version object;
   literal `true` invalidates an exception, while `false` and force-required objects
   remain eligible.
+- Remove exceptions for withdrawn advisories; do not retain inactive allowlist entries.
+  The remaining temporary exception is `GHSA-86w9-cpqp-85rv` for `node-forge`
+  through SAP Cloud SDK JKS support, expiring on 2026-11-08.
 - Use overrides to force a published version containing a security fix when
-  parent dependency ranges do not yet admit it. Verify every affected dependency
-  path, and remove the override once parent ranges admit a fixed version.
+  parent dependency ranges do not yet admit it. Scope overrides to the affected
+  parent when possible. The `markdownlint-cli2` override selects `markdown-it`
+  15.0.3 while its updated parent remains below the three-day release-age floor.
+  Verify every affected dependency path, and remove the override once an eligible
+  parent admits the fixed version.
 - Apply audit remediations through reviewed dependency updates, then validate
   the lockfile and affected tool or runtime paths.
 - npm `min-release-age` filters dependency resolution, but `npm ci` installs the

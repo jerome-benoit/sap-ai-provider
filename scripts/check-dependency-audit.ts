@@ -134,19 +134,6 @@ export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {
     scope: "runtime",
     severity: "high",
   },
-  "GHSA-vfj7-8cjw-p6xm": {
-    dependencyPaths: [
-      ["markdownlint-cli2", "micromatch", "braces"],
-      ["markdownlint-cli2", "globby", "micromatch", "braces"],
-      ["markdownlint-cli2", "globby", "fast-glob", "micromatch", "braces"],
-    ],
-    direct: false,
-    expires: "2026-11-08",
-    packageName: "braces",
-    reason: "No patched braces release; development-only fixed Markdownlint glob patterns.",
-    scope: "development",
-    severity: "high",
-  },
 };
 
 /**
