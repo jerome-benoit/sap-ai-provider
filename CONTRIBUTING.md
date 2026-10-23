@@ -413,57 +413,23 @@ npm run test:node             # Runs test suite
 - Validate all external inputs with zod schemas
 - Follow secure credential handling patterns
 - Check for injection vulnerabilities
-- Run `npm run check-dependency-audit` after dependency changes. It forces the
-  production, development, optional, and peer scopes even when npm `omit`
-  configuration is inherited. Expiring exceptions are validated from exact npm
-  audit nodes against the lockfile-v3 instance graph using Node ancestor resolution.
-  Validation covers every edge up to the directly declared root anchor and the
-  identity coherence of every edge entering that anchor; coherent shared references
-  above it are not recursively treated as new provenance. Package, severity,
-  directness, scope, and audit `effects`/`via` links remain checked. npm 11
-  `fixAvailable` must be exactly `false`, `true`, or its strict named-version object;
-  literal `true` invalidates an exception, while `false` and force-required objects
-  remain eligible.
-- Remove exceptions for withdrawn advisories; do not retain inactive allowlist entries.
-  The remaining temporary exception is `GHSA-86w9-cpqp-85rv` for `node-forge`
-  through SAP Cloud SDK JKS support, expiring on 2026-11-08.
-- Use overrides to force a published version containing a security fix when
-  parent dependency ranges do not yet admit it. Scope overrides to the affected
-  parent when possible. The `markdownlint-cli2` override selects `markdown-it`
-  15.0.3 while its updated parent remains below the three-day release-age floor.
-  Verify every affected dependency path, and remove the override once an eligible
-  parent admits the fixed version.
-- Apply audit remediations through reviewed dependency updates, then validate
-  the lockfile and affected tool or runtime paths.
-- npm `min-release-age` filters dependency resolution, but `npm ci` installs the
-  existing lockfile verbatim. Repository policy fixes the age at 3 days and the
-  registry at `https://registry.npmjs.org/`. The checker fetches each package's raw
-  canonical packument once, without redirects, and takes publication time only from
-  top-level `time[version]`; identity, integrity, and tarball come from the matching
-  `versions[version]` manifest and must equal the lockfile. It fails closed on HTTP,
-  JSON, metadata, or provenance errors. Each decoded packument response body is
-  limited to 64 MiB. Each complete fetch and body read has a 10-second timeout;
-  the checker uses at most eight concurrent requests, aborts in-flight requests on
-  the first failure, accepts at most 1,024 selected artifacts, and limits every
-  lockfile input to 2 MiB of UTF-8 data. Default comparison lockfile:
-  `3f869c5f5371b35e53ef38bae2173541ab6c209a:package-lock.json`. Only registry
-  artifacts absent from that lockfile are age-validated. `-- --all` validates
-  every artifact; `-- --base <full-git-sha>` selects another comparison lockfile.
-  The trusted workflow uses `--head-lockfile <path> --base-lockfile <path>` after
-  the GitHub API resolves both exact commit SHAs and downloads only their raw
-  lockfiles as data. Releases require a successful `push` run for their exact SHA and
-  literal `main` head branch from
-  `.github/workflows/trusted-lockfile-release-age.yml`, then re-run the checker. The
-  trusted job has a 30-minute overall timeout.
-- Repository files cannot enforce the final GitHub trust boundary. A branch ruleset
-  must require the exact head status context
-  `dependency-security/trusted-lockfile-release-age` and restrict who may satisfy it.
-  Because a status context name and the shared GitHub Actions App identity do not
-  uniquely identify this workflow, an organization required workflow/Actions event
-  policy or a dedicated external GitHub App is needed to prevent an untrusted or
-  homonymous workflow from spoofing it. The same external policy must protect the
-  trusted and release workflows, checker scripts, `.npmrc`, and `package.json`.
-  This repository does not claim those external controls are active.
+- Run `npm run check-dependency-audit` after dependency changes, covering runtime
+  and development dependencies. Fix reported vulnerabilities rather than bypassing
+  the check.
+- Keep any necessary advisory exception narrowly scoped, justified and time-limited.
+  Remove exceptions when the advisory is withdrawn or the vulnerability is resolved.
+- Use dependency overrides only when needed for a reviewed fix. Scope them to the
+  affected dependency paths and remove them when the parent dependency supports
+  the fixed version.
+- Run `npm run check-lockfile-release-age` before installing changed dependencies.
+  Respect the minimum release age; do not bypass it to obtain a newer package.
+  A locked version is not proof that the release-age policy has been checked.
+- Validate lockfile changes and exercise affected tool or runtime behavior.
+  Consult the checker scripts and workflow configuration for implementation details.
+- Keep privileged CI workflows isolated from untrusted pull request code.
+  Release approval must apply to the exact commit being published.
+- Configure required checks and their trusted sources in repository or organization
+  policy. Do not assume workflow files alone enforce branch protection.
 
 ## Advanced: Detailed Developer Instructions
 
