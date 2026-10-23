@@ -196,27 +196,14 @@ describe("dependency audit instance graph policy", () => {
     expect(validateDependencyAudit(report, lock, TODAY)).toHaveLength(1);
   });
 
-  it("does not allow the withdrawn braces advisory", () => {
+  it("rejects an unknown advisory alongside an approved advisory", () => {
     const { lock, report } = fixtures();
-    requireLockEntry(lock.packages, "").devDependencies = { braces: "3.0.3" };
-    lock.packages["node_modules/braces"] = { dev: true, version: "3.0.3" };
-    report.vulnerabilities.braces = {
-      effects: [],
-      fixAvailable: false,
-      isDirect: true,
-      name: "braces",
-      nodes: ["node_modules/braces"],
-      severity: "high",
-      via: [
-        {
-          dependency: "braces",
-          name: "braces",
-          severity: "high",
-          url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
-        },
-      ],
-    };
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("GHSA-vfj7-8cjw-p6xm");
+    const via = requireVulnerability(report.vulnerabilities, "node-forge").via;
+    via.push({
+      ...requireAdvisory(via[0]),
+      url: "https://github.com/advisories/GHSA-0000-0000-0000",
+    });
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow();
   });
 
   it("rejects an alias instance of the vulnerable package outside an approved route", () => {
