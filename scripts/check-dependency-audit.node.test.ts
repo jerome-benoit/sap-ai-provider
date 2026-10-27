@@ -1,14 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import type { AuditProcessResult } from "./check-dependency-audit";
+import type {
+  AllowedAdvisory,
+  AuditProcessResult,
+  ValidatedAdvisory,
+} from "./check-dependency-audit";
 
 import {
-  checkAuditProcessResult,
+  allowedAdvisories,
+  checkAuditProcessResult as checkProcessWithPolicy,
   getNpmAuditInvocation,
-  validateDependencyAudit,
+  validateDependencyAudit as validateAuditWithPolicy,
 } from "./check-dependency-audit";
 
 const TODAY = "2026-10-23";
+const TEST_ADVISORIES: Readonly<Record<string, AllowedAdvisory>> = {
+  "GHSA-1111-2222-3333": {
+    dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
+    direct: false,
+    expires: "2026-11-08",
+    packageName: "node-forge",
+    reason: "Synthetic policy fixture; never accepted by the production checker.",
+    scope: "runtime",
+    severity: "high",
+  },
+};
 
 /** Mutable advisory fixture. */
 interface Advisory {
@@ -39,6 +55,21 @@ interface Vulnerability {
   nodes: string[];
   severity: string;
   via: (Advisory | string)[];
+}
+
+/**
+ * Exercise process validation against an isolated synthetic policy.
+ * @param audit - Completed audit process
+ * @param lockValue - Lockfile fixture
+ * @param today - Current date fixture
+ * @returns Validated synthetic exceptions
+ */
+function checkAuditProcessResult(
+  audit: AuditProcessResult,
+  lockValue: unknown,
+  today: string,
+): ValidatedAdvisory[] {
+  return checkProcessWithPolicy(audit, lockValue, today, TEST_ADVISORIES);
 }
 
 /**
@@ -95,7 +126,7 @@ function fixtures(): {
               dependency: "node-forge",
               name: "node-forge",
               severity: "high",
-              url: "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+              url: "https://github.com/advisories/GHSA-1111-2222-3333",
             },
           ],
         },
@@ -149,6 +180,45 @@ function requireVulnerability(
   if (!vulnerability) throw new Error(`Missing test vulnerability ${name}`);
   return vulnerability;
 }
+
+/**
+ * Exercise generic policy validation without adding a production exception.
+ * @param reportValue - Audit report fixture
+ * @param lockValue - Lockfile fixture
+ * @param today - Current date fixture
+ * @returns Validated synthetic exceptions
+ */
+function validateDependencyAudit(
+  reportValue: unknown,
+  lockValue: unknown,
+  today: string,
+): ValidatedAdvisory[] {
+  return validateAuditWithPolicy(reportValue, lockValue, today, TEST_ADVISORIES);
+}
+
+describe("repository dependency audit policy", () => {
+  it("accepts clean reports and rejects advisories with no production exceptions", () => {
+    const { lock, report } = fixtures();
+    expect(allowedAdvisories).toEqual({});
+    expect(validateAuditWithPolicy({ vulnerabilities: {} }, lock, TODAY)).toEqual([]);
+    expect(() => validateAuditWithPolicy(report, lock, TODAY)).toThrow(
+      "Unexpected dependency advisory: GHSA-1111-2222-3333",
+    );
+    expect(checkProcessWithPolicy(processResult('{"vulnerabilities":{}}'), lock, TODAY)).toEqual(
+      [],
+    );
+  });
+
+  it("requires resolved and expired synthetic policies to be removed", () => {
+    const { lock, report } = fixtures();
+    expect(() => validateDependencyAudit({ vulnerabilities: {} }, lock, TODAY)).toThrow(
+      "Resolved dependency advisory exceptions must be removed",
+    );
+    expect(() => validateDependencyAudit(report, lock, "2026-11-09")).toThrow(
+      "Expired dependency advisory exceptions",
+    );
+  });
+});
 
 describe("npm audit fix availability contract", () => {
   it("rejects a non-forced fix for an allowlisted root vulnerability", () => {

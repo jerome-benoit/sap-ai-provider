@@ -124,29 +124,21 @@ const DEPENDENCY_FIELDS = [
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 /** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
-export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {
-  "GHSA-86w9-cpqp-85rv": {
-    dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
-    direct: false,
-    expires: "2026-11-08",
-    packageName: "node-forge",
-    reason: "No patched node-forge release; transitive through SAP Cloud SDK JKS support.",
-    scope: "runtime",
-    severity: "high",
-  },
-};
+export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {};
 
 /**
  * Validate a completed npm audit process and its report against the package lock.
  * @param audit - Completed npm process result
  * @param lockValue - Parsed package-lock.json value
  * @param today - Current date in YYYY-MM-DD form
+ * @param policies - Temporary exception policies; defaults to repository policy
  * @returns Every allowed advisory occurrence after full context validation
  */
 export function checkAuditProcessResult(
   audit: AuditProcessResult,
   lockValue: unknown,
   today = new Date().toISOString().slice(0, 10),
+  policies = allowedAdvisories,
 ): ValidatedAdvisory[] {
   if (audit.error) {
     throw new Error(`Unable to run npm audit: ${audit.error.message}`);
@@ -169,7 +161,7 @@ export function checkAuditProcessResult(
     throw new Error(`npm audit did not return valid JSON${diagnostic ? `: ${diagnostic}` : ""}`);
   }
 
-  return validateDependencyAudit(reportValue, lockValue, today);
+  return validateDependencyAudit(reportValue, lockValue, today, policies);
 }
 
 /**
@@ -209,12 +201,14 @@ export function getNpmAuditInvocation(
  * @param reportValue - Parsed npm audit JSON
  * @param lockValue - Parsed package-lock.json
  * @param today - Current date in YYYY-MM-DD form
+ * @param policies - Temporary exception policies; defaults to repository policy
  * @returns Every allowed advisory occurrence after full context validation
  */
 export function validateDependencyAudit(
   reportValue: unknown,
   lockValue: unknown,
   today: string,
+  policies = allowedAdvisories,
 ): ValidatedAdvisory[] {
   const reportResult = auditReportSchema.safeParse(reportValue);
   if (!reportResult.success) {
@@ -234,21 +228,21 @@ export function validateDependencyAudit(
     for (const via of vulnerability.via) {
       if (typeof via === "string") continue;
       const id = parseAdvisoryId(via.url);
-      const policy = getAllowedAdvisory(id);
+      const policy = getAllowedAdvisory(id, policies);
       validateAdvisoryOccurrence(id, via, report, graph, policy);
       foundIds.add(id);
       validated.push({ id, policy });
     }
   }
 
-  const resolved = Object.keys(allowedAdvisories).filter((id) => !foundIds.has(id));
+  const resolved = Object.keys(policies).filter((id) => !foundIds.has(id));
   if (resolved.length > 0) {
     throw new Error(
       `Resolved dependency advisory exceptions must be removed: ${resolved.join(", ")}`,
     );
   }
 
-  const expired = [...foundIds].filter((id) => getAllowedAdvisory(id).expires < today);
+  const expired = [...foundIds].filter((id) => getAllowedAdvisory(id, policies).expires < today);
   if (expired.length > 0) {
     throw new Error(`Expired dependency advisory exceptions: ${expired.join(", ")}`);
   }
@@ -339,10 +333,14 @@ function findAuditVulnerability(
 /**
  * Resolve one advisory policy without weakening indexed-access checks.
  * @param id - GitHub Security Advisory ID
+ * @param policies - Temporary exception policies
  * @returns Structured temporary exception
  */
-function getAllowedAdvisory(id: string): AllowedAdvisory {
-  const policy = allowedAdvisories[id];
+function getAllowedAdvisory(
+  id: string,
+  policies: Readonly<Record<string, AllowedAdvisory>>,
+): AllowedAdvisory {
+  const policy = policies[id];
   if (!policy) throw new Error(`Unexpected dependency advisory: ${id}`);
   return policy;
 }
