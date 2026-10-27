@@ -1,6 +1,7 @@
 /** Fetch-compatible Responses transport backed by the SAP SDK HTTP client. */
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
 import { getFoundationModelDeploymentId, getResourceGroup } from "@sap-ai-sdk/ai-api/internal.js";
 import { executeRequest, getAiCoreDestination } from "@sap-ai-sdk/core";
@@ -16,6 +17,14 @@ import {
   mergeRequestConfig,
 } from "./strategy-utils.js";
 import { createAbortError } from "./stream-transformer.js";
+
+interface FailedHttpRequest extends Error {
+  isAxiosError: true;
+  response: SAPHttpResponse;
+}
+type SAPHttpMiddleware = NonNullable<CustomRequestConfig["middleware"]>[number];
+
+type SAPHttpResponse = Awaited<ReturnType<typeof executeRequest>>;
 
 /**
  * Resolves a SAP deployment and adapts its HTTP transport to the OpenAI provider.
@@ -58,10 +67,14 @@ export async function createResponsesTransport(
     const body: unknown = JSON.parse(init.body);
     const controller = new AbortController();
     const signal = options.abortSignal ?? init.signal;
+    let abortFailedRequest: (() => void) | undefined;
     const onAbort = () => {
       controller.abort(signal?.reason);
     };
-    const cleanup = () => signal?.removeEventListener("abort", onAbort);
+    const cleanup = () => {
+      signal?.removeEventListener("abort", onAbort);
+      if (abortFailedRequest) controller.signal.removeEventListener("abort", abortFailedRequest);
+    };
     throwIfAborted(signal ?? undefined);
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -75,6 +88,30 @@ export async function createResponsesTransport(
       ]),
     );
 
+    let failedRequest: FailedHttpRequest | undefined;
+    const preserveErrorResponse: SAPHttpMiddleware =
+      ({ fn }) =>
+      async (request) => {
+        try {
+          return await fn(request);
+        } catch (error) {
+          if (!isFailedHttpRequest(error)) throw error;
+          // SAP's stream error parser assumes JSON. Retain the response before it can
+          // discard status and headers when an intermediary returns HTML or an empty body.
+          failedRequest = error;
+          const request: unknown = error.response.request;
+          if (isDestroyableRequest(request)) {
+            // A rejected Axios request no longer observes the request abort signal.
+            abortFailedRequest = () => {
+              request.destroy();
+            };
+            controller.signal.addEventListener("abort", abortFailedRequest, { once: true });
+            if (controller.signal.aborted) abortFailedRequest();
+          }
+          return error.response;
+        }
+      };
+
     try {
       const response = await executeRequest(
         {
@@ -86,13 +123,46 @@ export async function createResponsesTransport(
         {
           ...requestConfig,
           headers: { ...Object.fromEntries(headers), ...configuredHeaders },
+          middleware: [preserveErrorResponse, ...(requestConfig?.middleware ?? [])],
           responseType: "stream",
           signal: controller.signal,
         },
         config.destination,
       );
       const responseBody: unknown = response.data;
-      return new Response(createByteStream(responseBody, controller, cleanup, config, options), {
+      const responseStream = createByteStream(responseBody, controller, cleanup, config, options);
+      if (failedRequest) {
+        const decoder = new TextDecoder();
+        let text = "";
+        let readFailure: unknown;
+        try {
+          for await (const chunk of responseStream) text += decoder.decode(chunk, { stream: true });
+        } catch (error) {
+          readFailure = error;
+        } finally {
+          text += decoder.decode();
+        }
+        try {
+          failedRequest.response.data = JSON.parse(text) as unknown;
+        } catch {
+          failedRequest.response.data = text;
+        }
+        throwIfAborted(signal ?? undefined);
+        const failure = convertToAISDKError(failedRequest, {
+          modelId: config.modelId,
+          modelType: "languageModel",
+          operation:
+            typeof body === "object" && body !== null && "stream" in body && body.stream === true
+              ? "doStream"
+              : "doGenerate",
+          requestBody: createAISDKRequestBodySummary(options),
+          url: "sap-ai:responses",
+        });
+        // Retain read diagnostics after classifying the original HTTP response.
+        if (readFailure !== undefined) failedRequest.cause ??= readFailure;
+        throw failure;
+      }
+      return new Response(responseStream, {
         headers: normalizeHeaders(response.headers),
         status: response.status,
       });
@@ -135,12 +205,20 @@ function createByteStream(
   const source = body as AsyncIterable<unknown> & { destroy?: () => void };
   const iterator = source[Symbol.asyncIterator]();
   const encoder = new TextEncoder();
+  // Axios may already have rejected at the headers of a non-success response.
+  const onAbort = () => source.destroy?.();
+  const cleanupStream = () => {
+    requestController.signal.removeEventListener("abort", onAbort);
+    cleanup();
+  };
+  requestController.signal.addEventListener("abort", onAbort, { once: true });
+  if (requestController.signal.aborted) onAbort();
 
   return new ReadableStream<Uint8Array>(
     {
       async cancel(reason) {
+        cleanupStream();
         requestController.abort(reason);
-        cleanup();
         if (source.destroy) {
           source.destroy();
         } else {
@@ -153,7 +231,7 @@ function createByteStream(
           const chunk = await iterator.next();
           throwIfAborted(requestController.signal);
           if (chunk.done) {
-            cleanup();
+            cleanupStream();
             controller.close();
           } else if (typeof chunk.value === "string") {
             controller.enqueue(encoder.encode(chunk.value));
@@ -166,9 +244,9 @@ function createByteStream(
           const failure = requestController.signal.aborted
             ? createAbortError(requestController.signal.reason)
             : error;
+          cleanupStream();
           requestController.abort(error);
           source.destroy?.();
-          cleanup();
           controller.error(
             convertToAISDKError(failure, {
               modelId: config.modelId,
@@ -182,6 +260,36 @@ function createByteStream(
       },
     },
     { highWaterMark: 0 },
+  );
+}
+
+/**
+ * Identifies the native request used to close a preserved HTTP-error response.
+ * @param request - Request attached to an Axios response.
+ * @returns Whether the request supports cancellation by destruction.
+ */
+function isDestroyableRequest(request: unknown): request is { destroy: () => void } {
+  return (
+    typeof request === "object" &&
+    request !== null &&
+    "destroy" in request &&
+    typeof request.destroy === "function"
+  );
+}
+
+/**
+ * Identifies the HTTP errors whose response streams need preservation.
+ * @param error - Failure reported by the SAP HTTP middleware chain.
+ * @returns Whether the failure includes a native Axios response.
+ */
+function isFailedHttpRequest(error: unknown): error is FailedHttpRequest {
+  return (
+    error instanceof Error &&
+    "isAxiosError" in error &&
+    error.isAxiosError === true &&
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null
   );
 }
 

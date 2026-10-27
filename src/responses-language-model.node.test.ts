@@ -3,6 +3,9 @@ import type {
   JSONSchema7,
   LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
+  LanguageModelV3ToolResultOutput,
+  LanguageModelV4Prompt,
+  LanguageModelV4ToolResultOutput,
 } from "@ai-sdk/provider";
 import type { IncomingHttpHeaders, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -76,6 +79,16 @@ const reply = {
   usage,
 };
 
+type V3ToolOutputItem = Extract<
+  LanguageModelV3ToolResultOutput,
+  { type: "content" }
+>["value"][number];
+
+type V4ToolOutputItem = Extract<
+  LanguageModelV4ToolResultOutput,
+  { type: "content" }
+>["value"][number];
+
 /**
  * Consumes the provider stream and surfaces error events as failures.
  * @param stream - AI SDK stream.
@@ -125,7 +138,6 @@ function json(response: ServerResponse, value: unknown, statusCode = 200): void 
   });
   response.end(JSON.stringify(value));
 }
-
 /**
  * Builds a text stream with optional reasoning and function calls.
  * @param includeTool - Whether the fixture asks the caller to execute a tool.
@@ -192,6 +204,72 @@ function streamEvents(includeTool = false): Record<string, unknown>[] {
   });
   return values;
 }
+
+const imageOptions = { "sap-custom": { imageDetail: "high" } };
+const toolImageCases = [
+  {
+    name: "inline image",
+    v3: {
+      data: "iVBORw0KGgo=",
+      mediaType: "image/png",
+      providerOptions: imageOptions,
+      type: "image-data",
+    },
+    v4: {
+      data: {
+        data: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        type: "data",
+      },
+      mediaType: "IMAGE/PNG",
+      providerOptions: imageOptions,
+      type: "file",
+    },
+    wire: { detail: "high", image_url: "data:image/png;base64,iVBORw0KGgo=", type: "input_image" },
+  },
+  {
+    name: "image URL",
+    v3: {
+      providerOptions: imageOptions,
+      type: "image-url",
+      url: "https://example.com/screenshot.png",
+    },
+    v4: {
+      data: { type: "url", url: new URL("https://example.com/screenshot.png") },
+      mediaType: "image/*",
+      providerOptions: imageOptions,
+      type: "file",
+    },
+    wire: { detail: "high", image_url: "https://example.com/screenshot.png", type: "input_image" },
+  },
+  {
+    name: "image reference",
+    v3: {
+      fileId: { "sap-custom": "image-fixture" },
+      providerOptions: imageOptions,
+      type: "image-file-id",
+    },
+    v4: {
+      data: { reference: { "sap-custom": "image-fixture" }, type: "reference" },
+      mediaType: "image",
+      providerOptions: imageOptions,
+      type: "file",
+    },
+    wire: { detail: "high", file_id: "image-fixture", type: "input_image" },
+  },
+] satisfies {
+  name: string;
+  v3: V3ToolOutputItem;
+  v4: V4ToolOutputItem;
+  wire: Record<string, string>;
+}[];
+
+const imageToolHistory = [
+  { content: [{ text: "Inspect the captured screenshot", type: "text" }], role: "user" },
+  {
+    content: [{ input: {}, toolCallId: "image-call", toolName: "capture", type: "tool-call" }],
+    role: "assistant",
+  },
+] satisfies LanguageModelV3CallOptions["prompt"] & LanguageModelV4Prompt;
 
 describe("Responses over SAP AI Core HTTP", () => {
   const requests: WireRequest[] = [];
@@ -287,6 +365,124 @@ describe("Responses over SAP AI Core HTTP", () => {
       store: false,
     });
     expect(requests[0]?.body.include).toContain("reasoning.encrypted_content");
+  });
+
+  describe.each(toolImageCases)("$name tool output", ({ v3, v4, wire }) => {
+    it.each([false, true])(
+      "preserves image detail through V4 and V3 for streaming=%s",
+      async (streaming) => {
+        const v3Model = createSAPAIProvider(settings({ name: "sap-custom" }))("gpt-6.1-sol");
+        const v4Model = createSAPAIProviderV4(settings({ name: "sap-custom" }))("gpt-6.1-sol");
+        const v3Prompt: LanguageModelV3CallOptions["prompt"] = [
+          ...imageToolHistory,
+          {
+            content: [
+              {
+                output: { type: "content", value: [v3] },
+                toolCallId: "image-call",
+                toolName: "capture",
+                type: "tool-result",
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        const v4Prompt: LanguageModelV4Prompt = [
+          ...imageToolHistory,
+          {
+            content: [
+              {
+                output: { type: "content", value: [v4] },
+                toolCallId: "image-call",
+                toolName: "capture",
+                type: "tool-result",
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        if (streaming) {
+          replies.push(
+            (response) => events(response, streamEvents()),
+            (response) => events(response, streamEvents()),
+          );
+          await collect((await v3Model.doStream({ prompt: v3Prompt })).stream);
+          for await (const part of (await v4Model.doStream({ prompt: v4Prompt })).stream) {
+            if (part.type === "error") throw part.error;
+          }
+        } else {
+          await v3Model.doGenerate({ prompt: v3Prompt });
+          await v4Model.doGenerate({ prompt: v4Prompt });
+        }
+        expect(requests).toHaveLength(2);
+        expect(requests[1]?.body).toEqual(requests[0]?.body);
+        expect(requests[1]?.body.input).toEqual(
+          expect.arrayContaining([
+            { call_id: "image-call", output: [wire], type: "function_call_output" },
+          ]),
+        );
+      },
+    );
+
+    it.each(["foundation-models", "orchestration"] as const)(
+      "preserves shared tool-output conversion through %s",
+      async (api) => {
+        const chatReply = {
+          choices: [
+            { finish_reason: "stop", index: 0, message: { content: "ok", role: "assistant" } },
+          ],
+          id: "chat-fixture",
+          usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+        };
+        const send: Reply = (response) => {
+          json(
+            response,
+            api === "orchestration"
+              ? { final_result: chatReply, request_id: "chat-request" }
+              : chatReply,
+          );
+        };
+        replies.push(send, send);
+        const v3Model = createSAPAIProvider(settings({ api, name: "sap-custom" }))("gpt-4.1");
+        const v4Model = createSAPAIProviderV4(settings({ api, name: "sap-custom" }))("gpt-4.1");
+        await v3Model.doGenerate({
+          prompt: [
+            ...imageToolHistory,
+            {
+              content: [
+                {
+                  output: { type: "content", value: [v3] },
+                  toolCallId: "image-call",
+                  toolName: "capture",
+                  type: "tool-result",
+                },
+              ],
+              role: "tool",
+            },
+          ],
+        });
+        await v4Model.doGenerate({
+          prompt: [
+            ...imageToolHistory,
+            {
+              content: [
+                {
+                  output: { type: "content", value: [v4] },
+                  toolCallId: "image-call",
+                  toolName: "capture",
+                  type: "tool-result",
+                },
+              ],
+              role: "tool",
+            },
+          ],
+        });
+        expect(requests).toHaveLength(2);
+        expect(requests[1]?.body).toEqual(requests[0]?.body);
+        const output = JSON.stringify({ type: "content", value: [v3] });
+        expect(JSON.stringify(requests[1]?.body)).toContain(JSON.stringify(output));
+      },
+    );
   });
 
   it("discovers a running model deployment by name and version in its resource group", async () => {

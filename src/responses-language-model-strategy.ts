@@ -13,6 +13,7 @@ import type {
 } from "@ai-sdk/provider";
 
 import { createOpenAI } from "@ai-sdk/openai";
+import { APICallError } from "@ai-sdk/provider";
 import { z } from "zod";
 
 import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
@@ -33,6 +34,13 @@ const MODEL_PARAMETERS = new Set([
   "temperature",
   "topP",
 ]);
+
+const OPENAI_STREAM_ERROR_SCHEMA = z.object({
+  data: z.object({ type: z.enum(["error", "response.failed"]) }).loose(),
+  isRetryable: z.boolean(),
+  message: z.string(),
+  statusCode: z.number().int().min(400).max(599),
+});
 
 type PromptPart = Exclude<LanguageModelV3Prompt[number], { role: "system" }>["content"][number];
 
@@ -165,6 +173,20 @@ function convertError(
   options: LanguageModelV3CallOptions,
   operation: "doGenerate" | "doStream",
 ) {
+  if (operation === "doStream" && !APICallError.isInstance(error)) {
+    const parsed = OPENAI_STREAM_ERROR_SCHEMA.safeParse(error);
+    if (parsed.success) {
+      return new APICallError({
+        cause: error,
+        data: parsed.data.data,
+        isRetryable: parsed.data.isRetryable,
+        message: parsed.data.message,
+        requestBodyValues: createAISDKRequestBodySummary(options),
+        statusCode: parsed.data.statusCode,
+        url: "sap-ai:responses",
+      });
+    }
+  }
   return convertToAISDKError(error, {
     modelId: config.modelId,
     modelType: "languageModel",
@@ -333,13 +355,17 @@ function toOpenAI(
  * @returns Tool output with native Responses identifiers.
  */
 function toOpenAIOutput(
-  output: LanguageModelV3ToolResultOutput,
+  output: LanguageModelV3ToolResultOutput & { providerOptions?: SharedV3ProviderOptions },
   providerName: string,
 ): LanguageModelV3ToolResultOutput {
-  if (output.type !== "content") return output;
-  return {
+  const mappedOutput = {
     ...output,
-    value: output.value.map((part) => ({
+    providerOptions: toOpenAI(output.providerOptions, providerName),
+  };
+  if (mappedOutput.type !== "content") return mappedOutput;
+  return {
+    ...mappedOutput,
+    value: mappedOutput.value.map((part) => ({
       ...part,
       ...((part.type === "file-id" || part.type === "image-file-id") &&
       typeof part.fileId !== "string" &&

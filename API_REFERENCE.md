@@ -174,9 +174,12 @@ V4 tagged file data is normalized before it reaches the shared core:
 - Ambiguous inline bytes and other incomplete URL media types throw instead of
   producing an invalid SAP payload.
 - Top-level provider references are rejected explicitly and never fetched.
-  References nested in tool-result content map to the equivalent V3 `file-id`
-  representation and are serialized as JSON tool output by the shared core;
-  they do not trigger native file lookup.
+  References nested in tool-result content map to V3 `file-id` or `image-file-id`
+  according to media type. Orchestration and Foundation Models serialize these
+  as JSON tool output; Responses forwards native file or image references.
+  The provider does not fetch these references.
+- Tool-result images retain their image category and per-part `imageDetail`
+  options for inline data, URLs, and references.
 - Text file variants become V3 text parts and retain provider options.
 
 V4 assistant `reasoning-file` and `custom` parts throw

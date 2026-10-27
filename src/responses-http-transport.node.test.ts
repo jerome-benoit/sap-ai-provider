@@ -71,13 +71,17 @@ describe("Responses HTTP transport", () => {
     const providerSignal = AbortSignal.abort("ignored");
     const caller = new AbortController();
     const httpAgent = { marker: "custom-agent" };
+    const middleware: NonNullable<CustomRequestConfig["middleware"]>[number] = ({ fn }) => fn;
+    const validateStatus = (status: number) => status < 500;
     const requestConfig: CustomRequestConfig = {
       headers: { "X-Keep": "provider", "X-Override": "provider" },
       httpAgent,
       maxContentLength: 512,
+      middleware: [middleware],
       params: { custom: "value" },
       proxy: false,
       signal: providerSignal,
+      validateStatus,
     };
     const transport = await createResponsesTransport(
       { ...config, requestConfig },
@@ -113,12 +117,31 @@ describe("Responses HTTP transport", () => {
       config.destination,
     );
     const forwarded = vi.mocked(executeRequest).mock.calls[0]?.[2];
+    expect(forwarded?.middleware).toHaveLength(2);
+    expect(forwarded?.middleware?.[1]).toBe(middleware);
+    expect(forwarded?.validateStatus).toBe(validateStatus);
     expect(forwarded?.signal).toBeInstanceOf(AbortSignal);
     expect(forwarded?.signal).not.toBe(providerSignal);
     expect(forwarded?.signal?.aborted).toBe(false);
     expect(response.status).toBe(201);
     expect(response.headers.get("x-request-id")).toBe("request-1");
     expect(await response.text()).toBe("firstsecond");
+  });
+
+  it("returns raw HTTP responses accepted by the caller's status policy", async () => {
+    vi.mocked(executeRequest).mockResolvedValue({
+      data: Readable.from(["Gateway unavailable"]),
+      headers: { "Retry-After": "7" },
+      request: {},
+      status: 502,
+    });
+    const transport = await createResponsesTransport(config, {}, options);
+
+    const response = await transport.fetch(`${transport.baseURL}/responses`, request);
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("retry-after")).toBe("7");
+    expect(await response.text()).toBe("Gateway unavailable");
   });
 
   it("preserves explicitly suppressed authentication headers", async () => {

@@ -1,6 +1,11 @@
 /** Responses request mapping with the real OpenAI serializer in Node and Edge. */
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
+import type {
+  LanguageModelV3CallOptions,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolResultOutput,
+} from "@ai-sdk/provider";
 
+import { APICallError } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SAPAISettings } from "./sap-ai-settings.js";
@@ -245,6 +250,144 @@ describe("Responses request mapping", () => {
     ).rejects.toThrow();
     expect(transport.fetch).not.toHaveBeenCalled();
   });
+
+  it("preserves the delegate's existing API errors and HTTP diagnostics before output", async () => {
+    const frame = {
+      code: "rate_limit_exceeded",
+      message: "Fixture early quota",
+      sequence_number: 0,
+      type: "error",
+    };
+    const responseBody = JSON.stringify(frame);
+    transport.fetch.mockResolvedValue(
+      new Response(`data: ${responseBody}\n\n`, {
+        headers: { "content-type": "text/event-stream", "x-request-id": "fixture-request" },
+      }),
+    );
+
+    const error: unknown = await strategy
+      .doStream(config, { api: "responses" }, options)
+      .catch((error: unknown) => error);
+    expect(error).toMatchObject({
+      data: frame,
+      isRetryable: true,
+      message: frame.message,
+      responseHeaders: { "x-request-id": "fixture-request" },
+      statusCode: 429,
+      url: "https://fixture.example/responses-deployment/responses",
+    });
+    if (!APICallError.isInstance(error) || error.responseBody === undefined) {
+      throw new Error("Expected the delegate's API error and diagnostic body");
+    }
+    expect(JSON.parse(error.responseBody) as unknown).toEqual(frame);
+  });
+
+  it.each([
+    { code: "rate_limit_exceeded", isRetryable: true, statusCode: 429 },
+    { code: "insufficient_quota", isRetryable: false, statusCode: 429 },
+    { code: "invalid_request_error", isRetryable: false, statusCode: 400 },
+  ])(
+    "preserves late $code errors for both Responses event forms",
+    async ({ code, isRetryable, statusCode }) => {
+      for (const type of ["error", "response.failed"] as const) {
+        const message = `Fixture late ${code}`;
+        const frame =
+          type === "error"
+            ? { code, message, sequence_number: 3, type }
+            : { response: { error: { code, message } }, sequence_number: 3, type };
+        const frames = [
+          {
+            response: { created_at: 1_798_000_000, id: "response-fixture", model: config.modelId },
+            type: "response.created",
+          },
+          {
+            item: { id: "message-fixture", type: "message" },
+            output_index: 0,
+            type: "response.output_item.added",
+          },
+          {
+            delta: "Partial answer",
+            item_id: "message-fixture",
+            type: "response.output_text.delta",
+          },
+          frame,
+        ];
+        transport.fetch.mockResolvedValue(
+          new Response(frames.map((value) => `data: ${JSON.stringify(value)}\n\n`).join(""), {
+            headers: { "content-type": "text/event-stream" },
+          }),
+        );
+
+        const { stream } = await strategy.doStream(config, { api: "responses" }, options);
+        const parts: LanguageModelV3StreamPart[] = [];
+        for await (const part of stream) parts.push(part);
+        const textIndex = parts.findIndex((part) => part.type === "text-delta");
+        const errorIndex = parts.findIndex((part) => part.type === "error");
+        const error = parts.find((part) => part.type === "error")?.error;
+
+        expect(textIndex).toBeGreaterThan(-1);
+        expect(errorIndex).toBeGreaterThan(textIndex);
+        expect(APICallError.isInstance(error)).toBe(true);
+        expect(error).toMatchObject({ data: frame, isRetryable, message, statusCode });
+        expect(parts.at(-1)).toMatchObject({ finishReason: { unified: "error" }, type: "finish" });
+      }
+    },
+  );
+
+  it.each([
+    { output: { type: "text", value: "result" }, text: "result" },
+    { output: { type: "json", value: { answer: 42 } }, text: '{"answer":42}' },
+    { output: { type: "error-text", value: "tool failed" }, text: "tool failed" },
+    {
+      output: { type: "error-json", value: { reason: "tool failed" } },
+      text: '{"reason":"tool failed"}',
+    },
+    { output: { reason: "denied", type: "execution-denied" }, text: "denied" },
+  ] satisfies { output: LanguageModelV3ToolResultOutput; text: string }[])(
+    "maps output-level cache options for $output.type tool results",
+    async ({ output, text }) => {
+      await strategy.doGenerate(
+        config,
+        {
+          api: "responses",
+          responses: { promptCacheOptions: { mode: "explicit" } },
+        },
+        {
+          prompt: [
+            ...options.prompt,
+            {
+              content: [
+                { input: {}, toolCallId: "call-1", toolName: "inspect", type: "tool-call" },
+              ],
+              role: "assistant",
+            },
+            {
+              content: [
+                {
+                  output: {
+                    ...output,
+                    providerOptions: {
+                      "sap-custom": { promptCacheBreakpoint: { mode: "explicit" } },
+                    },
+                  },
+                  toolCallId: "call-1",
+                  toolName: "inspect",
+                  type: "tool-result",
+                },
+              ],
+              role: "tool",
+            },
+          ],
+        },
+      );
+
+      expect(body.input).toContainEqual({
+        call_id: "call-1",
+        output: [{ prompt_cache_breakpoint: { mode: "explicit" }, text, type: "input_text" }],
+        type: "function_call_output",
+      });
+    },
+  );
 
   it("classifies a pre-aborted call even when the caller uses a string reason", async () => {
     await expect(
