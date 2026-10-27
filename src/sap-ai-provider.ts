@@ -49,6 +49,7 @@ export interface SAPAIProviderSettings {
    * This option does not enable automatic failover between APIs.
    * - `'orchestration'` (default): SAP AI Core Orchestration API - supports filtering, grounding, masking, translation
    * - `'foundation-models'`: SAP AI Core Foundation Models API - supports dataSources, logprobs, seed, etc.
+   * - `'responses'`: OpenAI Responses API through SAP AI Core - supports reasoning and tool-call history
    * @default 'orchestration'
    */
   readonly api?: SAPAIApiType;
@@ -110,11 +111,11 @@ export interface SAPAIProviderSettings {
 /**
  * Creates an SAP AI Provider V3 instance for use with AI SDK 6.
  *
- * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
- * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
- * (VCAP_SERVICES on SAP BTP) or AICORE_SERVICE_KEY environment variable.
+ * Uses SAP AI SDK clients for Orchestration and Foundation Models, and its HTTP
+ * transport with the OpenAI provider for Responses. Authentication uses a service
+ * binding (VCAP_SERVICES on SAP BTP) or the AICORE_SERVICE_KEY environment variable.
  * @param options - Provider configuration options.
- * @param options.api - Default API type: `'orchestration'` (default) or `'foundation-models'`.
+ * @param options.api - Default API type: `'orchestration'` (default), `'foundation-models'`, or `'responses'`.
  * @param options.defaultSettings - Default model settings applied to every model instance.
  * @param options.deploymentId - Explicit SAP AI Core deployment ID; omit for automatic deployment resolution.
  * @param options.destination - Custom SAP Cloud SDK destination configuration.

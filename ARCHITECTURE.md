@@ -60,7 +60,7 @@ Handler → SAP AI Core API
 - [Integration Patterns](#integration-patterns)
   - [Provider Pattern](#provider-pattern)
   - [Adapter Pattern](#adapter-pattern)
-  - [Strategy Pattern (Dual API Support)](#strategy-pattern-dual-api-support)
+  - [Strategy Pattern (API Selection)](#strategy-pattern-api-selection)
 - [Performance Considerations](#performance-considerations)
   - [Request Optimization](#request-optimization)
   - [Memory Management](#memory-management)
@@ -322,6 +322,8 @@ src/
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
+├── responses-language-model-strategy.ts           # Responses adapter and metadata conversion
+├── responses-http-transport.ts                    # SAP transport for the Responses delegate
 ├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
 ├── convert-to-sap-messages.ts                     # Message format conversion
 ├── deep-merge.ts                                   # Deep merge utility
@@ -1066,12 +1068,26 @@ Core format. The `convertToSAPMessages()` function transforms prompt arrays,
 handling text content, images, files, tool calls, and tool results across different
 message formats.
 
-### Strategy Pattern (Dual API Support)
+### Strategy Pattern (API Selection)
 
-The provider uses the Strategy Pattern with lazy loading to support two SAP AI
-Core APIs: **Orchestration API** and **Foundation Models API**. This enables
-feature-rich orchestration capabilities or direct model access depending on
-your needs.
+The provider lazily selects **Orchestration**, **Foundation Models Chat
+Completions**, or **Responses**. API selection is explicit and follows provider,
+model, and invocation precedence; the default remains Orchestration.
+
+Responses implements `LanguageModelAPIStrategy` directly because its request
+and event formats differ from Chat Completions. `@ai-sdk/openai` handles native
+Responses message conversion, SSE events, function calls, usage, and reasoning
+history. `responses-http-transport.ts` adapts the SAP SDK HTTP client to its
+fetch interface, preserving SAP authentication, deployment discovery and model
+version selection, custom destinations, request configuration, and cancellation.
+There is no second credential store or OpenAI API key.
+
+The strategy translates metadata between the configured SAP namespace and the
+OpenAI delegate on every message and content part. This preserves response item
+IDs and encrypted reasoning across stateless tool conversations. It does not
+flatten reasoning into Chat Completions text. Responses has no embedding
+strategy, and validation rejects incompatible API-specific settings. See the
+[Responses API contract](./API_REFERENCE.md#responses-api) for user-facing options.
 
 #### Architecture Overview
 
@@ -1099,6 +1115,7 @@ graph TB
         BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts#40;#41;<br/>• abstract buildRequest#40;#41;]
         OrchLM[OrchestrationLanguageModelStrategy]
         FMLM[FoundationModelsLanguageModelStrategy]
+        ResponsesLM[ResponsesLanguageModelStrategy]
     end
 
     subgraph "Embedding Model Strategies"
@@ -1111,6 +1128,7 @@ graph TB
     subgraph "SAP AI SDKs"
         OrchSDK[Orchestration SDK<br/>OrchestrationClient]
         FMSDK[Foundation Models SDK<br/>AzureOpenAiChatClient]
+        ResponsesSDK[OpenAI Responses Provider<br/>SAP SDK HTTP Transport]
     end
 
     App -->|generateText/streamText| SDK
@@ -1127,12 +1145,14 @@ graph TB
     Factory -->|cache check| Cache
     Factory -->|lazy import| OrchLM
     Factory -->|lazy import| FMLM
+    Factory -->|lazy import| ResponsesLM
     Factory -->|lazy import| OrchEM
     Factory -->|lazy import| FMEM
 
     BaseLM -.->|implements| LMStrategy
     OrchLM -.->|extends| BaseLM
     FMLM -.->|extends| BaseLM
+    ResponsesLM -.->|implements| LMStrategy
     BaseEM -.->|implements| EMStrategy
     OrchEM -.->|extends| BaseEM
     FMEM -.->|extends| BaseEM
@@ -1140,6 +1160,7 @@ graph TB
     OrchLM -->|uses| OrchSDK
     OrchEM -->|uses| OrchSDK
     FMLM -->|uses| FMSDK
+    ResponsesLM -->|uses| ResponsesSDK
     FMEM -->|uses| FMSDK
 
     style Provider fill:#e1f5ff

@@ -109,7 +109,7 @@ export function validateModelParamsWithWarnings(
 }
 
 /** @internal */
-export const sapAIApiTypeSchema = z.enum(["orchestration", "foundation-models"]);
+export const sapAIApiTypeSchema = z.enum(["orchestration", "foundation-models", "responses"]);
 
 /**
  * Anthropic prompt-caching directive accepted on V3 message-parts via
@@ -281,6 +281,16 @@ export const orchestrationConfigRefSchema = z.union([
   orchestrationConfigRefByScenarioNameVersionSchema,
 ]);
 
+/**
+ * Responses options must be JSON with string metadata values; the delegate validates other fields.
+ * @internal
+ */
+export const responsesModelOptionsSchema = z
+  .object({
+    metadata: z.record(z.string(), z.string()).nullable().optional(),
+  })
+  .catchall(z.json());
+
 /** @internal */
 export const sapAILanguageModelProviderOptions = lazySchema(() =>
   zodSchema(
@@ -292,6 +302,7 @@ export const sapAILanguageModelProviderOptions = lazySchema(() =>
       orchestrationConfigRef: orchestrationConfigRefSchema.optional(),
       placeholderValues: z.record(z.string(), z.string()).optional(),
       promptTemplateRef: promptTemplateRefSchema.optional(),
+      responses: responsesModelOptionsSchema.optional(),
     }),
   ),
 );

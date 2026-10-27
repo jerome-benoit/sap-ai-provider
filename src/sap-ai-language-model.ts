@@ -158,6 +158,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
             orchestrationConfigRef: sapOptions.orchestrationConfigRef,
             placeholderValues: sapOptions.placeholderValues,
             promptTemplateRef: sapOptions.promptTemplateRef,
+            responses: sapOptions.responses,
           }
         : undefined,
       modelApi: this.settings.api,

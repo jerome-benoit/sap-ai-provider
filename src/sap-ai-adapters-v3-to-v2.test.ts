@@ -6,7 +6,7 @@ import type {
 } from "@ai-sdk/provider";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider-v2";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   convertStreamPartToV2,
@@ -289,6 +289,25 @@ describe("convertStreamPartToV2", () => {
 });
 
 describe("createV2StreamFromInternal", () => {
+  it("does not prefetch source events while the consumer is paused", async () => {
+    const pull = vi.fn((controller: ReadableStreamDefaultController<InternalStreamPart>) => {
+      controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
+    });
+    const source = new ReadableStream<InternalStreamPart>({ pull }, { highWaterMark: 0 });
+    const reader = createV2StreamFromInternal(source).getReader();
+
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+    expect(pull).not.toHaveBeenCalled();
+    await reader.read();
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+    expect(pull).toHaveBeenCalledTimes(1);
+    await reader.cancel();
+  });
+
   it("should stream multiple events and close properly", async () => {
     const internalStream = new ReadableStream<InternalStreamPart>({
       start(controller) {

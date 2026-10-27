@@ -28,3 +28,23 @@ describe.each([
     expect(await create("orchestration")).not.toBe(previous);
   });
 });
+
+describe("Responses strategy selection", () => {
+  it("caches the Responses language strategy independently from Chat Completions", async () => {
+    const responses = getOrCreateLanguageModelStrategy("responses");
+    expect(getOrCreateLanguageModelStrategy("responses")).toBe(responses);
+    const [responsesStrategy, foundationStrategy] = await Promise.all([
+      responses,
+      getOrCreateLanguageModelStrategy("foundation-models"),
+    ]);
+    expect(responsesStrategy).not.toBe(foundationStrategy);
+  });
+
+  it("rejects Responses embedding strategy selection", async () => {
+    await expect(getOrCreateEmbeddingModelStrategy("responses")).rejects.toMatchObject({
+      api: "responses",
+      name: "UnsupportedFeatureError",
+      suggestedApi: "foundation-models",
+    });
+  });
+});

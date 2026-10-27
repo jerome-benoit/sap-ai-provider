@@ -12,6 +12,7 @@ import type {
 
 import { deepMerge } from "./deep-merge.js";
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
+import { responsesModelOptionsSchema } from "./sap-ai-provider-options.js";
 
 /**
  * Type guard for Foundation Models API settings.
@@ -41,32 +42,34 @@ export function isOrchestrationSettings(
  * Jinja2 template escaping is only supported by the Orchestration API.
  * @param api - SAP AI API type.
  * @param escapeTemplatePlaceholders - Whether to escape template placeholders.
- * @throws {UnsupportedFeatureError} When escapeTemplatePlaceholders is true with Foundation Models API.
+ * @throws {UnsupportedFeatureError} When escapeTemplatePlaceholders is true with a direct model API.
  * @internal
  */
 function validateEscapeTemplatePlaceholders(
   api: SAPAIApiType,
   escapeTemplatePlaceholders: boolean | undefined,
 ): void {
-  if (api === "foundation-models" && escapeTemplatePlaceholders === true) {
+  if (api !== "orchestration" && escapeTemplatePlaceholders === true) {
     throw new UnsupportedFeatureError(
       ESCAPE_TEMPLATE_PLACEHOLDERS_DESCRIPTION,
-      "foundation-models",
+      api,
       "orchestration",
     );
   }
 }
 
 /**
- * Validates that Foundation Models-only options are not used with Orchestration API.
+ * Validates that Foundation Models-only options are not used with another API.
  *
  * Foundation Models-only features:
  * - `dataSources` - Azure On Your Data configuration
+ * @param api - Selected SAP API.
  * @param settings - Settings to validate.
- * @throws {UnsupportedFeatureError} When dataSources is set with Orchestration API.
+ * @throws {UnsupportedFeatureError} When dataSources is set with another API.
  * @internal
  */
 function validateFoundationModelsOnlyOptions(
+  api: SAPAIApiType,
   settings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
   if (!settings) return;
@@ -77,7 +80,7 @@ function validateFoundationModelsOnlyOptions(
     if (fmSettings[feature] !== undefined) {
       throw new UnsupportedFeatureError(
         FOUNDATION_MODELS_ONLY_FEATURES[feature],
-        "orchestration",
+        api,
         "foundation-models",
       );
     }
@@ -85,12 +88,12 @@ function validateFoundationModelsOnlyOptions(
 }
 
 /**
- * Validates that Orchestration-only embedding options are not used with Foundation Models API.
+ * Validates that Orchestration-only embedding options are not used with a direct model API.
  *
  * Orchestration-only embedding features:
  * - `masking` - Data masking module
  * @param settings - Embedding settings to validate.
- * @throws {UnsupportedFeatureError} When masking is set with Foundation Models API.
+ * @throws {UnsupportedFeatureError} When masking is set with a direct model API.
  * @internal
  */
 function validateOrchestrationOnlyEmbeddingOptions(
@@ -110,7 +113,7 @@ function validateOrchestrationOnlyEmbeddingOptions(
 }
 
 /**
- * Validates that Orchestration-only options are not used with Foundation Models API.
+ * Validates that Orchestration-only options are not used with a direct model API.
  *
  * Orchestration-only features:
  * - `fallbackModuleConfigs` - Prompt module fallback configuration list
@@ -123,11 +126,13 @@ function validateOrchestrationOnlyEmbeddingOptions(
  * - `streamOptions` - Post-LLM module streaming configuration
  * - `tools` - SAP-format tool definitions (use AI SDK tools instead)
  * - `translation` - Translation module
+ * @param api - Selected SAP API.
  * @param settings - Settings to validate.
- * @throws {UnsupportedFeatureError} When any Orchestration-only feature is set with Foundation Models API.
+ * @throws {UnsupportedFeatureError} When any Orchestration-only feature is set with a direct model API.
  * @internal
  */
 function validateOrchestrationOnlyOptions(
+  api: SAPAIApiType,
   settings: SAPAIModelSettings | SAPAISettings | undefined,
 ): void {
   if (!settings) return;
@@ -136,11 +141,7 @@ function validateOrchestrationOnlyOptions(
 
   for (const feature of ORCHESTRATION_ONLY_FEATURE_KEYS) {
     if (orchSettings[feature] !== undefined) {
-      throw new UnsupportedFeatureError(
-        ORCHESTRATION_ONLY_FEATURES[feature],
-        "foundation-models",
-        "orchestration",
-      );
+      throw new UnsupportedFeatureError(ORCHESTRATION_ONLY_FEATURES[feature], api, "orchestration");
     }
   }
 }
@@ -255,7 +256,7 @@ function validateApiSwitch(
   if (fromApi === toApi) return;
   if (!modelSettings && !embeddingSettings) return;
 
-  if (fromApi === "orchestration" && toApi === "foundation-models") {
+  if (toApi !== "orchestration") {
     const orchSettings = modelSettings as OrchestrationModelSettings | undefined;
 
     for (const feature of ORCHESTRATION_ONLY_FEATURE_KEYS) {
@@ -270,7 +271,7 @@ function validateApiSwitch(
     }
   }
 
-  if (fromApi === "foundation-models" && toApi === "orchestration") {
+  if (toApi !== "foundation-models") {
     const fmSettings = modelSettings as FoundationModelsModelSettings | undefined;
 
     for (const feature of FOUNDATION_MODELS_ONLY_FEATURE_KEYS) {
@@ -279,12 +280,25 @@ function validateApiSwitch(
       }
     }
   }
+
+  if (
+    toApi !== "responses" &&
+    modelSettings &&
+    "responses" in modelSettings &&
+    modelSettings.responses !== undefined
+  ) {
+    throw new ApiSwitchError(fromApi, toApi, "responses");
+  }
 }
 
 /**
  * @internal
  */
-const VALID_API_TYPES: readonly SAPAIApiType[] = ["orchestration", "foundation-models"];
+const VALID_API_TYPES: readonly SAPAIApiType[] = [
+  "orchestration",
+  "foundation-models",
+  "responses",
+];
 
 /** Options for the main validation function. */
 export interface ValidateSettingsOptions {
@@ -296,6 +310,7 @@ export interface ValidateSettingsOptions {
     readonly orchestrationConfigRef?: unknown;
     readonly placeholderValues?: unknown;
     readonly promptTemplateRef?: unknown;
+    readonly responses?: unknown;
   };
   readonly modelApi?: SAPAIApiType;
   readonly modelSettings?: SAPAIModelSettings | SAPAISettings;
@@ -313,7 +328,7 @@ export function getEffectiveEscapeTemplatePlaceholders(
   modelSettings: SAPAIModelSettings | SAPAISettings | undefined,
   invocationEscape: boolean | undefined,
 ): boolean {
-  if (api === "foundation-models") {
+  if (api !== "orchestration") {
     return false;
   }
 
@@ -442,12 +457,29 @@ export function validateSettings(options: ValidateSettingsOptions): void {
     }
   }
 
-  if (api === "foundation-models") {
-    validateOrchestrationOnlyOptions(modelSettings);
-    validateOrchestrationOnlyInvocationOptions(invocationSettings);
+  if (api === "responses" && embeddingSettings !== undefined) {
+    throw new UnsupportedFeatureError("Embeddings", "responses", "foundation-models");
+  }
+
+  if (api !== "orchestration") {
+    validateOrchestrationOnlyOptions(api, modelSettings);
+    validateOrchestrationOnlyInvocationOptions(api, invocationSettings);
     validateOrchestrationOnlyEmbeddingOptions(embeddingSettings);
+  }
+  if (api !== "foundation-models") {
+    validateFoundationModelsOnlyOptions(api, modelSettings);
+  }
+
+  const modelResponses =
+    modelSettings && "responses" in modelSettings ? modelSettings.responses : undefined;
+  const invocationResponses = invocationSettings?.responses;
+  if (api !== "responses") {
+    if (modelResponses !== undefined || invocationResponses !== undefined) {
+      throw new UnsupportedFeatureError("Responses options (responses)", api, "responses");
+    }
   } else {
-    validateFoundationModelsOnlyOptions(modelSettings);
+    if (modelResponses !== undefined) responsesModelOptionsSchema.parse(modelResponses);
+    if (invocationResponses !== undefined) responsesModelOptionsSchema.parse(invocationResponses);
   }
 
   const modelEscape = (modelSettings as OrchestrationModelSettings | undefined)
@@ -458,23 +490,21 @@ export function validateSettings(options: ValidateSettingsOptions): void {
 }
 
 /**
- * Validates that Orchestration-only options are not passed at invocation level with Foundation Models API.
+ * Validates that Orchestration-only options are not passed at invocation level with a direct model API.
+ * @param api - Selected SAP API.
  * @param invocationSettings - Invocation-level settings to validate.
  * @throws {UnsupportedFeatureError} When any Orchestration-only feature is set at invocation level.
  * @internal
  */
 function validateOrchestrationOnlyInvocationOptions(
+  api: SAPAIApiType,
   invocationSettings: ValidateSettingsOptions["invocationSettings"],
 ): void {
   if (!invocationSettings) return;
 
   for (const feature of ORCHESTRATION_ONLY_INVOCATION_FEATURE_KEYS) {
     if (invocationSettings[feature] !== undefined) {
-      throw new UnsupportedFeatureError(
-        ORCHESTRATION_ONLY_FEATURES[feature],
-        "foundation-models",
-        "orchestration",
-      );
+      throw new UnsupportedFeatureError(ORCHESTRATION_ONLY_FEATURES[feature], api, "orchestration");
     }
   }
 }

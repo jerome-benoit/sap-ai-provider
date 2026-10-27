@@ -12,6 +12,8 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider-v2";
 
+import { mapReadableStream } from "./map-readable-stream.js";
+
 /** Stream events supported by the V2 facade. */
 export type ConvertedV2StreamPart =
   | Exclude<LanguageModelV2StreamPart, { type: "stream-start" }>
@@ -121,12 +123,5 @@ export function convertWarningToV2(internalWarning: InternalWarning): ConvertedV
 export function createV2StreamFromInternal(
   internalStream: ReadableStream<InternalStreamPart>,
 ): ReadableStream<ConvertedV2StreamPart> {
-  return internalStream.pipeThrough(
-    new TransformStream<InternalStreamPart, ConvertedV2StreamPart>({
-      transform(chunk, controller) {
-        const converted = convertStreamPartToV2(chunk);
-        if (converted !== null) controller.enqueue(converted);
-      },
-    }),
-  );
+  return mapReadableStream(internalStream, convertStreamPartToV2);
 }

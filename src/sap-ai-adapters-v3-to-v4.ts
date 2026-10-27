@@ -7,6 +7,8 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 
+import { mapReadableStream } from "./map-readable-stream.js";
+
 /**
  * Tags generated file data for V4; all other result fields are compatible.
  * @param result - The internal V3 generate result.
@@ -41,11 +43,5 @@ export function convertStreamPartToV4(part: LanguageModelV3StreamPart): Language
 export function createV4StreamFromInternal(
   stream: ReadableStream<LanguageModelV3StreamPart>,
 ): ReadableStream<LanguageModelV4StreamPart> {
-  return stream.pipeThrough(
-    new TransformStream<LanguageModelV3StreamPart, LanguageModelV4StreamPart>({
-      transform(part, controller) {
-        controller.enqueue(convertStreamPartToV4(part));
-      },
-    }),
-  );
+  return mapReadableStream(stream, convertStreamPartToV4);
 }

@@ -229,9 +229,13 @@ export class UnsupportedFeatureError extends Error {
     public readonly api: SAPAIApiType,
     public readonly suggestedApi: SAPAIApiType,
   ) {
-    const apiName = api === "foundation-models" ? "Foundation Models" : "Orchestration";
-    const suggestedApiName =
-      suggestedApi === "foundation-models" ? "Foundation Models" : "Orchestration";
+    const names: Record<SAPAIApiType, string> = {
+      "foundation-models": "Foundation Models",
+      orchestration: "Orchestration",
+      responses: "Responses",
+    };
+    const apiName = names[api];
+    const suggestedApiName = names[suggestedApi];
     super(`${feature} is not supported by ${apiName} API. Use ${suggestedApiName} API instead.`);
     this.name = "UnsupportedFeatureError";
   }

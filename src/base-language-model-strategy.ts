@@ -396,7 +396,9 @@ export abstract class BaseLanguageModelStrategy<
     settings: TSettings,
   ): boolean {
     return (
-      (sapOptions?.includeReasoning as boolean | undefined) ?? settings.includeReasoning ?? false
+      (sapOptions?.includeReasoning as boolean | undefined) ??
+      ("includeReasoning" in settings ? settings.includeReasoning : false) ??
+      false
     );
   }
 

@@ -972,3 +972,53 @@ describe("parseSAPPartProviderOptions", () => {
     expect(warnings).toHaveLength(2);
   });
 });
+
+describe("Responses per-call provider options", () => {
+  it("preserves JSON Responses options for native validation", async () => {
+    const options = {
+      api: "responses",
+      responses: {
+        include: ["reasoning.encrypted_content"],
+        metadata: { source: "test" },
+        reasoningEffort: "low",
+        store: false,
+      },
+    };
+    const result = await safeValidateTypes({
+      schema: sapAILanguageModelProviderOptions,
+      value: options,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.value).toEqual(options);
+  });
+
+  it.each([null, [], "invalid", { store: () => false }, { store: undefined }, { value: NaN }])(
+    "rejects non-JSON Responses options %j",
+    async (responses) => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { responses },
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+
+  it("accepts Responses API selection in embedding options for explicit validation", async () => {
+    const result = await safeValidateTypes({
+      schema: sapAIEmbeddingProviderOptions,
+      value: { api: "responses" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it.each([42, { count: 1 }, ["source"], { nested: { source: "test" } }])(
+    "rejects metadata that is not a string record: %j",
+    async (metadata) => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { responses: { metadata } },
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+});

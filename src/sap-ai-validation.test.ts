@@ -7,11 +7,15 @@ import { describe, expect, it } from "vitest";
 
 import type {
   OrchestrationModelSettings,
+  SAPAIApiType,
   SAPAIEmbeddingSettings,
   SAPAIModelSettings,
 } from "./sap-ai-settings";
 
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error";
+import { createSAPAIProvider } from "./sap-ai-provider";
+import { createSAPAIProvider as createSAPAIProviderV2 } from "./sap-ai-provider-v2";
+import { createSAPAIProviderV4 } from "./sap-ai-provider-v4";
 import {
   getEffectiveEscapeTemplatePlaceholders,
   resolveApi,
@@ -81,6 +85,7 @@ describe("validateApiInput", () => {
   it.each([
     { description: "'orchestration'", input: "orchestration" },
     { description: "'foundation-models'", input: "foundation-models" },
+    { description: "'responses'", input: "responses" },
     { description: "undefined (treated as unset)", input: undefined },
   ])("should pass for $description", ({ input }) => {
     expect(() => {
@@ -831,4 +836,160 @@ describe("validateMaskingProvidersDeprecation", () => {
     validateMaskingProvidersDeprecation(undefined, warnings);
     expect(warnings).toHaveLength(0);
   });
+});
+
+describe("Responses API validation", () => {
+  it("resolves Responses at every level without changing API precedence", () => {
+    expect(resolveApi("responses", undefined, undefined)).toBe("responses");
+    expect(resolveApi("orchestration", "responses", undefined)).toBe("responses");
+    expect(resolveApi("responses", "foundation-models", "orchestration")).toBe("orchestration");
+    expect(resolveApi("foundation-models", "orchestration", "responses")).toBe("responses");
+  });
+
+  it("accepts model and invocation Responses options", () => {
+    expect(() => {
+      validateSettings({
+        api: "responses",
+        invocationSettings: { responses: { reasoningEffort: "low", store: false } },
+        modelSettings: { api: "responses", responses: { metadata: { feature: "test" } } },
+      });
+    }).not.toThrow();
+  });
+
+  it.each(["orchestration", "foundation-models"] as const)(
+    "rejects model and invocation Responses options with %s",
+    (api) => {
+      for (const options of [
+        { modelSettings: mockSettings({ responses: {} }) },
+        { invocationSettings: { responses: {} } },
+      ]) {
+        expect(() => {
+          validateSettings({ api, ...options });
+        }).toThrow(UnsupportedFeatureError);
+      }
+    },
+  );
+
+  it.each([
+    "fallbackModuleConfigs",
+    "filtering",
+    "grounding",
+    "masking",
+    "orchestrationConfigRef",
+    "placeholderValues",
+    "promptTemplateRef",
+    "streamOptions",
+    "tools",
+    "translation",
+    "dataSources",
+  ])("rejects incompatible %s model settings", (feature) => {
+    expect(() => {
+      validateSettings({
+        api: "responses",
+        modelSettings: mockSettings({ api: "responses", [feature]: {} }),
+      });
+    }).toThrow(UnsupportedFeatureError);
+  });
+
+  it.each(["orchestrationConfigRef", "placeholderValues", "promptTemplateRef"])(
+    "rejects incompatible %s invocation options",
+    (feature) => {
+      expect(() => {
+        validateSettings({
+          api: "responses",
+          invocationSettings: { [feature]: {} },
+        });
+      }).toThrow(UnsupportedFeatureError);
+    },
+  );
+
+  it("rejects template escaping but permits disabling it", () => {
+    expect(() => {
+      validateSettings({
+        api: "responses",
+        invocationSettings: { escapeTemplatePlaceholders: true },
+      });
+    }).toThrow(UnsupportedFeatureError);
+    expect(() => {
+      validateSettings({
+        api: "responses",
+        invocationSettings: { escapeTemplatePlaceholders: false },
+      });
+    }).not.toThrow();
+    expect(getEffectiveEscapeTemplatePlaceholders("responses", undefined, true)).toBe(false);
+  });
+
+  it("rejects Responses embeddings before selecting a strategy", () => {
+    expect(() => {
+      validateSettings({ api: "responses", embeddingSettings: {} });
+    }).toThrow(UnsupportedFeatureError);
+  });
+
+  it.each(["orchestration", "foundation-models"] as const)(
+    "blocks switching from Responses to %s with Responses options",
+    (api) => {
+      expect(() => {
+        validateSettings({
+          api,
+          invocationSettings: { api },
+          modelApi: "responses",
+          modelSettings: { api: "responses", responses: {} },
+        });
+      }).toThrow(ApiSwitchError);
+    },
+  );
+
+  it.each([
+    { feature: "filtering", fromApi: "orchestration" },
+    { feature: "dataSources", fromApi: "foundation-models" },
+  ] satisfies { feature: string; fromApi: SAPAIApiType }[])(
+    "blocks switching from $fromApi to Responses with $feature",
+    ({ feature, fromApi }) => {
+      expect(() => {
+        validateSettings({
+          api: "responses",
+          invocationSettings: { api: "responses" },
+          modelApi: fromApi,
+          modelSettings: mockSettings({ [feature]: {} }),
+        });
+      }).toThrow(ApiSwitchError);
+    },
+  );
+
+  it.each([
+    null,
+    [],
+    "invalid",
+    { value: () => "invalid" },
+    { value: undefined },
+    { value: Infinity },
+    { metadata: { count: 1 } },
+    { metadata: 42 },
+  ])("rejects non-JSON Responses model options %j", (responses) => {
+    expect(() => {
+      validateSettings({
+        api: "responses",
+        modelSettings: mockSettings({ api: "responses", responses }),
+      });
+    }).toThrow();
+  });
+});
+
+describe.each([
+  { create: createSAPAIProvider, version: "V3" },
+  { create: createSAPAIProviderV2, version: "V2" },
+  { create: createSAPAIProviderV4, version: "V4" },
+])("Responses validation through the $version public provider", ({ create }) => {
+  it.each(["doGenerate", "doStream"] as const)(
+    "rejects incompatible per-call Responses options in %s before network access",
+    async (method) => {
+      const model = create({ api: "orchestration", name: "custom" })("gpt-4.1");
+      await expect(
+        model[method]({
+          prompt: [{ content: [{ text: "hello", type: "text" }], role: "user" }],
+          providerOptions: { custom: { responses: { store: false } } },
+        }),
+      ).rejects.toBeInstanceOf(UnsupportedFeatureError);
+    },
+  );
 });

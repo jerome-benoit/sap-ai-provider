@@ -47,9 +47,9 @@ export interface SAPAIProviderV4 extends ProviderV4 {
 /**
  * Creates an SAP AI Provider V4 instance for use with AI SDK 7.
  *
- * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
- * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
- * (VCAP_SERVICES on SAP BTP) or AICORE_SERVICE_KEY environment variable.
+ * Uses SAP AI SDK clients for Orchestration and Foundation Models, and its HTTP
+ * transport with the OpenAI provider for Responses. Authentication uses a service
+ * binding (VCAP_SERVICES on SAP BTP) or the AICORE_SERVICE_KEY environment variable.
  * @param options - Provider configuration options (same as the V3 provider).
  * @returns A configured SAP AI provider instance that can be used as a callable or via methods.
  * @throws {Error} When provider function is called with the `new` keyword.

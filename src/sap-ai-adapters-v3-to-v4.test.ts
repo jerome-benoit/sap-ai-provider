@@ -6,14 +6,39 @@ import type {
   LanguageModelV4GenerateResult,
 } from "@ai-sdk/provider";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { convertGenerateResultToV4, convertStreamPartToV4 } from "./sap-ai-adapters-v3-to-v4.js";
+import {
+  convertGenerateResultToV4,
+  convertStreamPartToV4,
+  createV4StreamFromInternal,
+} from "./sap-ai-adapters-v3-to-v4.js";
 
 const usage: LanguageModelV3Usage = {
   inputTokens: { cacheRead: 1, cacheWrite: 2, noCache: 10, total: 13 },
   outputTokens: { reasoning: 3, text: 20, total: 23 },
 };
+
+describe("createV4StreamFromInternal", () => {
+  it("does not prefetch source events while the consumer is paused", async () => {
+    const pull = vi.fn((controller: ReadableStreamDefaultController<LanguageModelV3StreamPart>) => {
+      controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
+    });
+    const source = new ReadableStream<LanguageModelV3StreamPart>({ pull }, { highWaterMark: 0 });
+    const reader = createV4StreamFromInternal(source).getReader();
+
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+    expect(pull).not.toHaveBeenCalled();
+    await reader.read();
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+    expect(pull).toHaveBeenCalledTimes(1);
+    await reader.cancel();
+  });
+});
 
 describe("convertStreamPartToV4", () => {
   it.each(["aGVsbG8=", new Uint8Array([104, 105])])(
