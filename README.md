@@ -62,7 +62,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 
 - 🔐 **Simplified Authentication** - Uses SAP AI SDK's built-in credential
   handling
-- 🎯 **Tool Calling Support** - Full tool/function calling capabilities
+- 🎯 **Tool Calling Support** - Function calling across supported APIs;
+  [native-tool support depends on the API and facade](./API_REFERENCE.md#tool-definition-format)
 - 🧠 **Reasoning History** - Chat Completions omits reasoning text by default;
   Responses preserves native reasoning metadata for tool conversations
 - 🖼️ **Multi-modal Input** - Support for text and image inputs

@@ -12,8 +12,9 @@ see [API Reference](./API_REFERENCE.md).
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
 - Implements Vercel AI SDK's V3 core with V2 and V4 compatibility facades
-- Uses SAP AI SDK (`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`) for API communication
-- Transforms messages bidirectionally (AI SDK ↔ SAP format)
+- Uses SAP AI SDK clients for Orchestration and Foundation Models Chat Completions;
+  Responses delegates its protocol to `@ai-sdk/openai` through SAP's HTTP transport
+- Converts messages and results through the selected API strategy
 - Supports streaming, tool calling, multi-modal, data masking, and embeddings
 
 **Key Components:** Provider → SAP SDK Client Configuration → Message Transformer → Error
@@ -85,9 +86,11 @@ the same SAP authentication, validation, and request strategies.
 
 ### High-Level Architecture
 
-The diagram below illustrates the language-generation path of the SAP AI Provider,
+The diagram below illustrates the SAP Chat Completions generation path,
 showing how it integrates your application with SAP AI Core through the Vercel
-AI SDK. The provider layer configures SAP AI SDK clients, transforms messages
+AI SDK. For the Responses delegate and transport, see
+[Strategy Pattern (API Selection)](#strategy-pattern-api-selection).
+The provider layer configures SAP AI SDK clients, transforms messages
 between AI SDK and SAP formats, and converts errors. The SAP AI SDK and SAP
 Cloud SDK handle credential discovery, token acquisition, token caching, and
 token refresh. SAP AI Core routes requests to various AI models (OpenAI,
@@ -455,9 +458,12 @@ sequenceDiagram
 This diagram illustrates the streaming text generation flow using Server-Sent
 Events (SSE). Unlike standard generation, streaming returns partial responses
 incrementally as the AI model generates content, enabling real-time display of
-results to users. Both API strategies delegate event conversion to
-`src/stream-transformer.ts`: the SAP SDK parses SSE, and the shared transformer
-maintains text/tool-input lifecycles, usage, citations, and response metadata.
+results to users. The Orchestration and Foundation Models Chat Completions
+strategies delegate event conversion to `src/stream-transformer.ts`: the SAP SDK
+parses SSE, and the shared transformer maintains text/tool-input lifecycles,
+usage, citations, and response metadata. Responses uses the OpenAI delegate's
+SSE conversion instead; see
+[Strategy Pattern (API Selection)](#strategy-pattern-api-selection).
 
 ```mermaid
 sequenceDiagram
@@ -722,6 +728,10 @@ The snippets below show the **Orchestration** call sites. The **Foundation Model
 path uses `client.run()` for non-streaming and a 3-argument
 `client.stream(request, abortSignal, requestConfig)` for streaming; the same
 `mergeRequestConfig` helper is applied in both cases.
+Responses uses this helper through its fetch-compatible SAP transport, with
+explicit cleanup of the response iterator and native HTTP request. Its
+[upgrade contract](#sdk-upgrade-contract) covers error-body reads and cancellation
+after an HTTP error has already been received.
 
 **Non-streaming (Orchestration):**
 
@@ -1026,15 +1036,17 @@ Key types for model configuration:
 - **`SAPAIModelId`**: String union of supported models (e.g., "gpt-4.1",
   "anthropic--claude-4.5-sonnet", "gemini-2.5-pro") with flexibility for custom models
 - **`SAPAISettings`**: Interface with `modelVersion`, `modelParams` (maxTokens,
-  temperature, topP, etc.), `responseFormat`, `includeReasoning`, and
+  temperature, topP, etc.), `responseFormat`, `includeReasoning`, native
+  `responses` options, and
   API-specific masking, filtering, grounding, and translation options
 
 See `src/sap-ai-settings.ts` for complete type definitions.
 
 ### Request/Response Schemas
 
-All API interactions use types from `@sap-ai-sdk/orchestration` and
-`@sap-ai-sdk/foundation-models`, validated for type safety. Key types include:
+Orchestration and Foundation Models Chat Completions use types from
+`@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models`. Key SAP types
+include:
 
 - `ChatCompletionRequest`: Per-call messages, message history, and placeholder values
 - `OrchestrationModuleConfig`: Model and module configuration passed to the client constructor
@@ -1043,7 +1055,12 @@ All API interactions use types from `@sap-ai-sdk/orchestration` and
 - `ChatCompletionTool`: Function definitions and parameters
 
 See `src/sap-ai-settings.ts` for the main settings interface and re-exported SAP
-AI SDK types.
+AI SDK types. Responses uses the V3 language-model contract and
+`@ai-sdk/openai` for protocol conversion, with SAP deployment and HTTP transport
+types at its transport boundary. See
+[Strategy Pattern (API Selection)](#strategy-pattern-api-selection) for that
+separation and the [Responses API contract](./API_REFERENCE.md#responses-api) for
+its public options.
 
 ## Integration Patterns
 
@@ -1088,6 +1105,40 @@ IDs and encrypted reasoning across stateless tool conversations. It does not
 flatten reasoning into Chat Completions text. Responses has no embedding
 strategy, and validation rejects incompatible API-specific settings. See the
 [Responses API contract](./API_REFERENCE.md#responses-api) for user-facing options.
+
+#### SDK Upgrade Contract
+
+`responses-http-transport.ts` imports deployment helpers
+`getFoundationModelDeploymentId` and `getResourceGroup` through
+`@sap-ai-sdk/ai-api/internal.js`, and `getTargetUrl` through
+`@sap-ai-sdk/core/internal.js`. These internal helper exports, the SAP HTTP
+middleware/error shapes, and the OpenAI delegate's stream behavior form an
+upgrade-sensitive boundary. Passing the current suite does not establish
+compatibility with later SDK versions.
+
+When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
+
+- [`responses-http-transport.node.test.ts`](./src/responses-http-transport.node.test.ts)
+  checks deployment URLs, destinations, request configuration, header precedence,
+  status policies, response backpressure, and cancellation.
+- [`responses-http-errors.node.test.ts`](./src/responses-http-errors.node.test.ts)
+  checks final HTTP error preservation after configured middleware retries,
+  authentication errors, non-JSON and truncated error bodies, and caller aborts
+  while reading those bodies. Status, diagnostic body, request ID, and retry
+  headers must survive; caller cancellation remains status 499.
+- [`responses-language-model.node.test.ts`](./src/responses-language-model.node.test.ts)
+  and [`responses-language-model-strategy.test.ts`](./src/responses-language-model-strategy.test.ts)
+  check deployment discovery, serialized requests and media, native reasoning
+  history, provider namespaces, late SSE error classification, and cancellation
+  across the supported facades. The versioned adapter suites check each AI SDK
+  contract before it reaches the shared V3 strategy.
+
+An equivalent public SAP API may replace an internal helper only after it
+preserves destinations, deployment selection, request configuration, middleware
+ordering, HTTP diagnostics, and stream/request cleanup. Local HTTP fixtures
+establish client behavior; verify deployment-specific behavior against SAP AI
+Core separately. Edge source tests do not establish pure Edge deployability of
+the published Node.js package.
 
 #### Architecture Overview
 

@@ -1,7 +1,9 @@
 /** V2 facade result conversion and error propagation. */
 
 import type { LanguageModelV3GenerateResult, LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV2CallOptions } from "@ai-sdk/provider-v2";
 
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SAPAILanguageModelV2 } from "./sap-ai-language-model-v2.js";
@@ -72,5 +74,124 @@ describe("SAPAILanguageModelV2", () => {
     const model = new SAPAILanguageModelV2("gpt-4o", {}, config);
 
     await expect(model[method]({ prompt })).rejects.toBe(error);
+  });
+});
+
+describe("official AI SDK 5 tool-media input", () => {
+  it.each(["doGenerate", "doStream"] as const)(
+    "normalizes media before %s delegation",
+    async (method) => {
+      const generate = vi
+        .spyOn(SAPAILanguageModel.prototype, "doGenerate")
+        .mockResolvedValue(result);
+      const stream = vi.spyOn(SAPAILanguageModel.prototype, "doStream").mockResolvedValue({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      });
+      const options: LanguageModelV2CallOptions = {
+        prompt: [
+          {
+            content: [
+              {
+                output: {
+                  type: "content",
+                  value: [
+                    { text: "Screenshot", type: "text" },
+                    {
+                      data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+                      mediaType: "image/png",
+                      type: "media",
+                    },
+                  ],
+                },
+                providerOptions: { "sap-ai": { itemId: "tool-result-metadata" } },
+                toolCallId: "image-call",
+                toolName: "capture",
+                type: "tool-result",
+              },
+            ],
+            providerOptions: { "sap-ai": { itemId: "message-metadata" } },
+            role: "tool",
+          },
+        ],
+      };
+      const model = new SAPAILanguageModelV2("gpt-6.1-sol", { api: "responses" }, config);
+      await model[method](options);
+      const forwarded =
+        method === "doGenerate" ? generate.mock.calls[0]?.[0] : stream.mock.calls[0]?.[0];
+      expect(forwarded?.prompt).toEqual([
+        {
+          content: [
+            {
+              output: {
+                type: "content",
+                value: [
+                  { text: "Screenshot", type: "text" },
+                  {
+                    data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=",
+                    mediaType: "image/png",
+                    type: "image-data",
+                  },
+                ],
+              },
+              providerOptions: { "sap-ai": { itemId: "tool-result-metadata" } },
+              toolCallId: "image-call",
+              toolName: "capture",
+              type: "tool-result",
+            },
+          ],
+          providerOptions: { "sap-ai": { itemId: "message-metadata" } },
+          role: "tool",
+        },
+      ]);
+    },
+  );
+});
+
+describe("legacy V2 tool compatibility", () => {
+  it("preserves the unsupported provider-defined tool discriminator", async () => {
+    const generate = vi.spyOn(SAPAILanguageModel.prototype, "doGenerate").mockResolvedValue(result);
+    const tools: LanguageModelV2CallOptions["tools"] = [
+      { args: {}, id: "openai.web_search", name: "search", type: "provider-defined" },
+    ];
+    await new SAPAILanguageModelV2("gpt-6.1-sol", { api: "responses" }, config).doGenerate({
+      prompt,
+      tools,
+    });
+    expect(generate.mock.calls[0]?.[0].tools).toEqual(tools);
+  });
+});
+
+describe("V2 native tool approval boundary", () => {
+  it("rejects approvals before returning an invalid V2 generation result", async () => {
+    vi.spyOn(SAPAILanguageModel.prototype, "doGenerate").mockResolvedValue({
+      ...result,
+      content: [{ approvalId: "approval-1", toolCallId: "call-1", type: "tool-approval-request" }],
+    });
+    const model = new SAPAILanguageModelV2("gpt-6.1-sol", { api: "responses" }, config);
+    await expect(model.doGenerate({ prompt })).rejects.toThrow(/Tool approvals.*\/v3.*\/v4/);
+  });
+
+  it("rejects streamed approvals and cancels the delegated stream", async () => {
+    const cancel = vi.fn();
+    vi.spyOn(SAPAILanguageModel.prototype, "doStream").mockResolvedValue({
+      stream: new ReadableStream<LanguageModelV3StreamPart>({
+        cancel,
+        start(controller) {
+          controller.enqueue({
+            approvalId: "approval-1",
+            toolCallId: "call-1",
+            type: "tool-approval-request",
+          });
+        },
+      }),
+    });
+    const model = new SAPAILanguageModelV2("gpt-6.1-sol", { api: "responses" }, config);
+    const reader = (await model.doStream({ prompt })).stream.getReader();
+    await expect(reader.read()).rejects.toThrow(/Tool approvals.*\/v3.*\/v4/);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(expect.any(UnsupportedFunctionalityError));
   });
 });

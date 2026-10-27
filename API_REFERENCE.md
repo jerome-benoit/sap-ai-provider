@@ -19,8 +19,9 @@ consistently:
 
 - **SAP AI Core** - The SAP BTP service that provides AI model hosting and
   orchestration (the cloud service)
-- **SAP AI SDK** - The official SAP npm packages (`@sap-ai-sdk/orchestration`
-  and `@sap-ai-sdk/foundation-models`) used for API communication
+- **SAP AI SDK** - The official SAP npm packages used for API communication:
+  Orchestration and Foundation Models clients, plus `@sap-ai-sdk/core` HTTP
+  transport for the Responses delegate
 - **Orchestration API** - SAP AI Core's full-featured API with data masking,
   content filtering, document grounding, and translation capabilities
 - **Foundation Models API** - SAP AI Core's direct Chat Completions and embedding
@@ -587,6 +588,8 @@ properties. An explicit tool `strict` value takes precedence. Structured output
 strictness is separate: `responseFormat.json_schema.strict` supplies the model
 default, while an explicit model or call-level `responses.strictJsonSchema`
 overrides it.
+Native Responses tools and the V2 facade have different boundaries; see
+[Tool Definition Format](#tool-definition-format).
 
 **API boundaries:**
 
@@ -676,17 +679,32 @@ Consult the official documentation for current tool calling support:
 ### Tool Definition Format
 
 Tools passed to `generateText` or `streamText` use `inputSchema`. Use Zod
-or wrap JSON Schema with the AI SDK's `jsonSchema` helper; raw SAP/OpenAI
-`{ type: "function", function: { parameters: ... } }` definitions belong to
-the provider's model-level `tools` setting, not the AI SDK `tools` map.
+or wrap JSON Schema with the AI SDK's `jsonSchema` helper for function tools.
+Function tools and native provider tools follow different conversion paths:
 
-Only function tools are converted. Their explicit `strict` flag is forwarded;
-backend/model support determines the accepted schema constraints. Provider-defined
-tools are omitted with an `unsupported` warning. On Orchestration, non-empty
-call-level `tools` take precedence over model-level SAP-format `tools`, with a
-warning when both are provided. An empty call-level list does not clear
-model-level tools. For tools defined only in model settings, the high-level SDK
-versions differ:
+| API and facade                                                    | AI SDK function tools                                                                 | Native / provider-defined tools                                                                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Orchestration and Foundation Models Chat Completions, all facades | Converted to SAP-compatible function definitions; explicit `strict` is forwarded.     | Omitted with an unsupported-tool warning.                                                                                                                             |
+| Responses, root and `/v3` (AI SDK 6), `/v4` (AI SDK 7)            | Converted by the OpenAI delegate; `strict` defaults to `false` unless explicitly set. | Native `type: "provider"` definitions are forwarded to the OpenAI delegate. For example, `openai.web_search` serializes as a native web-search tool.                  |
+| Responses, `/v2` (AI SDK 5)                                       | Function tools use the shared Responses strategy.                                     | The AI SDK 5 `type: "provider-defined"` form is omitted with an unsupported-tool warning. The facade does not translate that legacy form into native Responses tools. |
+
+Native tool serialization does not establish availability or execution on SAP AI
+Core. The selected SAP tenant, deployment, model, and tool determine backend
+support. Use the V3 or V4 facade for native Responses tools. Function schema
+constraints likewise depend on the selected backend and model.
+
+The V2 contract cannot represent native tool-approval requests. If a backend
+returns one, generation fails with an unsupported-functionality error and
+streaming fails while cancelling the upstream stream. Use `/v3` with AI SDK 6
+or `/v4` with AI SDK 7 for tools that require approval.
+
+SAP-format `{ type: "function", function: { parameters: ... } }` definitions are
+accepted through model-level `settings.tools` only with Orchestration. Foundation
+Models Chat Completions and Responses reject that setting; use the AI SDK
+call-level `tools` map instead. On Orchestration, non-empty call-level `tools`
+take precedence over model-level SAP-format `tools`, with a warning when both
+are provided. An empty call-level list does not clear model-level tools. For
+tools defined only in model settings, the high-level SDK versions differ:
 
 - **AI SDK 5/6:** `generateText` and `streamText` drop `toolChoice` when their
   `tools` map is absent or empty. Set
@@ -1632,7 +1650,8 @@ console.log("Response:", result.text);
 > **Note:** Using these parameters with Orchestration API (`api: "orchestration"`)
 > is backend/model-dependent: additional model parameters are passed through,
 > not universally rejected or ignored. `seed` and stop sequences are also mapped
-> by the shared strategy for both APIs. Verify support on the selected model.
+> by the shared Chat Completions strategy for Orchestration and Foundation Models.
+> Verify support on the selected model.
 
 ---
 

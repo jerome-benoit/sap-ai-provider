@@ -7,6 +7,10 @@ import type {
   LanguageModelV4Prompt,
   LanguageModelV4ToolResultOutput,
 } from "@ai-sdk/provider";
+import type {
+  LanguageModelV2CallOptions,
+  LanguageModelV2ToolResultOutput,
+} from "@ai-sdk/provider-v2";
 import type { IncomingHttpHeaders, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -484,6 +488,195 @@ describe("Responses over SAP AI Core HTTP", () => {
       },
     );
   });
+
+  describe("official AI SDK 5 media tool results", () => {
+    it.each([false, true])(
+      "sends PNG tool media through the V2 provider for streaming=%s",
+      async (streaming) => {
+        const data =
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
+        const options: LanguageModelV2CallOptions = {
+          prompt: [
+            ...imageToolHistory,
+            {
+              content: [
+                {
+                  output: {
+                    type: "content",
+                    value: [
+                      { text: "Screenshot", type: "text" },
+                      { data, mediaType: "image/png", type: "media" },
+                    ],
+                  },
+                  toolCallId: "image-call",
+                  toolName: "capture",
+                  type: "tool-result",
+                },
+              ],
+              role: "tool",
+            },
+          ],
+        };
+        const model = createSAPAIProviderV2(settings())("gpt-6.1-sol");
+        if (streaming) {
+          replies.push((response) => events(response, streamEvents()));
+          for await (const part of (await model.doStream(options)).stream) {
+            if (part.type === "error") throw part.error;
+            if (part.type === "stream-start") expect(part.warnings).toEqual([]);
+          }
+        } else {
+          expect((await model.doGenerate(options)).warnings).toEqual([]);
+        }
+        expect(requests[0]?.body.input).toEqual(
+          expect.arrayContaining([
+            {
+              call_id: "image-call",
+              output: [
+                { text: "Screenshot", type: "input_text" },
+                { image_url: `data:image/png;base64,${data}`, type: "input_image" },
+              ],
+              type: "function_call_output",
+            },
+          ]),
+        );
+      },
+    );
+  });
+
+  describe("other V2 media and legacy API compatibility", () => {
+    it.each([false, true])(
+      "sends non-image tool media as input_file for streaming=%s",
+      async (streaming) => {
+        const options: LanguageModelV2CallOptions = {
+          prompt: [
+            ...imageToolHistory,
+            {
+              content: [
+                {
+                  output: {
+                    type: "content",
+                    value: [{ data: "JVBERi0xLjQ=", mediaType: "application/pdf", type: "media" }],
+                  },
+                  toolCallId: "image-call",
+                  toolName: "capture",
+                  type: "tool-result",
+                },
+              ],
+              role: "tool",
+            },
+          ],
+        };
+        const model = createSAPAIProviderV2(settings())("gpt-6.1-sol");
+        if (streaming) {
+          replies.push((response) => events(response, streamEvents()));
+          for await (const part of (await model.doStream(options)).stream) {
+            if (part.type === "error") throw part.error;
+            if (part.type === "stream-start") expect(part.warnings).toEqual([]);
+          }
+        } else {
+          expect((await model.doGenerate(options)).warnings).toEqual([]);
+        }
+        expect(requests[0]?.body.input).toEqual(
+          expect.arrayContaining([
+            {
+              call_id: "image-call",
+              output: [
+                {
+                  file_data: "data:application/pdf;base64,JVBERi0xLjQ=",
+                  filename: "data",
+                  type: "input_file",
+                },
+              ],
+              type: "function_call_output",
+            },
+          ]),
+        );
+      },
+    );
+
+    it.each(["foundation-models", "orchestration"] as const)(
+      "keeps media and custom output through %s",
+      async (api) => {
+        const chatReply = {
+          choices: [
+            { finish_reason: "stop", index: 0, message: { content: "ok", role: "assistant" } },
+          ],
+          id: "chat-fixture",
+          usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+        };
+        replies.push((response) => {
+          json(
+            response,
+            api === "orchestration"
+              ? { final_result: chatReply, request_id: "chat-request" }
+              : chatReply,
+          );
+        });
+        const custom = {
+          providerOptions: { "sap-custom": { payload: "preserved" } },
+          type: "custom",
+        };
+        const output = {
+          type: "content",
+          value: [
+            { text: "file and custom result", type: "text" },
+            { data: "JVBERi0xLjQ=", mediaType: "application/pdf", type: "media" },
+            custom,
+          ],
+        } as unknown as LanguageModelV2ToolResultOutput;
+        const model = createSAPAIProviderV2(settings({ api }))("gpt-4.1");
+        await model.doGenerate({
+          prompt: [
+            ...imageToolHistory,
+            {
+              content: [
+                { output, toolCallId: "image-call", toolName: "capture", type: "tool-result" },
+              ],
+              role: "tool",
+            },
+          ],
+        });
+        const normalized = JSON.stringify({
+          type: "content",
+          value: [
+            { text: "file and custom result", type: "text" },
+            { data: "JVBERi0xLjQ=", mediaType: "application/pdf", type: "file-data" },
+            custom,
+          ],
+        });
+        expect(JSON.stringify(requests[0]?.body)).toContain(JSON.stringify(normalized));
+      },
+    );
+  });
+
+  it.each([false, true])(
+    "retains the unsupported AI SDK 5 provider-defined tool boundary for streaming=%s",
+    async (streaming) => {
+      const options: LanguageModelV2CallOptions = {
+        prompt: [{ content: [{ text: "Hello", type: "text" }], role: "user" }],
+        tools: [{ args: {}, id: "openai.web_search", name: "search", type: "provider-defined" }],
+      };
+      const model = createSAPAIProviderV2(settings())("gpt-6.1-sol");
+
+      if (streaming) {
+        replies.push((response) => events(response, streamEvents()));
+        for await (const part of (await model.doStream(options)).stream) {
+          if (part.type === "error") throw part.error;
+          if (part.type === "stream-start") {
+            expect(part.warnings).toHaveLength(1);
+            expect(part.warnings[0]?.message).toContain("function tool");
+            expect(part.warnings[0]?.type).toBe("other");
+          }
+        }
+      } else {
+        const generated = await model.doGenerate(options);
+        expect(generated.warnings).toHaveLength(1);
+        expect(generated.warnings[0]?.message).toContain("function tool");
+        expect(generated.warnings[0]?.type).toBe("other");
+      }
+      expect(requests[0]?.body.tools).toEqual([]);
+    },
+  );
 
   it("discovers a running model deployment by name and version in its resource group", async () => {
     replies.push((response, request) => {

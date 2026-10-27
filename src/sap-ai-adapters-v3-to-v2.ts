@@ -12,6 +12,8 @@ import type {
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider-v2";
 
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+
 import { mapReadableStream } from "./map-readable-stream.js";
 
 /** Stream events supported by the V2 facade. */
@@ -25,12 +27,11 @@ export type ConvertedV2Warning = Extract<LanguageModelV2CallWarning, { type: "ot
 /**
  * Converts V3-only event fields; structurally identical events pass through unchanged.
  * @param internalPart - V3 stream event
- * @returns V2 event, or null for unsupported tool approval requests
+ * @returns V2 event.
+ * @throws {UnsupportedFunctionalityError} When the event requires tool approval.
  * @internal
  */
-export function convertStreamPartToV2(
-  internalPart: InternalStreamPart,
-): ConvertedV2StreamPart | null {
+export function convertStreamPartToV2(internalPart: InternalStreamPart): ConvertedV2StreamPart {
   // V2 has a narrower JSON metadata type; preserve the core payload without cloning.
   const compatiblePart = internalPart as InternalStreamPart & {
     providerMetadata?: SharedV2ProviderMetadata;
@@ -49,7 +50,7 @@ export function convertStreamPartToV2(
     case "stream-start":
       return { ...compatiblePart, warnings: convertWarningsToV2(compatiblePart.warnings) };
     case "tool-approval-request":
-      return null;
+      throw createV2ToolApprovalError();
     case "tool-call": {
       const { dynamic: _dynamic, ...part } = compatiblePart;
       return part;
@@ -124,4 +125,16 @@ export function createV2StreamFromInternal(
   internalStream: ReadableStream<InternalStreamPart>,
 ): ReadableStream<ConvertedV2StreamPart> {
   return mapReadableStream(internalStream, convertStreamPartToV2);
+}
+
+/**
+ * Identifies a native tool approval that the V2 contract cannot represent.
+ * @returns An actionable error for V2 consumers.
+ * @internal
+ */
+export function createV2ToolApprovalError(): UnsupportedFunctionalityError {
+  return new UnsupportedFunctionalityError({
+    functionality:
+      "Tool approvals are unavailable through the V2 provider. Use /v3 with AI SDK 6 or /v4 with AI SDK 7.",
+  });
 }
