@@ -124,17 +124,7 @@ const DEPENDENCY_FIELDS = [
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 /** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
-export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {
-  "GHSA-86w9-cpqp-85rv": {
-    dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
-    direct: false,
-    expires: "2026-11-08",
-    packageName: "node-forge",
-    reason: "No patched node-forge release; transitive through SAP Cloud SDK JKS support.",
-    scope: "runtime",
-    severity: "high",
-  },
-};
+export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {};
 
 /**
  * Validate a completed npm audit process and its report against the package lock.

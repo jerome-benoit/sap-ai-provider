@@ -19,7 +19,6 @@ export type LockfileReleaseAgeMode =
     }
   | { baseSha: string; mode: "differential" | "policy" }
   | { mode: "all" };
-
 export type PackumentFetch = (
   input: URL,
   init: { headers: { accept: string }; redirect: "error"; signal: AbortSignal },
@@ -32,6 +31,25 @@ export interface PackumentResponse {
   status: number;
   url: string;
 }
+
+export interface ReleaseAgeException {
+  expiresAt: string;
+  integrity: string;
+  name: string;
+  publishedAt: string;
+  reason: string;
+  resolved: string;
+  version: string;
+}
+
+export function matchesReleaseAgeException(
+  artifact: Pick<LockArtifact, "integrity" | "name" | "resolved" | "version">,
+  publishedMs: number,
+  nowMs: number,
+  entries: ReleaseAgeException[],
+): boolean;
+
+export function validateReleaseAgeExceptions(entries: unknown): void;
 
 /** Maximum number of unique registry artifacts accepted from one selection. */
 export const MAXIMUM_ATTESTED_ARTIFACTS: number;
