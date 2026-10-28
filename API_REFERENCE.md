@@ -3442,6 +3442,9 @@ const provider = createSAPAIProvider({
 
 Creates a Llama Guard 3 8B filter configuration for content safety filtering.
 
+SAP deprecates this filter and plans to remove it on 2027-09-20. The helper
+remains available for backward compatibility.
+
 **Signature:**
 
 ```typescript
