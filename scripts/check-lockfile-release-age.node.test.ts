@@ -16,6 +16,7 @@ import {
   findAllLockArtifacts,
   findNewLockArtifacts,
   loadLockfiles,
+  matchesReleaseAgeException,
   MAXIMUM_ATTESTED_ARTIFACTS,
   MAXIMUM_LOCKFILE_BYTES,
   MAXIMUM_PACKUMENT_BYTES,
@@ -25,6 +26,7 @@ import {
   validateArtifactMetadata,
   validateArtifactsConcurrently,
   validateMinimumReleaseAge,
+  validateReleaseAgeExceptions,
 } from "./check-lockfile-release-age.mjs";
 
 const BASE_LOCKFILE_PATH = "/tmp/base-package-lock.json";
@@ -752,6 +754,74 @@ describe("release-age resource contracts", () => {
 });
 
 describe("canonical npm packument validation", () => {
+  it("validates a multi-artifact exception registry and matches only the exact active entry", () => {
+    const publishedAt = "2026-10-27T14:09:15.471Z";
+    const expiresAt = "2026-10-30T14:09:15.471Z";
+    const first = {
+      expiresAt,
+      integrity: "sha512-first",
+      name: "first",
+      publishedAt,
+      reason: "security",
+      resolved: `${REGISTRY}first/-/first-1.0.0.tgz`,
+      version: "1.0.0",
+    };
+    const second = {
+      expiresAt,
+      integrity: "sha512-second",
+      name: "second",
+      publishedAt,
+      reason: "security",
+      resolved: `${REGISTRY}second/-/second-2.0.0.tgz`,
+      version: "2.0.0",
+    };
+    const entries = [first, second];
+    const now = Date.parse("2026-10-28T00:00:00.000Z");
+    expect(() => {
+      validateReleaseAgeExceptions(entries);
+    }).not.toThrow();
+    expect(matchesReleaseAgeException(first, Date.parse(publishedAt), now, entries)).toBe(true);
+    expect(matchesReleaseAgeException(second, Date.parse(publishedAt), now, entries)).toBe(true);
+    expect(
+      matchesReleaseAgeException(
+        { ...first, version: "1.0.1" },
+        Date.parse(publishedAt),
+        now,
+        entries,
+      ),
+    ).toBe(false);
+    expect(
+      matchesReleaseAgeException(first, Date.parse(publishedAt), Date.parse(expiresAt), entries),
+    ).toBe(false);
+    expect(matchesReleaseAgeException(first, Date.parse(publishedAt), Number.NaN, entries)).toBe(
+      false,
+    );
+  });
+
+  it("rejects malformed and duplicate exception entries even when unused", () => {
+    const entry = {
+      expiresAt: "2026-10-30T14:09:15.471Z",
+      integrity: "sha512-first",
+      name: "first",
+      publishedAt: "2026-10-27T14:09:15.471Z",
+      reason: "security",
+      resolved: `${REGISTRY}first/-/first-1.0.0.tgz`,
+      version: "1.0.0",
+    };
+    for (const entries of [
+      [entry, { ...entry, expiresAt: "2026-10-31T14:09:15.471Z" }],
+      [{ ...entry, reason: "" }],
+      [{ ...entry, resolved: "https://registry.npmjs.org/first/-/first-1.0.0.tgz?x=1" }],
+      [{ ...entry, publishedAt: "2026-02-30T00:00:00.000Z" }],
+      [{ ...entry, expiresAt: entry.publishedAt }],
+      [{ ...entry, extra: true }],
+    ]) {
+      expect(() => {
+        validateReleaseAgeExceptions(entries);
+      }).toThrow();
+    }
+  });
+
   it("limits the temporary security exception to the exact artifact and publication time", () => {
     const artifact = {
       ...artifactEntry("1.4.2", "node-forge"),
