@@ -571,6 +571,18 @@ streaming, and complete tool-result round trips with an optional argument.
   `requestConfig`, call-level headers, and cancellation semantics. No OpenAI API
   key is needed.
 
+Cancellation promptly rejects generation or streaming setup, including while
+deployment or destination discovery is pending. SAP's discovery helpers do not
+accept an abort signal, so their underlying work can continue after the caller
+has been released; late failures are observed and late HTTP responses are closed.
+Caller cancellation remains a non-retryable status 499 error.
+
+Rejected HTTP responses retain at most 1,986 body bytes for diagnostics. Larger
+bodies are stopped and expose the received UTF-8 prefix with `...[truncated]`,
+preserving the original status and headers. Complete smaller JSON errors retain
+their normal classification. This diagnostic bound does not apply to successful
+SSE streams or replace an explicit `requestConfig.maxContentLength`.
+
 **Tool and reasoning history:**
 
 `store` defaults to `false`. The OpenAI delegate requests encrypted reasoning

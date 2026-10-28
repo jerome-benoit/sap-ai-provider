@@ -173,6 +173,18 @@ function convertError(
   options: LanguageModelV3CallOptions,
   operation: "doGenerate" | "doStream",
 ) {
+  // The delegate can wrap a cancelled body read as a successful-response parse error.
+  if (
+    options.abortSignal?.aborted &&
+    APICallError.isInstance(error) &&
+    error.statusCode !== undefined &&
+    error.statusCode >= 200 &&
+    error.statusCode < 300 &&
+    APICallError.isInstance(error.cause) &&
+    error.cause.statusCode === 499
+  ) {
+    return error.cause;
+  }
   if (operation === "doStream" && !APICallError.isInstance(error)) {
     const parsed = OPENAI_STREAM_ERROR_SCHEMA.safeParse(error);
     if (parsed.success) {

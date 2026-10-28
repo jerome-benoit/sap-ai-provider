@@ -13,6 +13,7 @@ import { createSAPAIProvider } from "./sap-ai-provider.js";
 
 interface ErrorReply {
   body: string;
+  chunks?: readonly Uint8Array[];
   contentType: string;
   pending?: boolean;
   status: number;
@@ -79,6 +80,20 @@ describe("Responses HTTP error preservation", () => {
       "retry-after": "7",
       "x-request-id": "fixture-error-request",
     });
+    if (fixture.chunks) {
+      const chunks = fixture.chunks;
+      const pending = fixture.pending;
+      pendingResponse = response;
+      void (async () => {
+        for (const chunk of chunks) {
+          if (response.destroyed) return;
+          response.write(chunk);
+          await setImmediate();
+        }
+        if (!pending) response.end();
+      })().catch((error: unknown) => response.destroy(error instanceof Error ? error : undefined));
+      return;
+    }
     if (fixture.pending) {
       pendingResponse = response;
       response.write(fixture.body);
@@ -189,6 +204,136 @@ describe("Responses HTTP error preservation", () => {
     const error: unknown = await model.doGenerate({ prompt }).catch((error: unknown) => error);
     expect(LoadAPIKeyError.isInstance(error)).toBe(true);
   });
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "bounds an oversized never-ending HTTP error body during %s and closes upstream",
+    async (operation) => {
+      const body = "<html>fixture gateway unavailable " + "x".repeat(256 * 1024);
+      fixture = { body, contentType: "text/html", pending: true, status: 502 };
+      const readable = fixtureSignal();
+      const controller = new AbortController();
+      const model = createSAPAIProvider({
+        api: "responses",
+        deploymentId: "error-fixture",
+        destination: { authentication: "NoAuthentication", url: destinationUrl },
+        requestConfig: { middleware: [observeErrorBody(readable.resolve)] },
+      })("gpt-6.1-sol");
+      const result = model[operation]({ abortSignal: controller.signal, prompt }).catch(
+        (error: unknown) => error,
+      );
+      await readable.promise;
+      const response = pendingResponse;
+      if (!response) throw new Error("Expected an oversized pending HTTP error response");
+      const closed = new Promise<void>((resolve) => response.once("close", resolve));
+      const timeout = setTimeout(() => {
+        controller.abort("fixture fallback: unbounded error read");
+      }, 500);
+      let error: unknown;
+      try {
+        error = await result;
+        await closed;
+      } finally {
+        clearTimeout(timeout);
+      }
+      expect(APICallError.isInstance(error)).toBe(true);
+      expect(error).toMatchObject({
+        isRetryable: true,
+        responseHeaders: { "retry-after": "7", "x-request-id": "fixture-error-request" },
+        statusCode: 502,
+      });
+      if (!APICallError.isInstance(error) || error.responseBody === undefined)
+        throw new Error("Expected captured HTTP error diagnostics");
+      expect(error.responseBody).toMatch(/\.\.\.\[truncated\]$/);
+      const prefix = error.responseBody.replace(/\.\.\.\[truncated\]$/, "");
+      expect(prefix.length).toBeGreaterThan(0);
+      expect(body.startsWith(prefix)).toBe(true);
+      expect(Buffer.byteLength(error.responseBody, "utf8")).toBeLessThanOrEqual(2_000);
+      expect(controller.signal.aborted).toBe(false);
+      expect(response.destroyed).toBe(true);
+    },
+  );
+
+  it.each([
+    { body: "a".repeat(1_985) + "😀" + "z".repeat(256 * 1024), name: "split emoji" },
+    { body: "a" + "€".repeat(128 * 1024), name: "split UTF-8 code point" },
+    {
+      body:
+        JSON.stringify({
+          error: { code: 401, message: "Truncated prefix must not override gateway status" },
+        }) +
+        " ".repeat(256 * 1024) +
+        "invalid JSON suffix",
+      name: "complete JSON prefix with missing suffix",
+    },
+    {
+      body: JSON.stringify({
+        error: { code: 401, message: "Large JSON failure " + "z".repeat(256 * 1024) },
+      }),
+      name: "oversized JSON document",
+    },
+  ])("keeps a valid text prefix and original status for $name", async ({ body }) => {
+    const bytes = Buffer.from(body);
+    fixture = {
+      body,
+      chunks: [
+        bytes.subarray(0, 1_000),
+        bytes.subarray(1_000, 1_986),
+        bytes.subarray(1_986, 1_988),
+        bytes.subarray(1_988),
+      ],
+      contentType: "application/json",
+      status: 502,
+    };
+    const model = createSAPAIProvider({
+      api: "responses",
+      deploymentId: "error-fixture",
+      destination: { authentication: "NoAuthentication", url: destinationUrl },
+    })("gpt-6.1-sol");
+
+    const error: unknown = await model.doGenerate({ prompt }).catch((error: unknown) => error);
+
+    expect(APICallError.isInstance(error)).toBe(true);
+    expect(error).toMatchObject({ isRetryable: true, statusCode: 502 });
+    if (!APICallError.isInstance(error) || error.responseBody === undefined)
+      throw new Error("Expected captured HTTP error diagnostics");
+    expect(error.responseBody).toMatch(/\.\.\.\[truncated\]$/);
+    const prefix = error.responseBody.replace(/\.\.\.\[truncated\]$/, "");
+    expect(prefix).not.toContain("�");
+    expect(new TextDecoder().decode(new TextEncoder().encode(prefix))).toBe(prefix);
+    expect(body.startsWith(prefix)).toBe(true);
+    expect(Buffer.byteLength(error.responseBody, "utf8")).toBeLessThanOrEqual(2_000);
+  });
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "preserves a small complete JSON error split across UTF-8 chunks during %s",
+    async (operation) => {
+      const value = { error: { code: 429, message: "Fixture quota ☕ exhausted" } };
+      const body = JSON.stringify(value);
+      const bytes = Buffer.from(body);
+      const split = bytes.indexOf(Buffer.from("☕")) + 1;
+      fixture = {
+        body,
+        chunks: [bytes.subarray(0, split), bytes.subarray(split)],
+        contentType: "application/json",
+        status: 429,
+      };
+      const model = createSAPAIProvider({
+        api: "responses",
+        deploymentId: "error-fixture",
+        destination: { authentication: "NoAuthentication", url: destinationUrl },
+      })("gpt-6.1-sol");
+
+      const error: unknown = await model[operation]({ prompt }).catch((error: unknown) => error);
+
+      expect(APICallError.isInstance(error)).toBe(true);
+      expect(error).toMatchObject({ isRetryable: true, statusCode: 429 });
+      if (!APICallError.isInstance(error) || error.responseBody === undefined)
+        throw new Error("Expected complete JSON error diagnostics");
+      expect(JSON.parse(error.responseBody) as unknown).toEqual(value);
+      expect(error.message).toContain(value.error.message);
+      expect(error.responseBody).not.toContain("[truncated]");
+    },
+  );
 
   it.each(["doGenerate", "doStream"] as const)(
     "preserves HTTP metadata and the received prefix when %s loses the error-body socket",

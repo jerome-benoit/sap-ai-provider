@@ -26,6 +26,10 @@ type SAPHttpMiddleware = NonNullable<CustomRequestConfig["middleware"]>[number];
 
 type SAPHttpResponse = Awaited<ReturnType<typeof executeRequest>>;
 
+const ERROR_BODY_TRUNCATION = "...[truncated]";
+// Reserve the marker inside the shared HTTP diagnostic serializer's 2,000-character limit.
+const MAX_ERROR_BODY_BYTES = 2_000 - ERROR_BODY_TRUNCATION.length;
+
 /**
  * Resolves a SAP deployment and adapts its HTTP transport to the OpenAI provider.
  * @param config - SAP deployment and transport configuration.
@@ -41,10 +45,14 @@ export async function createResponsesTransport(
 ): Promise<{ baseURL: string; fetch: FetchFunction }> {
   throwIfAborted(options.abortSignal);
   const deployment = buildModelDeployment(config, settings.modelVersion);
-  const [deploymentId, destination] = await Promise.all([
-    getFoundationModelDeploymentId(deployment, "azure-openai", config.destination),
-    getAiCoreDestination(config.destination),
-  ]);
+  // SAP's discovery helpers expose no signal; cancel the wait and observe late rejections.
+  const [deploymentId, destination] = await waitWithAbort(
+    Promise.all([
+      getFoundationModelDeploymentId(deployment, "azure-openai", config.destination),
+      getAiCoreDestination(config.destination),
+    ]),
+    options.abortSignal,
+  );
   throwIfAborted(options.abortSignal);
 
   const deploymentPath = `/inference/deployments/${encodeURIComponent(deploymentId)}`;
@@ -105,15 +113,15 @@ export async function createResponsesTransport(
             abortFailedRequest = () => {
               request.destroy();
             };
-            controller.signal.addEventListener("abort", abortFailedRequest, { once: true });
             if (controller.signal.aborted) abortFailedRequest();
+            else controller.signal.addEventListener("abort", abortFailedRequest, { once: true });
           }
           return error.response;
         }
       };
 
     try {
-      const response = await executeRequest(
+      const pendingResponse = executeRequest(
         {
           apiVersion: "2024-10-21",
           resourceGroup: getResourceGroup(deployment),
@@ -129,23 +137,49 @@ export async function createResponsesTransport(
         },
         config.destination,
       );
+      const response = await waitWithAbort(pendingResponse, controller.signal, destroyHttpResponse);
+      if (controller.signal.aborted) {
+        destroyHttpResponse(response);
+        throw createAbortError(controller.signal.reason);
+      }
       const responseBody: unknown = response.data;
       const responseStream = createByteStream(responseBody, controller, cleanup, config, options);
       if (failedRequest) {
         const decoder = new TextDecoder();
+        const reader = responseStream.getReader();
+        let retainedBytes = 0;
         let text = "";
+        let truncated = false;
         let readFailure: unknown;
         try {
-          for await (const chunk of responseStream) text += decoder.decode(chunk, { stream: true });
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) {
+              text += decoder.decode();
+              break;
+            }
+            const remaining = MAX_ERROR_BODY_BYTES - retainedBytes;
+            text += decoder.decode(chunk.value.subarray(0, remaining), { stream: true });
+            retainedBytes += Math.min(chunk.value.byteLength, remaining);
+            if (chunk.value.byteLength > remaining) {
+              truncated = true;
+              await reader.cancel("HTTP error diagnostic limit exceeded");
+              break;
+            }
+          }
         } catch (error) {
           readFailure = error;
+          if (!truncated) text += decoder.decode();
         } finally {
-          text += decoder.decode();
+          reader.releaseLock();
         }
-        try {
-          failedRequest.response.data = JSON.parse(text) as unknown;
-        } catch {
-          failedRequest.response.data = text;
+        failedRequest.response.data = truncated ? text + ERROR_BODY_TRUNCATION : text;
+        if (!truncated) {
+          try {
+            failedRequest.response.data = JSON.parse(text) as unknown;
+          } catch {
+            failedRequest.response.data = text;
+          }
         }
         throwIfAborted(signal ?? undefined);
         const failure = convertToAISDKError(failedRequest, {
@@ -217,8 +251,8 @@ function createByteStream(
   return new ReadableStream<Uint8Array>(
     {
       async cancel(reason) {
-        cleanupStream();
         requestController.abort(reason);
+        cleanupStream();
         if (source.destroy) {
           source.destroy();
         } else {
@@ -244,8 +278,8 @@ function createByteStream(
           const failure = requestController.signal.aborted
             ? createAbortError(requestController.signal.reason)
             : error;
-          cleanupStream();
           requestController.abort(error);
+          cleanupStream();
           source.destroy?.();
           controller.error(
             convertToAISDKError(failure, {
@@ -261,6 +295,17 @@ function createByteStream(
     },
     { highWaterMark: 0 },
   );
+}
+
+/**
+ * Releases an HTTP response that arrives after its caller has cancelled.
+ * @param response - A late SDK response whose stream has no consumer.
+ */
+function destroyHttpResponse(response: SAPHttpResponse): void {
+  const body: unknown = response.data;
+  const request: unknown = response.request;
+  if (isDestroyableRequest(body)) body.destroy();
+  if (isDestroyableRequest(request)) request.destroy();
 }
 
 /**
@@ -299,4 +344,49 @@ function isFailedHttpRequest(error: unknown): error is FailedHttpRequest {
  */
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw createAbortError(signal.reason);
+}
+
+/**
+ * Cancels a caller's wait even when a SAP preparation step cannot accept a signal.
+ * @param pending - SDK work whose late rejection must remain observed.
+ * @param signal - Cancellation for the caller's wait.
+ * @param onAbortedValue - Releases a result delivered after cancellation.
+ * @returns The result or a classified abort error.
+ */
+function waitWithAbort<T>(
+  pending: Promise<T>,
+  signal: AbortSignal | undefined,
+  onAbortedValue?: (value: T) => void,
+): Promise<T> {
+  if (!signal) return pending;
+  return new Promise<T>((resolve, reject) => {
+    let listening = true;
+    const cleanup = () => {
+      if (!listening) return;
+      listening = false;
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError(signal.reason));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    pending.then(
+      (value) => {
+        cleanup();
+        if (signal.aborted) {
+          onAbortedValue?.(value);
+          reject(createAbortError(signal.reason));
+        } else {
+          resolve(value);
+        }
+      },
+      (error: unknown) => {
+        cleanup();
+        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Preserve SDK rejection values for the shared error converter.
+        reject(error);
+      },
+    );
+    if (signal.aborted) onAbort();
+  });
 }

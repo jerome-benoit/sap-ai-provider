@@ -1120,12 +1120,19 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
 
 - [`responses-http-transport.node.test.ts`](./src/responses-http-transport.node.test.ts)
   checks deployment URLs, destinations, request configuration, header precedence,
-  status policies, response backpressure, and cancellation.
+  status policies, response backpressure, cancellation during pending SDK setup,
+  listener cleanup, and disposal of late HTTP responses.
+- [`responses-discovery-cancellation.node.test.ts`](./src/responses-discovery-cancellation.node.test.ts)
+  checks that both public generation methods settle after cancellation while a
+  real SAP deployment-discovery HTTP response remains pending. SAP's discovery
+  helpers accept no signal; this verifies caller rejection, not upstream discovery
+  cancellation.
 - [`responses-http-errors.node.test.ts`](./src/responses-http-errors.node.test.ts)
   checks final HTTP error preservation after configured middleware retries,
-  authentication errors, non-JSON and truncated error bodies, and caller aborts
-  while reading those bodies. Status, diagnostic body, request ID, and retry
-  headers must survive; caller cancellation remains status 499.
+  authentication errors, non-JSON and truncated error bodies, byte-bounded UTF-8
+  diagnostics, and caller aborts while reading those bodies. Oversized errors
+  must close upstream and preserve their status, received prefix, request ID,
+  and retry headers; caller cancellation remains status 499.
 - [`responses-language-model.node.test.ts`](./src/responses-language-model.node.test.ts)
   and [`responses-language-model-strategy.test.ts`](./src/responses-language-model-strategy.test.ts)
   check deployment discovery, serialized requests and media, native reasoning
