@@ -752,6 +752,43 @@ describe("release-age resource contracts", () => {
 });
 
 describe("canonical npm packument validation", () => {
+  it("limits the temporary security exception to the exact artifact and publication time", () => {
+    const artifact = {
+      ...artifactEntry("1.4.2", "node-forge"),
+      integrity:
+        "sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==",
+    };
+    const published = "2026-10-27T14:09:15.471Z";
+    const now = Date.parse("2026-10-28T00:00:00.000Z");
+    const metadata = packument(artifact);
+    metadata.time[artifact.version] = published;
+    expect(() => { validateArtifactMetadata(artifact, metadata, 3, now); }).not.toThrow();
+
+    for (const altered of [
+      { ...artifact, integrity: "sha512-other" },
+      { ...artifact, resolved: `${REGISTRY}node-forge/-/other.tgz` },
+      { ...artifact, version: "1.4.3" },
+      { ...artifact, name: "other" },
+    ]) {
+      const alteredMetadata = packument(altered);
+      alteredMetadata.time[altered.version] = published;
+      expect(() => { validateArtifactMetadata(altered, alteredMetadata, 3, now); }).toThrow(
+        "newer than",
+      );
+    }
+    const alteredTime = packument(artifact);
+    alteredTime.time[artifact.version] = "2026-10-27T14:09:16.471Z";
+    expect(() => { validateArtifactMetadata(artifact, alteredTime, 3, now); }).toThrow("newer than");
+    expect(() => { validateArtifactMetadata(artifact, metadata, 3, Date.parse(published) - 1); },
+    ).toThrow("newer than");
+    expect(() => { validateArtifactMetadata(artifact, metadata, 4, Date.parse("2026-10-30T14:09:15.471Z")); },
+    ).toThrow("newer than");
+    requireManifest(metadata, artifact.version).dist.integrity = "sha512-other";
+    expect(() => { validateArtifactMetadata(artifact, metadata, 3, now); }).toThrow(
+      "fingerprint mismatch",
+    );
+  });
+
   it("uses only top-level packument time even when a manifest time contradicts it", () => {
     const artifact = artifactEntry("2.0.0");
     const metadata = packument(artifact);

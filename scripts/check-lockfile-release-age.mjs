@@ -18,6 +18,16 @@ const PACKUMENT_TIMEOUT_MS = 10_000;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
 /** Default comparison commit; artifacts present in its lockfile are not age-validated. */
 export const POLICY_BASE_SHA = "3f869c5f5371b35e53ef38bae2173541ab6c209a";
+// Temporary security exception for GHSA-86w9-cpqp-85rv; remove after 2026-10-30.
+const FORGE_SECURITY_EXCEPTION = {
+  expiresMs: Date.parse("2026-10-30T14:09:15.471Z"),
+  integrity:
+    "sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==",
+  name: "node-forge",
+  publishedMs: Date.parse("2026-10-27T14:09:15.471Z"),
+  resolved: "https://registry.npmjs.org/node-forge/-/node-forge-1.4.2.tgz",
+  version: "1.4.2",
+};
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const PUBLIC_NPM_REGISTRY_ORIGIN = new URL(PUBLIC_NPM_REGISTRY).origin;
 
@@ -378,7 +388,15 @@ export function validateArtifactMetadata(artifact, packument, minimumAgeDays, no
   if (!Number.isFinite(publishedMs)) {
     throw new Error(`Invalid publication timestamp for ${artifact.name}@${artifact.version}`);
   }
-  if (nowMs - publishedMs < minimumAgeDays * DAY_MS) {
+  const isSecurityException =
+    artifact.name === FORGE_SECURITY_EXCEPTION.name &&
+    artifact.version === FORGE_SECURITY_EXCEPTION.version &&
+    artifact.resolved === FORGE_SECURITY_EXCEPTION.resolved &&
+    artifact.integrity === FORGE_SECURITY_EXCEPTION.integrity &&
+    publishedMs === FORGE_SECURITY_EXCEPTION.publishedMs &&
+    nowMs >= publishedMs &&
+    nowMs < FORGE_SECURITY_EXCEPTION.expiresMs;
+  if (nowMs - publishedMs < minimumAgeDays * DAY_MS && !isSecurityException) {
     throw new Error(
       `${artifact.name}@${artifact.version} is newer than the ${minimumAgeDays}-day minimum release age`,
     );
