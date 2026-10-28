@@ -1,14 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { AuditProcessResult } from "./check-dependency-audit";
 
 import {
+  allowedAdvisories,
   checkAuditProcessResult,
   getNpmAuditInvocation,
   validateDependencyAudit,
 } from "./check-dependency-audit";
 
 const TODAY = "2026-10-23";
+
+const TEST_ADVISORY = "GHSA-1111-1111-1111";
+
+afterEach(() => {
+  Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+});
 
 /** Mutable advisory fixture. */
 interface Advisory {
@@ -49,6 +56,17 @@ function fixtures(): {
   lock: { lockfileVersion: 3; packages: Record<string, LockEntry> };
   report: { vulnerabilities: Record<string, Vulnerability> };
 } {
+  Object.assign(allowedAdvisories, {
+    [TEST_ADVISORY]: {
+      dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
+      direct: false,
+      expires: "2026-11-08",
+      packageName: "node-forge",
+      reason: "Synthetic test exception.",
+      scope: "runtime",
+      severity: "high",
+    },
+  });
   return {
     lock: {
       lockfileVersion: 3,
@@ -95,7 +113,7 @@ function fixtures(): {
               dependency: "node-forge",
               name: "node-forge",
               severity: "high",
-              url: "https://github.com/advisories/GHSA-86w9-cpqp-85rv",
+              url: `https://github.com/advisories/${TEST_ADVISORY}`,
             },
           ],
         },
@@ -149,6 +167,19 @@ function requireVulnerability(
   if (!vulnerability) throw new Error(`Missing test vulnerability ${name}`);
   return vulnerability;
 }
+
+describe("production advisory policy", () => {
+  it("rejects the resolved node-forge advisory and accepts an empty report", () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    expect(validateDependencyAudit({ vulnerabilities: {} }, lock, TODAY)).toEqual([]);
+    requireAdvisory(requireVulnerability(report.vulnerabilities, "node-forge").via[0]).url =
+      "https://github.com/advisories/GHSA-86w9-cpqp-85rv";
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "Unexpected dependency advisory: GHSA-86w9-cpqp-85rv",
+    );
+  });
+});
 
 describe("npm audit fix availability contract", () => {
   it("rejects a non-forced fix for an allowlisted root vulnerability", () => {
