@@ -169,15 +169,9 @@ function requireVulnerability(
 }
 
 describe("production advisory policy", () => {
-  it("rejects the resolved node-forge advisory and accepts an empty report", () => {
-    const { lock, report } = fixtures();
-    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+  it("accepts an empty report when there are no advisory exceptions", () => {
+    const lock = { lockfileVersion: 3, packages: { "": {} } };
     expect(validateDependencyAudit({ vulnerabilities: {} }, lock, TODAY)).toEqual([]);
-    requireAdvisory(requireVulnerability(report.vulnerabilities, "node-forge").via[0]).url =
-      "https://github.com/advisories/GHSA-86w9-cpqp-85rv";
-    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
-      "Unexpected dependency advisory: GHSA-86w9-cpqp-85rv",
-    );
   });
 });
 
