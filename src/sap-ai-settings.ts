@@ -296,6 +296,7 @@ export {
   buildAzureContentSafetyFilter,
   buildDocumentGroundingConfig,
   buildDpiMaskingProvider,
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the upstream deprecated public API.
   buildLlamaGuard38BFilter,
   buildTranslationConfig,
 } from "@sap-ai-sdk/orchestration";
