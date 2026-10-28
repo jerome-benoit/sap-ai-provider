@@ -16,6 +16,7 @@ import {
   findAllLockArtifacts,
   findNewLockArtifacts,
   loadLockfiles,
+  matchesReleaseAgeException,
   MAXIMUM_ATTESTED_ARTIFACTS,
   MAXIMUM_LOCKFILE_BYTES,
   MAXIMUM_PACKUMENT_BYTES,
@@ -25,6 +26,7 @@ import {
   validateArtifactMetadata,
   validateArtifactsConcurrently,
   validateMinimumReleaseAge,
+  validateReleaseAgeExceptions,
 } from "./check-lockfile-release-age.mjs";
 
 const BASE_LOCKFILE_PATH = "/tmp/base-package-lock.json";
@@ -752,6 +754,117 @@ describe("release-age resource contracts", () => {
 });
 
 describe("canonical npm packument validation", () => {
+  it("validates a multi-artifact exception registry and matches only the exact active entry", () => {
+    const publishedAt = "2026-10-27T14:09:15.471Z";
+    const expiresAt = "2026-10-30T14:09:15.471Z";
+    const first = {
+      expiresAt,
+      integrity: "sha512-first",
+      name: "first",
+      publishedAt,
+      reason: "security",
+      resolved: `${REGISTRY}first/-/first-1.0.0.tgz`,
+      version: "1.0.0",
+    };
+    const second = {
+      expiresAt,
+      integrity: "sha512-second",
+      name: "second",
+      publishedAt,
+      reason: "security",
+      resolved: `${REGISTRY}second/-/second-2.0.0.tgz`,
+      version: "2.0.0",
+    };
+    const entries = [first, second];
+    const now = Date.parse("2026-10-28T00:00:00.000Z");
+    expect(() => {
+      validateReleaseAgeExceptions(entries);
+    }).not.toThrow();
+    expect(matchesReleaseAgeException(first, Date.parse(publishedAt), now, entries)).toBe(true);
+    expect(matchesReleaseAgeException(second, Date.parse(publishedAt), now, entries)).toBe(true);
+    expect(
+      matchesReleaseAgeException(
+        { ...first, version: "1.0.1" },
+        Date.parse(publishedAt),
+        now,
+        entries,
+      ),
+    ).toBe(false);
+    expect(
+      matchesReleaseAgeException(first, Date.parse(publishedAt), Date.parse(expiresAt), entries),
+    ).toBe(false);
+    expect(matchesReleaseAgeException(first, Date.parse(publishedAt), Number.NaN, entries)).toBe(
+      false,
+    );
+  });
+
+  it("rejects malformed and duplicate exception entries even when unused", () => {
+    const entry = {
+      expiresAt: "2026-10-30T14:09:15.471Z",
+      integrity: "sha512-first",
+      name: "first",
+      publishedAt: "2026-10-27T14:09:15.471Z",
+      reason: "security",
+      resolved: `${REGISTRY}first/-/first-1.0.0.tgz`,
+      version: "1.0.0",
+    };
+    for (const entries of [
+      [entry, { ...entry, expiresAt: "2026-10-31T14:09:15.471Z" }],
+      [{ ...entry, reason: "" }],
+      [{ ...entry, resolved: "https://registry.npmjs.org/first/-/first-1.0.0.tgz?x=1" }],
+      [{ ...entry, publishedAt: "2026-02-30T00:00:00.000Z" }],
+      [{ ...entry, expiresAt: entry.publishedAt }],
+      [{ ...entry, extra: true }],
+    ]) {
+      expect(() => {
+        validateReleaseAgeExceptions(entries);
+      }).toThrow();
+    }
+  });
+
+  it("limits the temporary security exception to the exact artifact and publication time", () => {
+    const artifact = {
+      ...artifactEntry("1.4.2", "node-forge"),
+      integrity:
+        "sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==",
+    };
+    const published = "2026-10-27T14:09:15.471Z";
+    const now = Date.parse("2026-10-28T00:00:00.000Z");
+    const metadata = packument(artifact);
+    metadata.time[artifact.version] = published;
+    expect(() => {
+      validateArtifactMetadata(artifact, metadata, 3, now);
+    }).not.toThrow();
+
+    for (const altered of [
+      { ...artifact, integrity: "sha512-other" },
+      { ...artifact, resolved: `${REGISTRY}node-forge/-/other.tgz` },
+      { ...artifact, version: "1.4.3" },
+      { ...artifact, name: "other" },
+    ]) {
+      const alteredMetadata = packument(altered);
+      alteredMetadata.time[altered.version] = published;
+      expect(() => {
+        validateArtifactMetadata(altered, alteredMetadata, 3, now);
+      }).toThrow("newer than");
+    }
+    const alteredTime = packument(artifact);
+    alteredTime.time[artifact.version] = "2026-10-27T14:09:16.471Z";
+    expect(() => {
+      validateArtifactMetadata(artifact, alteredTime, 3, now);
+    }).toThrow("newer than");
+    expect(() => {
+      validateArtifactMetadata(artifact, metadata, 3, Date.parse(published) - 1);
+    }).toThrow("newer than");
+    expect(() => {
+      validateArtifactMetadata(artifact, metadata, 4, Date.parse("2026-10-30T14:09:15.471Z"));
+    }).toThrow("newer than");
+    requireManifest(metadata, artifact.version).dist.integrity = "sha512-other";
+    expect(() => {
+      validateArtifactMetadata(artifact, metadata, 3, now);
+    }).toThrow("fingerprint mismatch");
+  });
+
   it("uses only top-level packument time even when a manifest time contradicts it", () => {
     const artifact = artifactEntry("2.0.0");
     const metadata = packument(artifact);

@@ -422,7 +422,8 @@ npm run test:node             # Runs test suite
   affected dependency paths and remove them when the parent dependency supports
   the fixed version.
 - Run `npm run check-lockfile-release-age` before installing changed dependencies.
-  Respect the minimum release age; do not bypass it to obtain a newer package.
+  Respect the minimum release age. Any necessary exception must be narrowly scoped,
+  justified, time-limited, and maintained in trusted policy; remove it when no longer needed.
   A locked version is not proof that the release-age policy has been checked.
 - Validate lockfile changes and exercise affected tool or runtime behavior.
   Consult the checker scripts and workflow configuration for implementation details.

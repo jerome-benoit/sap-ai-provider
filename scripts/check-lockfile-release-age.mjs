@@ -18,6 +18,101 @@ const PACKUMENT_TIMEOUT_MS = 10_000;
 const MINIMUM_RELEASE_AGE_DAYS = 3;
 /** Default comparison commit; artifacts present in its lockfile are not age-validated. */
 export const POLICY_BASE_SHA = "3f869c5f5371b35e53ef38bae2173541ab6c209a";
+/** Trusted, exact, temporary release-age exceptions. Keep this policy in trusted code. */
+const RELEASE_AGE_EXCEPTIONS = [
+  {
+    expiresAt: "2026-10-30T14:09:15.471Z",
+    integrity:
+      "sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==",
+    name: "node-forge",
+    publishedAt: "2026-10-27T14:09:15.471Z",
+    reason: "Security fix for GHSA-86w9-cpqp-85rv",
+    resolved: "https://registry.npmjs.org/node-forge/-/node-forge-1.4.2.tgz",
+    version: "1.4.2",
+  },
+];
+
+/**
+ * Validate all trusted exceptions, including entries not selected by a lockfile.
+ * @param entries - Trusted release-age exception entries
+ */
+export function validateReleaseAgeExceptions(entries) {
+  if (!Array.isArray(entries)) throw new Error("Invalid release-age exception registry");
+  const seen = new Set();
+  const keys = ["expiresAt", "integrity", "name", "publishedAt", "reason", "resolved", "version"];
+  for (const entry of entries) {
+    if (
+      !entry ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      Object.keys(entry).sort().join(",") !== keys.join(",") ||
+      keys.some(
+        (key) => typeof entry[key] !== "string" || entry[key].trim() !== entry[key] || !entry[key],
+      )
+    ) {
+      throw new Error("Invalid release-age exception entry");
+    }
+    let url;
+    try {
+      url = new URL(entry.resolved);
+    } catch {
+      throw new Error("Invalid release-age exception URL");
+    }
+    if (
+      url.origin !== "https://registry.npmjs.org" ||
+      url.username ||
+      url.password ||
+      entry.resolved.includes("?") ||
+      entry.resolved.includes("#") ||
+      url.search ||
+      url.hash ||
+      url.href !== entry.resolved
+    ) {
+      throw new Error("Invalid release-age exception URL");
+    }
+    const published = Date.parse(entry.publishedAt);
+    const expires = Date.parse(entry.expiresAt);
+    if (
+      !Number.isFinite(published) ||
+      !Number.isFinite(expires) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(entry.publishedAt) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(entry.expiresAt) ||
+      new Date(published).toISOString() !== entry.publishedAt ||
+      new Date(expires).toISOString() !== entry.expiresAt ||
+      published >= expires
+    ) {
+      throw new Error("Invalid release-age exception dates");
+    }
+    const id = JSON.stringify([entry.name, entry.version]);
+    if (seen.has(id))
+      throw new Error(`Duplicate release-age exception for ${entry.name}@${entry.version}`);
+    seen.add(id);
+  }
+}
+
+validateReleaseAgeExceptions(RELEASE_AGE_EXCEPTIONS);
+
+/**
+ * Match an exact artifact against an already validated trusted registry.
+ * @param artifact - Lockfile artifact
+ * @param publishedMs - Canonical registry publication time
+ * @param nowMs - Current timestamp
+ * @param entries - Validated trusted exception entries
+ * @returns Whether the exception applies
+ */
+export function matchesReleaseAgeException(artifact, publishedMs, nowMs, entries) {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(publishedMs)) return false;
+  return entries.some(
+    (entry) =>
+      artifact.name === entry.name &&
+      artifact.version === entry.version &&
+      artifact.resolved === entry.resolved &&
+      artifact.integrity === entry.integrity &&
+      publishedMs === Date.parse(entry.publishedAt) &&
+      nowMs >= publishedMs &&
+      nowMs < Date.parse(entry.expiresAt),
+  );
+}
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const PUBLIC_NPM_REGISTRY_ORIGIN = new URL(PUBLIC_NPM_REGISTRY).origin;
 
@@ -378,7 +473,11 @@ export function validateArtifactMetadata(artifact, packument, minimumAgeDays, no
   if (!Number.isFinite(publishedMs)) {
     throw new Error(`Invalid publication timestamp for ${artifact.name}@${artifact.version}`);
   }
-  if (nowMs - publishedMs < minimumAgeDays * DAY_MS) {
+  if (!Number.isFinite(nowMs)) throw new Error("Invalid current timestamp");
+  if (
+    nowMs - publishedMs < minimumAgeDays * DAY_MS &&
+    !matchesReleaseAgeException(artifact, publishedMs, nowMs, RELEASE_AGE_EXCEPTIONS)
+  ) {
     throw new Error(
       `${artifact.name}@${artifact.version} is newer than the ${minimumAgeDays}-day minimum release age`,
     );
