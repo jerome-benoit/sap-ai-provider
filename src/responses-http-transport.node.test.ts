@@ -454,7 +454,7 @@ describe("Responses HTTP transport", () => {
       config.destination,
     );
     const forwarded = vi.mocked(executeRequest).mock.calls[0]?.[2];
-    expect(forwarded?.middleware).toHaveLength(2);
+    expect(forwarded?.middleware).toHaveLength(3);
     expect(forwarded?.middleware?.[1]).toBe(middleware);
     expect(forwarded?.validateStatus).toBe(validateStatus);
     expect(forwarded?.signal).toBeInstanceOf(AbortSignal);

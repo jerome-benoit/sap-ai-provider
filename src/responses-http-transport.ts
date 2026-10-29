@@ -22,6 +22,13 @@ interface FailedHttpRequest extends Error {
   isAxiosError: true;
   response: SAPHttpResponse;
 }
+
+interface HttpResponseEvents {
+  destroy: (error?: Error) => void;
+  once: (event: string, listener: () => void) => unknown;
+  removeListener: (event: string, listener: () => void) => unknown;
+}
+
 type SAPHttpMiddleware = NonNullable<CustomRequestConfig["middleware"]>[number];
 
 type SAPHttpResponse = Awaited<ReturnType<typeof executeRequest>>;
@@ -75,6 +82,7 @@ export async function createResponsesTransport(
     const body: unknown = JSON.parse(init.body);
     const controller = new AbortController();
     const signal = options.abortSignal ?? init.signal;
+    const bodyTimeoutCleanups = new Set<() => void>();
     let abortFailedRequest: (() => void) | undefined;
     const onAbort = () => {
       controller.abort(signal?.reason);
@@ -82,6 +90,7 @@ export async function createResponsesTransport(
     const cleanup = () => {
       signal?.removeEventListener("abort", onAbort);
       if (abortFailedRequest) controller.signal.removeEventListener("abort", abortFailedRequest);
+      for (const dispose of bodyTimeoutCleanups) dispose();
     };
     throwIfAborted(signal ?? undefined);
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -97,6 +106,21 @@ export async function createResponsesTransport(
     );
 
     let failedRequest: FailedHttpRequest | undefined;
+    const watchResponse = (response: SAPHttpResponse, request: CustomRequestConfig) => {
+      if (controller.signal.aborted) destroyHttpResponse(response);
+      else preserveResponseBodyTimeout(response, request, bodyTimeoutCleanups);
+      return response;
+    };
+    const preserveBodyTimeout: SAPHttpMiddleware =
+      ({ fn }) =>
+      async (request) => {
+        try {
+          return watchResponse(await fn(request), request);
+        } catch (error) {
+          if (isFailedHttpRequest(error)) watchResponse(error.response, request);
+          throw error;
+        }
+      };
     const preserveErrorResponse: SAPHttpMiddleware =
       ({ fn }) =>
       async (request) => {
@@ -131,7 +155,11 @@ export async function createResponsesTransport(
         {
           ...requestConfig,
           headers: { ...Object.fromEntries(headers), ...configuredHeaders },
-          middleware: [preserveErrorResponse, ...(requestConfig?.middleware ?? [])],
+          middleware: [
+            preserveErrorResponse,
+            ...(requestConfig?.middleware ?? []),
+            preserveBodyTimeout,
+          ],
           responseType: "stream",
           signal: controller.signal,
         },
@@ -336,6 +364,94 @@ function isFailedHttpRequest(error: unknown): error is FailedHttpRequest {
     typeof error.response === "object" &&
     error.response !== null
   );
+}
+
+/**
+ * Identifies native HTTP requests and response streams without importing Node APIs.
+ * @param value - Native object returned by the SAP HTTP client.
+ * @returns Whether lifecycle listeners and destruction are supported.
+ */
+function isHttpResponseEvents(value: unknown): value is HttpResponseEvents {
+  return (
+    isDestroyableRequest(value) &&
+    "once" in value &&
+    typeof value.once === "function" &&
+    "removeListener" in value &&
+    typeof value.removeListener === "function"
+  );
+}
+
+/**
+ * Keeps Axios's socket inactivity timeout effective after streamed headers settle.
+ * @param response - Native response observed before configured middleware resumes.
+ * @param requestConfig - Effective Axios timeout settings after configured middleware.
+ * @param cleanups - Disposes responses abandoned by cancellation or middleware retries.
+ */
+function preserveResponseBodyTimeout(
+  response: SAPHttpResponse,
+  requestConfig: CustomRequestConfig,
+  cleanups: Set<() => void>,
+): void {
+  const body: unknown = response.data;
+  const request: unknown = response.request;
+  if (!isHttpResponseEvents(body) || !isHttpResponseEvents(request)) return;
+
+  const release = () => {
+    request.removeListener("timeout", onTimeout);
+    body.removeListener("end", release);
+    body.removeListener("error", onFailure);
+    body.removeListener("close", onFailure);
+    cleanups.delete(dispose);
+  };
+  const onFailure = () => {
+    request.destroy();
+    release();
+  };
+  const dispose = () => {
+    request.removeListener("timeout", onTimeout);
+    // Keep the error observer until close: destruction can emit an error asynchronously.
+    body.destroy();
+    request.destroy();
+  };
+  const onTimeout = () => {
+    const nativeResponse: unknown = "res" in request ? request.res : undefined;
+    // A fully received body can remain buffered while configured middleware waits.
+    if (
+      typeof nativeResponse === "object" &&
+      nativeResponse !== null &&
+      "complete" in nativeResponse &&
+      nativeResponse.complete === true
+    ) {
+      release();
+      return;
+    }
+    const timeout: unknown = requestConfig.timeout;
+    const timeoutErrorMessage: unknown = requestConfig.timeoutErrorMessage;
+    const transitional: unknown = requestConfig.transitional;
+    const clarifyTimeoutError =
+      typeof transitional === "object" &&
+      transitional !== null &&
+      "clarifyTimeoutError" in transitional &&
+      transitional.clarifyTimeoutError === true;
+    const message =
+      typeof timeoutErrorMessage === "string" && timeoutErrorMessage
+        ? timeoutErrorMessage
+        : (typeof timeout === "number" || typeof timeout === "string") && timeout
+          ? `timeout of ${String(timeout)}ms exceeded`
+          : "timeout exceeded";
+    // Aborting the controller here would misclassify inactivity as caller cancellation.
+    body.destroy(
+      Object.assign(new Error(message), {
+        code: clarifyTimeoutError ? "ETIMEDOUT" : "ECONNABORTED",
+      }),
+    );
+    request.destroy();
+  };
+  request.once("timeout", onTimeout);
+  body.once("end", release);
+  body.once("error", onFailure);
+  body.once("close", onFailure);
+  cleanups.add(dispose);
 }
 
 /**

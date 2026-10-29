@@ -585,6 +585,7 @@ describe("convertToAISDKError", () => {
 
   describe("native transient transport codes", () => {
     it.each([
+      "ECONNABORTED",
       "ECONNRESET",
       "ECONNREFUSED",
       "EPIPE",

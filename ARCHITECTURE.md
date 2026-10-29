@@ -732,6 +732,10 @@ Responses uses this helper through its fetch-compatible SAP transport, with
 explicit cleanup of the response iterator and native HTTP request. Its
 [upgrade contract](#sdk-upgrade-contract) covers error-body reads and cancellation
 after an HTTP error has already been received.
+An innermost transport middleware keeps the native request's socket inactivity
+timeout effective after streamed headers settle, before configured middleware
+can delay consumption. Fully received bodies remain available during such a delay;
+active SSE traffic is not subject to an absolute duration limit.
 
 **Non-streaming (Orchestration):**
 
@@ -1142,6 +1146,10 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
   sends a partial JSON/SSE body and closes its socket; high-level generation
   and streaming must recover on the second request with `maxRetries: 1`.
   Cancellation and genuine parsing failures retain their separate classifications.
+- [`responses-timeout.node.test.ts`](./src/responses-timeout.node.test.ts)
+  checks body-read inactivity timeouts with redirects disabled, active SSE traffic,
+  delayed middleware, completed responses, HTTP-error diagnostics, cancellation,
+  socket closure, and connection reuse after success or failure.
 - [`responses-language-model.node.test.ts`](./src/responses-language-model.node.test.ts)
   and [`responses-language-model-strategy.test.ts`](./src/responses-language-model-strategy.test.ts)
   check deployment discovery, serialized requests and media, native reasoning

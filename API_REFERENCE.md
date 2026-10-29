@@ -577,6 +577,11 @@ accept an abort signal, so their underlying work can continue after the caller
 has been released; late failures are observed and late HTTP responses are closed.
 Caller cancellation remains a non-retryable status 499 error.
 
+Configured HTTP inactivity timeouts remain effective while reading Responses
+bodies, including with `requestConfig.maxRedirects: 0`. Timeout failures are
+retryable status 503 errors. Active SSE traffic resets the existing socket timer;
+this does not impose a total duration limit on the stream.
+
 Rejected HTTP responses retain at most 1,986 body bytes for diagnostics. Larger
 bodies are stopped and expose the received UTF-8 prefix with `...[truncated]`,
 preserving the original status and headers. Complete smaller JSON errors retain
