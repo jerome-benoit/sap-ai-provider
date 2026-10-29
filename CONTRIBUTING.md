@@ -421,6 +421,9 @@ npm run test:node             # Runs test suite
 - Use dependency overrides only when needed for a reviewed fix. Scope them to the
   affected dependency paths and remove them when the parent dependency supports
   the fixed version.
+  The `markdownlint` override requires `re2js >=2.8.7 <3.0.0` to fix the lookbehind
+  denial of service in [GHSA-gg6h-894w-4m9c](https://github.com/advisories/GHSA-gg6h-894w-4m9c).
+  Remove this override when `markdownlint` declares a patched `re2js` version.
 - Run `npm run check-lockfile-release-age` before installing changed dependencies.
   Respect the minimum release age. Any necessary exception must be narrowly scoped,
   justified, time-limited, and maintained in trusted policy; remove it when no longer needed.
