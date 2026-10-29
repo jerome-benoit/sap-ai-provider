@@ -29,7 +29,7 @@
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "24.22.2",
+      "version": "26.13.0",
       "onFail": "ignore"
     },
     "packageManager": {
@@ -139,7 +139,7 @@
     "@ai-sdk/provider-v2": "npm:@ai-sdk/provider@2.0.5",
     "@edge-runtime/vm": "5.0.0",
     "@eslint/js": "10.0.1",
-    "@types/node": "25.9.9",
+    "@types/node": "26.6.5",
     "@vitest/coverage-v8": "5.0.5",
     "ai": "7.0.153",
     "dotenv": "18.0.9",
