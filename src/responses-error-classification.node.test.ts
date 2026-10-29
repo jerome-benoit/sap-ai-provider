@@ -8,6 +8,7 @@ import { APICallError } from "@ai-sdk/provider";
 import { generateText, streamText } from "ai";
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
+import { setImmediate } from "node:timers/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { SAPAILanguageModel } from "./sap-ai-language-model.js";
@@ -66,6 +67,8 @@ describe("Responses transport failure classification", () => {
   let destinationUrl: string;
   let malformed: "idle" | "json-schema" | "json-syntax" | "sse-schema" | "sse-syntax" | undefined;
   let pendingResponse: ServerResponse | undefined;
+  let wireResetsRemaining = 0;
+  const wireErrors: unknown[] = [];
   const requests: Record<string, unknown>[] = [];
   const interceptedBodies: Readable[] = [];
   const server = createServer((request, response) => {
@@ -74,6 +77,15 @@ describe("Responses transport failure classification", () => {
       for await (const chunk of request) raw += String(chunk);
       const body = JSON.parse(raw) as Record<string, unknown>;
       requests.push(body);
+      if (wireResetsRemaining > 0) {
+        wireResetsRemaining--;
+        pendingResponse = response;
+        response.setHeader("content-type", body.stream ? "text/event-stream" : "application/json");
+        response.setHeader("x-fixture-wire-reset", "true");
+        response.write(body.stream ? "data: " : '{"id":');
+        response.flushHeaders();
+        return;
+      }
       if (malformed === "idle") {
         pendingResponse = response;
         response.setHeader("content-type", body.stream ? "text/event-stream" : "application/json");
@@ -127,6 +139,8 @@ describe("Responses transport failure classification", () => {
   beforeEach(() => {
     malformed = undefined;
     pendingResponse = undefined;
+    wireResetsRemaining = 0;
+    wireErrors.length = 0;
     requests.length = 0;
     interceptedBodies.length = 0;
   });
@@ -181,6 +195,82 @@ describe("Responses transport failure classification", () => {
         return { ...response, data: body };
       };
   }
+
+  /**
+   * Closes the real server socket only after the client has received HTTP headers and body bytes.
+   * @returns A passive SAP middleware that never changes the response or its body.
+   */
+  function resetAfterBodyReadable(): Middleware {
+    return ({ fn }) =>
+      async (request) => {
+        const response = await fn(request);
+        const headers: unknown = response.headers;
+        if (
+          typeof headers !== "object" ||
+          headers === null ||
+          !("x-fixture-wire-reset" in headers) ||
+          headers["x-fixture-wire-reset"] !== "true"
+        )
+          return response;
+        const body: unknown = response.data;
+        if (!(body instanceof Readable))
+          throw new Error("Expected the real SAP HTTP response body");
+        const target = pendingResponse;
+        if (!target) throw new Error("Expected a pending server response for the wire reset");
+        body.once("error", (error: unknown) => {
+          wireErrors.push(error);
+        });
+        const reset = () => {
+          void setImmediate().then(() => {
+            target.destroy();
+          });
+        };
+        if (body.readableLength > 0) reset();
+        else body.once("readable", reset);
+        return response;
+      };
+  }
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s makes an actual TCP reset before model output retryable",
+    async (operation) => {
+      wireResetsRemaining = 1;
+      const model = createSAPAIProvider(settings(resetAfterBodyReadable()))("gpt-6.1-sol");
+
+      const error = await failure(model, operation);
+
+      expect(wireErrors).toHaveLength(1);
+      expect(wireErrors[0]).toMatchObject({ code: "ECONNRESET", message: "aborted" });
+      expect(error).toMatchObject({ isRetryable: true, statusCode: 503 });
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it.each(["generateText", "streamText"] as const)(
+    "lets actual AI SDK %s retry a pre-output TCP reset and recover",
+    async (operation) => {
+      wireResetsRemaining = 1;
+      const model = createSAPAIProviderV4(settings(resetAfterBodyReadable()))("gpt-6.1-sol");
+      const options = { maxRetries: 1, model, prompt: "Read the fixture" };
+      if (operation === "generateText") {
+        expect((await generateText(options)).text).toBe("Fixture recovered");
+      } else {
+        const finalErrors: unknown[] = [];
+        const result = streamText({
+          ...options,
+          onError: ({ error }) => {
+            finalErrors.push(error);
+          },
+        });
+        expect(await result.text).toBe("Fixture recovered");
+        expect(finalErrors).toEqual([]);
+      }
+      expect(wireErrors).toHaveLength(1);
+      expect(wireErrors[0]).toMatchObject({ code: "ECONNRESET", message: "aborted" });
+      expect(requests).toHaveLength(2);
+    },
+    10_000,
+  );
 
   it.each(["doGenerate", "doStream"] as const)(
     "%s preserves the transport's retryable network classification before any output",

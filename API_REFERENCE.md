@@ -585,6 +585,8 @@ SSE streams or replace an explicit `requestConfig.maxContentLength`.
 
 Classified transport read failures retain their original status, retryability,
 and diagnostics when the delegate wraps them in a successful-response error.
+Native transient connection errors, including `ECONNRESET` after successful
+headers, become retryable status 503 errors with the original error as `cause`.
 Malformed JSON and invalid response schemas keep their parsing-error classification.
 
 **Tool and reasoning history:**

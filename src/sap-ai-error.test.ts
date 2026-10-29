@@ -583,6 +583,207 @@ describe("convertToAISDKError", () => {
     });
   });
 
+  describe("native transient transport codes", () => {
+    it.each([
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "EPIPE",
+      "ETIMEDOUT",
+      "EAI_AGAIN",
+      "ENETUNREACH",
+      "EHOSTUNREACH",
+      "ENOTFOUND",
+    ])("classifies %s without relying on its human-readable message", (code) => {
+      const native = Object.assign(new Error("aborted"), { code });
+      const error = new ErrorWithCause("SAP response body failed", native);
+      const result = convertToAISDKError(error, {
+        operation: "doStream",
+        requestBody: { model: "fixture-model" },
+        responseHeaders: { "x-request-id": "native-failure-request" },
+        url: "sap-ai:responses",
+      }) as APICallError;
+
+      expect(result).toMatchObject({
+        cause: error,
+        isRetryable: true,
+        requestBodyValues: { model: "fixture-model" },
+        responseHeaders: { "x-request-id": "native-failure-request" },
+        statusCode: 503,
+        url: "sap-ai:responses",
+      });
+    });
+
+    it("retains a native code on an intermediate error whose terminal cause has none", () => {
+      const coded = Object.assign(new Error("aborted", { cause: new Error("opaque detail") }), {
+        code: "ECONNRESET",
+      });
+      const error = new Error("SAP wrapper", { cause: new ErrorWithCause("SDK wrapper", coded) });
+      const result = convertToAISDKError(error) as APICallError;
+
+      expect(result.statusCode).toBe(503);
+      expect(result.isRetryable).toBe(true);
+      expect(result.cause).toBe(error);
+    });
+
+    it("does not let successful HTTP headers mask a native body-read failure", () => {
+      const error = Object.assign(new Error("aborted"), {
+        code: "ECONNRESET",
+        isAxiosError: true,
+        response: {
+          data: "partial response diagnostic",
+          headers: { "x-request-id": "interrupted-success" },
+          status: 200,
+        },
+      });
+      const result = convertToAISDKError(error) as APICallError;
+
+      expect(result).toMatchObject({
+        cause: error,
+        isRetryable: true,
+        responseBody: "partial response diagnostic",
+        responseHeaders: { "x-request-id": "interrupted-success" },
+        statusCode: 503,
+      });
+    });
+
+    it("keeps a parsing failure after successful HTTP headers distinct from a body-read failure", () => {
+      const parsingError = new SyntaxError("credential-sentinel", {
+        cause: Object.assign(new Error("aborted"), { code: "ECONNRESET" }),
+      });
+      const error = Object.assign(
+        new Error("SAP response parsing failed", { cause: parsingError }),
+        {
+          isAxiosError: true,
+          response: {
+            data: "invalid response diagnostic",
+            headers: { "x-request-id": "invalid-success" },
+            status: 200,
+          },
+        },
+      );
+      const result = convertToAISDKError(error) as APICallError;
+
+      expect(result).toMatchObject({
+        cause: error,
+        isRetryable: false,
+        responseBody: "invalid response diagnostic",
+        responseHeaders: { "x-request-id": "invalid-success" },
+        statusCode: 200,
+      });
+      expect(result.message).not.toContain("credential-sentinel");
+    });
+
+    it.each([
+      { isRetryable: false, statusCode: 400 },
+      { isRetryable: false, statusCode: 401 },
+      { isRetryable: false, statusCode: 404 },
+      { isRetryable: true, statusCode: 429 },
+    ])(
+      "keeps explicit HTTP $statusCode ahead of a native transport code",
+      ({ isRetryable, statusCode }) => {
+        const native = Object.assign(new Error("aborted"), { code: "ECONNRESET" });
+        const error = Object.assign(new Error("HTTP request failed", { cause: native }), {
+          isAxiosError: true,
+          response: {
+            data: "fixture HTTP diagnostic",
+            headers: { "retry-after": "4", "x-request-id": "http-failure-request" },
+            status: statusCode,
+          },
+        });
+        const result = convertToAISDKError(
+          new ErrorWithCause("SAP wrapper", error),
+        ) as APICallError;
+
+        expect(result).toMatchObject({
+          isRetryable,
+          responseBody: "fixture HTTP diagnostic",
+          responseHeaders: { "retry-after": "4", "x-request-id": "http-failure-request" },
+          statusCode,
+        });
+      },
+    );
+
+    it.each(["native abort", "Axios cancellation"] as const)(
+      "keeps %s non-retryable even when a deeper error has a transient code",
+      (kind) => {
+        const native = Object.assign(new Error("aborted"), { code: "ECONNRESET" });
+        const error =
+          kind === "native abort"
+            ? Object.assign(new Error("caller cancelled", { cause: native }), {
+                name: "AbortError",
+              })
+            : Object.assign(new Error("caller cancelled", { cause: native }), {
+                code: "ERR_CANCELED",
+                isAxiosError: true,
+                response: { headers: { "x-request-id": "cancelled-request" }, status: 503 },
+              });
+        const result = convertToAISDKError(
+          new ErrorWithCause("SAP wrapper", error),
+        ) as APICallError;
+
+        expect(result.statusCode).toBe(499);
+        expect(result.isRetryable).toBe(false);
+      },
+    );
+
+    it.each(["on the parser error", "in its cause"] as const)(
+      "keeps SyntaxError non-retryable when a transient code appears %s",
+      (location) => {
+        const parsingError =
+          location === "on the parser error"
+            ? Object.assign(new SyntaxError("credential-sentinel"), { code: "ECONNRESET" })
+            : new SyntaxError("credential-sentinel", {
+                cause: Object.assign(new Error("aborted"), { code: "ECONNRESET" }),
+              });
+        const error = new Error("SAP response parsing failed", { cause: parsingError });
+        const result = convertToAISDKError(error) as APICallError;
+
+        expect(result.statusCode).toBe(500);
+        expect(result.isRetryable).toBe(false);
+        expect(result.message).not.toContain("credential-sentinel");
+        expect(result.cause).toBe(error);
+      },
+    );
+
+    it.each([
+      { label: "an unclassified message", value: new Error("ECONNRESET") },
+      { label: "a plain code object", value: { code: "ECONNRESET", message: "aborted" } },
+      {
+        label: "an application error body",
+        value: { error: { code: "ECONNRESET", message: "aborted" } },
+      },
+      {
+        label: "a plain object in the cause chain",
+        value: new Error("SAP wrapper", { cause: { code: "ECONNRESET", message: "aborted" } }),
+      },
+      {
+        label: "response headers and data",
+        value: Object.assign(new Error("aborted"), {
+          isAxiosError: true,
+          response: {
+            data: { code: "ECONNRESET" },
+            headers: { "x-error-code": "ECONNRESET" },
+          },
+        }),
+      },
+    ])("does not infer a native transient failure from $label", ({ value }) => {
+      const result = convertToAISDKError(value) as APICallError;
+      expect(result.statusCode).toBe(500);
+      expect(result.isRetryable).toBe(false);
+    });
+
+    it.each(["EACCES", "EINVAL", "ERR_INVALID_ARG_TYPE", "econnreset", "ECONNRESET_SUFFIX"])(
+      "does not treat an unrelated or inexact code %s as transient",
+      (code) => {
+        const result = convertToAISDKError(
+          Object.assign(new Error("aborted"), { code }),
+        ) as APICallError;
+        expect(result.statusCode).toBe(500);
+        expect(result.isRetryable).toBe(false);
+      },
+    );
+  });
+
   describe("generic error handling", () => {
     it("should convert generic errors to non-retryable APICallError", () => {
       const result = convertToAISDKError(new Error("Something went wrong"));

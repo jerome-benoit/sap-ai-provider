@@ -967,12 +967,15 @@ priority:
 3. **Structured SAP error?** → Convert 401/403 to `LoadAPIKeyError`, 404 to
    `NoSuchModelError`, and other statuses to `APICallError`
 4. **HTTP response status?** → `APICallError` preserving the status, even if
-   the body is not a structured SAP error
+   the body is not a structured SAP error; successful headers do not mask a
+   native connection failure while reading the body
 5. **Native parser failure?** → Retain the enclosing SDK summary, or a generic
    parse-error message, instead of exposing parser input fragments
-6. **Recognized error message?** → Classify authentication/deployment failures,
+6. **Transient native connection code?** → Retryable status 503, preserving
+   the original cause and response diagnostics
+7. **Recognized error message?** → Classify authentication/deployment failures,
    extract a status from `status code NNN`, or apply a category-specific mapping
-7. **Unknown error?** → Non-retryable `APICallError` with status 500
+8. **Unknown error?** → Non-retryable `APICallError` with status 500
 
 Converted `APICallError` instances carry the supplied URL and request summary,
 plus response headers/body when available. Authentication and model errors do
@@ -1135,8 +1138,10 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
   and retry headers; caller cancellation remains status 499.
 - [`responses-error-classification.node.test.ts`](./src/responses-error-classification.node.test.ts)
   checks transport errors beneath successful-response wrappers, diagnostic
-  preservation, high-level generation/streaming retry recovery before output,
-  cancellation, and genuine JSON/SSE parsing failures.
+  preservation, and recovery from a real TCP reset before output. The server
+  sends a partial JSON/SSE body and closes its socket; high-level generation
+  and streaming must recover on the second request with `maxRetries: 1`.
+  Cancellation and genuine parsing failures retain their separate classifications.
 - [`responses-language-model.node.test.ts`](./src/responses-language-model.node.test.ts)
   and [`responses-language-model-strategy.test.ts`](./src/responses-language-model-strategy.test.ts)
   check deployment discovery, serialized requests and media, native reasoning
