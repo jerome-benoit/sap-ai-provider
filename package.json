@@ -164,6 +164,9 @@
     "basic-ftp": ">=6.2.2 <7.0.0",
     "esbuild": ">=0.28.2 <0.29.0",
     "katex": ">=0.18.2 <0.20.0",
+    "markdownlint": {
+      "re2js": "2.8.8"
+    },
     "markdownlint-cli2": {
       "markdown-it": "15.0.3"
     },
