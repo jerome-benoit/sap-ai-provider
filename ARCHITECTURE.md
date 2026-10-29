@@ -1133,6 +1133,10 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
   diagnostics, and caller aborts while reading those bodies. Oversized errors
   must close upstream and preserve their status, received prefix, request ID,
   and retry headers; caller cancellation remains status 499.
+- [`responses-error-classification.node.test.ts`](./src/responses-error-classification.node.test.ts)
+  checks transport errors beneath successful-response wrappers, diagnostic
+  preservation, high-level generation/streaming retry recovery before output,
+  cancellation, and genuine JSON/SSE parsing failures.
 - [`responses-language-model.node.test.ts`](./src/responses-language-model.node.test.ts)
   and [`responses-language-model-strategy.test.ts`](./src/responses-language-model-strategy.test.ts)
   check deployment discovery, serialized requests and media, native reasoning

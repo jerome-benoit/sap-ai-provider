@@ -583,6 +583,10 @@ preserving the original status and headers. Complete smaller JSON errors retain
 their normal classification. This diagnostic bound does not apply to successful
 SSE streams or replace an explicit `requestConfig.maxContentLength`.
 
+Classified transport read failures retain their original status, retryability,
+and diagnostics when the delegate wraps them in a successful-response error.
+Malformed JSON and invalid response schemas keep their parsing-error classification.
+
 **Tool and reasoning history:**
 
 `store` defaults to `false`. The OpenAI delegate requests encrypted reasoning

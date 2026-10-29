@@ -30,6 +30,27 @@ const options: LanguageModelV3CallOptions = {
   prompt: [{ content: [{ text: "Hello", type: "text" }], role: "user" }],
 };
 
+/**
+ * Consumes either generation mode, surfacing consumer-visible stream failures.
+ * @param strategy - Responses strategy using the real OpenAI delegate.
+ * @param operation - Generation mode.
+ * @param callOptions - Invocation options.
+ */
+async function consumeResponse(
+  strategy: ResponsesLanguageModelStrategy,
+  operation: "doGenerate" | "doStream",
+  callOptions = options,
+): Promise<void> {
+  if (operation === "doGenerate") {
+    await strategy.doGenerate(config, { api: "responses" }, callOptions);
+    return;
+  }
+  const { stream } = await strategy.doStream(config, { api: "responses" }, callOptions);
+  for await (const part of stream) {
+    if (part.type === "error") throw part.error;
+  }
+}
+
 describe("Responses request mapping", () => {
   const strategy = new ResponsesLanguageModelStrategy();
   let body: Record<string, unknown>;
@@ -280,6 +301,113 @@ describe("Responses request mapping", () => {
       throw new Error("Expected the delegate's API error and diagnostic body");
     }
     expect(JSON.parse(error.responseBody) as unknown).toEqual(frame);
+  });
+
+  it.each([
+    { isRetryable: true, label: "retryable HTTP failure", statusCode: 503 },
+    { isRetryable: true, label: "retryable failure without an HTTP status", statusCode: undefined },
+    { isRetryable: false, label: "caller cancellation", statusCode: 499 },
+  ])(
+    "preserves classified $label while reading either response body",
+    async ({ isRetryable, statusCode }) => {
+      for (const operation of ["doGenerate", "doStream"] as const) {
+        const caller = new AbortController();
+        const sourceError = new APICallError({
+          cause: new Error("fixture transport failure"),
+          data: { diagnostic: "fixture transport diagnostic" },
+          isRetryable,
+          message: "Classified SAP transport failure",
+          requestBodyValues: { model: config.modelId },
+          responseBody: "fixture diagnostic body",
+          responseHeaders: { "retry-after": "3", "x-request-id": "classified-sap-request" },
+          statusCode,
+          url: "sap-ai:responses",
+        });
+        transport.fetch.mockImplementation(() => {
+          if (statusCode === 499) caller.abort("fixture-cancel");
+          return Promise.resolve(
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.error(sourceError);
+                },
+              }),
+              {
+                headers: {
+                  "content-type":
+                    operation === "doStream" ? "text/event-stream" : "application/json",
+                  "x-request-id": "successful-headers",
+                },
+                status: 200,
+              },
+            ),
+          );
+        });
+
+        await expect(
+          consumeResponse(strategy, operation, { ...options, abortSignal: caller.signal }),
+        ).rejects.toBe(sourceError);
+      }
+    },
+  );
+
+  it.each([
+    { label: "malformed JSON", payload: '{"id":' },
+    {
+      label: "invalid response schema",
+      payload: JSON.stringify({
+        created_at: 1_798_000_000,
+        id: "response-fixture",
+        model: config.modelId,
+        output: "invalid-output-type",
+      }),
+    },
+  ])(
+    "retains genuine $label failures as non-retryable HTTP 200 parser errors",
+    async ({ payload }) => {
+      transport.fetch.mockResolvedValue(
+        new Response(payload, {
+          headers: { "content-type": "application/json", "x-request-id": "invalid-success-body" },
+          status: 200,
+        }),
+      );
+
+      const error: unknown = await strategy
+        .doGenerate(config, { api: "responses" }, options)
+        .catch((error: unknown) => error);
+      expect(APICallError.isInstance(error)).toBe(true);
+      expect(error).toMatchObject({
+        isRetryable: false,
+        message: "Invalid JSON response",
+        responseBody: payload,
+        responseHeaders: { "x-request-id": "invalid-success-body" },
+        statusCode: 200,
+        url: "https://fixture.example/responses-deployment/responses",
+      });
+      if (!APICallError.isInstance(error)) throw new Error("Expected an HTTP parser error.");
+      expect(APICallError.isInstance(error.cause)).toBe(false);
+    },
+  );
+
+  it("retains a successful-response wrapper for an unclassified SSE body failure", async () => {
+    const cause = new Error("unclassified response body failure");
+    transport.fetch.mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(cause);
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" }, status: 200 },
+      ),
+    );
+
+    await expect(consumeResponse(strategy, "doStream")).rejects.toMatchObject({
+      cause,
+      isRetryable: false,
+      message: "Failed to process successful response",
+      statusCode: 200,
+    });
   });
 
   it.each([

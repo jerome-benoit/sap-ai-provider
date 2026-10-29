@@ -173,15 +173,14 @@ function convertError(
   options: LanguageModelV3CallOptions,
   operation: "doGenerate" | "doStream",
 ) {
-  // The delegate can wrap a cancelled body read as a successful-response parse error.
+  // The delegate can hide a classified body-read failure under a successful HTTP status.
   if (
-    options.abortSignal?.aborted &&
     APICallError.isInstance(error) &&
+    error.message === "Failed to process successful response" &&
     error.statusCode !== undefined &&
     error.statusCode >= 200 &&
     error.statusCode < 300 &&
-    APICallError.isInstance(error.cause) &&
-    error.cause.statusCode === 499
+    APICallError.isInstance(error.cause)
   ) {
     return error.cause;
   }
