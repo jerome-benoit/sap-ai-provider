@@ -1,3 +1,4 @@
+import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import type { AzureOpenAiChatCompletionParameters } from "@sap-ai-sdk/foundation-models";
 import type {
   ChatCompletionTool,
@@ -17,7 +18,7 @@ export type AzureOpenAiChatExtensionConfiguration = NonNullable<
 >[number];
 
 /**
- * Common model parameters shared between both APIs.
+ * Common model parameters shared between APIs.
  *
  * Known parameters are validated by Zod in constructor settings and per-call
  * `modelParams` provider options; additional model-specific keys are passed through.
@@ -211,17 +212,38 @@ export type PromptTemplateScope = "resource_group" | "tenant";
 /** Response format for structured output (OpenAI-compatible). */
 export type ResponseFormat = AzureOpenAiChatCompletionParameters["response_format"];
 
+/** Default settings configuration when using the Responses API. */
+export interface ResponsesDefaultSettings {
+  readonly api: "responses";
+  readonly settings?: ResponsesModelSettings;
+}
+
+/** Model-specific Responses API options, validated by the OpenAI provider. */
+export type ResponsesModelOptions = Omit<OpenAIResponsesProviderOptions, "metadata"> & {
+  readonly metadata?: null | Record<string, string>;
+};
+
+/** Model settings for the OpenAI Responses API through SAP AI Core. */
+export interface ResponsesModelSettings {
+  readonly api: "responses";
+  readonly modelParams?: CommonModelParams;
+  readonly modelVersion?: string;
+  readonly responseFormat?: ResponseFormat;
+  readonly responses?: ResponsesModelOptions;
+}
+
 /**
  * Supported API types for SAP AI Core.
  *
  * - `'orchestration'` - Full-featured API with data masking, content filtering, document grounding, and translation.
  * - `'foundation-models'` - Direct model access with Azure OpenAI-specific parameters like `logprobs`, `seed`, and `dataSources`.
+ * - `'responses'` - OpenAI Responses API with native reasoning and tool-call history.
  */
-export type SAPAIApiType = "foundation-models" | "orchestration";
+export type SAPAIApiType = "foundation-models" | "orchestration" | "responses";
 
 /** Union type for API-specific default settings configuration. */
 export type SAPAIDefaultSettingsConfig =
-  FoundationModelsDefaultSettings | OrchestrationDefaultSettings;
+  FoundationModelsDefaultSettings | OrchestrationDefaultSettings | ResponsesDefaultSettings;
 
 /** Settings for the SAP AI Embedding Model. */
 export interface SAPAIEmbeddingSettings {
@@ -253,12 +275,14 @@ export interface SAPAIEmbeddingSettings {
 export type SAPAIModelId = ChatModel;
 
 /**
- * Union type for model settings - supports both APIs.
+ * Union type for API-specific model settings.
  *
  * Use `FoundationModelsModelSettings` for Foundation Models API features (dataSources, logprobs, seed).
  * Use `OrchestrationModelSettings` for Orchestration API features (filtering, grounding, masking, translation).
+ * Use `ResponsesModelSettings` for native OpenAI Responses options and reasoning history.
  */
-export type SAPAIModelSettings = FoundationModelsModelSettings | OrchestrationModelSettings;
+export type SAPAIModelSettings =
+  FoundationModelsModelSettings | OrchestrationModelSettings | ResponsesModelSettings;
 
 /** Re-exported SAP AI SDK orchestration types. */
 export type {
@@ -279,8 +303,8 @@ export {
 
 /**
  * Settings for configuring SAP AI Core model behavior.
- * Legacy interface maintained for backward compatibility - prefer OrchestrationModelSettings
- * or FoundationModelsModelSettings for API-specific type safety.
+ * Legacy interface maintained for backward compatibility. Prefer the API-specific
+ * OrchestrationModelSettings, FoundationModelsModelSettings, or ResponsesModelSettings types.
  */
 export interface SAPAISettings {
   readonly api?: SAPAIApiType;
@@ -308,6 +332,8 @@ export interface SAPAISettings {
   /** Orchestration API only. */
   readonly promptTemplateRef?: PromptTemplateRef;
   readonly responseFormat?: ResponseFormat;
+  /** Responses API only. */
+  readonly responses?: ResponsesModelOptions;
   /** Orchestration API only; ignored when `orchestrationConfigRef` is used. */
   readonly streamOptions?: OrchestrationStreamOptions;
   /** Orchestration API only. */

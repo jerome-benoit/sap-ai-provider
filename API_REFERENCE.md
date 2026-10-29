@@ -19,12 +19,14 @@ consistently:
 
 - **SAP AI Core** - The SAP BTP service that provides AI model hosting and
   orchestration (the cloud service)
-- **SAP AI SDK** - The official SAP npm packages (`@sap-ai-sdk/orchestration`
-  and `@sap-ai-sdk/foundation-models`) used for API communication
+- **SAP AI SDK** - The official SAP npm packages used for API communication:
+  Orchestration and Foundation Models clients, plus `@sap-ai-sdk/core` HTTP
+  transport for the Responses delegate
 - **Orchestration API** - SAP AI Core's full-featured API with data masking,
   content filtering, document grounding, and translation capabilities
-- **Foundation Models API** - SAP AI Core's direct model access API with
-  additional parameters like `logprobs`, `seed`, and `logit_bias`
+- **Foundation Models API** - SAP AI Core's direct Chat Completions and embedding
+  access with parameters like `logprobs`, `seed`, and `logit_bias`
+- **Responses API** - OpenAI Responses through an Azure OpenAI deployment on SAP AI Core
 - **SAP AI Provider** or **this provider** - This npm package
   (`@jerome-benoit/sap-ai-provider`)
 - **Tool calling** - The capability of models to invoke external functions
@@ -38,6 +40,7 @@ consistently:
   - [`sapai`](#sapai)
 - [Models](#models)
   - [Supported Models](#supported-models)
+- [Responses API](#responses-api)
 - [Tool Calling (Function Calling)](#tool-calling-function-calling)
   - [Overview](#overview)
   - [Basic Tool Calling Example](#basic-tool-calling-example)
@@ -172,9 +175,12 @@ V4 tagged file data is normalized before it reaches the shared core:
 - Ambiguous inline bytes and other incomplete URL media types throw instead of
   producing an invalid SAP payload.
 - Top-level provider references are rejected explicitly and never fetched.
-  References nested in tool-result content map to the equivalent V3 `file-id`
-  representation and are serialized as JSON tool output by the shared core;
-  they do not trigger native file lookup.
+  References nested in tool-result content map to V3 `file-id` or `image-file-id`
+  according to media type. Orchestration and Foundation Models serialize these
+  as JSON tool output; Responses forwards native file or image references.
+  The provider does not fetch these references.
+- Tool-result images retain their image category and per-part `imageDetail`
+  options for inline data, URLs, and references.
 - Text file variants become V3 text parts and retain provider options.
 
 V4 assistant `reasoning-file` and `custom` parts throw
@@ -462,8 +468,10 @@ try {
 
 ### Supported Models
 
-The SAP AI Provider supports all models available through SAP AI Core
-via the `@sap-ai-sdk/orchestration` and `@sap-ai-sdk/foundation-models` packages.
+Model availability and features depend on your SAP AI Core tenant and the
+selected API. Orchestration provides access to multiple model families; the
+direct APIs target Azure OpenAI deployments. Select [Responses](#responses-api)
+explicitly when the model requires it.
 
 **Supported Providers:**
 
@@ -502,6 +510,128 @@ Or use **SAP AI Launchpad** → ML Operations → Deployments.
 - **Gemini models**: Have [tool calling limitations](#model-specific-tool-limitations).
 
 ---
+
+## Responses API
+
+Select `api: "responses"` for an OpenAI-compatible SAP deployment exposing the
+`/responses` endpoint. This supports native reasoning and tool conversations for
+models such as GPT-6.1-Sol. API selection is explicit: the default remains
+`"orchestration"`, with no automatic routing by model name or fallback between
+APIs. Availability and supported options depend on your SAP tenant, deployment,
+and model; this is not a guarantee that the whole model catalog supports Responses.
+
+```typescript
+import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider";
+import { generateText } from "ai";
+
+const provider = createSAPAIProvider({ api: "responses" });
+const model = provider("gpt-6.1-sol", {
+  responses: { reasoningEffort: "low" },
+});
+
+const result = await generateText({
+  model,
+  prompt: "Explain how a compiler works.",
+  providerOptions: {
+    "sap-ai": { responses: { textVerbosity: "low" } },
+  },
+});
+console.log(result.text);
+```
+
+The same API works through the root and `/v3` entrypoints for AI SDK 6, `/v2`
+for AI SDK 5, and `/v4` for AI SDK 7. See
+[examples/example-responses.ts](./examples/example-responses.ts) for generation,
+streaming, and complete tool-result round trips with an optional argument.
+
+**Configuration and precedence:**
+
+- Set API selection on the provider, model, or invocation. The existing
+  [API selection precedence](#resolveapiproviderapi-modelapi-invocationapi) applies.
+- Place native options in `defaultSettings.responses`, model `responses`, or
+  `providerOptions[providerName].responses`. These use
+  [`ResponsesModelOptions`](#responsesmodelsettings), based on
+  `@ai-sdk/openai`'s Responses options; metadata is restricted to string values.
+  Options must be JSON objects, and the delegated provider validates known fields.
+  Call-level Responses options override model values; model settings override
+  provider defaults. The strategy merges call-level options by top-level key; nested values replace
+  the corresponding model value.
+- Supported native options include `reasoningEffort`, `reasoningSummary`,
+  `textVerbosity`, `parallelToolCalls`, `strictJsonSchema`, `include`, and `store`.
+  A reasoning effort is not forced by this provider. The example chooses `low`
+  for GPT-6.1-Sol; valid levels depend on the model. An explicit AI SDK 7
+  `reasoning` value overrides `responses.reasoningEffort`;
+  `provider-default` preserves the configured value.
+- Standard generation options such as `maxOutputTokens`, `temperature`, and
+  `topP` keep their precedence over `modelParams`. Responses-specific parameters
+  belong in `responses`; unsupported `modelParams` keys produce warnings.
+- SAP service bindings, `AICORE_SERVICE_KEY`, destinations, `resourceGroup`,
+  `deploymentId`, and `modelVersion` use the existing SAP deployment and
+  authentication flow. HTTP requests use the SAP SDK transport, retaining
+  `requestConfig`, call-level headers, and cancellation semantics. No OpenAI API
+  key is needed.
+
+Cancellation promptly rejects generation or streaming setup, including while
+deployment or destination discovery is pending. SAP's discovery helpers do not
+accept an abort signal, so their underlying work can continue after the caller
+has been released; late failures are observed and late HTTP responses are closed.
+Caller cancellation remains a non-retryable status 499 error.
+
+Configured HTTP inactivity timeouts remain effective while reading Responses
+bodies, including with `requestConfig.maxRedirects: 0`. Timeout failures are
+retryable status 503 errors. Active SSE traffic resets the existing socket timer;
+this does not impose a total duration limit on the stream.
+
+Rejected HTTP responses retain at most 1,986 body bytes for diagnostics. Larger
+bodies are stopped and expose the received UTF-8 prefix with `...[truncated]`,
+preserving the original status and headers. Complete smaller JSON errors retain
+their normal classification. This diagnostic bound does not apply to successful
+SSE streams or replace an explicit `requestConfig.maxContentLength`.
+
+Classified transport read failures retain their original status, retryability,
+and diagnostics when the delegate wraps them in a successful-response error.
+Native transient connection errors, including `ECONNRESET` after successful
+headers, become retryable status 503 errors with the original error as `cause`.
+Malformed JSON and invalid response schemas keep their parsing-error classification.
+
+**Tool and reasoning history:**
+
+`store` defaults to `false`. The OpenAI delegate requests encrypted reasoning
+content for reasoning models and carries it with response item IDs in AI SDK
+provider metadata. Metadata is exposed under your configured SAP namespace
+(`"sap-ai"` by default), then translated back when the history is sent again.
+Preserve assistant reasoning and tool-call provider metadata when persisting or
+rebuilding messages. Passing AI SDK response messages back unchanged, or using
+its automatic multi-step tool execution, preserves these fields. Setting
+`includeReasoning: true` is unnecessary and emits an unsupported-option warning;
+Responses uses native reasoning history instead of converting it to plain text.
+
+Function tools default to `strict: false`, preserving optional JSON Schema
+properties. An explicit tool `strict` value takes precedence. Structured output
+strictness is separate: `responseFormat.json_schema.strict` supplies the model
+default, while an explicit model or call-level `responses.strictJsonSchema`
+overrides it.
+Native Responses tools and the V2 facade have different boundaries; see
+[Tool Definition Format](#tool-definition-format).
+
+**API boundaries:**
+
+Responses bypasses Orchestration filtering, masking, grounding, translation,
+Prompt Registry configuration, and SAP-format tool settings. Those settings and
+Foundation Models `dataSources` are rejected with `UnsupportedFeatureError`;
+conflicting invocation-time API switches throw `ApiSwitchError`. Responses
+options are likewise rejected on the other APIs.
+
+Responses has no embedding strategy. When sharing a provider, explicitly select
+an embedding API:
+
+```typescript
+const embeddings = provider.embedding("text-embedding-3-small", {
+  api: "foundation-models",
+});
+```
+
+With the V2 facade, use `textEmbeddingModel()` instead of `embedding()`.
 
 ## Tool Calling (Function Calling)
 
@@ -572,17 +702,32 @@ Consult the official documentation for current tool calling support:
 ### Tool Definition Format
 
 Tools passed to `generateText` or `streamText` use `inputSchema`. Use Zod
-or wrap JSON Schema with the AI SDK's `jsonSchema` helper; raw SAP/OpenAI
-`{ type: "function", function: { parameters: ... } }` definitions belong to
-the provider's model-level `tools` setting, not the AI SDK `tools` map.
+or wrap JSON Schema with the AI SDK's `jsonSchema` helper for function tools.
+Function tools and native provider tools follow different conversion paths:
 
-Only function tools are converted. Their explicit `strict` flag is forwarded;
-backend/model support determines the accepted schema constraints. Provider-defined
-tools are omitted with an `unsupported` warning. On Orchestration, non-empty
-call-level `tools` take precedence over model-level SAP-format `tools`, with a
-warning when both are provided. An empty call-level list does not clear
-model-level tools. For tools defined only in model settings, the high-level SDK
-versions differ:
+| API and facade                                                    | AI SDK function tools                                                                 | Native / provider-defined tools                                                                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Orchestration and Foundation Models Chat Completions, all facades | Converted to SAP-compatible function definitions; explicit `strict` is forwarded.     | Omitted with an unsupported-tool warning.                                                                                                                             |
+| Responses, root and `/v3` (AI SDK 6), `/v4` (AI SDK 7)            | Converted by the OpenAI delegate; `strict` defaults to `false` unless explicitly set. | Native `type: "provider"` definitions are forwarded to the OpenAI delegate. For example, `openai.web_search` serializes as a native web-search tool.                  |
+| Responses, `/v2` (AI SDK 5)                                       | Function tools use the shared Responses strategy.                                     | The AI SDK 5 `type: "provider-defined"` form is omitted with an unsupported-tool warning. The facade does not translate that legacy form into native Responses tools. |
+
+Native tool serialization does not establish availability or execution on SAP AI
+Core. The selected SAP tenant, deployment, model, and tool determine backend
+support. Use the V3 or V4 facade for native Responses tools. Function schema
+constraints likewise depend on the selected backend and model.
+
+The V2 contract cannot represent native tool-approval requests. If a backend
+returns one, generation fails with an unsupported-functionality error and
+streaming fails while cancelling the upstream stream. Use `/v3` with AI SDK 6
+or `/v4` with AI SDK 7 for tools that require approval.
+
+SAP-format `{ type: "function", function: { parameters: ... } }` definitions are
+accepted through model-level `settings.tools` only with Orchestration. Foundation
+Models Chat Completions and Responses reject that setting; use the AI SDK
+call-level `tools` map instead. On Orchestration, non-empty call-level `tools`
+take precedence over model-level SAP-format `tools`, with a warning when both
+are provided. An empty call-level list does not clear model-level tools. For
+tools defined only in model settings, the high-level SDK versions differ:
 
 - **AI SDK 5/6:** `generateText` and `streamText` drop `toolChoice` when their
   `tools` map is absent or empty. Set
@@ -1156,7 +1301,7 @@ Configuration options for the SAP AI Provider.
 | Property                | Type                                     | Default           | Description                                                                                                                                                                                          |
 | ----------------------- | ---------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`                  | `string`                                 | `'sap-ai'`        | Provider identifier prefix (`{name}.{type}`). Call options and response metadata use the identifier segment before the first dot; per-part caching always uses `"sap-ai"`.                           |
-| `api`                   | `'orchestration' \| 'foundation-models'` | `'orchestration'` | SAP AI Core API to use. Orchestration provides full features (masking, filtering, grounding); Foundation Models provides direct model access                                                         |
+| `api`                   | `SAPAIApiType`                           | `'orchestration'` | SAP AI Core API to use; see [Responses API](#responses-api) for native OpenAI Responses                                                                                                              |
 | `resourceGroup`         | `string`                                 | `'default'`       | SAP AI Core resource group                                                                                                                                                                           |
 | `deploymentId`          | `string`                                 | Auto              | SAP AI Core deployment ID                                                                                                                                                                            |
 | `destination`           | `HttpDestinationOrFetchOptions`          | -                 | Custom destination configuration                                                                                                                                                                     |
@@ -1281,8 +1426,8 @@ always uses `providerOptions["sap-ai"]`, even with a custom provider name.
 
 ### API Comparison: Orchestration vs Foundation Models
 
-The SAP AI Provider supports two APIs. Use this feature matrix to choose
-the right API for your use case.
+This matrix compares Orchestration with direct Chat Completions. For the third API
+strategy and its boundaries, see [Responses API](#responses-api).
 
 #### Feature Matrix
 
@@ -1379,6 +1524,7 @@ Model-specific configuration options.
 | `placeholderValues`          | `Record<string, string>`                                             | -         | Default values for template placeholders                                                                           |
 | `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName`         | -         | [Stored orchestration configuration reference](#orchestration-configuration-reference-types) (Orchestration only). |
 | `promptTemplateRef`          | `PromptTemplateRef`                                                  | -         | Reference to a Prompt Registry template                                                                            |
+| `responses`                  | `ResponsesModelOptions`                                              | -         | Native options for `api: "responses"`; see [Responses API](#responses-api).                                        |
 | `responseFormat`             | `ResponseFormat`                                                     | -         | Response format specification                                                                                      |
 | `streamOptions`              | `OrchestrationStreamOptions`                                         | -         | Stream options for post-LLM modules (Orchestration only)                                                           |
 | `tools`                      | `ChatCompletionTool[]`                                               | -         | Tool definitions in SAP AI SDK format                                                                              |
@@ -1424,6 +1570,8 @@ For type-safe API-specific configuration, use these interfaces:
   `tools`, `streamOptions`, `fallbackModuleConfigs`, `escapeTemplatePlaceholders`)
 - `FoundationModelsModelSettings` - Settings with `api: "foundation-models"` and
   Foundation Models-only options (`dataSources`)
+- `ResponsesModelSettings` - Settings with `api: "responses"` and native
+  OpenAI Responses options; see [Responses API](#responses-api)
 
 ```typescript
 import type { OrchestrationModelSettings, FoundationModelsModelSettings } from "@jerome-benoit/sap-ai-provider";
@@ -1525,7 +1673,8 @@ console.log("Response:", result.text);
 > **Note:** Using these parameters with Orchestration API (`api: "orchestration"`)
 > is backend/model-dependent: additional model parameters are passed through,
 > not universally rejected or ignored. `seed` and stop sequences are also mapped
-> by the shared strategy for both APIs. Verify support on the selected model.
+> by the shared Chat Completions strategy for Orchestration and Foundation Models.
+> Verify support on the selected model.
 
 ---
 
@@ -1831,12 +1980,13 @@ Lazy AI SDK schema backed by Zod for validating language model provider options.
 
 | Field                             | Type                                                         | Description                                                           |
 | --------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `api`                             | `"orchestration" \| "foundation-models"`                     | Override API selection for this call                                  |
+| `api`                             | `SAPAIApiType`                                               | Override API selection for this call                                  |
 | `escapeTemplatePlaceholders`      | `boolean`                                                    | Escape SAP or Jinja delimiters in prompt and message text             |
 | `includeReasoning`                | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP        |
 | `orchestrationConfigRef`          | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration (Orchestration API) |
 | `placeholderValues`               | `Record<string, string>`                                     | Placeholder values sent to Orchestration API                          |
 | `promptTemplateRef`               | `PromptTemplateRef`                                          | Reference to a Prompt Registry template                               |
+| `responses`                       | `Record<string, JSONValue>`                                  | Native Responses options; only supported with `api: "responses"`      |
 | `modelParams.temperature`         | `number (0-2)`                                               | Sampling temperature                                                  |
 | `modelParams.maxTokens`           | `positive integer`                                           | Maximum tokens to generate                                            |
 | `modelParams.topP`                | `number (0-1)`                                               | Nucleus sampling parameter                                            |
@@ -1873,6 +2023,8 @@ const result = await generateText({
 ### `sapAIEmbeddingProviderOptions`
 
 Lazy AI SDK schema backed by Zod for validating embedding model provider options.
+`api: "responses"` is recognized by the schema but rejected as unsupported before
+an embedding request is sent.
 
 **Validated Fields:**
 
@@ -1917,7 +2069,7 @@ TypeScript type inferred from the language model provider-options schema.
 
 ```typescript
 type SAPAILanguageModelProviderOptions = {
-  api?: "orchestration" | "foundation-models";
+  api?: SAPAIApiType;
   escapeTemplatePlaceholders?: boolean;
   includeReasoning?: boolean;
   modelParams?: {
@@ -1933,20 +2085,22 @@ type SAPAILanguageModelProviderOptions = {
   orchestrationConfigRef?: OrchestrationConfigRefById | OrchestrationConfigRefByName;
   placeholderValues?: Record<string, string>;
   promptTemplateRef?: PromptTemplateRef;
+  responses?: Record<string, JSONValue>;
 };
 ```
 
 **Properties:**
 
-| Property                     | Type                                                         | Description                                                         |
-| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `api`                        | `string`                                                     | Override API selection (`'orchestration'` or `'foundation-models'`) |
-| `escapeTemplatePlaceholders` | `boolean`                                                    | Escape template delimiters to prevent SAP templating conflicts      |
-| `includeReasoning`           | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP      |
-| `modelParams`                | `object`                                                     | Model generation parameters for this specific call                  |
-| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration                   |
-| `placeholderValues`          | `Record<string, string>`                                     | Values for template placeholders (overrides settings values)        |
-| `promptTemplateRef`          | `PromptTemplateRef`                                          | Reference to a template in SAP AI Core's Prompt Registry            |
+| Property                     | Type                                                         | Description                                                    |
+| ---------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
+| `api`                        | `string`                                                     | Override API selection; see `SAPAIApiType`                     |
+| `escapeTemplatePlaceholders` | `boolean`                                                    | Escape template delimiters to prevent SAP templating conflicts |
+| `includeReasoning`           | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP |
+| `modelParams`                | `object`                                                     | Model generation parameters for this specific call             |
+| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration              |
+| `placeholderValues`          | `Record<string, string>`                                     | Values for template placeholders (overrides settings values)   |
+| `responses`                  | `Record<string, JSONValue>`                                  | Native Responses options; see [Responses API](#responses-api). |
+| `promptTemplateRef`          | `PromptTemplateRef`                                          | Reference to a template in SAP AI Core's Prompt Registry       |
 
 **Example with placeholderValues:**
 
@@ -2029,7 +2183,7 @@ TypeScript type inferred from the embedding model provider-options schema.
 
 ```typescript
 type SAPAIEmbeddingProviderOptions = {
-  api?: "orchestration" | "foundation-models";
+  api?: SAPAIApiType;
   type?: "text" | "query" | "document";
   modelParams?: {
     dimensions?: number;
@@ -2073,7 +2227,7 @@ API type selector for SAP AI Core.
 **Type:**
 
 ```typescript
-export type SAPAIApiType = "orchestration" | "foundation-models";
+export type SAPAIApiType = "orchestration" | "foundation-models" | "responses";
 ```
 
 **Description:**
@@ -2084,6 +2238,8 @@ Determines which SAP AI Core API to use:
   filtering, document grounding, and translation capabilities
 - `"foundation-models"`: Direct model access with additional parameters like
   `logprobs`, `seed`, `logit_bias`, and `dataSources`
+- `"responses"`: Native OpenAI Responses, including reasoning and tool history;
+  see [Responses API](#responses-api). Embeddings do not support this selection.
 
 See [API Comparison](#api-comparison-orchestration-vs-foundation-models) for a
 detailed feature matrix.
@@ -2400,12 +2556,31 @@ For explicitly typed Foundation Models parameters, see
 [Additional Foundation Models Parameters](#additional-foundation-models-parameters);
 backend support is not exclusive to this API.
 
-#### `SAPAIModelSettings`
+#### `ResponsesModelSettings`
 
-Union type that accepts either API's settings:
+Settings for the Responses API. See [Responses API](#responses-api) for behavior,
+option precedence, and limitations. These types are exported by all entrypoints.
 
 ```typescript
-export type SAPAIModelSettings = OrchestrationModelSettings | FoundationModelsModelSettings;
+export type ResponsesModelOptions = Omit<OpenAIResponsesProviderOptions, "metadata"> & {
+  readonly metadata?: null | Record<string, string>;
+};
+
+export interface ResponsesModelSettings {
+  readonly api: "responses";
+  readonly modelParams?: CommonModelParams;
+  readonly modelVersion?: string;
+  readonly responseFormat?: ResponseFormat;
+  readonly responses?: ResponsesModelOptions;
+}
+```
+
+#### `SAPAIModelSettings`
+
+Union type that accepts the API-specific settings:
+
+```typescript
+export type SAPAIModelSettings = OrchestrationModelSettings | FoundationModelsModelSettings | ResponsesModelSettings;
 ```
 
 ---
@@ -2414,7 +2589,7 @@ export type SAPAIModelSettings = OrchestrationModelSettings | FoundationModelsMo
 
 #### `CommonModelParams`
 
-Parameters shared by both APIs:
+Common parameters; support depends on the selected API and model:
 
 ```typescript
 export interface CommonModelParams {
@@ -2488,6 +2663,15 @@ export interface FoundationModelsDefaultSettings {
 }
 ```
 
+#### `ResponsesDefaultSettings`
+
+```typescript
+export interface ResponsesDefaultSettings {
+  readonly api: "responses";
+  readonly settings?: ResponsesModelSettings;
+}
+```
+
 #### `SAPAIDefaultSettingsConfig`
 
 Union type for grouping an API selector and its settings. Pass `config.api`
@@ -2495,7 +2679,7 @@ as the provider `api` and `config.settings` as `defaultSettings`, not the wrappe
 object itself:
 
 ```typescript
-export type SAPAIDefaultSettingsConfig = OrchestrationDefaultSettings | FoundationModelsDefaultSettings;
+export type SAPAIDefaultSettingsConfig = OrchestrationDefaultSettings | FoundationModelsDefaultSettings | ResponsesDefaultSettings;
 ```
 
 **Example usage:**
@@ -2693,6 +2877,10 @@ try {
 ---
 
 ### Provider Metadata in Responses
+
+The tables below describe the Orchestration and Foundation Models Chat
+Completions strategies. For native Responses metadata and history, see
+[Responses API](#responses-api).
 
 `doGenerate` results include `providerMetadata` with SAP-specific fields under
 the provider name key (default: `"sap-ai"`). For direct `doStream` calls,
@@ -3781,7 +3969,9 @@ For the current package version, see [package.json](./package.json).
 - **Vercel AI SDK peer dependency:** `ai` supports majors 5, 6, and 7 through
   their matching entrypoints. It is not a direct runtime dependency. The
   repository uses AI SDK 7 as a development dependency.
-- **SAP AI SDK:** ^2.15.0 (`@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`)
+- **SAP AI SDK:** `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`,
+  and the shared SAP deployment and HTTP clients
+- **Responses conversion:** `@ai-sdk/openai` 3.x (shared V3 core)
 - **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

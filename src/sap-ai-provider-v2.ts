@@ -32,11 +32,11 @@ export interface SAPAIProviderV2 extends ProviderV2 {
  * Creates an SAP AI Provider V2 instance for use with AI SDK 5.
  * AI SDK 6 can also consume this provider through its V2 compatibility layer.
  *
- * Uses the official SAP AI SDK (`@sap-ai-sdk/orchestration` and
- * `@sap-ai-sdk/foundation-models`) for API communication. Authentication is automatic via service binding
- * (VCAP_SERVICES on SAP BTP) or AICORE_SERVICE_KEY environment variable.
+ * Uses SAP AI SDK clients for Orchestration and Foundation Models, and its HTTP
+ * transport with the OpenAI provider for Responses. Authentication uses a service
+ * binding (VCAP_SERVICES on SAP BTP) or the AICORE_SERVICE_KEY environment variable.
  * @param options - Provider configuration options.
- * @param options.api - Default API type: `'orchestration'` (default) or `'foundation-models'`.
+ * @param options.api - Default API type: `'orchestration'` (default), `'foundation-models'`, or `'responses'`.
  * @param options.defaultSettings - Default model settings applied to every model instance.
  * @param options.deploymentId - Explicit SAP AI Core deployment ID; omit for automatic deployment resolution.
  * @param options.destination - Custom SAP Cloud SDK destination configuration.

@@ -39,7 +39,7 @@ const TOP_LEVEL_REFERENCE_ERROR =
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
  *   `URL` object, `text` to a V3 text part. Top-level `reference` values are
  *   rejected explicitly (never fetched); tool-output references map to the
- *   equivalent V3 `file-id` shape. The SAP converter sends text output values
+ *   equivalent V3 file or image ID shape. The SAP converter sends text output values
  *   directly and serializes other output variants as JSON; references are not resolved.
  * - Bare and wildcard media types on inline data are resolved from detectable
  *   bytes. Top-level `image` and `image/*` URLs are preserved as `image/*`;
@@ -47,7 +47,7 @@ const TOP_LEVEL_REFERENCE_ERROR =
  * - Assistant `reasoning-file` and `custom` parts are rejected explicitly;
  *   `custom` items inside tool-result content pass through.
  * - Tool-result outputs are mapped to the V3 output union; nested `content[]`
- *   file items use the legacy `file-data`/`file-url`/`file-id` shapes.
+ *   files retain their media category through V3 file and image variants.
  * - Other parts (text, reasoning, tool calls, approval responses) and provider
  *   options retain their V3-compatible shapes. Downstream SAP conversion may
  *   still ignore unsupported parts with warnings.
@@ -89,6 +89,16 @@ export function normalizeV4PromptToV3(prompt: LanguageModelV4Prompt): LanguageMo
 }
 
 /**
+ * Identifies full, wildcard, and bare image media types without fetching media.
+ * @param mediaType - The media type supplied with tool output.
+ * @returns Whether the content belongs to the image category.
+ */
+function isImageMediaType(mediaType: string): boolean {
+  const normalized = mediaType.toLowerCase();
+  return normalized === "image" || normalized.startsWith("image/");
+}
+
+/**
  * Normalizes a V4 assistant part to its V3 equivalent.
  * @param part - The V4 assistant content part.
  * @returns The equivalent V3 content part.
@@ -119,10 +129,21 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
   switch (item.data.type) {
     case "data": {
       const normalizedItem = normalizeMediaType(item);
+      const mediaType = resolveFullMediaType({ part: normalizedItem });
+      const data =
+        typeof item.data.data === "string" ? item.data.data : base64FromBytes(item.data.data);
+      if (isImageMediaType(mediaType)) {
+        return {
+          data,
+          mediaType,
+          providerOptions: item.providerOptions,
+          type: "image-data",
+        };
+      }
       return {
-        data: typeof item.data.data === "string" ? item.data.data : base64FromBytes(item.data.data),
+        data,
         ...(item.filename ? { filename: item.filename } : {}),
-        mediaType: resolveFullMediaType({ part: normalizedItem }),
+        mediaType,
         providerOptions: item.providerOptions,
         type: "file-data",
       };
@@ -131,7 +152,7 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
       return {
         fileId: item.data.reference,
         providerOptions: item.providerOptions,
-        type: "file-id",
+        type: isImageMediaType(item.mediaType) ? "image-file-id" : "file-id",
       };
     case "text":
       return { providerOptions: item.providerOptions, text: item.data.text, type: "text" };
@@ -145,7 +166,7 @@ function normalizeContentItem(item: V4ContentItem): V3ToolContentItem {
       }
       return {
         providerOptions: item.providerOptions,
-        type: "file-url",
+        type: isImageMediaType(item.mediaType) ? "image-url" : "file-url",
         url,
       };
     }

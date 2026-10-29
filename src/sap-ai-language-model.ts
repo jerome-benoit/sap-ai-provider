@@ -2,7 +2,8 @@
  * SAP AI Language Model - Vercel AI SDK LanguageModelV3 implementation for SAP AI Core.
  *
  * This module provides the language model implementation that connects to SAP AI Core
- * services (Orchestration API or Foundation Models API) for chat completions and streaming.
+ * services (Orchestration, Foundation Models Chat Completions, or OpenAI Responses)
+ * for text generation and streaming.
  * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/generate-text | Vercel AI SDK generateText()}
  * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/stream-text | Vercel AI SDK streamText()}
  */
@@ -44,9 +45,9 @@ interface SAPAILanguageModelConfig {
 /**
  * SAP AI Language Model implementing Vercel AI SDK LanguageModelV3.
  *
- * This class provides chat completion and streaming capabilities through SAP AI Core,
- * supporting both the Orchestration API (with content filtering, grounding, masking,
- * and translation) and Foundation Models API (direct Azure OpenAI access).
+ * This class provides text generation and streaming through SAP AI Core using
+ * Orchestration (with content filtering, grounding, masking, and translation),
+ * Foundation Models Chat Completions, or native OpenAI Responses.
  *
  * Users typically don't instantiate this class directly. Instead, use the
  * {@link createSAPAIProvider} factory function:
@@ -158,6 +159,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
             orchestrationConfigRef: sapOptions.orchestrationConfigRef,
             placeholderValues: sapOptions.placeholderValues,
             promptTemplateRef: sapOptions.promptTemplateRef,
+            responses: sapOptions.responses,
           }
         : undefined,
       modelApi: this.settings.api,

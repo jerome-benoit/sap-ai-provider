@@ -124,6 +124,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.131",
     "@ai-sdk/provider": "^4.0.34",
     "@ai-sdk/provider-utils": "^5.0.68",
     "@sap-ai-sdk/ai-api": "^2.17.0",

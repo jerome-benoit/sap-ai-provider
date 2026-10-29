@@ -1,5 +1,10 @@
 /** Tests for the V4-to-V3 prompt normalization (AI SDK 7 entry adapter). */
-import type { LanguageModelV3Prompt, LanguageModelV4Prompt } from "@ai-sdk/provider";
+import type {
+  LanguageModelV3Prompt,
+  LanguageModelV3ToolResultOutput,
+  LanguageModelV4Prompt,
+  LanguageModelV4ToolResultOutput,
+} from "@ai-sdk/provider";
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
@@ -147,10 +152,9 @@ describe("normalizeV4PromptToV3", () => {
         { text: "see attached", type: "text" },
         {
           data: "iVBORw0KGgo=",
-          filename: "image.png",
           mediaType: "image/png",
           providerOptions: { "test-provider": { cached: true } },
-          type: "file-data",
+          type: "image-data",
         },
       ],
     });
@@ -370,4 +374,151 @@ describe("normalizeV4PromptToV3", () => {
       warn.mockRestore();
     }
   });
+});
+
+type V3ToolContentItem = Extract<
+  LanguageModelV3ToolResultOutput,
+  { type: "content" }
+>["value"][number];
+type V4ToolContentItem = Extract<
+  LanguageModelV4ToolResultOutput,
+  { type: "content" }
+>["value"][number];
+
+const imageOptions = { "sap-custom": { imageDetail: "high" } };
+const toolImageCases = [
+  {
+    data: { data: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), type: "data" },
+    expected: {
+      data: "iVBORw0KGgo=",
+      mediaType: "image/png",
+      providerOptions: imageOptions,
+      type: "image-data",
+    },
+    name: "inline data",
+  },
+  {
+    data: { type: "url", url: new URL("https://example.com/screenshot.png") },
+    expected: {
+      providerOptions: imageOptions,
+      type: "image-url",
+      url: "https://example.com/screenshot.png",
+    },
+    name: "remote URL",
+  },
+  {
+    data: { reference: { "sap-custom": "image-123" }, type: "reference" },
+    expected: {
+      fileId: { "sap-custom": "image-123" },
+      providerOptions: imageOptions,
+      type: "image-file-id",
+    },
+    name: "provider reference",
+  },
+] satisfies {
+  data: Extract<V4ToolContentItem, { type: "file" }>["data"];
+  expected: V3ToolContentItem;
+  name: string;
+}[];
+
+describe.each(toolImageCases)("V4 tool image $name", ({ data, expected }) => {
+  it.each(["image/png", "IMAGE/PNG", "image", "IMAGE/*"])(
+    "preserves image category and custom image detail for %s",
+    (mediaType) => {
+      const prompt: LanguageModelV4Prompt = [
+        {
+          content: [
+            {
+              output: {
+                type: "content",
+                value: [{ data, mediaType, providerOptions: imageOptions, type: "file" }],
+              },
+              toolCallId: "image-call",
+              toolName: "capture",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      const normalized = normalizeV4PromptToV3(prompt);
+      expect(normalized).toEqual([
+        {
+          content: [
+            {
+              output: { type: "content", value: [expected] },
+              toolCallId: "image-call",
+              toolName: "capture",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ] satisfies LanguageModelV3Prompt);
+      expect(convertToSAPMessages(normalized)).toEqual([
+        {
+          content: JSON.stringify({ type: "content", value: [expected] }),
+          role: "tool",
+          tool_call_id: "image-call",
+        },
+      ]);
+    },
+  );
+});
+
+describe("V4 tool file normalization", () => {
+  it.each([
+    {
+      expected: {
+        data: "JVBERi0xLjQ=",
+        filename: "report.pdf",
+        mediaType: "application/pdf",
+        type: "file-data",
+      },
+      item: {
+        data: { data: "JVBERi0xLjQ=", type: "data" },
+        filename: "report.pdf",
+        mediaType: "APPLICATION/*",
+        type: "file",
+      },
+      name: "inline PDF",
+    },
+    {
+      expected: { type: "file-url", url: "https://example.com/report.pdf" },
+      item: {
+        data: { type: "url", url: new URL("https://example.com/report.pdf") },
+        mediaType: "application/pdf",
+        type: "file",
+      },
+      name: "remote PDF",
+    },
+    {
+      expected: { fileId: { "sap-custom": "file-123" }, type: "file-id" },
+      item: {
+        data: { reference: { "sap-custom": "file-123" }, type: "reference" },
+        mediaType: "application/pdf",
+        type: "file",
+      },
+      name: "PDF reference",
+    },
+  ] satisfies { expected: V3ToolContentItem; item: V4ToolContentItem; name: string }[])(
+    "retains existing non-image semantics for $name",
+    ({ expected, item }) => {
+      expect(
+        normalizeV4PromptToV3([
+          {
+            content: [
+              {
+                output: { type: "content", value: [item] },
+                toolCallId: "file-call",
+                toolName: "read",
+                type: "tool-result",
+              },
+            ],
+            role: "tool",
+          },
+        ]),
+      ).toMatchObject([{ content: [{ output: { type: "content", value: [expected] } }] }]);
+    },
+  );
 });

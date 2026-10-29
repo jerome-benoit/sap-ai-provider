@@ -62,9 +62,10 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 
 - 🔐 **Simplified Authentication** - Uses SAP AI SDK's built-in credential
   handling
-- 🎯 **Tool Calling Support** - Full tool/function calling capabilities
-- 🧠 **Reasoning-Safe by Default** - Assistant reasoning parts are not forwarded
-  unless enabled
+- 🎯 **Tool Calling Support** - Function calling across supported APIs;
+  [native-tool support depends on the API and facade](./API_REFERENCE.md#tool-definition-format)
+- 🧠 **Reasoning History** - Chat Completions omits reasoning text by default;
+  Responses preserves native reasoning metadata for tool conversations
 - 🖼️ **Multi-modal Input** - Support for text and image inputs
 - 📡 **Streaming Support** - Real-time text generation with structured V3 blocks
 - 🔒 **Data Masking** - Built-in SAP DPI integration for privacy
@@ -75,8 +76,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
   preserve the matching Vercel AI SDK provider specification
 - 📊 **Text Embeddings** - Generate vector embeddings for RAG and semantic
   search
-- 🔀 **Dual API Support** - Choose between Orchestration or Foundation Models
-  API per provider, model, or call
+- 🔀 **API Selection** - Choose Orchestration, Foundation Models Chat Completions,
+  or OpenAI Responses per provider, model, or call
 - 📦 **Stored Configuration Support** - Reference orchestration configurations
   or prompt templates from SAP AI Core
 
@@ -211,12 +212,14 @@ const provider = createSAPAIProvider({
 
 ### API Selection
 
-The provider supports two SAP AI Core APIs:
+Choose the API supported by your SAP AI Core deployment:
 
 - **Orchestration API** (default): Full-featured API with data masking, content
   filtering, document grounding, and translation
 - **Foundation Models API**: Direct model access with additional parameters like
   `logprobs`, `seed`, `logit_bias`, and `dataSources` (Azure On Your Data)
+- **Responses API**: Direct OpenAI Responses access for models that require it
+  for tool calling, including GPT-6.1-Sol
 
 **Complete example:**
 [examples/example-foundation-models.ts](./examples/example-foundation-models.ts)\
@@ -253,6 +256,22 @@ const result = await generateText({
 > **Note:** The Foundation Models API does not support orchestration features
 > (masking, filtering, grounding, translation). Attempting to use these features
 > with Foundation Models API will throw an `UnsupportedFeatureError`.
+
+For OpenAI Responses, select `api: "responses"` explicitly:
+
+```typescript
+const provider = createSAPAIProvider({ api: "responses" });
+const model = provider("gpt-6.1-sol", {
+  responses: { reasoningEffort: "low" },
+});
+```
+
+The default remains Orchestration; model names do not change API selection.
+Responses uses your existing SAP credentials and deployment configuration.
+It bypasses Orchestration modules, and embeddings need an explicit
+`api: "foundation-models"` or `api: "orchestration"` override.
+See the [Responses API reference](./API_REFERENCE.md#responses-api) for options,
+reasoning history, and a [runnable example](./examples/example-responses.ts).
 
 ### Option 2: Default Instance (Quick Start)
 
@@ -771,6 +790,7 @@ See [Installation](#installation) for other AI SDK versions.
 | `example-translation.ts`            | Input/output translation    | Multi-language support, SAP translation  |
 | `example-embeddings.ts`             | Text embeddings             | Vector generation, semantic similarity   |
 | `example-foundation-models.ts`      | Foundation Models API       | Direct model access, logprobs, seed      |
+| `example-responses.ts`              | OpenAI Responses API        | Streaming, tools, reasoning history      |
 
 **Running Examples:**
 

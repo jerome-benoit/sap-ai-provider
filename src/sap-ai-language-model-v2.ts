@@ -2,7 +2,7 @@
  * SAP AI Language Model V2 - Vercel AI SDK LanguageModelV2 implementation for SAP AI Core.
  *
  * This module provides the language model implementation that connects to SAP AI Core
- * services (Orchestration API or Foundation Models API) for text generation.
+ * services (Orchestration, Foundation Models Chat Completions, or OpenAI Responses) for text generation.
  * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/generate-text | Vercel AI SDK generateText()}
  * @see {@link https://sdk.vercel.ai/docs/reference/ai-sdk-core/stream-text | Vercel AI SDK streamText()}
  */
@@ -27,10 +27,12 @@ import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity"
 import type { ConvertedV2StreamPart, ConvertedV2Warning } from "./sap-ai-adapters-v3-to-v2.js";
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
+import { normalizeV2PromptToV3 } from "./sap-ai-adapters-v2-to-v3.js";
 import {
   convertUsageToV2,
   convertWarningsToV2,
   createV2StreamFromInternal,
+  createV2ToolApprovalError,
 } from "./sap-ai-adapters-v3-to-v2.js";
 import { SAPAILanguageModel as SAPAILanguageModelInternal } from "./sap-ai-language-model.js";
 
@@ -52,8 +54,9 @@ interface SAPAILanguageModelV2Config {
  * SAP AI Language Model implementing Vercel AI SDK LanguageModelV2.
  *
  * This class provides chat completion and streaming capabilities through SAP AI Core,
- * supporting both the Orchestration API (with content filtering, grounding, masking,
- * and translation) and Foundation Models API (direct Azure OpenAI access).
+ * supporting the Orchestration API (with content filtering, grounding, masking,
+ * and translation), Foundation Models Chat Completions, and native OpenAI Responses
+ * through SAP AI Core.
  *
  * Users typically don't instantiate this class directly. Instead, use the
  * {@link createSAPAIProvider} factory function:
@@ -124,8 +127,10 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     usage: LanguageModelV2Usage;
     warnings: ConvertedV2Warning[];
   }> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
-    const result = await this.internalModel.doGenerate(options as any);
+    const result = await this.internalModel.doGenerate(normalizeCallOptions(options));
+    if (result.content.some((part) => part.type === "tool-approval-request")) {
+      throw createV2ToolApprovalError();
+    }
 
     // Return result in V2 format
     return {
@@ -148,8 +153,7 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
     };
     stream: ReadableStream<ConvertedV2StreamPart>;
   }> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
-    const result = await this.internalModel.doStream(options as any);
+    const result = await this.internalModel.doStream(normalizeCallOptions(options));
 
     return {
       request: result.request,
@@ -161,4 +165,18 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
       stream: createV2StreamFromInternal(result.stream),
     };
   }
+}
+
+/**
+ * Adapts the V2 prompt while retaining existing tool compatibility behavior.
+ * @param options - V2 call options.
+ * @returns Call options for the shared V3 core.
+ */
+function normalizeCallOptions(options: CompatibleV2CallOptions): LanguageModelV3CallOptions {
+  return {
+    ...options,
+    prompt: normalizeV2PromptToV3(options.prompt),
+    // Legacy provider-defined tools keep their unsupported warning/skip behavior.
+    tools: options.tools as LanguageModelV3CallOptions["tools"],
+  };
 }

@@ -4,9 +4,9 @@ import type {
   LanguageModelV3StreamPart as InternalStreamPart,
   LanguageModelV3Usage as InternalUsage,
 } from "@ai-sdk/provider";
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider-v2";
 
-import { describe, expect, it } from "vitest";
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   convertStreamPartToV2,
@@ -172,7 +172,7 @@ describe("convertStreamPartToV2", () => {
       type: "tool-call",
     });
 
-    expect(v2Part?.type).toBe("tool-call");
+    expect(v2Part.type).toBe("tool-call");
     expect(v2Part).not.toHaveProperty("dynamic");
   });
 
@@ -185,9 +185,7 @@ describe("convertStreamPartToV2", () => {
       type: "tool-call",
     });
 
-    if (v2Part?.type === "tool-call") {
-      expect(v2Part.providerExecuted).toBe(true);
-    }
+    expect(v2Part).toMatchObject({ providerExecuted: true, type: "tool-call" });
   });
 
   it("should remove V3-only fields (dynamic, title) from tool-input-start", () => {
@@ -199,7 +197,7 @@ describe("convertStreamPartToV2", () => {
       type: "tool-input-start",
     });
 
-    expect(v2Part?.type).toBe("tool-input-start");
+    expect(v2Part.type).toBe("tool-input-start");
     expect(v2Part).not.toHaveProperty("dynamic");
     expect(v2Part).not.toHaveProperty("title");
   });
@@ -212,9 +210,7 @@ describe("convertStreamPartToV2", () => {
       type: "tool-input-start",
     });
 
-    if (v2Part?.type === "tool-input-start") {
-      expect(v2Part.providerExecuted).toBe(true);
-    }
+    expect(v2Part).toMatchObject({ providerExecuted: true, type: "tool-input-start" });
   });
 
   it("should preserve provider-side execution regardless of dynamic tool classification", () => {
@@ -252,9 +248,7 @@ describe("convertStreamPartToV2", () => {
       type: "tool-result",
     });
 
-    if (v2Part?.type === "tool-result") {
-      expect(v2Part.isError).toBe(true);
-    }
+    expect(v2Part).toMatchObject({ isError: true, type: "tool-result" });
   });
 
   it("should pass through error and raw events unchanged", () => {
@@ -265,14 +259,14 @@ describe("convertStreamPartToV2", () => {
     expect(convertStreamPartToV2(rawPart)).toEqual(rawPart);
   });
 
-  it("should return null for V3-only tool-approval-request", () => {
-    const v2Part = convertStreamPartToV2({
-      approvalId: "approval-1",
-      toolCallId: "call-1",
-      type: "tool-approval-request",
-    });
-
-    expect(v2Part).toBeNull();
+  it("rejects unrepresentable V3 tool approval with facade guidance", () => {
+    expect(() =>
+      convertStreamPartToV2({
+        approvalId: "approval-1",
+        toolCallId: "call-1",
+        type: "tool-approval-request",
+      }),
+    ).toThrow(/Tool approvals.*\/v3.*\/v4/);
   });
 
   it("should remove V3-only providerMetadata from file event", () => {
@@ -283,12 +277,31 @@ describe("convertStreamPartToV2", () => {
       type: "file",
     });
 
-    expect(v2Part?.type).toBe("file");
+    expect(v2Part.type).toBe("file");
     expect(v2Part).not.toHaveProperty("providerMetadata");
   });
 });
 
 describe("createV2StreamFromInternal", () => {
+  it("does not prefetch source events while the consumer is paused", async () => {
+    const pull = vi.fn((controller: ReadableStreamDefaultController<InternalStreamPart>) => {
+      controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
+    });
+    const source = new ReadableStream<InternalStreamPart>({ pull }, { highWaterMark: 0 });
+    const reader = createV2StreamFromInternal(source).getReader();
+
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+    expect(pull).not.toHaveBeenCalled();
+    await reader.read();
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+    expect(pull).toHaveBeenCalledTimes(1);
+    await reader.cancel();
+  });
+
   it("should stream multiple events and close properly", async () => {
     const internalStream = new ReadableStream<InternalStreamPart>({
       start(controller) {
@@ -364,52 +377,24 @@ describe("createV2StreamFromInternal", () => {
     await expect(reader.read()).rejects.toThrow("Source stream error");
   });
 
-  it("should filter out V3-only events (tool-approval-request)", async () => {
-    const internalStream = new ReadableStream<InternalStreamPart>({
-      start(controller) {
-        controller.enqueue({ type: "stream-start", warnings: [] });
-        controller.enqueue({ approvalId: "a1", toolCallId: "c1", type: "tool-approval-request" });
-        controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
-        controller.enqueue({ approvalId: "a2", toolCallId: "c2", type: "tool-approval-request" });
-        controller.close();
-      },
-    });
-
-    const v2Stream = createV2StreamFromInternal(internalStream);
-    const reader = v2Stream.getReader();
-    const types: string[] = [];
-
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      types.push(value.type);
-    }
-
-    expect(types).toEqual(["stream-start", "text-delta"]);
-    expect(types).not.toContain("tool-approval-request");
-  });
-
-  it("should handle stream with only V3-only events (yields empty)", async () => {
-    const internalStream = new ReadableStream<InternalStreamPart>({
-      start(controller) {
-        controller.enqueue({ approvalId: "a1", toolCallId: "c1", type: "tool-approval-request" });
-        controller.enqueue({ approvalId: "a2", toolCallId: "c2", type: "tool-approval-request" });
-        controller.close();
-      },
-    });
-
-    const v2Stream = createV2StreamFromInternal(internalStream);
-    const reader = v2Stream.getReader();
-    const events: LanguageModelV2StreamPart[] = [];
-
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      events.push(value);
-    }
-
-    expect(events).toHaveLength(0);
-  });
+  it.each([false, true])(
+    "rejects tool approval and cancels upstream (preceded by text=%s)",
+    async (textFirst) => {
+      const cancel = vi.fn();
+      const internalStream = new ReadableStream<InternalStreamPart>({
+        cancel,
+        start(controller) {
+          if (textFirst) controller.enqueue({ delta: "Hello", id: "text-1", type: "text-delta" });
+          controller.enqueue({ approvalId: "a1", toolCallId: "c1", type: "tool-approval-request" });
+          controller.enqueue({ delta: "Must not escape", id: "text-1", type: "text-delta" });
+        },
+      });
+      const reader = createV2StreamFromInternal(internalStream).getReader();
+      if (textFirst)
+        expect((await reader.read()).value).toMatchObject({ delta: "Hello", type: "text-delta" });
+      await expect(reader.read()).rejects.toThrow(/Tool approvals.*\/v3.*\/v4/);
+      expect(cancel).toHaveBeenCalledExactlyOnceWith(expect.any(UnsupportedFunctionalityError));
+      await expect(reader.read()).rejects.toBeInstanceOf(UnsupportedFunctionalityError);
+    },
+  );
 });

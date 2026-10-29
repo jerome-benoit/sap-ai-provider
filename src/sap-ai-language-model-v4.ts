@@ -2,7 +2,8 @@
  * SAP AI Language Model V4 - Vercel AI SDK LanguageModelV4 implementation for SAP AI Core.
  *
  * This module provides the language model implementation that connects to SAP AI Core
- * services (Orchestration API or Foundation Models API) for chat completions and streaming.
+ * services (Orchestration, Foundation Models Chat Completions, or OpenAI Responses)
+ * for text generation and streaming.
  * It wraps the internal V3 model: V4 prompts are normalized on entry and V3
  * results are converted on exit.
  */

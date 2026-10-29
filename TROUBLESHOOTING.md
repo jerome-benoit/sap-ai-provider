@@ -80,6 +80,7 @@ below.
   - [Problem: API-specific feature mismatch (UnsupportedFeatureError)](#problem-api-specific-feature-mismatch-unsupportedfeatureerror)
   - [Problem: API switch conflict (ApiSwitchError)](#problem-api-switch-conflict-apiswitcherror)
 - [Streaming Issues](#streaming-issues)
+  - [Problem: Model requires Responses](#problem-model-requires-responses)
   - [Problem: Streaming not working or incomplete](#problem-streaming-not-working-or-incomplete)
 - [Tool Calling Issues](#tool-calling-issues)
   - [Problem: Tools not being called](#problem-tools-not-being-called)
@@ -397,6 +398,33 @@ complete error details.
 > **Architecture Details:** For streaming implementation and SSE flow diagrams,
 > see
 > [Architecture - Streaming Text Generation](./ARCHITECTURE.md#streaming-text-generation-sse-flow).
+
+### Problem: Model requires Responses
+
+**Symptoms:** SAP returns `400` with "Streaming is not supported for this model",
+or text generation works but tool calling reports that Responses is required.
+
+Check the selected API and model deployment before disabling streaming. A model
+can support streaming through Responses even when an Orchestration or Chat
+Completions route rejects the request. For a Responses-capable Azure OpenAI
+deployment, select the API explicitly:
+
+```typescript
+const provider = createSAPAIProvider({ api: "responses" });
+const model = provider("gpt-6.1-sol", {
+  responses: { reasoningEffort: "low" },
+});
+```
+
+Use the model's supported reasoning levels; setting reasoning to `none` does
+not replace Responses support and may itself be rejected. Keep Orchestration
+modules and Foundation Models `dataSources` out of this model's settings.
+See [Responses API](./API_REFERENCE.md#responses-api) and run
+`npx tsx examples/example-responses.ts` to exercise streaming and a tool round trip.
+
+If an application such as OpenCode wraps this provider, verify that it forwards
+`api` and model options to the provider. A configuration entry cannot change the
+transport when the application's provider loader discards those options.
 
 ### Problem: Streaming not working or incomplete
 

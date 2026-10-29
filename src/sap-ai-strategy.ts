@@ -136,6 +136,11 @@ export function getOrCreateLanguageModelStrategy(
  * @returns Embedding model strategy.
  */
 async function createEmbeddingModelStrategy(api: SAPAIApiType): Promise<EmbeddingModelAPIStrategy> {
+  if (api === "responses") {
+    const { UnsupportedFeatureError } = await import("./sap-ai-error.js");
+    throw new UnsupportedFeatureError("Embeddings", "responses", "foundation-models");
+  }
+
   if (api === "foundation-models") {
     const { AzureOpenAiEmbeddingClient } = await import("@sap-ai-sdk/foundation-models");
     const { FoundationModelsEmbeddingModelStrategy } =
@@ -154,6 +159,12 @@ async function createEmbeddingModelStrategy(api: SAPAIApiType): Promise<Embeddin
  * @returns Language model strategy.
  */
 async function createLanguageModelStrategy(api: SAPAIApiType): Promise<LanguageModelAPIStrategy> {
+  if (api === "responses") {
+    const { ResponsesLanguageModelStrategy } =
+      await import("./responses-language-model-strategy.js");
+    return new ResponsesLanguageModelStrategy();
+  }
+
   if (api === "foundation-models") {
     const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
     const { FoundationModelsLanguageModelStrategy } =

@@ -50,6 +50,18 @@ const HTTP_STATUS = {
   UNAUTHORIZED: 401,
 } as const;
 
+const RETRYABLE_NETWORK_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
+]);
+
 /**
  * Error message matchers for categorization and retryability.
  * @internal
@@ -229,9 +241,13 @@ export class UnsupportedFeatureError extends Error {
     public readonly api: SAPAIApiType,
     public readonly suggestedApi: SAPAIApiType,
   ) {
-    const apiName = api === "foundation-models" ? "Foundation Models" : "Orchestration";
-    const suggestedApiName =
-      suggestedApi === "foundation-models" ? "Foundation Models" : "Orchestration";
+    const names: Record<SAPAIApiType, string> = {
+      "foundation-models": "Foundation Models",
+      orchestration: "Orchestration",
+      responses: "Responses",
+    };
+    const apiName = names[api];
+    const suggestedApiName = names[suggestedApi];
     super(`${feature} is not supported by ${apiName} API. Use ${suggestedApiName} API instead.`);
     this.name = "UnsupportedFeatureError";
   }
@@ -353,11 +369,11 @@ export function convertToAISDKError(
     return error;
   }
 
-  const { aborted, response, rootError } = inspectError(error);
+  const { aborted, networkCode, response, rootError, syntaxError } = inspectError(error);
   const responseHeaders = context?.responseHeaders ?? normalizeHeaders(response?.headers);
   if (!aborted) {
     const errorResponse = findStructuredErrorResponse(
-      rootError instanceof SyntaxError ? undefined : rootError,
+      syntaxError ? undefined : rootError,
       response?.data,
     );
     if (errorResponse) {
@@ -386,13 +402,20 @@ export function convertToAISDKError(
     );
   }
 
-  if (isHttpStatus(response?.status)) {
+  // Successful headers do not establish a successful response-body read.
+  if (
+    isHttpStatus(response?.status) &&
+    (networkCode === undefined ||
+      syntaxError !== undefined ||
+      response.status < 200 ||
+      response.status >= 300)
+  ) {
     return createAPICallError(
       error,
       {
         isRetryable: isRetryable(response.status),
         message:
-          rootError instanceof SyntaxError && error instanceof Error
+          syntaxError && error instanceof Error
             ? error.message
             : rootError instanceof Error
               ? rootError.message
@@ -405,16 +428,28 @@ export function convertToAISDKError(
 
   // Native parser messages can contain credential or response fragments. Keep the
   // enclosing SDK message instead, with the original chain available only as cause.
-  if (rootError instanceof SyntaxError) {
+  if (syntaxError) {
     return createAPICallError(
       error,
       {
         isRetryable: false,
         message:
-          error instanceof Error && error !== rootError
+          error instanceof Error && error !== syntaxError
             ? error.message
             : "Failed to parse SAP AI Core data.",
         statusCode: HTTP_STATUS.INTERNAL_ERROR,
+      },
+      resolvedContext,
+    );
+  }
+
+  if (networkCode) {
+    return createAPICallError(
+      error,
+      {
+        isRetryable: true,
+        message: `SAP AI Core network error (${networkCode})`,
+        statusCode: HTTP_STATUS.SERVICE_UNAVAILABLE,
       },
       resolvedContext,
     );
@@ -672,22 +707,30 @@ function getStatusCodeFromSAPError(code?: number, httpStatusCode?: number): numb
 /**
  * Inspects native and SAP cause chains once, keeping transport metadata from wrappers.
  * @param error - Raw SDK error.
- * @returns The terminal cause, nearest Axios response, and cancellation state.
+ * @returns The terminal cause, transport metadata, and classified native failures.
  */
 function inspectError(error: unknown): {
   aborted: boolean;
+  networkCode?: string;
   response?: AxiosResponse;
   rootError: unknown;
+  syntaxError?: SyntaxError;
 } {
   const seen = new Set<object>();
   let rootError = error;
   let current = error;
   let response: AxiosResponse | undefined;
   let aborted = false;
+  let networkCode: string | undefined;
+  let syntaxError: SyntaxError | undefined;
   while (typeof current === "object" && current !== null && !seen.has(current)) {
     seen.add(current);
     rootError = current;
     aborted ||= isAbortError(current);
+    if (current instanceof SyntaxError) syntaxError ??= current;
+    if (current instanceof Error && "code" in current && typeof current.code === "string") {
+      if (RETRYABLE_NETWORK_CODES.has(current.code)) networkCode ??= current.code;
+    }
     const entry = current as { cause?: unknown; isAxiosError?: boolean; response?: AxiosResponse };
     if (response === undefined && entry.isAxiosError === true) response = entry.response;
     // SAP ErrorWithCause exposes a native cause too. Avoid its recursive rootCause
@@ -704,7 +747,7 @@ function inspectError(error: unknown): {
     rootError = cause;
     current = cause;
   }
-  return { aborted, response, rootError };
+  return { aborted, networkCode, response, rootError, syntaxError };
 }
 
 /**
