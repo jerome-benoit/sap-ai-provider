@@ -5,6 +5,7 @@ import type { ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -273,6 +274,46 @@ describe("Responses native-adapter response-body timeout", () => {
       }
     },
   );
+
+  it("preserves timeout defaults merged by the SAP client's CommonJS Axios instance", async () => {
+    const require = createRequire(import.meta.url);
+    const cloudRequire = createRequire(require.resolve("@sap-cloud-sdk/http-client"));
+    const axios: unknown = cloudRequire("axios");
+    if (
+      (typeof axios !== "object" && typeof axios !== "function") ||
+      axios === null ||
+      !("defaults" in axios) ||
+      typeof axios.defaults !== "object" ||
+      axios.defaults === null
+    ) {
+      throw new Error("Expected the SAP client's Axios defaults");
+    }
+    const defaults = axios.defaults as Record<string, unknown>;
+    const transitional = defaults.transitional;
+    if (typeof transitional !== "object" || transitional === null || Array.isArray(transitional)) {
+      throw new Error("Expected Axios transitional defaults");
+    }
+    const originalMessage = Object.getOwnPropertyDescriptor(defaults, "timeoutErrorMessage");
+    const originalTransitional = Object.getOwnPropertyDescriptor(defaults, "transitional");
+    try {
+      defaults.timeoutErrorMessage = "Fixture global deadline";
+      defaults.transitional = { ...transitional, clarifyTimeoutError: true };
+      const result = await timedFailure(model(), "doGenerate");
+      expect(result.watchdogFired).toBe(false);
+      expect(result.error).toMatchObject({
+        cause: { code: "ETIMEDOUT", message: "Fixture global deadline" },
+        isRetryable: true,
+        statusCode: 503,
+      });
+      expect(requests[0]?.socket.destroyed).toBe(true);
+    } finally {
+      if (originalMessage) Object.defineProperty(defaults, "timeoutErrorMessage", originalMessage);
+      else delete defaults.timeoutErrorMessage;
+      if (originalTransitional)
+        Object.defineProperty(defaults, "transitional", originalTransitional);
+      else delete defaults.transitional;
+    }
+  });
 
   it("enforces inactivity timeout while consuming a native-adapter stream", async () => {
     mode = "output-then-idle";

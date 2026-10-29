@@ -384,7 +384,7 @@ function isHttpResponseEvents(value: unknown): value is HttpResponseEvents {
 /**
  * Keeps Axios's socket inactivity timeout effective after streamed headers settle.
  * @param response - Native response observed before configured middleware resumes.
- * @param requestConfig - Effective Axios timeout settings after configured middleware.
+ * @param requestConfig - Fallback settings when resolved Axios metadata is unavailable.
  * @param cleanups - Disposes responses abandoned by cancellation or middleware retries.
  */
 function preserveResponseBodyTimeout(
@@ -395,6 +395,11 @@ function preserveResponseBodyTimeout(
   const body: unknown = response.data;
   const request: unknown = response.request;
   if (!isHttpResponseEvents(body) || !isHttpResponseEvents(request)) return;
+  const responseConfig: unknown = "config" in response ? response.config : undefined;
+  const timeoutConfig =
+    typeof responseConfig === "object" && responseConfig !== null && !Array.isArray(responseConfig)
+      ? (responseConfig as Record<string, unknown>)
+      : requestConfig;
 
   const release = () => {
     request.removeListener("timeout", onTimeout);
@@ -425,9 +430,9 @@ function preserveResponseBodyTimeout(
       release();
       return;
     }
-    const timeout: unknown = requestConfig.timeout;
-    const timeoutErrorMessage: unknown = requestConfig.timeoutErrorMessage;
-    const transitional: unknown = requestConfig.transitional;
+    const timeout: unknown = timeoutConfig.timeout;
+    const timeoutErrorMessage: unknown = timeoutConfig.timeoutErrorMessage;
+    const transitional: unknown = timeoutConfig.transitional;
     const clarifyTimeoutError =
       typeof transitional === "object" &&
       transitional !== null &&
