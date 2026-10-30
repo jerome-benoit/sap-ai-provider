@@ -3,9 +3,11 @@ import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
+import { AISDKError, APICallError } from "@ai-sdk/provider";
 import { getFoundationModelDeploymentId, getResourceGroup } from "@sap-ai-sdk/ai-api/internal.js";
 import { executeRequest, getAiCoreDestination } from "@sap-ai-sdk/core";
 import { getTargetUrl } from "@sap-ai-sdk/core/internal.js";
+import { isErrorWithCause } from "@sap-cloud-sdk/util";
 
 import type { SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
@@ -36,6 +38,7 @@ type SAPHttpResponse = Awaited<ReturnType<typeof executeRequest>>;
 const ERROR_BODY_TRUNCATION = "...[truncated]";
 // Reserve the marker inside the shared HTTP diagnostic serializer's 2,000-character limit.
 const MAX_ERROR_BODY_BYTES = 2_000 - ERROR_BODY_TRUNCATION.length;
+const ERROR_BODY_READ_FAILURE = Symbol("sap-ai.responsesErrorBodyReadFailure");
 
 /**
  * Resolves a SAP deployment and adapts its HTTP transport to the OpenAI provider.
@@ -49,7 +52,7 @@ export async function createResponsesTransport(
   config: LanguageModelStrategyConfig,
   settings: SAPAISettings,
   options: LanguageModelV3CallOptions,
-): Promise<{ baseURL: string; fetch: FetchFunction }> {
+): Promise<{ baseURL: string; dispose: (reason?: unknown) => void; fetch: FetchFunction }> {
   throwIfAborted(options.abortSignal);
   const deployment = buildModelDeployment(config, settings.modelVersion);
   // SAP's discovery helpers expose no signal; cancel the wait and observe late rejections.
@@ -70,8 +73,25 @@ export async function createResponsesTransport(
     options.abortSignal,
     options.headers,
   );
+  const activeRequests = new Set<(reason?: unknown) => void>();
+  let disposed = false;
+  let disposalReason: unknown;
+  const dispose = (reason?: unknown) => {
+    if (disposed) return;
+    disposed = true;
+    disposalReason = reason;
+    for (const release of activeRequests) {
+      try {
+        release(reason);
+      } catch {
+        // Disposal must never replace the invocation's primary failure.
+      }
+    }
+    activeRequests.clear();
+  };
 
   const fetch: FetchFunction = async (input, init) => {
+    if (disposed) throw createAbortError(disposalReason);
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
     if (url.origin !== endpoint.origin || url.pathname !== endpoint.pathname) {
       throw new TypeError("SAP Responses requests must target the configured deployment.");
@@ -80,20 +100,39 @@ export async function createResponsesTransport(
       throw new TypeError("SAP Responses requires a POST request with a JSON body.");
     }
     const body: unknown = JSON.parse(init.body);
+    const operation =
+      typeof body === "object" && body !== null && "stream" in body && body.stream === true
+        ? "doStream"
+        : "doGenerate";
     const controller = new AbortController();
     const signal = options.abortSignal ?? init.signal;
     const bodyTimeoutCleanups = new Set<() => void>();
     let abortFailedRequest: (() => void) | undefined;
+    let activeResponse: SAPHttpResponse | undefined;
     const onAbort = () => {
       controller.abort(signal?.reason);
     };
     const cleanup = () => {
+      activeRequests.delete(disposeRequest);
       signal?.removeEventListener("abort", onAbort);
       if (abortFailedRequest) controller.signal.removeEventListener("abort", abortFailedRequest);
       for (const dispose of bodyTimeoutCleanups) dispose();
+      activeResponse = undefined;
+    };
+    const disposeRequest = (reason?: unknown) => {
+      try {
+        controller.abort(reason);
+      } finally {
+        try {
+          if (activeResponse) destroyHttpResponse(activeResponse);
+        } finally {
+          cleanup();
+        }
+      }
     };
     throwIfAborted(signal ?? undefined);
     signal?.addEventListener("abort", onAbort, { once: true });
+    activeRequests.add(disposeRequest);
 
     const headers = new Headers(init.headers);
     // Authentication belongs to the SAP destination, not the delegate's placeholder key.
@@ -106,7 +145,9 @@ export async function createResponsesTransport(
     );
 
     let failedRequest: FailedHttpRequest | undefined;
+    let failedError: unknown;
     const watchResponse = (response: SAPHttpResponse, request: CustomRequestConfig) => {
+      activeResponse = response;
       if (controller.signal.aborted) destroyHttpResponse(response);
       else preserveResponseBodyTimeout(response, request, bodyTimeoutCleanups);
       return response;
@@ -117,7 +158,8 @@ export async function createResponsesTransport(
         try {
           return watchResponse(await fn(request), request);
         } catch (error) {
-          if (isFailedHttpRequest(error)) watchResponse(error.response, request);
+          const failed = findFailedHttpRequest(error);
+          if (failed) watchResponse(failed.response, request);
           throw error;
         }
       };
@@ -127,11 +169,13 @@ export async function createResponsesTransport(
         try {
           return await fn(request);
         } catch (error) {
-          if (!isFailedHttpRequest(error)) throw error;
+          const failed = findFailedHttpRequest(error);
+          if (!failed) throw error;
           // SAP's stream error parser assumes JSON. Retain the response before it can
           // discard status and headers when an intermediary returns HTML or an empty body.
-          failedRequest = error;
-          const request: unknown = error.response.request;
+          failedRequest = failed;
+          failedError = error;
+          const request: unknown = failed.response.request;
           if (isDestroyableRequest(request)) {
             // A rejected Axios request no longer observes the request abort signal.
             abortFailedRequest = () => {
@@ -140,7 +184,7 @@ export async function createResponsesTransport(
             if (controller.signal.aborted) abortFailedRequest();
             else controller.signal.addEventListener("abort", abortFailedRequest, { once: true });
           }
-          return error.response;
+          return failed.response;
         }
       };
 
@@ -166,12 +210,20 @@ export async function createResponsesTransport(
         config.destination,
       );
       const response = await waitWithAbort(pendingResponse, controller.signal, destroyHttpResponse);
+      activeResponse = response;
       if (controller.signal.aborted) {
         destroyHttpResponse(response);
         throw createAbortError(controller.signal.reason);
       }
       const responseBody: unknown = response.data;
-      const responseStream = createByteStream(responseBody, controller, cleanup, config, options);
+      const responseStream = createByteStream(
+        responseBody,
+        controller,
+        cleanup,
+        config,
+        options,
+        operation,
+      );
       if (failedRequest) {
         const decoder = new TextDecoder();
         const reader = responseStream.getReader();
@@ -210,18 +262,18 @@ export async function createResponsesTransport(
           }
         }
         throwIfAborted(signal ?? undefined);
-        const failure = convertToAISDKError(failedRequest, {
+        const failure = convertToAISDKError(failedError, {
           modelId: config.modelId,
           modelType: "languageModel",
-          operation:
-            typeof body === "object" && body !== null && "stream" in body && body.stream === true
-              ? "doStream"
-              : "doGenerate",
+          operation,
           requestBody: createAISDKRequestBodySummary(options),
           url: "sap-ai:responses",
         });
-        // Retain read diagnostics after classifying the original HTTP response.
-        if (readFailure !== undefined) failedRequest.cause ??= readFailure;
+        // Secondary body diagnostics must not enter the native cause chain:
+        // the delegate scans that chain for network codes and can override HTTP retryability.
+        if (readFailure !== undefined && APICallError.isInstance(failure)) {
+          Object.defineProperty(failure, ERROR_BODY_READ_FAILURE, { value: readFailure });
+        }
         throw failure;
       }
       return new Response(responseStream, {
@@ -229,12 +281,12 @@ export async function createResponsesTransport(
         status: response.status,
       });
     } catch (error) {
-      cleanup();
+      dispose(error);
       throw error;
     }
   };
 
-  return { baseURL, fetch };
+  return { baseURL, dispose, fetch };
 }
 
 /**
@@ -244,6 +296,7 @@ export async function createResponsesTransport(
  * @param cleanup - Removes the caller's abort listener.
  * @param config - Model configuration for safe error conversion.
  * @param options - Standard AI SDK call options.
+ * @param operation - Operation derived from the delegate's request body.
  * @returns A native byte stream consumed by the OpenAI provider.
  */
 function createByteStream(
@@ -252,6 +305,7 @@ function createByteStream(
   cleanup: () => void,
   config: LanguageModelStrategyConfig,
   options: LanguageModelV3CallOptions,
+  operation: "doGenerate" | "doStream",
 ): ReadableStream<Uint8Array> {
   if (
     typeof body !== "object" ||
@@ -313,7 +367,7 @@ function createByteStream(
             convertToAISDKError(failure, {
               modelId: config.modelId,
               modelType: "languageModel",
-              operation: "doStream",
+              operation,
               requestBody: createAISDKRequestBodySummary(options),
               url: "sap-ai:responses",
             }),
@@ -334,6 +388,31 @@ function destroyHttpResponse(response: SAPHttpResponse): void {
   const request: unknown = response.request;
   if (isDestroyableRequest(body)) body.destroy();
   if (isDestroyableRequest(request)) request.destroy();
+}
+
+/**
+ * Finds the final Axios failure without crossing a classified AI SDK boundary.
+ * @param error - Original rejection from the configured middleware chain.
+ * @returns The nested failed request, if reachable within the bounded cause chain.
+ */
+function findFailedHttpRequest(error: unknown): FailedHttpRequest | undefined {
+  const seen = new Set<object>();
+  let current = error;
+  for (let depth = 0; depth < 32; depth++) {
+    if (typeof current !== "object" || current === null || seen.has(current)) return undefined;
+    if (AISDKError.isInstance(current)) return undefined;
+    seen.add(current);
+    if (isFailedHttpRequest(current)) return current;
+    // SAP's legacy rootCause getter can recurse. Prefer its native cause even
+    // when undefined, and never inspect both representations of the same chain.
+    current =
+      "cause" in current
+        ? current.cause
+        : current instanceof Error && isErrorWithCause(current)
+          ? current.rootCause
+          : undefined;
+  }
+  return undefined;
 }
 
 /**

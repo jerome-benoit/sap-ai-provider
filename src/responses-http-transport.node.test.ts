@@ -2,8 +2,10 @@
 import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
+import { APICallError } from "@ai-sdk/provider";
 import { getFoundationModelDeploymentId } from "@sap-ai-sdk/ai-api/internal.js";
 import { executeRequest, getAiCoreDestination } from "@sap-ai-sdk/core";
+import { ErrorWithCause } from "@sap-cloud-sdk/util";
 import { Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -118,6 +120,41 @@ describe("Responses HTTP transport", () => {
       expect(getAiCoreDestination).not.toHaveBeenCalled();
       expect(executeRequest).not.toHaveBeenCalled();
       expect(added).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s keeps a discovery-shaped abort reason at 499 without exposing its criteria",
+    async (operation) => {
+      const sentinel = "public-abort-discovery-credential";
+      const reason = new Error(
+        `No deployment matched the given criteria: ${JSON.stringify({
+          destination: { authentication: "NoAuthentication", password: sentinel },
+        })}`,
+      );
+      const caller = new AbortController();
+      caller.abort(reason);
+      const model = createSAPAIProvider({ api: "responses", destination: config.destination })(
+        config.modelId,
+      );
+
+      const error: unknown = await model[operation]({
+        ...options,
+        abortSignal: caller.signal,
+      }).catch((error: unknown) => error);
+
+      expect(APICallError.isInstance(error)).toBe(true);
+      if (!APICallError.isInstance(error)) throw new Error("Expected client cancellation");
+      expect(error).toMatchObject({ isRetryable: false, statusCode: 499 });
+      expect(error.cause).toBeUndefined();
+      expect(caller.signal.reason).toBe(reason);
+      for (const summary of [error.message, String(error), error.stack, JSON.stringify(error)]) {
+        expect(summary).not.toContain(sentinel);
+        expect(summary).not.toContain("NoAuthentication");
+      }
+      expect(getFoundationModelDeploymentId).not.toHaveBeenCalled();
+      expect(getAiCoreDestination).not.toHaveBeenCalled();
+      expect(executeRequest).not.toHaveBeenCalled();
     },
   );
 
@@ -386,6 +423,98 @@ describe("Responses HTTP transport", () => {
     expect(source.destroyed).toBe(true);
     expect(failures).toHaveLength(1);
   });
+  it("disposes a pending invocation without a caller signal and closes its late response", async () => {
+    const pending = pendingLookup<Awaited<ReturnType<typeof executeRequest>>>();
+    vi.mocked(executeRequest).mockReturnValue(pending.promise);
+    const source = new Readable({
+      read() {
+        return;
+      },
+    });
+    const nativeRequest = { destroy: vi.fn() };
+    const transport = await createResponsesTransport(config, {}, options);
+    const reason = new Error("Delegate rejected before receiving a reader");
+    const invocation = transport.fetch(`${transport.baseURL}/responses`, request);
+    const rejected = expect(invocation).rejects.toMatchObject({
+      cause: reason,
+      name: "AbortError",
+    });
+
+    expect(() => {
+      transport.dispose(reason);
+    }).not.toThrow();
+    expect(() => {
+      transport.dispose(new Error("Second disposal"));
+    }).not.toThrow();
+    await rejected;
+    pending.resolve({ data: source, headers: {}, request: nativeRequest, status: 200 });
+    await setImmediate();
+
+    expect(source.destroyed).toBe(true);
+    expect(nativeRequest.destroy).toHaveBeenCalled();
+  });
+
+  it("releases invocation disposal ownership after normal EOF", async () => {
+    const transport = await createResponsesTransport(config, {}, options);
+    const response = await transport.fetch(`${transport.baseURL}/responses`, request);
+    const signal = vi.mocked(executeRequest).mock.calls[0]?.[2]?.signal;
+    await response.text();
+
+    transport.dispose("Already complete");
+
+    expect(signal?.aborted).toBe(false);
+  });
+
+  it.each(["classified", "cycle", "deep"] as const)(
+    "bounds final HTTP failure inspection at a %s cause chain",
+    async (shape) => {
+      const source = Readable.from(["Unreachable nested HTTP diagnostic"]);
+      const axiosError = Object.assign(new Error("Nested HTTP failure"), {
+        isAxiosError: true,
+        response: { data: source, headers: {}, request: {}, status: 502 },
+      });
+      let failure: Error;
+      if (shape === "classified") {
+        failure = new APICallError({
+          cause: axiosError,
+          isRetryable: false,
+          message: "Already classified",
+          requestBodyValues: {},
+          statusCode: 400,
+          url: "sap-ai:responses",
+        });
+      } else if (shape === "cycle") {
+        failure = new ErrorWithCause("Cyclic wrapper", axiosError);
+        Object.defineProperty(failure, "cause", { value: failure });
+      } else {
+        failure = axiosError;
+        for (let depth = 0; depth < 64; depth++) {
+          failure = new Error("Bounded native wrapper", { cause: failure });
+        }
+      }
+      const legacyGetter = vi.fn(() => {
+        throw new Error("Native cause must take precedence over rootCause");
+      });
+      Object.defineProperty(failure, "rootCause", { get: legacyGetter });
+      vi.mocked(executeRequest).mockImplementation((_endpoint, _body, sdkOptions) => {
+        const middleware = sdkOptions?.middleware?.[0];
+        if (!middleware) throw new Error("Missing error-preservation middleware");
+        return middleware({
+          context: { tenantId: undefined, uri: "https://sap.example.test/responses" },
+          fn: () => Promise.reject(failure),
+        })({ method: "POST" });
+      });
+      const transport = await createResponsesTransport(config, {}, options);
+      try {
+        await expect(transport.fetch(`${transport.baseURL}/responses`, request)).rejects.toBe(
+          failure,
+        );
+        expect(legacyGetter).not.toHaveBeenCalled();
+      } finally {
+        source.destroy();
+      }
+    },
+  );
 
   it("resolves the model version, destination and actual deployment URL", async () => {
     vi.mocked(getFoundationModelDeploymentId).mockResolvedValue("deployment/with spaces");

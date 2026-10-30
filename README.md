@@ -270,6 +270,7 @@ The default remains Orchestration; model names do not change API selection.
 Responses uses your existing SAP credentials and deployment configuration.
 It bypasses Orchestration modules, and embeddings need an explicit
 `api: "foundation-models"` or `api: "orchestration"` override.
+Responses rejects assistant file history rather than silently omitting it.
 See the [Responses API reference](./API_REFERENCE.md#responses-api) for options,
 reasoning history, and a [runnable example](./examples/example-responses.ts).
 

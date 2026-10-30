@@ -287,6 +287,24 @@ describe("Responses transport failure classification", () => {
       expect(interceptedBodies[0]?.destroyed).toBe(true);
     },
   );
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s keeps an opaque body failure non-retryable with its operation and original cause",
+    async (operation) => {
+      const source = new Error("opaque fixture failure");
+      const model = createSAPAIProvider(settings(failingBody(source)))("gpt-6.1-sol");
+
+      const error = await failure(model, operation);
+
+      expect(APICallError.isInstance(error)).toBe(true);
+      if (!APICallError.isInstance(error)) throw new Error("Expected the body-read failure");
+      expect(error.statusCode).toBe(500);
+      expect(error.isRetryable).toBe(false);
+      expect(error.message).toContain(operation);
+      expect(error.cause).toBe(source);
+      expect(interceptedBodies[0]?.destroyed).toBe(true);
+      expect(requests).toHaveLength(1);
+    },
+  );
 
   it.each(["doGenerate", "doStream"] as const)(
     "%s preserves a classified SAP failure and all its diagnostics by identity",

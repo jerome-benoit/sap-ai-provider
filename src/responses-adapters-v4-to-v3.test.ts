@@ -8,6 +8,7 @@ import {
   convertResponsesResultToV3,
   convertResponsesStreamPartToV3,
 } from "./responses-adapters-v4-to-v3.js";
+import { convertGenerateResultToV4, convertStreamPartToV4 } from "./sap-ai-adapters-v3-to-v4.js";
 
 const usage: LanguageModelV4GenerateResult["usage"] = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 3, total: 3 },
@@ -42,15 +43,30 @@ describe("Responses V4-to-V3 delegate adapter", () => {
     expect(convertResponsesStreamPartToV3(file)).toEqual(converted.content[0]);
   });
 
-  it("retains text encoding for native custom-tool input streams", () => {
-    const part = convertResponsesStreamPartToV3({
-      id: "custom-call",
-      inputEncoding: "text",
-      toolName: "custom",
-      type: "tool-input-start",
+  it("keeps interrupted diagnostics private in V3 and restores V4 generation and stream semantics", () => {
+    const original = { raw: undefined, unified: "interrupted" as const };
+    const result: LanguageModelV4GenerateResult = {
+      content: [],
+      finishReason: original,
+      usage,
+      warnings: [],
+    };
+    const converted = convertResponsesResultToV3(result);
+    expect(converted.finishReason.unified).toBe("other");
+    expect(Object.keys(converted.finishReason).sort()).toEqual(["raw", "unified"]);
+    expect(JSON.stringify(converted.finishReason)).toBe('{"unified":"other"}');
+    expect(convertGenerateResultToV4(converted).finishReason).toBe(original);
+
+    const finish = convertResponsesStreamPartToV3({
+      finishReason: original,
+      type: "finish",
+      usage,
     });
-    if (part.type !== "tool-input-start") throw new Error("Expected custom tool input");
-    expect(part.inputEncoding).toBe("text");
+    if (finish.type !== "finish") throw new Error("Expected a converted finish event");
+    const restored = convertStreamPartToV4(finish);
+    if (restored.type !== "finish") throw new Error("Expected a restored finish event");
+    expect(finish.finishReason.unified).toBe("other");
+    expect(restored.finishReason).toBe(original);
   });
 
   it.each<LanguageModelV4StreamPart>([

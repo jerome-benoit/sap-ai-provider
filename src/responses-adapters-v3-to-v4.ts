@@ -8,6 +8,8 @@ import type {
   LanguageModelV4ToolResultOutput,
 } from "@ai-sdk/provider";
 
+import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+
 import { getURLHref } from "./convert-to-sap-messages.js";
 
 type V3Part = Exclude<LanguageModelV3Prompt[number], { role: "system" }>["content"][number];
@@ -78,7 +80,11 @@ function convertPromptPart(
     { role: "system" | "tool" | "user" }
   >["content"][number],
 ): Exclude<LanguageModelV4Prompt[number], { role: "system" | "tool" | "user" }>["content"][number] {
-  if (part.type === "file") return convertFile(part);
+  if (part.type === "file") {
+    throw new UnsupportedFunctionalityError({
+      functionality: "Responses assistant file history is not supported.",
+    });
+  }
   if (part.type === "tool-result") return convertToolResult(part);
   return part;
 }

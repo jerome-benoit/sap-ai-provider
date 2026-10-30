@@ -7,10 +7,13 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 
+import type { FinishReasonWithV4Metadata } from "./adapter-metadata.js";
+
+import { ORIGINAL_V4_FINISH_REASON } from "./adapter-metadata.js";
 import { mapReadableStream } from "./map-readable-stream.js";
 
 /**
- * Tags generated file data for V4; all other result fields are compatible.
+ * Tags generated file data and restores preserved V4 finish reasons.
  * @param result - The internal V3 generate result.
  * @returns The equivalent V4 generate result.
  */
@@ -22,15 +25,22 @@ export function convertGenerateResultToV4(
     content: result.content.map((part) =>
       part.type === "file" ? { ...part, data: { data: part.data, type: "data" } } : part,
     ),
+    finishReason:
+      (result.finishReason as FinishReasonWithV4Metadata)[ORIGINAL_V4_FINISH_REASON] ??
+      result.finishReason,
   };
 }
 
 /**
- * Tags streamed file data for V4; every other V3 part is already compatible.
+ * Tags streamed file data and restores preserved V4 finish reasons.
  * @param part - The internal V3 stream part.
  * @returns The equivalent V4 stream part.
  */
 export function convertStreamPartToV4(part: LanguageModelV3StreamPart): LanguageModelV4StreamPart {
+  if (part.type === "finish") {
+    const original = (part.finishReason as FinishReasonWithV4Metadata)[ORIGINAL_V4_FINISH_REASON];
+    return original ? { ...part, finishReason: original } : part;
+  }
   if (part.type !== "file") return part;
   return { ...part, data: { data: part.data, type: "data" } };
 }

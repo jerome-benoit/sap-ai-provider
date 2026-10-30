@@ -15,6 +15,8 @@ import type {
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 
+import { ORIGINAL_V4_FINISH_REASON } from "./adapter-metadata.js";
+
 /** V3-compatible content retaining V4 text citations for the V4 facade. */
 type ResponsesV3Content =
   | Exclude<LanguageModelV3Content, { type: "text" }>
@@ -98,7 +100,9 @@ function convertContent(part: LanguageModelV4Content): ResponsesV3Content {
 function convertFinishReason(
   reason: LanguageModelV4GenerateResult["finishReason"],
 ): LanguageModelV3FinishReason {
-  return { ...reason, unified: reason.unified === "interrupted" ? "other" : reason.unified };
+  if (reason.unified !== "interrupted") return reason as LanguageModelV3FinishReason;
+  const converted: LanguageModelV3FinishReason = { ...reason, unified: "other" };
+  return Object.defineProperty(converted, ORIGINAL_V4_FINISH_REASON, { value: reason });
 }
 
 /**

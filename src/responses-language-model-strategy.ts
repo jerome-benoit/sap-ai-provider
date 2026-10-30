@@ -61,12 +61,11 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
+    let dispose: ((reason?: unknown) => void) | undefined;
     try {
-      const { input, model, providerName, warnings } = await prepareModel(
-        config,
-        settings,
-        options,
-      );
+      const prepared = await prepareModel(config, settings, options);
+      dispose = prepared.dispose;
+      const { input, model, providerName, warnings } = prepared;
       const result = convertResponsesResultToV3(await model.doGenerate(input));
       return {
         ...result,
@@ -75,7 +74,9 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
         warnings: [...warnings, ...result.warnings],
       };
     } catch (error) {
-      throw convertError(error, config, options, "doGenerate");
+      const failure = convertError(error, config, options, "doGenerate");
+      dispose?.(failure);
+      throw failure;
     }
   }
 
@@ -84,12 +85,11 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
+    let dispose: ((reason?: unknown) => void) | undefined;
     try {
-      const { input, model, providerName, warnings } = await prepareModel(
-        config,
-        settings,
-        options,
-      );
+      const prepared = await prepareModel(config, settings, options);
+      dispose = prepared.dispose;
+      const { input, model, providerName, warnings } = prepared;
       const result = await model.doStream(input);
       const reader = result.stream.getReader();
       let cancelled = false;
@@ -100,6 +100,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
           {
             async cancel(reason) {
               cancelled = true;
+              dispose?.(reason);
               try {
                 await reader.cancel(reason);
               } finally {
@@ -139,12 +140,14 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                 }
               } catch (error) {
                 if (isCancelled()) return;
+                const failure = convertError(error, config, options, "doStream");
+                dispose?.(failure);
                 // Cleanup failures must not replace the original request or cancellation error.
                 await reader.cancel(error).catch(() => undefined);
                 if (isCancelled()) return;
                 reader.releaseLock();
                 controller.enqueue({
-                  error: convertError(error, config, options, "doStream"),
+                  error: failure,
                   type: "error",
                 });
                 controller.close();
@@ -155,7 +158,9 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
         ),
       };
     } catch (error) {
-      throw convertError(error, config, options, "doStream");
+      const failure = convertError(error, config, options, "doStream");
+      dispose?.(failure);
+      throw failure;
     }
   }
 }
@@ -304,6 +309,7 @@ async function prepareModel(
   settings: SAPAISettings,
   options: LanguageModelV3CallOptions,
 ): Promise<{
+  dispose: (reason?: unknown) => void;
   input: LanguageModelV4CallOptions;
   model: LanguageModelV4;
   providerName: string;
@@ -367,6 +373,7 @@ async function prepareModel(
     ),
     topP: options.topP ?? parameters.topP,
   };
+  const convertedInput = convertResponsesCallToV4(input);
   const transport = await createResponsesTransport(config, settings, options);
   const model = createOpenAI({
     // Authentication is supplied by SAP's transport, not an OpenAI API key.
@@ -374,7 +381,7 @@ async function prepareModel(
     baseURL: transport.baseURL,
     fetch: transport.fetch,
   }).responses(config.modelId);
-  return { input: convertResponsesCallToV4(input), model, providerName, warnings };
+  return { dispose: transport.dispose, input: convertedInput, model, providerName, warnings };
 }
 
 /**

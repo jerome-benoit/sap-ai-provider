@@ -576,30 +576,43 @@ deployment or destination discovery is pending. SAP's discovery helpers do not
 accept an abort signal, so their underlying work can continue after the caller
 has been released; late failures are observed and late HTTP responses are closed.
 Caller cancellation remains a non-retryable status 499 error.
+Setup failures also close the owned upstream request without changing the
+caller's signal or the original error classification.
 
 Configured HTTP inactivity timeouts remain effective while reading Responses
 bodies, including with `requestConfig.maxRedirects: 0`. Timeout failures are
 retryable status 503 errors. Active SSE traffic resets the existing socket timer;
 this does not impose a total duration limit on the stream.
 
-Rejected HTTP responses retain at most 1,986 body bytes for diagnostics. Larger
-bodies are stopped and expose the received UTF-8 prefix with `...[truncated]`,
-preserving the original status and headers. Complete smaller JSON errors retain
-their normal classification. This diagnostic bound does not apply to successful
-SSE streams or replace an explicit `requestConfig.maxContentLength`.
+After configured SAP retry middleware finishes, rejected HTTP responses retain
+at most 1,986 body bytes for diagnostics, including when middleware wraps the
+final failure. Larger bodies are stopped and expose the received UTF-8 prefix
+with `...[truncated]`, preserving the original status and headers. Complete
+smaller JSON errors retain their normal classification. This diagnostic bound
+does not apply to successful SSE streams or replace an explicit
+`requestConfig.maxContentLength`.
+Secondary socket failures while reading these diagnostics do not make a
+non-retryable HTTP failure retryable.
 
 Classified transport read failures retain their original status, retryability,
 and diagnostics when the delegate wraps them in a successful-response error.
 Native transient connection errors, including `ECONNRESET` after successful
 headers, become retryable status 503 errors with the original error as `cause`.
 Malformed JSON and invalid response schemas keep their parsing-error classification.
+An otherwise unclassified body-read failure is a non-retryable status 500 error
+that identifies the invoked generation or streaming operation.
 
 The OpenAI V4 delegate is adapted to the shared V3 core. Generated inline files
 retain their bytes or base64 data; the V4 facade restores tagged file data.
-The V4 `interrupted` finish reason maps to V3 `other`, preserving the raw reason.
+A clean EOF without a completion event reports `other` through V2/V3 and
+`interrupted` through V4. The delegate's raw reason is retained where the
+public contract supports it.
 Generated file URLs, reasoning files, and custom output blocks such as
 compaction have no V3 equivalent and are rejected explicitly; they are not
 fetched or silently omitted.
+Assistant `file` history is rejected with `UnsupportedFunctionalityError`
+before deployment discovery or HTTP, across all entrypoints. User files and
+media nested in tool results keep their supported conversions.
 
 V4 text citations use the same SAP namespace for their source provider metadata
 in generation results and `text-end` events. Source fields and text offsets are
@@ -3106,6 +3119,12 @@ different response-body shape.
   }
 }
 ```
+
+When no deployment matches SAP's discovery criteria, `NoSuchModelError` retains
+the requested model identity but omits the serialized criteria and original
+discovery cause. Custom destinations may contain credentials in those criteria.
+Cancellation still takes precedence as a non-retryable status 499 error;
+the credential-bearing discovery cause is likewise omitted.
 
 Native parser failures, including malformed credential JSON, use the enclosing
 SAP SDK error summary rather than copying parser input fragments into the public
