@@ -395,6 +395,118 @@ describe("Responses over SAP AI Core HTTP", () => {
     expect(requests[0]?.body.include).toContain("reasoning.encrypted_content");
   });
 
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["assistant", "tool"] as const).flatMap((role) =>
+        [
+          { mediaType: "image/png", type: "file-data" as const },
+          { mediaType: "application/pdf", type: "image-data" as const },
+          { mediaType: "IMAGE/PNG", type: "image-data" as const },
+        ].map((item) => ({ item, operation, role })),
+      ),
+    ),
+  )(
+    "rejects contradictory $item.type $item.mediaType before HTTP during $operation in $role history",
+    async ({ item, operation, role }) => {
+      const model = createSAPAIProvider(settings({ deploymentId: undefined }))("gpt-6.1-sol");
+      const resultPart = {
+        output: { type: "content" as const, value: [{ ...item, data: "private-media-bytes" }] },
+        toolCallId: "image-call",
+        toolName: "capture",
+        type: "tool-result" as const,
+      };
+      const history: LanguageModelV3CallOptions["prompt"] = [
+        ...imageToolHistory,
+        { content: [resultPart], role },
+      ];
+      const error: unknown = await model[operation]({ prompt: history }).catch(
+        (error: unknown) => error,
+      );
+      expect(UnsupportedFunctionalityError.isInstance(error)).toBe(true);
+      expect(String(error)).not.toContain("private-media-bytes");
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      [
+        { data: "JVBERi0xLjQ=", filename: "report.pdf", mediaType: "application/pdf" },
+        { data: "UklGRg==", filename: "recording.wav", mediaType: "audio/wav" },
+      ].map((item) => ({ item, operation })),
+    ),
+  )(
+    "preserves inline $item.mediaType file bytes and filename during $operation",
+    async ({ item, operation }) => {
+      const part = {
+        toolCallId: "image-call",
+        toolName: "capture",
+        type: "tool-result" as const,
+      };
+      const model = createSAPAIProvider(settings())("gpt-6.1-sol");
+      const v3Prompt: LanguageModelV3CallOptions["prompt"] = [
+        ...imageToolHistory,
+        {
+          content: [
+            { ...part, output: { type: "content", value: [{ ...item, type: "file-data" }] } },
+          ],
+          role: "tool",
+        },
+      ];
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect((await model.doStream({ prompt: v3Prompt })).stream);
+      } else {
+        await model.doGenerate({ prompt: v3Prompt });
+      }
+      const v4Model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
+      const v4Prompt: LanguageModelV4Prompt = [
+        ...imageToolHistory,
+        {
+          content: [
+            {
+              ...part,
+              output: {
+                type: "content",
+                value: [
+                  {
+                    data: { data: item.data, type: "data" },
+                    filename: item.filename,
+                    mediaType: item.mediaType,
+                    type: "file",
+                  },
+                ],
+              },
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        for await (const part of (await v4Model.doStream({ prompt: v4Prompt })).stream) {
+          if (part.type === "error") throw part.error;
+        }
+      } else {
+        await v4Model.doGenerate({ prompt: v4Prompt });
+      }
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(request.body.input).toContainEqual({
+          call_id: "image-call",
+          output: [
+            {
+              file_data: `data:${item.mediaType};base64,${item.data}`,
+              filename: item.filename,
+              type: "input_file",
+            },
+          ],
+          type: "function_call_output",
+        });
+      }
+    },
+  );
+
   describe.each(toolImageCases)("$name tool output", ({ v3, v4, wire }) => {
     it.each([false, true])(
       "preserves image detail through V4 and V3 for streaming=%s",

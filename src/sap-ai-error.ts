@@ -269,7 +269,73 @@ export function convertSAPErrorToAPICallError(
   errorResponse: OrchestrationErrorResponse,
   context?: ErrorContext,
 ): APICallError | LoadAPIKeyError | NoSuchModelError {
-  return convertStructuredErrorToAISDKError(errorResponse, context);
+  const { code, location, message, requestId } = extractErrorFields(errorResponse);
+
+  const statusCode = getStatusCodeFromSAPError(code, context?.httpStatusCode);
+
+  const responseBody = JSON.stringify({
+    error: {
+      code,
+      location,
+      message,
+      request_id: requestId,
+    },
+  });
+
+  let enhancedMessage = message;
+
+  if (statusCode === HTTP_STATUS.UNAUTHORIZED || statusCode === HTTP_STATUS.FORBIDDEN) {
+    enhancedMessage +=
+      "\n\nAuthentication failed. Verify your AICORE_SERVICE_KEY environment variable is set correctly." +
+      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-service-key";
+    if (requestId) {
+      enhancedMessage += `\nRequest ID: ${requestId}`;
+    }
+    return new LoadAPIKeyError({
+      message: enhancedMessage,
+    });
+  }
+
+  if (statusCode === HTTP_STATUS.NOT_FOUND) {
+    enhancedMessage +=
+      "\n\nResource not found. The model or deployment may not exist in your SAP AI Core instance." +
+      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-deployment-for-orchestration";
+    if (requestId) {
+      enhancedMessage += `\nRequest ID: ${requestId}`;
+    }
+    const modelId = context?.modelId ?? extractModelIdentifier(message, location);
+    return new NoSuchModelError({
+      message: enhancedMessage,
+      modelId: modelId ?? "unknown",
+      modelType: context?.modelType ?? "languageModel",
+    });
+  }
+
+  if (statusCode === HTTP_STATUS.RATE_LIMIT) {
+    enhancedMessage +=
+      "\n\nRate limit exceeded. Please try again later or contact your SAP administrator." +
+      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/rate-limits";
+  } else if (statusCode >= HTTP_STATUS.INTERNAL_ERROR) {
+    enhancedMessage +=
+      "\n\nSAP AI Core service error. This is typically a temporary issue. Retries depend on the caller's retry configuration." +
+      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/troubleshooting";
+  } else if (location) {
+    enhancedMessage += `\n\nError location: ${location}`;
+  }
+
+  if (requestId) {
+    enhancedMessage += `\nRequest ID: ${requestId}`;
+  }
+
+  return new APICallError({
+    isRetryable: isRetryable(statusCode),
+    message: enhancedMessage,
+    requestBodyValues: context?.requestBody,
+    responseBody,
+    responseHeaders: context?.responseHeaders,
+    statusCode,
+    url: context?.url ?? "",
+  });
 }
 
 /**
@@ -323,15 +389,11 @@ export function convertToAISDKError(
       response?.data,
     );
     if (errorResponse) {
-      return convertStructuredErrorToAISDKError(
-        errorResponse,
-        {
-          ...context,
-          httpStatusCode: response?.status ?? context?.httpStatusCode,
-          responseHeaders,
-        },
-        error,
-      );
+      return convertSAPErrorToAPICallError(errorResponse, {
+        ...context,
+        httpStatusCode: response?.status ?? context?.httpStatusCode,
+        responseHeaders,
+      });
     }
   }
 
@@ -515,88 +577,6 @@ export function normalizeHeaders(headers: unknown): Record<string, string> | und
 
   if (entries.length === 0) return undefined;
   return Object.fromEntries(entries) as Record<string, string>;
-}
-
-/**
- * Converts structured diagnostics while retaining causes only on API call errors.
- * @param errorResponse - Parsed SAP error response.
- * @param context - Known invocation metadata.
- * @param originalError - Original rejection, including transport wrappers.
- * @returns The corresponding AI SDK error without attaching causes to authentication or model errors.
- */
-function convertStructuredErrorToAISDKError(
-  errorResponse: OrchestrationErrorResponse,
-  context?: ErrorContext,
-  originalError?: unknown,
-): APICallError | LoadAPIKeyError | NoSuchModelError {
-  const { code, location, message, requestId } = extractErrorFields(errorResponse);
-
-  const statusCode = getStatusCodeFromSAPError(code, context?.httpStatusCode);
-
-  const responseBody = JSON.stringify({
-    error: {
-      code,
-      location,
-      message,
-      request_id: requestId,
-    },
-  });
-
-  let enhancedMessage = message;
-
-  if (statusCode === HTTP_STATUS.UNAUTHORIZED || statusCode === HTTP_STATUS.FORBIDDEN) {
-    enhancedMessage +=
-      "\n\nAuthentication failed. Verify your AICORE_SERVICE_KEY environment variable is set correctly." +
-      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-service-key";
-    if (requestId) {
-      enhancedMessage += `\nRequest ID: ${requestId}`;
-    }
-    return new LoadAPIKeyError({
-      message: enhancedMessage,
-    });
-  }
-
-  if (statusCode === HTTP_STATUS.NOT_FOUND) {
-    enhancedMessage +=
-      "\n\nResource not found. The model or deployment may not exist in your SAP AI Core instance." +
-      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/create-deployment-for-orchestration";
-    if (requestId) {
-      enhancedMessage += `\nRequest ID: ${requestId}`;
-    }
-    const modelId = context?.modelId ?? extractModelIdentifier(message, location);
-    return new NoSuchModelError({
-      message: enhancedMessage,
-      modelId: modelId ?? "unknown",
-      modelType: context?.modelType ?? "languageModel",
-    });
-  }
-
-  if (statusCode === HTTP_STATUS.RATE_LIMIT) {
-    enhancedMessage +=
-      "\n\nRate limit exceeded. Please try again later or contact your SAP administrator." +
-      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/rate-limits";
-  } else if (statusCode >= HTTP_STATUS.INTERNAL_ERROR) {
-    enhancedMessage +=
-      "\n\nSAP AI Core service error. This is typically a temporary issue. Retries depend on the caller's retry configuration." +
-      "\nSee: https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/troubleshooting";
-  } else if (location) {
-    enhancedMessage += `\n\nError location: ${location}`;
-  }
-
-  if (requestId) {
-    enhancedMessage += `\nRequest ID: ${requestId}`;
-  }
-
-  return new APICallError({
-    cause: originalError,
-    isRetryable: isRetryable(statusCode),
-    message: enhancedMessage,
-    requestBodyValues: context?.requestBody,
-    responseBody,
-    responseHeaders: context?.responseHeaders,
-    statusCode,
-    url: context?.url ?? "",
-  });
 }
 
 /**

@@ -614,6 +614,15 @@ Assistant `file` history is rejected with `UnsupportedFunctionalityError`
 before deployment discovery or HTTP, across all entrypoints. User files and
 media nested in tool results keep their supported conversions.
 
+Inline legacy tool-result categories must agree with the current delegate's
+classification of the exact media type: `image-data` requires the literal
+top-level type `image`, while `file-data` requires a non-image type.
+Contradictions such as `file-data` with `image/png`, or `image-data` with
+`application/pdf` or `IMAGE/PNG`, throw `UnsupportedFunctionalityError` before
+deployment discovery or HTTP. The V3 adapter does not normalize or rewrite these
+media types. V4 unified file inputs and V2 media inputs use their existing
+MIME-based normalization; normalized images remain supported.
+
 V4 text citations use the same SAP namespace for their source provider metadata
 in generation results and `text-end` events. Source fields and text offsets are
 preserved; URL sources without provider metadata remain unchanged.
@@ -3108,6 +3117,12 @@ only its first entry is represented. Structured 401/403/404 errors instead
 become `LoadAPIKeyError`/`NoSuchModelError`, with any request ID in the message
 rather than a `responseBody` property. Generic Axios errors may retain a
 different response-body shape.
+
+Structured SAP conversion omits the original transport error cause, which may
+contain request credentials or prompt data. It retains status, retryability,
+normalized response details, location, request ID, response headers, and explicitly
+supplied request context where the target error type supports them. This does
+not sanitize those retained fields or change causes on nonstructured failures.
 
 ```typescript
 {

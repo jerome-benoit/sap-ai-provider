@@ -9,6 +9,7 @@ import type {
 } from "@ai-sdk/provider";
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
+import { getTopLevelMediaType } from "@ai-sdk/provider-utils";
 
 import { getURLHref } from "./convert-to-sap-messages.js";
 
@@ -100,8 +101,16 @@ function convertToolItem(item: V3ToolItem): V4ToolItem {
     case "text":
       return item;
     case "file-data":
-    case "image-data":
+    case "image-data": {
+      const delegateIsImage = getTopLevelMediaType(item.mediaType) === "image";
+      if (delegateIsImage !== (item.type === "image-data")) {
+        throw new UnsupportedFunctionalityError({
+          functionality:
+            "Responses tool-result media whose legacy category disagrees with its media type.",
+        });
+      }
       return { ...item, data: { data: item.data, type: "data" }, type: "file" };
+    }
     case "file-id":
     case "image-file-id":
       return {

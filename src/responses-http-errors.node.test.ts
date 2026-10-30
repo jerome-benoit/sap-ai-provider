@@ -10,9 +10,12 @@ import type { AddressInfo } from "node:net";
 
 import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
 import { retry } from "@sap-cloud-sdk/resilience";
+import { Console } from "node:console";
 import { createServer } from "node:http";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
+import { finished } from "node:stream/promises";
 import { setImmediate } from "node:timers/promises";
+import { inspect } from "node:util";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createSAPAIProvider } from "./sap-ai-provider.js";
@@ -81,8 +84,16 @@ describe("Responses HTTP error preservation", () => {
   let destinationUrl: string;
   let pendingResponse: ServerResponse | undefined;
   const headers: IncomingHttpHeaders[] = [];
+  const requestBodies: string[] = [];
   const server = createServer((request, response) => {
-    request.resume();
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      body += chunk;
+    });
+    request.on("end", () => {
+      requestBodies.push(body);
+    });
     headers.push(request.headers);
     response.writeHead(fixture.status, {
       "content-type": fixture.contentType,
@@ -117,6 +128,7 @@ describe("Responses HTTP error preservation", () => {
   });
   beforeEach(() => {
     headers.length = 0;
+    requestBodies.length = 0;
     pendingResponse = undefined;
   });
   afterAll(async () => {
@@ -157,6 +169,79 @@ describe("Responses HTTP error preservation", () => {
       expect(headers).toHaveLength(1);
       expect(headers[0]?.["x-custom-header"]).toBe("fixture");
       expect(headers[0]?.authorization).toBeUndefined();
+    },
+  );
+
+  it.each(
+    [400, 429].flatMap((status) =>
+      (["doGenerate", "doStream"] as const).flatMap((operation) =>
+        [false, true].map((wrapped) => ({ operation, status, wrapped })),
+      ),
+    ),
+  )(
+    "keeps structured HTTP $status credentials private during $operation, retry(0)=$wrapped",
+    async ({ operation, status, wrapped }) => {
+      const secrets = [
+        "destination-private-sentinel",
+        "authorization-private-sentinel",
+        "prompt-private-sentinel",
+      ] as const;
+      const value = {
+        error: {
+          code: status,
+          location: "fixture.safe.location",
+          message: "Safe structured failure",
+          request_id: "safe-request-id",
+        },
+      };
+      fixture = { body: JSON.stringify(value), contentType: "application/json", status };
+      const model = createSAPAIProvider({
+        api: "responses",
+        deploymentId: "privacy-fixture",
+        destination: {
+          authentication: "NoAuthentication",
+          headers: { "x-private-destination": secrets[0] },
+          url: destinationUrl,
+        },
+        requestConfig: {
+          headers: { Authorization: `Bearer ${secrets[1]}` },
+          middleware: wrapped
+            ? [retry<HttpRequestConfig, HttpResponse, HttpMiddlewareContext>(0)]
+            : [],
+          proxy: false,
+        },
+      })("gpt-6.1-sol");
+      const error: unknown = await model[operation]({
+        prompt: [{ content: [{ text: secrets[2], type: "text" }], role: "user" }],
+      }).catch((error: unknown) => error);
+      expect(APICallError.isInstance(error)).toBe(true);
+      if (!APICallError.isInstance(error)) throw new Error("Expected structured HTTP failure");
+      expect(error).toMatchObject({
+        isRetryable: status === 429,
+        responseHeaders: { "retry-after": "7", "x-request-id": "fixture-error-request" },
+        statusCode: status,
+      });
+      expect(JSON.parse(error.responseBody ?? "") as unknown).toEqual(value);
+      expect(error.message).toContain("Request ID: safe-request-id");
+      if (status === 400) expect(error.message).toContain("Error location: fixture.safe.location");
+      expect(headers).toHaveLength(1);
+      expect(headers[0]?.["x-private-destination"]).toBe(secrets[0]);
+      expect(headers[0]?.authorization).toBe(`Bearer ${secrets[1]}`);
+      expect(requestBodies).toHaveLength(1);
+      expect(requestBodies[0]).toContain(secrets[2]);
+      let logged = "";
+      const sink = new Writable({
+        write(chunk: Buffer, _encoding, callback) {
+          logged += chunk.toString("utf8");
+          callback();
+        },
+      });
+      new Console({ stderr: sink, stdout: sink }).error(error);
+      sink.end();
+      await finished(sink);
+      for (const representation of [JSON.stringify(error), inspect(error), logged]) {
+        for (const secret of secrets) expect(representation).not.toContain(secret);
+      }
     },
   );
 
@@ -204,7 +289,7 @@ describe("Responses HTTP error preservation", () => {
       (["doGenerate", "doStream"] as const).map((operation) => ({ operation, status })),
     ),
   )(
-    "retains the final retry(0) HTTP $status body and wrapper during $operation",
+    "retains the final retry(0) HTTP $status diagnostics during $operation",
     async ({ operation, status }) => {
       const value = { error: { code: status, message: "Fixture wrapped quota failure" } };
       fixture = {
@@ -245,9 +330,11 @@ describe("Responses HTTP error preservation", () => {
         statusCode: status,
       });
       expect(wrappers).toHaveLength(1);
-      expect(error.cause).toBe(wrappers[0]);
       if (status === 429) expect(JSON.parse(error.responseBody ?? "") as unknown).toEqual(value);
-      else expect(error.responseBody).toBe(fixture.body);
+      else {
+        expect(error.responseBody).toBe(fixture.body);
+        expect(error.cause).toBe(wrappers[0]);
+      }
       expect(headers).toHaveLength(1);
     },
   );
@@ -522,22 +609,12 @@ describe("Responses HTTP error preservation", () => {
       };
       const readable = fixtureSignal();
       const bodyFailures: unknown[] = [];
-      let wrapper: unknown;
       const model = createSAPAIProvider({
         api: "responses",
         deploymentId: "reset-error-fixture",
         destination: { authentication: "NoAuthentication", url: destinationUrl },
         requestConfig: {
           middleware: [
-            ({ fn }) =>
-              async (request) => {
-                try {
-                  return await fn(request);
-                } catch (error) {
-                  wrapper = error;
-                  throw error;
-                }
-              },
             ...(wrapped ? [retry<HttpRequestConfig, HttpResponse, HttpMiddlewareContext>(0)] : []),
             observeErrorBody(readable.resolve, (error) => bodyFailures.push(error)),
           ],
@@ -560,7 +637,6 @@ describe("Responses HTTP error preservation", () => {
         statusCode: 400,
       });
       expect(JSON.parse(error.responseBody ?? "") as unknown).toEqual(value);
-      expect(error.cause).toBe(wrapper);
       expect(headers).toHaveLength(1);
     },
   );

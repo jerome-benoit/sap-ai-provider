@@ -1140,8 +1140,8 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
 - [`responses-adapters-v3-to-v4.test.ts`](./src/responses-adapters-v3-to-v4.test.ts)
   checks tagged media, canonical URLs, and provider file references.
 - [`responses-adapters-v4-to-v3.test.ts`](./src/responses-adapters-v4-to-v3.test.ts)
-  checks generated files, warning and finish-reason conversion, native tool-input
-  encoding, and rejection of unrepresentable V4 output.
+  checks generated files, warning and finish-reason conversion, and rejection of
+  unrepresentable V4 output.
 - [`responses-http-transport.node.test.ts`](./src/responses-http-transport.node.test.ts)
   checks deployment URLs, destinations, request configuration, header precedence,
   status policies, response backpressure, cancellation during pending SDK setup,
