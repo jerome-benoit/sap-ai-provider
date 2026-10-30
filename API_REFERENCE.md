@@ -571,6 +571,8 @@ streaming, and complete tool-result round trips with an optional argument.
   `requestConfig`, call-level headers, and cancellation semantics. No OpenAI API
   key is needed.
 
+**Transport and cancellation:**
+
 Cancellation promptly rejects generation or streaming setup, including while
 deployment or destination discovery is pending. SAP's discovery helpers do not
 accept an abort signal, so their underlying work can continue after the caller
@@ -602,8 +604,11 @@ Malformed JSON and invalid response schemas keep their parsing-error classificat
 An otherwise unclassified body-read failure is a non-retryable status 500 error
 that identifies the invoked generation or streaming operation.
 
-The OpenAI V4 delegate is adapted to the shared V3 core. Generated inline files
-retain their bytes or base64 data; the V4 facade restores tagged file data.
+**Compatibility across provider versions:**
+
+The `@ai-sdk/openai` 4.x delegate implements the V4 provider contract and is
+adapted to the shared V3 core. Generated inline files retain their bytes or
+base64 data; the V4 facade restores tagged file data.
 A clean EOF without a completion event reports `other` through V2/V3 and
 `interrupted` through V4. The delegate's raw reason is retained where the
 public contract supports it.
