@@ -21,12 +21,12 @@ import { z } from "zod";
 import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
-import { createResponsesTransport } from "./responses-http-transport.js";
+import { convertResponsesCallToV4 } from "./responses-adapters-v3-to-v4.js";
 import {
-  convertResponsesCallToV4,
   convertResponsesResultToV3,
   convertResponsesStreamPartToV3,
-} from "./responses-language-model-adapters.js";
+} from "./responses-adapters-v4-to-v3.js";
+import { createResponsesTransport } from "./responses-http-transport.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
 import { createAISDKRequestBodySummary } from "./strategy-utils.js";

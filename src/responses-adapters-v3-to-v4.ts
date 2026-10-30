@@ -1,25 +1,12 @@
-/** Adapts the V4 OpenAI delegate without changing the provider's shared V3 contract. */
+/** Input adapter: convert shared V3 calls to the OpenAI Responses V4 delegate contract. */
 import type {
   LanguageModelV3CallOptions,
-  LanguageModelV3Content,
-  LanguageModelV3File,
-  LanguageModelV3FinishReason,
-  LanguageModelV3GenerateResult,
   LanguageModelV3Prompt,
-  LanguageModelV3StreamPart,
   LanguageModelV3ToolResultOutput,
   LanguageModelV4CallOptions,
-  LanguageModelV4Content,
-  LanguageModelV4File,
-  LanguageModelV4GenerateResult,
   LanguageModelV4Prompt,
-  LanguageModelV4StreamPart,
   LanguageModelV4ToolResultOutput,
-  SharedV3Warning,
-  SharedV4Warning,
 } from "@ai-sdk/provider";
-
-import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 
 import { getURLHref } from "./convert-to-sap-messages.js";
 
@@ -64,61 +51,6 @@ export function convertResponsesCallToV4(
 }
 
 /**
- * Unwraps V4 generated files and maps warnings and finish reasons to V3.
- * @param result - The OpenAI V4 generation result.
- * @returns A result suitable for the shared V3 core.
- */
-export function convertResponsesResultToV3(
-  result: LanguageModelV4GenerateResult,
-): LanguageModelV3GenerateResult {
-  return {
-    ...result,
-    content: result.content.map(convertContent),
-    finishReason: convertFinishReason(result.finishReason),
-    warnings: result.warnings.map(convertWarning),
-  };
-}
-
-/**
- * Converts one delegate event inside the existing demand-driven stream wrapper.
- * @param part - The OpenAI V4 event.
- * @returns The corresponding V3 event.
- */
-export function convertResponsesStreamPartToV3(
-  part: LanguageModelV4StreamPart,
-): LanguageModelV3StreamPart {
-  switch (part.type) {
-    case "custom":
-    case "reasoning-file":
-      throw new UnsupportedFunctionalityError({
-        functionality: `Responses '${part.type}' output has no V3 equivalent.`,
-      });
-    case "file":
-      return convertGeneratedFile(part);
-    case "finish":
-      return { ...part, finishReason: convertFinishReason(part.finishReason) };
-    case "stream-start":
-      return { ...part, warnings: part.warnings.map(convertWarning) };
-    default:
-      return part;
-  }
-}
-
-/**
- * Rejects V4-only output instead of leaking invalid content through V2/V3 APIs.
- * @param part - Generated V4 content.
- * @returns Content representable by the shared V3 core.
- */
-function convertContent(part: LanguageModelV4Content): LanguageModelV3Content {
-  if (part.type === "custom" || part.type === "reasoning-file") {
-    throw new UnsupportedFunctionalityError({
-      functionality: `Responses '${part.type}' output has no V3 equivalent.`,
-    });
-  }
-  return part.type === "file" ? convertGeneratedFile(part) : part;
-}
-
-/**
  * Tags inline bytes and canonicalizes URL objects for the delegate's serializer.
  * @param part - A V3 prompt file.
  * @returns The tagged V4 file.
@@ -133,31 +65,6 @@ function convertFile(part: Extract<V3Part, { type: "file" }>): Extract<V4Part, {
   }
   // The V3 union leaves only inline data once URL internal slots have been ruled out.
   return { ...part, data: { data: data as string | Uint8Array, type: "data" } };
-}
-
-/**
- * Preserves native finish diagnostics when V3 cannot name the unified reason.
- * @param reason - The V4 finish reason.
- * @returns The corresponding V3 finish reason.
- */
-function convertFinishReason(
-  reason: LanguageModelV4GenerateResult["finishReason"],
-): LanguageModelV3FinishReason {
-  return { ...reason, unified: reason.unified === "interrupted" ? "other" : reason.unified };
-}
-
-/**
- * Unwraps generated inline data without fetching URL-backed output.
- * @param part - A generated V4 file.
- * @returns Its inline V3 equivalent.
- */
-function convertGeneratedFile(part: LanguageModelV4File): LanguageModelV3File {
-  if (part.data.type !== "data") {
-    throw new UnsupportedFunctionalityError({
-      functionality: "Responses generated file URLs have no V3 equivalent and are not fetched.",
-    });
-  }
-  return { ...part, data: part.data.data };
 }
 
 /**
@@ -222,15 +129,4 @@ function convertToolResult(
   return part.output.type === "content"
     ? { ...part, output: { ...part.output, value: part.output.value.map(convertToolItem) } }
     : { ...part, output: part.output };
-}
-
-/**
- * Retains deprecation diagnostics in the V3 warning union.
- * @param warning - A delegate warning.
- * @returns A V3-compatible warning.
- */
-function convertWarning(warning: SharedV4Warning): SharedV3Warning {
-  return warning.type === "deprecated"
-    ? { message: `${warning.setting}: ${warning.message}`, type: "other" }
-    : warning;
 }
