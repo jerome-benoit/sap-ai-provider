@@ -5,6 +5,8 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolResultOutput,
   LanguageModelV4Prompt,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Text,
   LanguageModelV4ToolResultOutput,
 } from "@ai-sdk/provider";
 import type {
@@ -828,6 +830,126 @@ describe("Responses over SAP AI Core HTTP", () => {
     expect(requests[1]?.body).toMatchObject({ store: false });
     expect(requests[1]?.body).not.toHaveProperty("previous_response_id");
   });
+
+  it.each([
+    { name: undefined, namespace: "sap-ai", streaming: false },
+    { name: undefined, namespace: "sap-ai", streaming: true },
+    { name: "sap-custom", namespace: "sap-custom", streaming: false },
+    { name: "sap-custom", namespace: "sap-custom", streaming: true },
+  ])(
+    "namespaces citation sources for $namespace with streaming=$streaming",
+    async ({ name, namespace, streaming }) => {
+      const annotations = [
+        { file_id: "file-cited", filename: "source.txt", index: 0, type: "file_citation" },
+        {
+          container_id: "container-1",
+          end_index: 5,
+          file_id: "file-generated",
+          filename: "artifact.txt",
+          start_index: 0,
+          type: "container_file_citation",
+        },
+        {
+          end_index: 14,
+          start_index: 6,
+          title: "Web source",
+          type: "url_citation",
+          url: "https://example.com/source",
+        },
+      ];
+      const annotatedMessage = {
+        ...message,
+        content: [{ ...message.content[0], annotations }],
+      };
+      const annotatedReply = { ...reply, output: [annotatedMessage] };
+      replies.push((response) => {
+        if (!streaming) {
+          json(response, annotatedReply);
+          return;
+        }
+        return events(response, [
+          { response: annotatedReply, type: "response.created" },
+          {
+            item: { id: message.id, type: "message" },
+            output_index: 0,
+            type: "response.output_item.added",
+          },
+          { delta: "Grüße from SAP", item_id: message.id, type: "response.output_text.delta" },
+          ...annotations.map((annotation) => ({
+            annotation,
+            item_id: message.id,
+            type: "response.output_text.annotation.added",
+          })),
+          { item: annotatedMessage, output_index: 0, type: "response.output_item.done" },
+          { response: annotatedReply, type: "response.completed" },
+        ]);
+      });
+      const model = createSAPAIProviderV4(settings({ name }))("gpt-6.1-sol");
+      const invocation = {
+        prompt: [
+          { content: [{ text: "Inspect the citations", type: "text" }], role: "user" },
+        ] satisfies LanguageModelV4Prompt,
+      };
+      let text:
+        Extract<LanguageModelV4StreamPart, { type: "text-end" }> | LanguageModelV4Text | undefined;
+      if (streaming) {
+        for await (const part of (await model.doStream(invocation)).stream) {
+          if (part.type === "error") throw part.error;
+          if (part.type === "text-end") text = part;
+        }
+      } else {
+        text = (await model.doGenerate(invocation)).content.find((part) => part.type === "text");
+      }
+
+      expect(text?.providerMetadata).toMatchObject({ [namespace]: { itemId: message.id } });
+      expect(text?.providerMetadata).not.toHaveProperty("openai");
+      expect(text?.citations).toEqual([
+        {
+          source: {
+            filename: "source.txt",
+            id: "file-cited",
+            mediaType: "text/plain",
+            providerMetadata: {
+              [namespace]: { fileId: "file-cited", index: 0, type: "file_citation" },
+            },
+            sourceType: "document",
+            title: "source.txt",
+            type: "source",
+          },
+        },
+        {
+          endIndex: 5,
+          source: {
+            filename: "artifact.txt",
+            id: "file-generated",
+            mediaType: "text/plain",
+            providerMetadata: {
+              [namespace]: {
+                containerId: "container-1",
+                fileId: "file-generated",
+                type: "container_file_citation",
+              },
+            },
+            sourceType: "document",
+            title: "artifact.txt",
+            type: "source",
+          },
+          startIndex: 0,
+        },
+        {
+          endIndex: 14,
+          source: {
+            id: "https://example.com/source",
+            sourceType: "url",
+            title: "Web source",
+            type: "source",
+            url: "https://example.com/source",
+          },
+          startIndex: 6,
+        },
+      ]);
+    },
+  );
 
   it("streams text, split function arguments, reasoning history, and cached usage", async () => {
     replies.push((response) => events(response, streamEvents(true)));

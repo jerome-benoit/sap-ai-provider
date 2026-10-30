@@ -601,6 +601,10 @@ Generated file URLs, reasoning files, and custom output blocks such as
 compaction have no V3 equivalent and are rejected explicitly; they are not
 fetched or silently omitted.
 
+V4 text citations use the same SAP namespace for their source provider metadata
+in generation results and `text-end` events. Source fields and text offsets are
+preserved; URL sources without provider metadata remain unchanged.
+
 **Tool and reasoning history:**
 
 `store` defaults to `false`. The OpenAI delegate requests encrypted reasoning

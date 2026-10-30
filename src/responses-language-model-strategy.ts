@@ -8,6 +8,7 @@ import type {
   LanguageModelV3ToolResultOutput,
   LanguageModelV4,
   LanguageModelV4CallOptions,
+  LanguageModelV4Citation,
   SharedV3ProviderMetadata,
   SharedV3ProviderOptions,
   SharedV3Warning,
@@ -69,10 +70,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
       const result = convertResponsesResultToV3(await model.doGenerate(input));
       return {
         ...result,
-        content: result.content.map((part) => ({
-          ...part,
-          providerMetadata: fromOpenAI(part.providerMetadata, providerName),
-        })),
+        content: result.content.map((part) => fromOpenAIContent(part, providerName)),
         providerMetadata: responseMetadata(result.providerMetadata, providerName),
         warnings: [...warnings, ...result.warnings],
       };
@@ -134,11 +132,8 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                     ...part,
                     error: convertError(part.error, config, options, "doStream"),
                   });
-                } else if ("providerMetadata" in part) {
-                  controller.enqueue({
-                    ...part,
-                    providerMetadata: fromOpenAI(part.providerMetadata, providerName),
-                  });
+                } else if ("providerMetadata" in part || part.type === "text-end") {
+                  controller.enqueue(fromOpenAIContent(part, providerName));
                 } else {
                   controller.enqueue(part);
                 }
@@ -226,6 +221,54 @@ function fromOpenAI(
   if (providerName === "openai" || !metadata?.openai) return metadata;
   const { openai, ...rest } = metadata;
   return { ...rest, [providerName]: { ...rest[providerName], ...openai } };
+}
+
+/**
+ * Remaps only citation source metadata, retaining untouched sources and positions.
+ * @param citations - V4 citations preserved through the shared V3 core.
+ * @param providerName - Resolved SAP provider namespace.
+ * @returns The original array unless a source namespace changes.
+ */
+function fromOpenAICitations(
+  citations: LanguageModelV4Citation[] | undefined,
+  providerName: string,
+): LanguageModelV4Citation[] | undefined {
+  if (providerName === "openai" || !citations) return citations;
+  let mapped: LanguageModelV4Citation[] | undefined;
+  let index = 0;
+  for (const citation of citations) {
+    const providerMetadata = fromOpenAI(citation.source.providerMetadata, providerName);
+    if (providerMetadata !== citation.source.providerMetadata) {
+      mapped ??= citations.slice();
+      mapped[index] = {
+        ...citation,
+        source: { ...citation.source, providerMetadata },
+      };
+    }
+    index++;
+  }
+  return mapped ?? citations;
+}
+
+/**
+ * Applies the same namespace policy to direct metadata and nested citation sources.
+ * @param part - Content or a text-end event, including preserved V4 citation fields.
+ * @param providerName - Resolved SAP provider namespace.
+ * @returns The original part when no metadata changes, otherwise an immutable copy.
+ */
+function fromOpenAIContent<
+  T extends {
+    citations?: LanguageModelV4Citation[];
+    providerMetadata?: SharedV3ProviderMetadata;
+  },
+>(part: T, providerName: string): T {
+  const providerMetadata = fromOpenAI(part.providerMetadata, providerName);
+  const citations = fromOpenAICitations(part.citations, providerName);
+  if (providerMetadata === part.providerMetadata && citations === part.citations) return part;
+  if (providerMetadata === part.providerMetadata) return { ...part, citations };
+  return citations === part.citations
+    ? { ...part, providerMetadata }
+    : { ...part, citations, providerMetadata };
 }
 
 /**
