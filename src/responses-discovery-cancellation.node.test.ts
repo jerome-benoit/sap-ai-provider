@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 
 import { createServer } from "node:http";
 import { setImmediate } from "node:timers/promises";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createSAPAIProvider } from "./sap-ai-provider.js";
 
@@ -19,9 +19,14 @@ describe("Responses deployment discovery cancellation", () => {
     async (operation) => {
       let response: ServerResponse | undefined;
       const requests: string[] = [];
+      let requestReceived!: () => void;
+      const received = new Promise<void>((resolve) => {
+        requestReceived = resolve;
+      });
       const server = createServer((request, incomingResponse) => {
         requests.push(request.url ?? "");
         response = incomingResponse;
+        requestReceived();
       });
       await new Promise<void>((resolve, reject) => {
         server.once("error", reject);
@@ -43,9 +48,8 @@ describe("Responses deployment discovery cancellation", () => {
         (error: unknown) => failures.push(error),
       );
       try {
-        await vi.waitFor(() => {
-          expect(requests).toHaveLength(1);
-        });
+        await Promise.race([received, invocation]);
+        expect(requests).toHaveLength(1);
         const discoveryUrl = new URL(requests[0] ?? "", "http://fixture.test");
         expect(discoveryUrl.pathname).toBe("/v2/lm/deployments");
         expect(discoveryUrl.searchParams.get("scenarioId")).toBe("foundation-models");

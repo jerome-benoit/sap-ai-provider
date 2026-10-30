@@ -1,12 +1,13 @@
 /** OpenAI Responses through SAP AI Core's authenticated HTTP transport. */
 import type {
-  LanguageModelV3,
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
   LanguageModelV3Prompt,
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
   LanguageModelV3ToolResultOutput,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
   SharedV3ProviderMetadata,
   SharedV3ProviderOptions,
   SharedV3Warning,
@@ -20,6 +21,11 @@ import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
 import { createResponsesTransport } from "./responses-http-transport.js";
+import {
+  convertResponsesCallToV4,
+  convertResponsesResultToV3,
+  convertResponsesStreamPartToV3,
+} from "./responses-language-model-adapters.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
 import { createAISDKRequestBodySummary } from "./strategy-utils.js";
@@ -60,7 +66,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
         settings,
         options,
       );
-      const result = await model.doGenerate(input);
+      const result = convertResponsesResultToV3(await model.doGenerate(input));
       return {
         ...result,
         content: result.content.map((part) => ({
@@ -115,7 +121,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                   controller.close();
                   return;
                 }
-                const part = next.value;
+                const part = convertResponsesStreamPartToV3(next.value);
                 if (part.type === "stream-start") {
                   controller.enqueue({ ...part, warnings: [...warnings, ...part.warnings] });
                 } else if (part.type === "finish") {
@@ -255,8 +261,8 @@ async function prepareModel(
   settings: SAPAISettings,
   options: LanguageModelV3CallOptions,
 ): Promise<{
-  input: LanguageModelV3CallOptions;
-  model: LanguageModelV3;
+  input: LanguageModelV4CallOptions;
+  model: LanguageModelV4;
   providerName: string;
   warnings: SharedV3Warning[];
 }> {
@@ -325,7 +331,7 @@ async function prepareModel(
     baseURL: transport.baseURL,
     fetch: transport.fetch,
   }).responses(config.modelId);
-  return { input, model, providerName, warnings };
+  return { input: convertResponsesCallToV4(input), model, providerName, warnings };
 }
 
 /**

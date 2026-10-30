@@ -594,6 +594,13 @@ Native transient connection errors, including `ECONNRESET` after successful
 headers, become retryable status 503 errors with the original error as `cause`.
 Malformed JSON and invalid response schemas keep their parsing-error classification.
 
+The OpenAI V4 delegate is adapted to the shared V3 core. Generated inline files
+retain their bytes or base64 data; the V4 facade restores tagged file data.
+The V4 `interrupted` finish reason maps to V3 `other`, preserving the raw reason.
+Generated file URLs, reasoning files, and custom output blocks such as
+compaction have no V3 equivalent and are rejected explicitly; they are not
+fetched or silently omitted.
+
 **Tool and reasoning history:**
 
 `store` defaults to `false`. The OpenAI delegate requests encrypted reasoning
@@ -3971,7 +3978,7 @@ For the current package version, see [package.json](./package.json).
   repository uses AI SDK 7 as a development dependency.
 - **SAP AI SDK:** `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`,
   and the shared SAP deployment and HTTP clients
-- **Responses conversion:** `@ai-sdk/openai` 3.x (shared V3 core)
+- **Responses conversion:** `@ai-sdk/openai` 4.x (V4 delegate adapted to the shared V3 core)
 - **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

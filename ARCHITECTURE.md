@@ -1106,6 +1106,12 @@ fetch interface, preserving SAP authentication, deployment discovery and model
 version selection, custom destinations, request configuration, and cancellation.
 There is no second credential store or OpenAI API key.
 
+The shared strategy contract remains V3. `responses-language-model-adapters.ts`
+tags V3 prompt files and tool-result media for the OpenAI 4 V4 delegate, then
+converts results and stream events back to V3. File bytes are not copied, and
+stream conversion runs inside the existing demand-driven reader. V4-only
+outputs without a V3 equivalent are rejected explicitly rather than dropped.
+
 The strategy translates metadata between the configured SAP namespace and the
 OpenAI delegate on every message and content part. This preserves response item
 IDs and encrypted reasoning across stateless tool conversations. It does not
@@ -1125,6 +1131,9 @@ compatibility with later SDK versions.
 
 When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
 
+- [`responses-language-model-adapters.test.ts`](./src/responses-language-model-adapters.test.ts)
+  checks tagged media, provider file references, generated files, warning and
+  finish-reason conversion, and rejection of unrepresentable V4 output.
 - [`responses-http-transport.node.test.ts`](./src/responses-http-transport.node.test.ts)
   checks deployment URLs, destinations, request configuration, header precedence,
   status policies, response backpressure, cancellation during pending SDK setup,
