@@ -124,9 +124,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.131",
+    "@ai-sdk/openai": "^3.0.132",
     "@ai-sdk/provider": "^4.0.34",
-    "@ai-sdk/provider-utils": "^5.0.68",
+    "@ai-sdk/provider-utils": "^5.0.69",
     "@sap-ai-sdk/ai-api": "^2.17.0",
     "@sap-ai-sdk/core": "^2.17.0",
     "@sap-ai-sdk/foundation-models": "^2.17.0",
@@ -141,7 +141,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "26.6.5",
     "@vitest/coverage-v8": "5.0.5",
-    "ai": "7.0.153",
+    "ai": "7.0.154",
     "dotenv": "18.0.9",
     "eslint": "10.13.0",
     "eslint-plugin-jsdoc": "65.4.2",
@@ -157,7 +157,7 @@
     "tsup": "9.0.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.0",
+    "typescript-eslint": "8.72.1",
     "vitest": "5.0.5"
   },
   "overrides": {
