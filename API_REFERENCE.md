@@ -2975,6 +2975,10 @@ only legacy text forwarding when native metadata is absent; it neither enables
 reasoning output nor duplicates native history. Foundation Models Chat
 Completions does not receive these native Orchestration fields.
 
+Invalid native reasoning in a streaming response emits a normalized AI SDK
+`error` event and terminates the provider stream without completing pending
+reasoning blocks. AI SDK 7 can then apply `onError` and configured stream retries.
+
 **Provider-specific diagnostics:** Orchestration preserves the native choice's
 `provider_specific_fields` as JSON-safe `providerSpecificFields` metadata.
 `finishReason.unified` always follows SAP's harmonized reason; `raw` uses the last

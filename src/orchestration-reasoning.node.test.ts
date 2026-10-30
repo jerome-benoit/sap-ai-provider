@@ -4,7 +4,7 @@ import type { LanguageModelV2StreamPart, SharedV2ProviderOptions } from "@ai-sdk
 import type { ReasoningBlock } from "@sap-ai-sdk/orchestration";
 import type { AddressInfo } from "node:net";
 
-import { InvalidPromptError } from "@ai-sdk/provider";
+import { APICallError, InvalidPromptError } from "@ai-sdk/provider";
 import { generateText, streamText } from "ai";
 import { createServer } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -35,6 +35,26 @@ const originalBlocks: ReasoningBlock[] = [
   { signature: "opaque-only" },
   {},
 ];
+const malformedReasoningChunk = {
+  choices: [
+    {
+      delta: {
+        content: "must not reach the consumer",
+        reasoning_content: [{ content: "partial", signature: "uncommitted" }, { signature: 42 }],
+        tool_calls: [
+          {
+            function: { arguments: "{}", name: "must_not_run" },
+            id: "ignored-call",
+            index: 0,
+            type: "function",
+          },
+        ],
+      },
+      finish_reason: "tool_calls",
+      index: 0,
+    },
+  ],
+};
 const usage = {
   completion_tokens: 20,
   completion_tokens_details: { reasoning_tokens: 5 },
@@ -355,9 +375,80 @@ describe("AI SDK consumer history", () => {
     });
     expect(assistant(bodies.at(-1))?.reasoning_content).toEqual(expectedBlocks);
   });
+
+  it.each(["automatic", "callback"] as const)(
+    "recovers native validation errors through %s stream retry without committing failed history",
+    async (retry) => {
+      chunks = [malformedReasoningChunk];
+      idle = true;
+      const reportedErrors: unknown[] = [];
+      const model = createSAPAIProviderV4(configuration())("audit-model");
+      const result = streamText({
+        maxRetries: 0,
+        model,
+        onError: ({ error }) => {
+          reportedErrors.push(error);
+          chunks = undefined;
+          idle = false;
+          if (retry === "callback") return { retry: true };
+        },
+        prompt: "Hello",
+        streamRetries: retry === "automatic" ? 1 : 0,
+      });
+      for await (const part of result.stream) {
+        if (part.type === "error") throw part.error;
+        if (part.type === "tool-call") throw new Error("Malformed chunk emitted a tool call");
+      }
+      expect(reportedErrors).toHaveLength(1);
+      expect(APICallError.isInstance(reportedErrors[0])).toBe(true);
+      expect(bodies).toHaveLength(2);
+      expect(await result.text).toBe("ok");
+      const completed = await result.finalStep;
+      expect(
+        completed.reasoning.map((part) => part.providerOptions?.["sap-ai"]?.reasoningContent),
+      ).toEqual(originalBlocks);
+      expect(completed.providerMetadata?.["sap-ai"]?.providerSpecificFields).toEqual(
+        providerFields,
+      );
+      await generateText({ maxRetries: 0, messages: await result.responseMessages, model });
+      expect(assistant(bodies.at(-1))).toEqual({
+        content: "ok",
+        reasoning_content: originalBlocks,
+        role: "assistant",
+      });
+    },
+  );
 });
 
 describe("native metadata boundaries", () => {
+  it("normalizes malformed output and cancels upstream before processing trailing text or tools", async () => {
+    chunks = [malformedReasoningChunk];
+    idle = true;
+    const closed = new Promise<void>((resolve) => {
+      onClosed = resolve;
+    });
+    const result = await createSAPAIProvider(configuration())("audit-model").doStream({ prompt });
+    const parts: LanguageModelV3StreamPart[] = [];
+    for await (const part of result.stream) parts.push(part);
+    expect(parts.filter((part) => part.type === "reasoning-delta")).toMatchObject([
+      { delta: "partial" },
+    ]);
+    const errors = parts.filter((part) => part.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(APICallError.isInstance(errors[0]?.error)).toBe(true);
+    expect(parts.at(-1)?.type).toBe("error");
+    expect(
+      parts.filter(
+        (part) =>
+          part.type === "reasoning-end" ||
+          part.type === "finish" ||
+          part.type.startsWith("text-") ||
+          part.type.startsWith("tool-"),
+      ),
+    ).toEqual([]);
+    await closed;
+  });
+
   it.each([null, [], "invalid", 42])(
     "ignores invalid optional provider field containers: %j",
     async (invalid) => {

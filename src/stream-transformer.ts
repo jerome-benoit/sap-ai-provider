@@ -212,15 +212,21 @@ export function createStreamTransformer(
    * Retains SAP's positional reasoning blocks until EOF, including late signature updates.
    * @param incoming - Native deltas for each block position.
    * @param controller - Output event controller.
+   * @returns False after emitting a terminal validation error; true otherwise.
    */
   function collectReasoningBlocks(
     incoming: ReasoningBlock[] | undefined,
     controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-  ): void {
-    if (!incoming?.length) return;
+  ): boolean {
+    if (!incoming?.length) return true;
     reasoningBlocks ??= [];
     for (const [index, value] of incoming.entries()) {
-      const block = orchestrationReasoningBlockSchema.parse(value);
+      const parsed = orchestrationReasoningBlockSchema.safeParse(value);
+      if (!parsed.success) {
+        handleStreamError(parsed.error, controller, convertToAISDKError, options, modelId, url);
+        return false;
+      }
+      const block = parsed.data;
       let state = reasoningBlocks[index];
       if (state) {
         state.block.content = (state.block.content ?? "") + (block.content ?? "");
@@ -234,6 +240,7 @@ export function createStreamTransformer(
         controller.enqueue({ delta: block.content, id: state.id, type: "reasoning-delta" });
       }
     }
+    return true;
   }
 
   /**
@@ -456,7 +463,7 @@ export function createStreamTransformer(
           providerFinishReason =
             getProviderFinishReason(incomingProviderFields) ?? providerFinishReason;
         }
-        collectReasoningBlocks(extractReasoningBlocks?.(chunk), controller);
+        if (!collectReasoningBlocks(extractReasoningBlocks?.(chunk), controller)) return;
 
         if (streamState.isFirstChunk || metadataChanged) {
           streamState.isFirstChunk = false;
