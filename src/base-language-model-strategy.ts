@@ -7,7 +7,7 @@ import type {
   SharedV3Warning,
 } from "@ai-sdk/provider";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
-import type { ChatMessage } from "@sap-ai-sdk/orchestration";
+import type { ChatMessage, ReasoningBlock } from "@sap-ai-sdk/orchestration";
 
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
@@ -59,6 +59,8 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  */
 export interface StreamCallResponse {
   readonly cancel: () => void;
+  readonly extractProviderSpecificFields?: (chunk: SDKStreamChunk) => unknown;
+  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => ReasoningBlock[] | undefined;
   readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
@@ -171,6 +173,8 @@ export abstract class BaseLanguageModelStrategy<
         cancel: streamResponse.cancel,
         convertToAISDKError,
         extractChunkMetadata: (chunk) => this.extractMetadata(chunk),
+        extractProviderSpecificFields: streamResponse.extractProviderSpecificFields,
+        extractReasoningBlocks: streamResponse.extractReasoningBlocks,
         idGenerator,
         includeRawChunks: options.includeRawChunks ?? false,
         modelId: config.modelId,
@@ -240,6 +244,7 @@ export abstract class BaseLanguageModelStrategy<
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
+      nativeReasoningProviderName: this.getNativeReasoningProviderName(providerName),
       parsePartProviderOptions: this.getPartProviderOptionsParser(),
       warnings,
     });
@@ -400,6 +405,16 @@ export abstract class BaseLanguageModelStrategy<
       ("includeReasoning" in settings ? settings.includeReasoning : false) ??
       false
     );
+  }
+
+  /**
+   * Enables native reasoning history only for strategies supporting the Orchestration wire format.
+   * @param _providerName - Configured provider namespace.
+   * @returns The native reasoning namespace, or undefined for legacy text-only history.
+   * @internal
+   */
+  protected getNativeReasoningProviderName(_providerName: string): string | undefined {
+    return undefined;
   }
 
   /**

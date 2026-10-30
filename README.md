@@ -64,8 +64,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
   handling
 - 🎯 **Tool Calling Support** - Function calling across supported APIs;
   [native-tool support depends on the API and facade](./API_REFERENCE.md#tool-definition-format)
-- 🧠 **Reasoning History** - Chat Completions omits reasoning text by default;
-  Responses preserves native reasoning metadata for tool conversations
+- 🧠 **Native Reasoning** - Orchestration and Responses preserve model reasoning
+  and native history, including signed and opaque blocks
 - 🖼️ **Multi-modal Input** - Support for text and image inputs
 - 📡 **Streaming Support** - Real-time text generation with structured V3 blocks
 - 🔒 **Data Masking** - Built-in SAP DPI integration for privacy
@@ -352,9 +352,9 @@ console.log(result.text);
 **Complete example:**
 [examples/example-simple-chat-completion.ts](./examples/example-simple-chat-completion.ts)
 
-> **Note:** Assistant `reasoning` parts are dropped by default. Set
-> `includeReasoning: true` on the model settings if you explicitly want to
-> forward them.
+> **Note:** Keep returned reasoning parts and their provider metadata intact to
+> preserve native Orchestration history. `includeReasoning` only controls forwarding
+> manually supplied reasoning as text; it does not enable model reasoning.
 
 ```typescript
 const result = await generateText({
@@ -425,8 +425,7 @@ import { generateText } from "ai";
 const provider = createSAPAIProvider();
 
 const model = provider("gpt-4.1", {
-  // Optional: include assistant reasoning parts (chain-of-thought).
-  // Best practice is to keep this disabled.
+  // Only forward manually supplied reasoning as text when explicitly needed.
   includeReasoning: false,
   modelParams: {
     temperature: 0.3,
@@ -706,8 +705,10 @@ authentication, model parameters, data masking, content filtering, and more.
   `AI-Object-Store-Secret-Name` (feedback service). See
   [API Reference](./API_REFERENCE.md#sapaiprovidersettings) for portability caveats.
 - `modelParams`: Temperature, maxTokens, topP, and other generation parameters
+- `dropUnsupportedParams`: Orchestration-only control for unsupported parameters
+  on the primary local model; see the [API reference](./API_REFERENCE.md#orchestrationmodelsettings).
 - `masking`: SAP Data Privacy Integration (DPI) configuration
-- `filtering`: Content safety filters (Azure Content Safety, Llama Guard)
+- `filtering`: Content safety filters (Azure Content Safety, Llama Guard, IBM Granite Guardian)
 
 For complete configuration reference including all available options, types, and
 examples, see

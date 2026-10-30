@@ -635,14 +635,67 @@ describe("Orchestration serialized HTTP configuration", () => {
       expect(body.placeholder_values).toEqual({ kept: "settings", replaced: "provider" });
     });
 
+    it.each([
+      { callValue: undefined, expected: true, modelValue: undefined, providerValue: true },
+      { callValue: undefined, expected: false, modelValue: false, providerValue: true },
+      { callValue: false, expected: false, modelValue: true, providerValue: false },
+      { callValue: true, expected: true, modelValue: undefined, providerValue: false },
+    ])(
+      "resolves unsupported parameter handling: $providerValue/$modelValue/$callValue",
+      async ({ callValue, expected, modelValue, providerValue }) => {
+        const local = createSAPAIProviderV4({
+          defaultSettings: { dropUnsupportedParams: providerValue },
+          deploymentId: "http-deployment",
+          destination: {
+            authentication: "NoAuthentication",
+            url: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
+          },
+        });
+        const model = local("gpt-6.1-sol", {
+          ...(modelValue !== undefined && { dropUnsupportedParams: modelValue }),
+        });
+        const options = {
+          prompt,
+          ...(callValue !== undefined && {
+            providerOptions: { "sap-ai": { dropUnsupportedParams: callValue } },
+          }),
+        };
+        if (streaming) {
+          for await (const part of (await model.doStream(options)).stream) {
+            if (part.type === "error") throw part.error;
+          }
+        } else {
+          await model.doGenerate(options);
+        }
+        const body = bodies.at(-1);
+        if (!body) throw new Error("Expected an HTTP request");
+        expect(primary(body).prompt_templating.model).toMatchObject({
+          drop_unsupported_params: expected,
+        });
+        expect(primary(body).prompt_templating.model.params).not.toHaveProperty(
+          "drop_unsupported_params",
+        );
+      },
+    );
+
+    it("leaves the service default unspecified when no parameter-handling policy is configured", async () => {
+      const { body } = await call(streaming);
+      expect(primary(body).prompt_templating.model).not.toHaveProperty("drop_unsupported_params");
+    });
+
     it("preserves independent fallback model configuration", async () => {
       const { body } = await call(
         streaming,
         {
+          dropUnsupportedParams: false,
           fallbackModuleConfigs: [
             {
               promptTemplating: {
-                model: { name: "gpt-4o", params: { temperature: 0.1 } },
+                model: {
+                  drop_unsupported_params: true,
+                  name: "gpt-4o",
+                  params: { temperature: 0.1 },
+                },
                 prompt: { template: [] },
               },
             },
@@ -653,10 +706,22 @@ describe("Orchestration serialized HTTP configuration", () => {
       expect(body.config?.modules).toMatchObject([
         {
           prompt_templating: {
-            model: { name: "gpt-4.1", params: { reasoning_effort: "high", temperature: 0.9 } },
+            model: {
+              drop_unsupported_params: false,
+              name: "gpt-4.1",
+              params: { reasoning_effort: "high", temperature: 0.9 },
+            },
           },
         },
-        { prompt_templating: { model: { name: "gpt-4o", params: { temperature: 0.1 } } } },
+        {
+          prompt_templating: {
+            model: {
+              drop_unsupported_params: true,
+              name: "gpt-4o",
+              params: { temperature: 0.1 },
+            },
+          },
+        },
       ]);
       if (!Array.isArray(body.config?.modules)) throw new Error("Expected fallback modules");
       expect(body.config.modules[1]?.prompt_templating.model.params).not.toHaveProperty(
@@ -675,10 +740,15 @@ describe("Orchestration serialized HTTP configuration", () => {
         {
           providerOptions: {
             "sap-ai": {
+              dropUnsupportedParams: false,
               orchestrationConfigRef: {
                 id: "provider-config",
                 overrideConfig: {
-                  modules: { prompt_templating: { model: { name: "server-model" } } },
+                  modules: {
+                    prompt_templating: {
+                      model: { drop_unsupported_params: true, name: "server-model" },
+                    },
+                  },
                 },
               },
             },
@@ -689,7 +759,7 @@ describe("Orchestration serialized HTTP configuration", () => {
       );
       expect(body.config_ref).toEqual({ id: "provider-config" });
       expect(body.config?.modules).toEqual({
-        prompt_templating: { model: { name: "server-model" } },
+        prompt_templating: { model: { drop_unsupported_params: true, name: "server-model" } },
       });
       expect(body.messages_history).toEqual([{ content: "Hello", role: "user" }]);
       const ignored = warnings
@@ -698,6 +768,7 @@ describe("Orchestration serialized HTTP configuration", () => {
         .join(" ");
       expect(ignored).toContain("options.reasoning");
       expect(ignored).toContain("options.temperature");
+      expect(ignored).toContain("providerOptions.dropUnsupportedParams");
     });
 
     it("does not warn about provider-default under a referenced config", async () => {

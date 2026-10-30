@@ -1,6 +1,7 @@
 import type {
   AssistantChatMessage,
   ChatMessage,
+  ReasoningBlock,
   SystemChatMessage,
   ToolChatMessage,
   UserChatMessage,
@@ -15,6 +16,8 @@ import {
 } from "@ai-sdk/provider";
 
 import type { CacheControl, ParsePartProviderOptions } from "./sap-ai-provider-options.js";
+
+import { orchestrationReasoningBlockSchema } from "./sap-ai-provider-options.js";
 
 /**
  * Options for converting Vercel AI SDK prompts to SAP AI SDK messages.
@@ -32,6 +35,8 @@ export interface ConvertToSAPMessagesOptions {
    * @default false
    */
   readonly includeReasoning?: boolean;
+  /** Configured namespace for lossless native Orchestration reasoning history. */
+  readonly nativeReasoningProviderName?: string;
   /**
    * Optional callback that reads per-part `providerOptions['sap-ai']` (e.g. Anthropic
    * `cacheControl`) and forwards the result onto the SAP message item. Strategies that
@@ -335,6 +340,7 @@ export function convertToSAPMessages(
           ? []
           : undefined;
         let anyCacheControl = false;
+        let reasoningContent: ReasoningBlock[] | undefined;
         const toolCalls: {
           function: { arguments: string; name: string };
           id: string;
@@ -351,6 +357,27 @@ export function convertToSAPMessages(
               break;
             }
             case "reasoning": {
+              const nativeNamespace = options.nativeReasoningProviderName;
+              const nativeOptions: unknown =
+                nativeNamespace === undefined ? undefined : part.providerOptions?.[nativeNamespace];
+              if (
+                nativeOptions !== null &&
+                typeof nativeOptions === "object" &&
+                !Array.isArray(nativeOptions) &&
+                Object.hasOwn(nativeOptions, "reasoningContent")
+              ) {
+                const parsed = orchestrationReasoningBlockSchema.safeParse(
+                  (nativeOptions as Record<string, unknown>).reasoningContent,
+                );
+                if (!parsed.success) {
+                  throw new InvalidPromptError({
+                    message: "Invalid native Orchestration reasoning metadata.",
+                    prompt,
+                  });
+                }
+                (reasoningContent ??= []).push(parsed.data);
+                break;
+              }
               if (includeReasoning && part.text) {
                 const reasoning = `<think>${part.text}</think>`;
                 text += reasoning;
@@ -400,7 +427,7 @@ export function convertToSAPMessages(
           }
         }
 
-        if (text || toolCalls.length > 0) {
+        if (text || toolCalls.length > 0 || reasoningContent?.length) {
           const assistantMessage: AssistantChatMessage = {
             content:
               anyCacheControl && textParts
@@ -408,6 +435,7 @@ export function convertToSAPMessages(
                 : maybeEscape(text),
             role: "assistant",
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+            ...(reasoningContent && { reasoning_content: reasoningContent }),
           };
           messages.push(assistantMessage);
         }

@@ -186,6 +186,17 @@ export function parseSAPPartProviderOptions(
   return undefined;
 }
 
+/**
+ * Native Orchestration history must preserve signed blocks without dropping unknown fields.
+ * @internal
+ */
+export const orchestrationReasoningBlockSchema = z
+  .object({
+    content: z.string().optional(),
+    signature: z.string().optional(),
+  })
+  .strict();
+
 /** @internal */
 export const promptTemplateScopeSchema = z.enum(["tenant", "resource_group"]);
 
@@ -291,11 +302,18 @@ export const responsesModelOptionsSchema = z
   })
   .catchall(z.json());
 
+/**
+ * Orchestration model-level control, distinct from parameters sent to the underlying model.
+ * @internal
+ */
+export const dropUnsupportedParamsSchema = z.boolean();
+
 /** @internal */
 export const sapAILanguageModelProviderOptions = lazySchema(() =>
   zodSchema(
     z.object({
       api: sapAIApiTypeSchema.optional(),
+      dropUnsupportedParams: dropUnsupportedParamsSchema.optional(),
       escapeTemplatePlaceholders: z.boolean().optional(),
       includeReasoning: z.boolean().optional(),
       modelParams: modelParamsSchema.optional(),

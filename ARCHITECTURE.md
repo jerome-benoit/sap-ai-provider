@@ -1044,8 +1044,8 @@ Key types for model configuration:
   "anthropic--claude-4.5-sonnet", "gemini-2.5-pro") with flexibility for custom models
 - **`SAPAISettings`**: Interface with `modelVersion`, `modelParams` (maxTokens,
   temperature, topP, etc.), `responseFormat`, `includeReasoning`, native
-  `responses` options, and
-  API-specific masking, filtering, grounding, and translation options
+  `responses` options, and API-specific `dropUnsupportedParams`, masking,
+  filtering, grounding, and translation options
 
 See `src/sap-ai-settings.ts` for complete type definitions.
 
@@ -1097,6 +1097,18 @@ message formats.
 The provider lazily selects **Orchestration**, **Foundation Models Chat
 Completions**, or **Responses**. API selection is explicit and follows provider,
 model, and invocation precedence; the default remains Orchestration.
+
+Orchestration supplies optional native-reasoning and provider-field extractors
+to the shared V3 result builder and stream transformer. One reasoning part
+represents each SAP block; complete block metadata is replayed through the prompt
+converter under the configured provider namespace. The stream transformer
+preserves positional blocks until EOF, appends content, and replaces signatures
+according to SDK semantics. Foundation Models leaves these capabilities unset.
+
+Provider-specific fields are captured from individual chunks because the SDK's
+final aggregate omits them. Unified finish reasons remain SAP-based; original
+provider reasons survive separately as raw diagnostics. Versioned facades retain
+the standard reasoning parts and their metadata without another conversion layer.
 
 Responses implements `LanguageModelAPIStrategy` directly because its request
 and event formats differ from Chat Completions. `@ai-sdk/openai` handles native

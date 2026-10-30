@@ -1548,25 +1548,26 @@ Model-specific configuration options.
 
 **Properties:**
 
-| Property                     | Type                                                                 | Default   | Description                                                                                                        |
-| ---------------------------- | -------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `api`                        | `SAPAIApiType`                                                       | Inherited | Model-level API override; see [API selection precedence](#resolveapiproviderapi-modelapi-invocationapi).           |
-| `modelVersion`               | `string`                                                             | -         | Specific model version                                                                                             |
-| `includeReasoning`           | `boolean`                                                            | `false`   | Include reasoning parts in SAP prompt conversion                                                                   |
-| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`    | Escape template delimiters to prevent conflicts                                                                    |
-| `modelParams`                | `CommonModelParams`                                                  | -         | Model generation parameters                                                                                        |
-| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -         | Data masking configuration (DPI)                                                                                   |
-| `filtering`                  | `FilteringModule`                                                    | -         | Content filtering configuration                                                                                    |
-| `grounding`                  | `GroundingModule`                                                    | -         | Document grounding configuration                                                                                   |
-| `translation`                | `TranslationModule`                                                  | -         | Translation configuration (Orchestration only)                                                                     |
-| `placeholderValues`          | `Record<string, string>`                                             | -         | Default values for template placeholders                                                                           |
-| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName`         | -         | [Stored orchestration configuration reference](#orchestration-configuration-reference-types) (Orchestration only). |
-| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -         | Reference to a Prompt Registry template                                                                            |
-| `responses`                  | `ResponsesModelOptions`                                              | -         | Native options for `api: "responses"`; see [Responses API](#responses-api).                                        |
-| `responseFormat`             | `ResponseFormat`                                                     | -         | Response format specification                                                                                      |
-| `streamOptions`              | `OrchestrationStreamOptions`                                         | -         | Stream options for post-LLM modules (Orchestration only)                                                           |
-| `tools`                      | `ChatCompletionTool[]`                                               | -         | Tool definitions in SAP AI SDK format                                                                              |
-| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -         | Ordered fallback prompt module configurations for Orchestration API                                                |
+| Property                     | Type                                                                 | Default     | Description                                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `api`                        | `SAPAIApiType`                                                       | Inherited   | Model-level API override; see [API selection precedence](#resolveapiproviderapi-modelapi-invocationapi).           |
+| `modelVersion`               | `string`                                                             | -           | Specific model version                                                                                             |
+| `dropUnsupportedParams`      | `boolean`                                                            | SAP default | Drop parameters unsupported by Responses-only models through Orchestration; primary local model only               |
+| `includeReasoning`           | `boolean`                                                            | `false`     | Forward manual reasoning as text; native Orchestration history is preserved separately                             |
+| `escapeTemplatePlaceholders` | `boolean`                                                            | `true`      | Escape template delimiters to prevent conflicts                                                                    |
+| `modelParams`                | `CommonModelParams`                                                  | -           | Model generation parameters                                                                                        |
+| `masking`                    | `MaskingModule \| { providers: MaskingModule["masking_providers"] }` | -           | Data masking configuration (DPI)                                                                                   |
+| `filtering`                  | `FilteringModule`                                                    | -           | Content filtering configuration                                                                                    |
+| `grounding`                  | `GroundingModule`                                                    | -           | Document grounding configuration                                                                                   |
+| `translation`                | `TranslationModule`                                                  | -           | Translation configuration (Orchestration only)                                                                     |
+| `placeholderValues`          | `Record<string, string>`                                             | -           | Default values for template placeholders                                                                           |
+| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName`         | -           | [Stored orchestration configuration reference](#orchestration-configuration-reference-types) (Orchestration only). |
+| `promptTemplateRef`          | `PromptTemplateRef`                                                  | -           | Reference to a Prompt Registry template                                                                            |
+| `responses`                  | `ResponsesModelOptions`                                              | -           | Native options for `api: "responses"`; see [Responses API](#responses-api).                                        |
+| `responseFormat`             | `ResponseFormat`                                                     | -           | Response format specification                                                                                      |
+| `streamOptions`              | `OrchestrationStreamOptions`                                         | -           | Stream options for post-LLM modules (Orchestration only)                                                           |
+| `tools`                      | `ChatCompletionTool[]`                                               | -           | Tool definitions in SAP AI SDK format                                                                              |
+| `fallbackModuleConfigs`      | `OrchestrationModuleConfig[]`                                        | -           | Ordered fallback prompt module configurations for Orchestration API                                                |
 
 **Example:**
 
@@ -1870,8 +1871,9 @@ For mapped generation parameters, precedence is: standard AI SDK call option
 `defaultSettings`. Use the documented camelCase parameter names for this
 precedence. Non-empty `stopSequences` overrides `modelParams.stop`. Additional
 model parameters and `placeholderValues` are deep-merged, with call values
-winning. `includeReasoning` and `escapeTemplatePlaceholders` use the call value
-when provided, otherwise the model setting. Stored orchestration configuration
+winning. `dropUnsupportedParams`, `includeReasoning`, and
+`escapeTemplatePlaceholders` use the call value when provided, otherwise the model
+setting. Stored orchestration configuration
 references are an exception: the stored configuration owns model parameters
 and modules, and ignored local options produce warnings.
 
@@ -2016,22 +2018,23 @@ Lazy AI SDK schema backed by Zod for validating language model provider options.
 
 **Validated Fields:**
 
-| Field                             | Type                                                         | Description                                                           |
-| --------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `api`                             | `SAPAIApiType`                                               | Override API selection for this call                                  |
-| `escapeTemplatePlaceholders`      | `boolean`                                                    | Escape SAP or Jinja delimiters in prompt and message text             |
-| `includeReasoning`                | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP        |
-| `orchestrationConfigRef`          | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration (Orchestration API) |
-| `placeholderValues`               | `Record<string, string>`                                     | Placeholder values sent to Orchestration API                          |
-| `promptTemplateRef`               | `PromptTemplateRef`                                          | Reference to a Prompt Registry template                               |
-| `responses`                       | `Record<string, JSONValue>`                                  | Native Responses options; only supported with `api: "responses"`      |
-| `modelParams.temperature`         | `number (0-2)`                                               | Sampling temperature                                                  |
-| `modelParams.maxTokens`           | `positive integer`                                           | Maximum tokens to generate                                            |
-| `modelParams.topP`                | `number (0-1)`                                               | Nucleus sampling parameter                                            |
-| `modelParams.frequencyPenalty`    | `number (-2 to 2)`                                           | Frequency penalty                                                     |
-| `modelParams.presencePenalty`     | `number (-2 to 2)`                                           | Presence penalty                                                      |
-| `modelParams.n`                   | `positive integer`                                           | Number of completions                                                 |
-| `modelParams.parallel_tool_calls` | `boolean`                                                    | Enable parallel tool calls                                            |
+| Field                             | Type                                                         | Description                                                                     |
+| --------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `api`                             | `SAPAIApiType`                                               | Override API selection for this call                                            |
+| `dropUnsupportedParams`           | `boolean`                                                    | Override unsupported-parameter handling for the primary Orchestration model     |
+| `escapeTemplatePlaceholders`      | `boolean`                                                    | Escape SAP or Jinja delimiters in prompt and message text                       |
+| `includeReasoning`                | `boolean`                                                    | Forward manual reasoning as text, independently of native Orchestration history |
+| `orchestrationConfigRef`          | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration (Orchestration API)           |
+| `placeholderValues`               | `Record<string, string>`                                     | Placeholder values sent to Orchestration API                                    |
+| `promptTemplateRef`               | `PromptTemplateRef`                                          | Reference to a Prompt Registry template                                         |
+| `responses`                       | `Record<string, JSONValue>`                                  | Native Responses options; only supported with `api: "responses"`                |
+| `modelParams.temperature`         | `number (0-2)`                                               | Sampling temperature                                                            |
+| `modelParams.maxTokens`           | `positive integer`                                           | Maximum tokens to generate                                                      |
+| `modelParams.topP`                | `number (0-1)`                                               | Nucleus sampling parameter                                                      |
+| `modelParams.frequencyPenalty`    | `number (-2 to 2)`                                           | Frequency penalty                                                               |
+| `modelParams.presencePenalty`     | `number (-2 to 2)`                                           | Presence penalty                                                                |
+| `modelParams.n`                   | `positive integer`                                           | Number of completions                                                           |
+| `modelParams.parallel_tool_calls` | `boolean`                                                    | Enable parallel tool calls                                                      |
 
 **Example:**
 
@@ -2108,6 +2111,7 @@ TypeScript type inferred from the language model provider-options schema.
 ```typescript
 type SAPAILanguageModelProviderOptions = {
   api?: SAPAIApiType;
+  dropUnsupportedParams?: boolean;
   escapeTemplatePlaceholders?: boolean;
   includeReasoning?: boolean;
   modelParams?: {
@@ -2129,16 +2133,17 @@ type SAPAILanguageModelProviderOptions = {
 
 **Properties:**
 
-| Property                     | Type                                                         | Description                                                    |
-| ---------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
-| `api`                        | `string`                                                     | Override API selection; see `SAPAIApiType`                     |
-| `escapeTemplatePlaceholders` | `boolean`                                                    | Escape template delimiters to prevent SAP templating conflicts |
-| `includeReasoning`           | `boolean`                                                    | Forward assistant reasoning parts from the input prompt to SAP |
-| `modelParams`                | `object`                                                     | Model generation parameters for this specific call             |
-| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration              |
-| `placeholderValues`          | `Record<string, string>`                                     | Values for template placeholders (overrides settings values)   |
-| `responses`                  | `Record<string, JSONValue>`                                  | Native Responses options; see [Responses API](#responses-api). |
-| `promptTemplateRef`          | `PromptTemplateRef`                                          | Reference to a template in SAP AI Core's Prompt Registry       |
+| Property                     | Type                                                         | Description                                                              |
+| ---------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `api`                        | `string`                                                     | Override API selection; see `SAPAIApiType`                               |
+| `dropUnsupportedParams`      | `boolean`                                                    | Primary Orchestration model policy; explicit false requests an error     |
+| `escapeTemplatePlaceholders` | `boolean`                                                    | Escape template delimiters to prevent SAP templating conflicts           |
+| `includeReasoning`           | `boolean`                                                    | Forward manual reasoning as text; native history is preserved separately |
+| `modelParams`                | `object`                                                     | Model generation parameters for this specific call                       |
+| `orchestrationConfigRef`     | `OrchestrationConfigRefById \| OrchestrationConfigRefByName` | Reference to a stored orchestration configuration                        |
+| `placeholderValues`          | `Record<string, string>`                                     | Values for template placeholders (overrides settings values)             |
+| `responses`                  | `Record<string, JSONValue>`                                  | Native Responses options; see [Responses API](#responses-api).           |
+| `promptTemplateRef`          | `PromptTemplateRef`                                          | Reference to a template in SAP AI Core's Prompt Registry                 |
 
 **Example with placeholderValues:**
 
@@ -2429,7 +2434,8 @@ block is rejected before the request is sent.
 
 **Important Behavior:** When using `orchestrationConfigRef`, local module
 settings (filtering, masking, grounding, translation, tools, promptTemplateRef,
-responseFormat, modelParams, modelVersion, fallbackModuleConfigs) and supplied
+responseFormat, modelParams, modelVersion, fallbackModuleConfigs,
+dropUnsupportedParams) and supplied
 standard generation options (such as temperature, maxOutputTokens, and V4
 reasoning) are **ignored** with a warning. Only messages and placeholder values
 are passed through to the stored configuration, alongside its explicit
@@ -2522,6 +2528,7 @@ Settings for the Orchestration API (default).
 ```typescript
 export interface OrchestrationModelSettings {
   readonly api?: "orchestration";
+  readonly dropUnsupportedParams?: boolean;
   readonly escapeTemplatePlaceholders?: boolean; // Default: true
   readonly fallbackModuleConfigs?: OrchestrationModuleConfig[];
   readonly filtering?: FilteringModule;
@@ -2542,14 +2549,29 @@ export interface OrchestrationModelSettings {
 
 **Orchestration-Only Features:**
 
-- `filtering` - Content safety filtering (Azure Content Safety, LlamaGuard)
+- `filtering` - Content safety filtering (Azure Content Safety, LlamaGuard, IBM Granite Guardian)
 - `fallbackModuleConfigs` - Ordered fallback `OrchestrationModuleConfig` entries used when local orchestration configuration is active
+- `dropUnsupportedParams` - Unsupported-parameter policy for the primary local model
 - `grounding` - Document-based RAG via SAP HANA Vector Engine
 - `masking` - Data anonymization via SAP DPI
 - `translation` - Input/output translation
 - `escapeTemplatePlaceholders` - Prevent template syntax conflicts
 - `promptTemplateRef` - Reference templates from SAP AI Core Prompt Registry
 - `orchestrationConfigRef` - Reference complete configurations from SAP AI Core. When set, local module settings and `fallbackModuleConfigs` are ignored because the stored configuration owns the module list
+
+`dropUnsupportedParams` maps to `prompt_templating.model.drop_unsupported_params`,
+not `modelParams`. It applies to models that use Responses internally through
+Orchestration, not the separate `api: "responses"` strategy. Omit it to retain
+SAP's default (`true`); set `false` to request an error for unsupported parameters
+instead of silently dropping them. Dropped parameters are reported in the
+`X-Orchestration-Dropped-Model-Params` response header. The option is rejected by
+the direct model APIs. Each fallback owns its full SDK model configuration;
+stored configurations ignore the local option with a warning and retain their
+explicit `overrideConfig`.
+
+`FilteringModule` already accepts IBM Granite Guardian 4.1 and input
+`target_selector` values (`last_messages` or `after_last_role`) from the SAP SDK.
+No provider-specific filter builder is required.
 
 `fallbackModuleConfigs` accepts full SAP AI SDK `OrchestrationModuleConfig`
 objects. The provider sends the primary module configuration first, followed by
@@ -2937,6 +2959,29 @@ or orchestration fallback. Streaming `response-metadata` events follow the same
 contract and update when a later chunk supplies or changes completion metadata;
 missing fields in later chunks do not erase earlier values.
 
+**Native Orchestration reasoning:** Each native SAP reasoning block becomes a
+Vercel `reasoning` part. Its `providerMetadata[providerName].reasoningContent`
+contains the original `{ content?, signature? }` block. Signature-only and empty
+blocks are retained with empty display text. Streaming emits a lifecycle per
+block and attaches complete metadata to `reasoning-end`; blocks stay open until
+EOF because later chunks may update their content or signatures.
+
+Pass AI SDK-generated messages back unchanged: `responseMessages` in AI SDK 7,
+or `response.messages` in AI SDK 5/6. When constructing history manually, preserve
+each reasoning part's metadata as `providerOptions` to replay native `reasoning_content`.
+Signed content is replayed without escaping or reconstruction from display text.
+Malformed native history is rejected before HTTP. `includeReasoning` controls
+only legacy text forwarding when native metadata is absent; it neither enables
+reasoning output nor duplicates native history. Foundation Models Chat
+Completions does not receive these native Orchestration fields.
+
+**Provider-specific diagnostics:** Orchestration preserves the native choice's
+`provider_specific_fields` as JSON-safe `providerSpecificFields` metadata.
+`finishReason.unified` always follows SAP's harmonized reason; `raw` uses the last
+valid, non-empty provider `finish_reason`, falling back to the SAP value.
+Streaming retains fields omitted by later chunks and replaces updated keys
+shallowly. These diagnostics do not require `includeRawChunks`.
+
 **Generation response body:** `doGenerate().response.body` is a provider-built
 summary containing `content`, `finishReason`, `tokenUsage`, and `toolCalls`
 from SAP SDK accessors. It is not the complete raw SAP HTTP response.
@@ -2950,26 +2995,28 @@ wire-payload audit. This limitation also applies through the V2 and V4 facades.
 
 **`doGenerate` — `providerMetadata[providerName]`:**
 
-| Field                  | Type                  | Description                                                                                                |
-| ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `cacheUsage`           | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
-| `finishReason`         | `string`              | Raw finish reason from the SDK; defaults to `"unknown"` when the SDK omits it                              |
-| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`); `raw` preserves the unmodified SDK value (or `undefined`)       |
-| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
-| `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
-| `version`              | `string`              | Provider package version                                                                                   |
+| Field                    | Type                  | Description                                                                                                |
+| ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `cacheUsage`             | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
+| `finishReason`           | `string`              | Original provider reason when available, otherwise SAP's reason or `"unknown"`                             |
+| `finishReasonMapped`     | `object`              | `{ raw, unified }`: original diagnostic reason and SAP-based unified classification                        |
+| `intermediateFailures`   | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
+| `providerSpecificFields` | `object \| undefined` | Native Orchestration provider-specific diagnostics                                                         |
+| `requestId`              | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
+| `version`                | `string`              | Provider package version                                                                                   |
 
 **`doStream` — `finish` event `providerMetadata[providerName]`:**
 
-| Field                  | Type                  | Description                                                                                                |
-| ---------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `cacheUsage`           | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
-| `finishReason`         | `string`              | Raw finish reason from the SDK; defaults to `"unknown"` when the SDK omits it                              |
-| `finishReasonMapped`   | `object`              | Mapped finish reason (`{ raw, unified }`); `raw` preserves the unmodified SDK value (or `undefined`)       |
-| `intermediateFailures` | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
-| `requestId`            | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
-| `responseId`           | `string`              | Server completion ID or client-generated UUID                                                              |
-| `version`              | `string`              | Provider package version                                                                                   |
+| Field                    | Type                  | Description                                                                                                |
+| ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `cacheUsage`             | `object \| undefined` | Anthropic prompt-cache breakdown (`ephemeral_5m_input_tokens`, `ephemeral_1h_input_tokens`) when populated |
+| `finishReason`           | `string`              | Original provider reason when available, otherwise SAP's reason or `"unknown"`                             |
+| `finishReasonMapped`     | `object`              | `{ raw, unified }`: original diagnostic reason and SAP-based unified classification                        |
+| `intermediateFailures`   | `array \| undefined`  | Errors from fallback retries (orchestration)                                                               |
+| `providerSpecificFields` | `object \| undefined` | Accumulated native Orchestration provider-specific diagnostics                                             |
+| `requestId`              | `string \| undefined` | SAP request correlation id (from the SDK response; falls back to the `x-request-id` header)                |
+| `responseId`             | `string`              | Server completion ID or client-generated UUID                                                              |
+| `version`                | `string`              | Provider package version                                                                                   |
 
 **Example (non-streaming):**
 

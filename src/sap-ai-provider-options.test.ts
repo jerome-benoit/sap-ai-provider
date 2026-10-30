@@ -1022,3 +1022,16 @@ describe("Responses per-call provider options", () => {
     },
   );
 });
+
+describe("unsupported-parameter invocation policy", () => {
+  it.each([null, "false", 0, {}, []])(
+    "rejects non-boolean policy %j",
+    async (dropUnsupportedParams) => {
+      const result = await safeValidateTypes({
+        schema: sapAILanguageModelProviderOptions,
+        value: { dropUnsupportedParams },
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+});
