@@ -19,6 +19,7 @@ import {
   convertToAISDKError,
   normalizeHeaders,
 } from "./sap-ai-error";
+import { createAbortError } from "./stream-transformer.js";
 
 interface ParsedResponseBody {
   error: {
@@ -527,6 +528,40 @@ describe("convertToAISDKError", () => {
       expect(result.statusCode).toBe(499);
       expect(result.isRetryable).toBe(false);
     });
+    it.each([false, true])(
+      "keeps cancellation authoritative without exposing discovery criteria, wrapped=%s",
+      (wrapped) => {
+        const sentinel = "cancelled-discovery-credential";
+        const discovery = new Error(
+          `No deployment matched the given criteria: ${JSON.stringify({
+            destination: { authentication: "NoAuthentication", password: sentinel },
+          })}`,
+        );
+        const aborted = createAbortError(discovery);
+        const original = wrapped ? new ErrorWithCause("Cancelled SDK lookup", aborted) : aborted;
+
+        const error = convertToAISDKError(original);
+
+        expect(APICallError.isInstance(error)).toBe(true);
+        expect(error).toMatchObject({ isRetryable: false, statusCode: 499 });
+        expect(error.cause).toBeUndefined();
+        for (const summary of [error.message, String(error), error.stack, JSON.stringify(error)]) {
+          expect(summary).not.toContain(sentinel);
+          expect(summary).not.toContain("NoAuthentication");
+        }
+      },
+    );
+
+    it("retains ordinary cancellation cause identity", () => {
+      const reason = new Error("Ordinary cancellation reason");
+      const original = createAbortError(reason);
+
+      const error = convertToAISDKError(original);
+
+      expect(error).toMatchObject({ isRetryable: false, statusCode: 499 });
+      expect(error.cause).toBe(original);
+      expect(original.cause).toBe(reason);
+    });
 
     it("should include context in abort error", () => {
       const abortError = new DOMException("Aborted", "AbortError");
@@ -969,6 +1004,45 @@ describe("convertToAISDKError", () => {
           expect(result.modelType).toBe("languageModel");
         }
       });
+
+      it.each(["direct", "native", "sap"] as const)(
+        "keeps credential-bearing discovery criteria out of %s failures",
+        (wrapper) => {
+          const sentinel = "discovery-credential-sentinel";
+          const discovery = new Error(
+            `No deployment matched the given criteria: ${JSON.stringify({
+              destination: { authentication: "NoAuthentication", password: sentinel },
+              model: { name: "untrusted-criteria-model" },
+            })}`,
+          );
+          const error =
+            wrapper === "direct"
+              ? discovery
+              : wrapper === "native"
+                ? new Error("Native discovery wrapper", { cause: discovery })
+                : new ErrorWithCause("SAP discovery wrapper", discovery);
+          const result = convertToAISDKError(error, {
+            modelId: "text-embedding-3-small",
+            modelType: "embeddingModel",
+          });
+
+          expect(NoSuchModelError.isInstance(result)).toBe(true);
+          expect(result).toMatchObject({
+            modelId: "text-embedding-3-small",
+            modelType: "embeddingModel",
+          });
+          expect(result.cause).toBeUndefined();
+          for (const summary of [
+            result.message,
+            String(result),
+            result.stack,
+            JSON.stringify(result),
+          ]) {
+            expect(summary).not.toContain(sentinel);
+            expect(summary).not.toContain("NoAuthentication");
+          }
+        },
+      );
 
       it("should handle ErrorWithCause chain with network error as root", () => {
         const networkError = new Error("getaddrinfo ENOTFOUND api.ai.sap.com");

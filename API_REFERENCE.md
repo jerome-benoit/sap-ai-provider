@@ -571,28 +571,66 @@ streaming, and complete tool-result round trips with an optional argument.
   `requestConfig`, call-level headers, and cancellation semantics. No OpenAI API
   key is needed.
 
+**Transport and cancellation:**
+
 Cancellation promptly rejects generation or streaming setup, including while
 deployment or destination discovery is pending. SAP's discovery helpers do not
 accept an abort signal, so their underlying work can continue after the caller
 has been released; late failures are observed and late HTTP responses are closed.
 Caller cancellation remains a non-retryable status 499 error.
+Setup failures also close the owned upstream request without changing the
+caller's signal or the original error classification.
 
 Configured HTTP inactivity timeouts remain effective while reading Responses
 bodies, including with `requestConfig.maxRedirects: 0`. Timeout failures are
 retryable status 503 errors. Active SSE traffic resets the existing socket timer;
 this does not impose a total duration limit on the stream.
 
-Rejected HTTP responses retain at most 1,986 body bytes for diagnostics. Larger
-bodies are stopped and expose the received UTF-8 prefix with `...[truncated]`,
-preserving the original status and headers. Complete smaller JSON errors retain
-their normal classification. This diagnostic bound does not apply to successful
-SSE streams or replace an explicit `requestConfig.maxContentLength`.
+After configured SAP retry middleware finishes, rejected HTTP responses retain
+at most 1,986 body bytes for diagnostics, including when middleware wraps the
+final failure. Larger bodies are stopped and expose the received UTF-8 prefix
+with `...[truncated]`, preserving the original status and headers. Complete
+smaller JSON errors retain their normal classification. This diagnostic bound
+does not apply to successful SSE streams or replace an explicit
+`requestConfig.maxContentLength`.
+Secondary socket failures while reading these diagnostics do not make a
+non-retryable HTTP failure retryable.
 
 Classified transport read failures retain their original status, retryability,
 and diagnostics when the delegate wraps them in a successful-response error.
 Native transient connection errors, including `ECONNRESET` after successful
 headers, become retryable status 503 errors with the original error as `cause`.
 Malformed JSON and invalid response schemas keep their parsing-error classification.
+An otherwise unclassified body-read failure is a non-retryable status 500 error
+that identifies the invoked generation or streaming operation.
+
+**Compatibility across provider versions:**
+
+The `@ai-sdk/openai` 4.x delegate implements the V4 provider contract and is
+adapted to the shared V3 core. Generated inline files retain their bytes or
+base64 data; the V4 facade restores tagged file data.
+A clean EOF without a completion event reports `other` through V2/V3 and
+`interrupted` through V4. The delegate's raw reason is retained where the
+public contract supports it.
+Generated file URLs, reasoning files, and custom output blocks such as
+compaction have no V3 equivalent and are rejected explicitly; they are not
+fetched or silently omitted.
+Assistant `file` history is rejected with `UnsupportedFunctionalityError`
+before deployment discovery or HTTP, across all entrypoints. User files and
+media nested in tool results keep their supported conversions.
+
+Inline legacy tool-result categories must agree with the current delegate's
+classification of the exact media type: `image-data` requires the literal
+top-level type `image`, while `file-data` requires a non-image type.
+Contradictions such as `file-data` with `image/png`, or `image-data` with
+`application/pdf` or `IMAGE/PNG`, throw `UnsupportedFunctionalityError` before
+deployment discovery or HTTP. The V3 adapter does not normalize or rewrite these
+media types. V4 unified file inputs and V2 media inputs use their existing
+MIME-based normalization; normalized images remain supported.
+
+V4 text citations use the same SAP namespace for their source provider metadata
+in generation results and `text-end` events. Source fields and text offsets are
+preserved; URL sources without provider metadata remain unchanged.
 
 **Tool and reasoning history:**
 
@@ -3085,6 +3123,12 @@ become `LoadAPIKeyError`/`NoSuchModelError`, with any request ID in the message
 rather than a `responseBody` property. Generic Axios errors may retain a
 different response-body shape.
 
+Structured SAP conversion omits the original transport error cause, which may
+contain request credentials or prompt data. It retains status, retryability,
+normalized response details, location, request ID, response headers, and explicitly
+supplied request context where the target error type supports them. This does
+not sanitize those retained fields or change causes on nonstructured failures.
+
 ```typescript
 {
   error: {
@@ -3095,6 +3139,12 @@ different response-body shape.
   }
 }
 ```
+
+When no deployment matches SAP's discovery criteria, `NoSuchModelError` retains
+the requested model identity but omits the serialized criteria and original
+discovery cause. Custom destinations may contain credentials in those criteria.
+Cancellation still takes precedence as a non-retryable status 499 error;
+the credential-bearing discovery cause is likewise omitted.
 
 Native parser failures, including malformed credential JSON, use the enclosing
 SAP SDK error summary rather than copying parser input fragments into the public
@@ -3971,7 +4021,7 @@ For the current package version, see [package.json](./package.json).
   repository uses AI SDK 7 as a development dependency.
 - **SAP AI SDK:** `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`,
   and the shared SAP deployment and HTTP clients
-- **Responses conversion:** `@ai-sdk/openai` 3.x (shared V3 core)
+- **Responses conversion:** `@ai-sdk/openai` 4.x (V4 delegate adapted to the shared V3 core)
 - **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

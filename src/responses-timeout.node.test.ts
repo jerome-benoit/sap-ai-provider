@@ -91,6 +91,8 @@ describe("Responses native-adapter response-body timeout", () => {
   let bodyReadable!: () => void;
   let ready: Promise<void>;
   const requests: RequestRecord[] = [];
+  let incoming: Promise<void>;
+  let requestReceived!: () => void;
   const server = createServer((request, response) => {
     void (async () => {
       let raw = "";
@@ -102,6 +104,7 @@ describe("Responses native-adapter response-body timeout", () => {
         response,
         socket,
       });
+      requestReceived();
       response.statusCode = status;
       response.setHeader("retry-after", "7");
       response.setHeader("x-request-id", "fixture-timeout");
@@ -146,6 +149,9 @@ describe("Responses native-adapter response-body timeout", () => {
     mode = "idle";
     status = 200;
     requests.length = 0;
+    incoming = new Promise<void>((resolve) => {
+      requestReceived = resolve;
+    });
     ready = new Promise<void>((resolve) => {
       bodyReadable = resolve;
     });
@@ -219,6 +225,8 @@ describe("Responses native-adapter response-body timeout", () => {
   ): Promise<{ error: unknown; watchdogFired: boolean }> {
     const controller = new AbortController();
     const result = invoke(value, operation, controller.signal);
+    // Start the body-read watchdog only after cold SDK setup reaches the fixture.
+    await Promise.race([incoming, result]);
     const timeout = setTimeout(() => {
       controller.abort("fixture watchdog: provider timeout did not settle");
     }, WATCHDOG);

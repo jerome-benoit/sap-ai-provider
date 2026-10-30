@@ -1,12 +1,14 @@
 /** OpenAI Responses through SAP AI Core's authenticated HTTP transport. */
 import type {
-  LanguageModelV3,
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
   LanguageModelV3Prompt,
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
   LanguageModelV3ToolResultOutput,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Citation,
   SharedV3ProviderMetadata,
   SharedV3ProviderOptions,
   SharedV3Warning,
@@ -19,6 +21,11 @@ import { z } from "zod";
 import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { convertResponsesCallToV4 } from "./responses-adapters-v3-to-v4.js";
+import {
+  convertResponsesResultToV3,
+  convertResponsesStreamPartToV3,
+} from "./responses-adapters-v4-to-v3.js";
 import { createResponsesTransport } from "./responses-http-transport.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
@@ -54,24 +61,22 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
+    let dispose: ((reason?: unknown) => void) | undefined;
     try {
-      const { input, model, providerName, warnings } = await prepareModel(
-        config,
-        settings,
-        options,
-      );
-      const result = await model.doGenerate(input);
+      const prepared = await prepareModel(config, settings, options);
+      dispose = prepared.dispose;
+      const { input, model, providerName, warnings } = prepared;
+      const result = convertResponsesResultToV3(await model.doGenerate(input));
       return {
         ...result,
-        content: result.content.map((part) => ({
-          ...part,
-          providerMetadata: fromOpenAI(part.providerMetadata, providerName),
-        })),
+        content: result.content.map((part) => fromOpenAIContent(part, providerName)),
         providerMetadata: responseMetadata(result.providerMetadata, providerName),
         warnings: [...warnings, ...result.warnings],
       };
     } catch (error) {
-      throw convertError(error, config, options, "doGenerate");
+      const failure = convertError(error, config, options, "doGenerate");
+      dispose?.(failure);
+      throw failure;
     }
   }
 
@@ -80,12 +85,11 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
+    let dispose: ((reason?: unknown) => void) | undefined;
     try {
-      const { input, model, providerName, warnings } = await prepareModel(
-        config,
-        settings,
-        options,
-      );
+      const prepared = await prepareModel(config, settings, options);
+      dispose = prepared.dispose;
+      const { input, model, providerName, warnings } = prepared;
       const result = await model.doStream(input);
       const reader = result.stream.getReader();
       let cancelled = false;
@@ -96,6 +100,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
           {
             async cancel(reason) {
               cancelled = true;
+              dispose?.(reason);
               try {
                 await reader.cancel(reason);
               } finally {
@@ -115,7 +120,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                   controller.close();
                   return;
                 }
-                const part = next.value;
+                const part = convertResponsesStreamPartToV3(next.value);
                 if (part.type === "stream-start") {
                   controller.enqueue({ ...part, warnings: [...warnings, ...part.warnings] });
                 } else if (part.type === "finish") {
@@ -128,22 +133,21 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                     ...part,
                     error: convertError(part.error, config, options, "doStream"),
                   });
-                } else if ("providerMetadata" in part) {
-                  controller.enqueue({
-                    ...part,
-                    providerMetadata: fromOpenAI(part.providerMetadata, providerName),
-                  });
+                } else if ("providerMetadata" in part || part.type === "text-end") {
+                  controller.enqueue(fromOpenAIContent(part, providerName));
                 } else {
                   controller.enqueue(part);
                 }
               } catch (error) {
                 if (isCancelled()) return;
+                const failure = convertError(error, config, options, "doStream");
+                dispose?.(failure);
                 // Cleanup failures must not replace the original request or cancellation error.
                 await reader.cancel(error).catch(() => undefined);
                 if (isCancelled()) return;
                 reader.releaseLock();
                 controller.enqueue({
-                  error: convertError(error, config, options, "doStream"),
+                  error: failure,
                   type: "error",
                 });
                 controller.close();
@@ -154,7 +158,9 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
         ),
       };
     } catch (error) {
-      throw convertError(error, config, options, "doStream");
+      const failure = convertError(error, config, options, "doStream");
+      dispose?.(failure);
+      throw failure;
     }
   }
 }
@@ -223,6 +229,54 @@ function fromOpenAI(
 }
 
 /**
+ * Remaps only citation source metadata, retaining untouched sources and positions.
+ * @param citations - V4 citations preserved through the shared V3 core.
+ * @param providerName - Resolved SAP provider namespace.
+ * @returns The original array unless a source namespace changes.
+ */
+function fromOpenAICitations(
+  citations: LanguageModelV4Citation[] | undefined,
+  providerName: string,
+): LanguageModelV4Citation[] | undefined {
+  if (providerName === "openai" || !citations) return citations;
+  let mapped: LanguageModelV4Citation[] | undefined;
+  let index = 0;
+  for (const citation of citations) {
+    const providerMetadata = fromOpenAI(citation.source.providerMetadata, providerName);
+    if (providerMetadata !== citation.source.providerMetadata) {
+      mapped ??= citations.slice();
+      mapped[index] = {
+        ...citation,
+        source: { ...citation.source, providerMetadata },
+      };
+    }
+    index++;
+  }
+  return mapped ?? citations;
+}
+
+/**
+ * Applies the same namespace policy to direct metadata and nested citation sources.
+ * @param part - Content or a text-end event, including preserved V4 citation fields.
+ * @param providerName - Resolved SAP provider namespace.
+ * @returns The original part when no metadata changes, otherwise an immutable copy.
+ */
+function fromOpenAIContent<
+  T extends {
+    citations?: LanguageModelV4Citation[];
+    providerMetadata?: SharedV3ProviderMetadata;
+  },
+>(part: T, providerName: string): T {
+  const providerMetadata = fromOpenAI(part.providerMetadata, providerName);
+  const citations = fromOpenAICitations(part.citations, providerName);
+  if (providerMetadata === part.providerMetadata && citations === part.citations) return part;
+  if (providerMetadata === part.providerMetadata) return { ...part, citations };
+  return citations === part.citations
+    ? { ...part, providerMetadata }
+    : { ...part, citations, providerMetadata };
+}
+
+/**
  * Maps configured structured output to the common AI SDK call format.
  * @param settings - Model settings.
  * @returns The corresponding AI SDK response format.
@@ -255,8 +309,9 @@ async function prepareModel(
   settings: SAPAISettings,
   options: LanguageModelV3CallOptions,
 ): Promise<{
-  input: LanguageModelV3CallOptions;
-  model: LanguageModelV3;
+  dispose: (reason?: unknown) => void;
+  input: LanguageModelV4CallOptions;
+  model: LanguageModelV4;
   providerName: string;
   warnings: SharedV3Warning[];
 }> {
@@ -318,6 +373,7 @@ async function prepareModel(
     ),
     topP: options.topP ?? parameters.topP,
   };
+  const convertedInput = convertResponsesCallToV4(input);
   const transport = await createResponsesTransport(config, settings, options);
   const model = createOpenAI({
     // Authentication is supplied by SAP's transport, not an OpenAI API key.
@@ -325,7 +381,7 @@ async function prepareModel(
     baseURL: transport.baseURL,
     fetch: transport.fetch,
   }).responses(config.modelId);
-  return { input, model, providerName, warnings };
+  return { dispose: transport.dispose, input: convertedInput, model, providerName, warnings };
 }
 
 /**

@@ -369,7 +369,19 @@ export function convertToAISDKError(
     return error;
   }
 
-  const { aborted, networkCode, response, rootError, syntaxError } = inspectError(error);
+  const { aborted, networkCode, noMatchingDeployment, response, rootError, syntaxError } =
+    inspectError(error);
+  if (noMatchingDeployment && !aborted) {
+    // SAP serializes discovery criteria, including custom destination credentials.
+    // Neither the criteria nor the original cause may escape this boundary.
+    return new NoSuchModelError({
+      message:
+        "SAP AI Core has no running deployment matching the requested model. " +
+        "Check the model ID, model version, resource group, and deployment status in your SAP AI Core instance.",
+      modelId: context?.modelId ?? "unknown",
+      modelType: context?.modelType ?? "languageModel",
+    });
+  }
   const responseHeaders = context?.responseHeaders ?? normalizeHeaders(response?.headers);
   if (!aborted) {
     const errorResponse = findStructuredErrorResponse(
@@ -392,7 +404,8 @@ export function convertToAISDKError(
   };
   if (aborted) {
     return createAPICallError(
-      error,
+      // Preserve cancellation priority without retaining credential-bearing criteria.
+      noMatchingDeployment ? undefined : error,
       {
         isRetryable: false,
         message: "Request was aborted by the client",
@@ -712,6 +725,7 @@ function getStatusCodeFromSAPError(code?: number, httpStatusCode?: number): numb
 function inspectError(error: unknown): {
   aborted: boolean;
   networkCode?: string;
+  noMatchingDeployment: boolean;
   response?: AxiosResponse;
   rootError: unknown;
   syntaxError?: SyntaxError;
@@ -722,10 +736,14 @@ function inspectError(error: unknown): {
   let response: AxiosResponse | undefined;
   let aborted = false;
   let networkCode: string | undefined;
+  let noMatchingDeployment = false;
   let syntaxError: SyntaxError | undefined;
   while (typeof current === "object" && current !== null && !seen.has(current)) {
     seen.add(current);
     rootError = current;
+    noMatchingDeployment ||=
+      current instanceof Error &&
+      current.message.startsWith("No deployment matched the given criteria:");
     aborted ||= isAbortError(current);
     if (current instanceof SyntaxError) syntaxError ??= current;
     if (current instanceof Error && "code" in current && typeof current.code === "string") {
@@ -747,7 +765,7 @@ function inspectError(error: unknown): {
     rootError = cause;
     current = cause;
   }
-  return { aborted, networkCode, response, rootError, syntaxError };
+  return { aborted, networkCode, noMatchingDeployment, response, rootError, syntaxError };
 }
 
 /**

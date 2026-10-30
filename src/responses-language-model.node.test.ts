@@ -5,6 +5,8 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolResultOutput,
   LanguageModelV4Prompt,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Text,
   LanguageModelV4ToolResultOutput,
 } from "@ai-sdk/provider";
 import type {
@@ -14,11 +16,16 @@ import type {
 import type { IncomingHttpHeaders, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { APICallError, LoadAPIKeyError } from "@ai-sdk/provider";
-import { generateText } from "ai";
+import { APICallError, LoadAPIKeyError, UnsupportedFunctionalityError } from "@ai-sdk/provider";
+import { generateText, streamText, tool } from "ai";
+import { execFile } from "node:child_process";
+import { getEventListeners } from "node:events";
 import { createServer } from "node:http";
 import { setImmediate } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import type { SAPAIProviderSettings } from "./sap-ai-provider.js";
 
@@ -34,10 +41,10 @@ interface WireRequest {
   url: URL;
 }
 
-const prompt: LanguageModelV3CallOptions["prompt"] = [
+const prompt = [
   { content: [{ text: "Inspect the fixture", type: "text" }], role: "user" },
-];
-const tools: LanguageModelV3CallOptions["tools"] = [
+] satisfies LanguageModelV3CallOptions["prompt"] & LanguageModelV4Prompt;
+const tools = [
   {
     inputSchema: {
       properties: { path: { type: "string" }, recursive: { type: "boolean" } },
@@ -47,7 +54,7 @@ const tools: LanguageModelV3CallOptions["tools"] = [
     name: "read_file",
     type: "function",
   },
-];
+] satisfies NonNullable<LanguageModelV3CallOptions["tools"]>;
 const usage = {
   input_tokens: 100,
   input_tokens_details: { cached_tokens: 30 },
@@ -129,6 +136,23 @@ async function events(response: ServerResponse, events: Record<string, unknown>[
   response.end();
 }
 
+/**
+ * Ends a native Responses stream after partial output, without a completion event.
+ * @param response - Local HTTP response.
+ */
+function interruptedEvents(response: ServerResponse): void {
+  const partialMessage = {
+    ...message,
+    content: [{ annotations: [], text: "partial", type: "output_text" }],
+  };
+  const frames = [
+    ...streamEvents().slice(0, 2),
+    { delta: "partial", item_id: message.id, type: "response.output_text.delta" },
+    { item: partialMessage, output_index: 0, type: "response.output_item.done" },
+  ];
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""));
+}
 /**
  * Sends a native Responses payload from the fixture.
  * @param response - Local HTTP response.
@@ -370,6 +394,118 @@ describe("Responses over SAP AI Core HTTP", () => {
     });
     expect(requests[0]?.body.include).toContain("reasoning.encrypted_content");
   });
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["assistant", "tool"] as const).flatMap((role) =>
+        [
+          { mediaType: "image/png", type: "file-data" as const },
+          { mediaType: "application/pdf", type: "image-data" as const },
+          { mediaType: "IMAGE/PNG", type: "image-data" as const },
+        ].map((item) => ({ item, operation, role })),
+      ),
+    ),
+  )(
+    "rejects contradictory $item.type $item.mediaType before HTTP during $operation in $role history",
+    async ({ item, operation, role }) => {
+      const model = createSAPAIProvider(settings({ deploymentId: undefined }))("gpt-6.1-sol");
+      const resultPart = {
+        output: { type: "content" as const, value: [{ ...item, data: "private-media-bytes" }] },
+        toolCallId: "image-call",
+        toolName: "capture",
+        type: "tool-result" as const,
+      };
+      const history: LanguageModelV3CallOptions["prompt"] = [
+        ...imageToolHistory,
+        { content: [resultPart], role },
+      ];
+      const error: unknown = await model[operation]({ prompt: history }).catch(
+        (error: unknown) => error,
+      );
+      expect(UnsupportedFunctionalityError.isInstance(error)).toBe(true);
+      expect(String(error)).not.toContain("private-media-bytes");
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      [
+        { data: "JVBERi0xLjQ=", filename: "report.pdf", mediaType: "application/pdf" },
+        { data: "UklGRg==", filename: "recording.wav", mediaType: "audio/wav" },
+      ].map((item) => ({ item, operation })),
+    ),
+  )(
+    "preserves inline $item.mediaType file bytes and filename during $operation",
+    async ({ item, operation }) => {
+      const part = {
+        toolCallId: "image-call",
+        toolName: "capture",
+        type: "tool-result" as const,
+      };
+      const model = createSAPAIProvider(settings())("gpt-6.1-sol");
+      const v3Prompt: LanguageModelV3CallOptions["prompt"] = [
+        ...imageToolHistory,
+        {
+          content: [
+            { ...part, output: { type: "content", value: [{ ...item, type: "file-data" }] } },
+          ],
+          role: "tool",
+        },
+      ];
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect((await model.doStream({ prompt: v3Prompt })).stream);
+      } else {
+        await model.doGenerate({ prompt: v3Prompt });
+      }
+      const v4Model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
+      const v4Prompt: LanguageModelV4Prompt = [
+        ...imageToolHistory,
+        {
+          content: [
+            {
+              ...part,
+              output: {
+                type: "content",
+                value: [
+                  {
+                    data: { data: item.data, type: "data" },
+                    filename: item.filename,
+                    mediaType: item.mediaType,
+                    type: "file",
+                  },
+                ],
+              },
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        for await (const part of (await v4Model.doStream({ prompt: v4Prompt })).stream) {
+          if (part.type === "error") throw part.error;
+        }
+      } else {
+        await v4Model.doGenerate({ prompt: v4Prompt });
+      }
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(request.body.input).toContainEqual({
+          call_id: "image-call",
+          output: [
+            {
+              file_data: `data:${item.mediaType};base64,${item.data}`,
+              filename: item.filename,
+              type: "input_file",
+            },
+          ],
+          type: "function_call_output",
+        });
+      }
+    },
+  );
 
   describe.each(toolImageCases)("$name tool output", ({ v3, v4, wire }) => {
     it.each([false, true])(
@@ -829,6 +965,126 @@ describe("Responses over SAP AI Core HTTP", () => {
     expect(requests[1]?.body).not.toHaveProperty("previous_response_id");
   });
 
+  it.each([
+    { name: undefined, namespace: "sap-ai", streaming: false },
+    { name: undefined, namespace: "sap-ai", streaming: true },
+    { name: "sap-custom", namespace: "sap-custom", streaming: false },
+    { name: "sap-custom", namespace: "sap-custom", streaming: true },
+  ])(
+    "namespaces citation sources for $namespace with streaming=$streaming",
+    async ({ name, namespace, streaming }) => {
+      const annotations = [
+        { file_id: "file-cited", filename: "source.txt", index: 0, type: "file_citation" },
+        {
+          container_id: "container-1",
+          end_index: 5,
+          file_id: "file-generated",
+          filename: "artifact.txt",
+          start_index: 0,
+          type: "container_file_citation",
+        },
+        {
+          end_index: 14,
+          start_index: 6,
+          title: "Web source",
+          type: "url_citation",
+          url: "https://example.com/source",
+        },
+      ];
+      const annotatedMessage = {
+        ...message,
+        content: [{ ...message.content[0], annotations }],
+      };
+      const annotatedReply = { ...reply, output: [annotatedMessage] };
+      replies.push((response) => {
+        if (!streaming) {
+          json(response, annotatedReply);
+          return;
+        }
+        return events(response, [
+          { response: annotatedReply, type: "response.created" },
+          {
+            item: { id: message.id, type: "message" },
+            output_index: 0,
+            type: "response.output_item.added",
+          },
+          { delta: "Grüße from SAP", item_id: message.id, type: "response.output_text.delta" },
+          ...annotations.map((annotation) => ({
+            annotation,
+            item_id: message.id,
+            type: "response.output_text.annotation.added",
+          })),
+          { item: annotatedMessage, output_index: 0, type: "response.output_item.done" },
+          { response: annotatedReply, type: "response.completed" },
+        ]);
+      });
+      const model = createSAPAIProviderV4(settings({ name }))("gpt-6.1-sol");
+      const invocation = {
+        prompt: [
+          { content: [{ text: "Inspect the citations", type: "text" }], role: "user" },
+        ] satisfies LanguageModelV4Prompt,
+      };
+      let text:
+        Extract<LanguageModelV4StreamPart, { type: "text-end" }> | LanguageModelV4Text | undefined;
+      if (streaming) {
+        for await (const part of (await model.doStream(invocation)).stream) {
+          if (part.type === "error") throw part.error;
+          if (part.type === "text-end") text = part;
+        }
+      } else {
+        text = (await model.doGenerate(invocation)).content.find((part) => part.type === "text");
+      }
+
+      expect(text?.providerMetadata).toMatchObject({ [namespace]: { itemId: message.id } });
+      expect(text?.providerMetadata).not.toHaveProperty("openai");
+      expect(text?.citations).toEqual([
+        {
+          source: {
+            filename: "source.txt",
+            id: "file-cited",
+            mediaType: "text/plain",
+            providerMetadata: {
+              [namespace]: { fileId: "file-cited", index: 0, type: "file_citation" },
+            },
+            sourceType: "document",
+            title: "source.txt",
+            type: "source",
+          },
+        },
+        {
+          endIndex: 5,
+          source: {
+            filename: "artifact.txt",
+            id: "file-generated",
+            mediaType: "text/plain",
+            providerMetadata: {
+              [namespace]: {
+                containerId: "container-1",
+                fileId: "file-generated",
+                type: "container_file_citation",
+              },
+            },
+            sourceType: "document",
+            title: "artifact.txt",
+            type: "source",
+          },
+          startIndex: 0,
+        },
+        {
+          endIndex: 14,
+          source: {
+            id: "https://example.com/source",
+            sourceType: "url",
+            title: "Web source",
+            type: "source",
+            url: "https://example.com/source",
+          },
+          startIndex: 6,
+        },
+      ]);
+    },
+  );
+
   it("streams text, split function arguments, reasoning history, and cached usage", async () => {
     replies.push((response) => events(response, streamEvents(true)));
     const model = createSAPAIProvider(settings({ name: "sap-custom" }))("gpt-6.1-sol", {
@@ -936,6 +1192,137 @@ describe("Responses over SAP AI Core HTTP", () => {
     expect(result.usage).toMatchObject({ inputTokens: 100, outputTokens: 20, totalTokens: 120 });
     expect(result.providerMetadata).toMatchObject({ "sap-ai": { api: "responses" } });
   });
+  it.each(["v2", "v3", "v4"] as const)(
+    "keeps interrupted EOF compatible with the public %s finish contract",
+    async (version) => {
+      replies.push(interruptedEvents);
+      const invocation = { prompt, toolChoice: { type: "required" as const }, tools };
+      const result =
+        version === "v2"
+          ? await createSAPAIProviderV2(settings())("gpt-6.1-sol").doStream(invocation)
+          : version === "v4"
+            ? await createSAPAIProviderV4(settings())("gpt-6.1-sol").doStream(invocation)
+            : await createSAPAIProvider(settings())("gpt-6.1-sol").doStream(invocation);
+      let finishReason: unknown;
+      let text = "";
+      for await (const part of result.stream) {
+        if (part.type === "error") throw part.error;
+        if (part.type === "text-delta") text += part.delta;
+        if (part.type === "finish") finishReason = part.finishReason;
+      }
+
+      expect(text).toBe("partial");
+      expect(finishReason).toEqual(
+        version === "v2"
+          ? "other"
+          : { raw: undefined, unified: version === "v4" ? "interrupted" : "other" },
+      );
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it("lets AI SDK 7 consume interrupted required-tool output without a tool-choice violation", async () => {
+    replies.push(interruptedEvents);
+    const errors: unknown[] = [];
+    const result = streamText({
+      maxRetries: 0,
+      model: createSAPAIProviderV4(settings())("gpt-6.1-sol"),
+      onError: ({ error }) => {
+        errors.push(error);
+      },
+      prompt: "Read the fixture",
+      toolChoice: "required",
+      tools: { read_file: tool({ inputSchema: z.object({ path: z.string() }) }) },
+    });
+
+    expect(await result.text).toBe("partial");
+    expect(await result.finishReason).toBe("interrupted");
+    expect(errors).toEqual([]);
+    expect(requests).toHaveLength(1);
+  });
+
+  it("preserves interrupted required-tool output across CommonJS and lazy ESM loaders", async () => {
+    replies.push(interruptedEvents);
+    // tsx --eval loads the facade as CommonJS and its lazy strategy as ESM.
+    const script = `
+      import { streamText, tool } from "ai";
+      import { z } from "zod";
+      import { createSAPAIProviderV4 } from "./src/sap-ai-provider-v4.ts";
+      (async () => {
+        const errors = [];
+        const result = streamText({
+          maxRetries: 0,
+          model: createSAPAIProviderV4({
+            api: "responses",
+            deploymentId: "mixed-loader-fixture",
+            destination: { authentication: "NoAuthentication", url: ${JSON.stringify(destinationUrl)} },
+            logLevel: "error",
+            requestConfig: { proxy: false },
+          })("gpt-6.1-sol"),
+          onError: ({ error }) => errors.push(error instanceof Error ? error.name : String(error)),
+          prompt: "Read the fixture",
+          toolChoice: "required",
+          tools: { read_file: tool({ inputSchema: z.object({ path: z.string() }) }) },
+        });
+        const text = await result.text;
+        console.log(JSON.stringify({ errors, finishReason: await result.finishReason, text }));
+      })().catch((error) => { console.error(error); process.exitCode = 1; });
+    `;
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [fileURLToPath(import.meta.resolve("tsx/cli")), "--eval", script],
+      { cwd: fileURLToPath(new URL("../", import.meta.url)), timeout: 4_000 },
+    );
+
+    expect(JSON.parse(stdout) as unknown).toEqual({
+      errors: [],
+      finishReason: "interrupted",
+      text: "partial",
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it.each(
+    (["v2", "v3", "v4"] as const).flatMap((version) =>
+      (["doGenerate", "doStream"] as const).flatMap((operation) =>
+        (["manual", "cross-provider"] as const).map((origin) => ({ operation, origin, version })),
+      ),
+    ),
+  )(
+    "rejects $origin assistant files through $version $operation before discovery or HTTP",
+    async ({ operation, origin, version }) => {
+      const file = {
+        data: new Uint8Array([1, 2, 3]),
+        mediaType: "application/pdf",
+        providerOptions:
+          origin === "cross-provider"
+            ? { "other-provider": { itemId: "foreign-file" } }
+            : undefined,
+        type: "file" as const,
+      };
+      const history = [...prompt, { content: [file], role: "assistant" as const }];
+      const config = settings({ deploymentId: undefined });
+      const invocation =
+        version === "v4"
+          ? createSAPAIProviderV4(config)("gpt-6.1-sol")[operation]({
+              prompt: [
+                ...prompt,
+                {
+                  content: [{ ...file, data: { data: file.data, type: "data" } }],
+                  role: "assistant",
+                },
+              ],
+            })
+          : version === "v2"
+            ? createSAPAIProviderV2(config)("gpt-6.1-sol")[operation]({ prompt: history })
+            : createSAPAIProvider(config)("gpt-6.1-sol")[operation]({ prompt: history });
+
+      await expect(invocation).rejects.toSatisfy((error: unknown) =>
+        UnsupportedFunctionalityError.isInstance(error),
+      );
+      expect(requests).toHaveLength(0);
+    },
+  );
 
   it.each([400, 401, 403, 429, 503])(
     "classifies HTTP %s failures for callers' retry policy",
@@ -969,6 +1356,68 @@ describe("Responses over SAP AI Core HTTP", () => {
     ).rejects.toMatchObject({ isRetryable: false });
     expect(requests).toHaveLength(0);
   });
+
+  it.each([false, true])(
+    "closes an initial SSE 429 before returning a reader, caller signal=%s",
+    async (withSignal) => {
+      const caller = new AbortController();
+      const listener = () => undefined;
+      caller.signal.addEventListener("abort", listener);
+      const baseline = getEventListeners(caller.signal, "abort").length;
+      let response: ServerResponse | undefined;
+      let keepalive: NodeJS.Timeout | undefined;
+      let close!: () => void;
+      const closed = new Promise<void>((resolve) => {
+        close = resolve;
+      });
+      let guard: NodeJS.Timeout | undefined;
+      const guarded = new Promise<never>((_resolve, reject) => {
+        guard = setTimeout(() => {
+          reject(new Error("Initial SSE failure did not close upstream"));
+        }, 1_000);
+      });
+      replies.push((incoming) => {
+        response = incoming;
+        incoming.once("close", () => {
+          clearInterval(keepalive);
+          close();
+        });
+        incoming.writeHead(200, { "content-type": "text/event-stream" });
+        incoming.write(
+          `data: ${JSON.stringify({
+            code: "rate_limit_exceeded",
+            message: "Fixture initial SSE failure",
+            sequence_number: 0,
+            type: "error",
+          })}\n\n`,
+        );
+        // Real keepalives prevent Axios's socket timeout from masking an orphaned response.
+        keepalive = setInterval(() => incoming.write(": keepalive\n\n"), 20);
+      });
+      try {
+        const model = createSAPAIProvider(settings({ requestConfig: { timeout: 200 } }))(
+          "gpt-6.1-sol",
+        );
+        const error: unknown = await Promise.race([
+          model
+            .doStream({ abortSignal: withSignal ? caller.signal : undefined, prompt })
+            .catch((error: unknown) => error),
+          guarded,
+        ]);
+        expect(APICallError.isInstance(error)).toBe(true);
+        expect(error).toMatchObject({ isRetryable: true, statusCode: 429 });
+        await Promise.race([closed, guarded]);
+        expect(caller.signal.aborted).toBe(false);
+        expect(getEventListeners(caller.signal, "abort")).toHaveLength(baseline);
+        expect(requests).toHaveLength(1);
+      } finally {
+        clearTimeout(guard);
+        clearInterval(keepalive);
+        caller.signal.removeEventListener("abort", listener);
+        response?.destroy();
+      }
+    },
+  );
 
   it("aborts an HTTP stream while waiting for the model's first output", async () => {
     const controller = new AbortController();
