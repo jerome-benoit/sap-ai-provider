@@ -2975,8 +2975,9 @@ only legacy text forwarding when native metadata is absent; it neither enables
 reasoning output nor duplicates native history. Foundation Models Chat
 Completions does not receive these native Orchestration fields.
 
-Invalid native reasoning in a streaming response emits a normalized AI SDK
-`error` event and terminates the provider stream without completing pending
+Streaming native reasoning must be absent or an array of valid blocks; `null`
+and other container types are rejected. Invalid values emit a normalized AI SDK
+`error` event and terminate the provider stream without completing pending
 reasoning blocks. AI SDK 7 can then apply `onError` and configured stream retries.
 
 **Provider-specific diagnostics:** Orchestration preserves the native choice's

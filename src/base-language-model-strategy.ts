@@ -7,7 +7,7 @@ import type {
   SharedV3Warning,
 } from "@ai-sdk/provider";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
-import type { ChatMessage, ReasoningBlock } from "@sap-ai-sdk/orchestration";
+import type { ChatMessage } from "@sap-ai-sdk/orchestration";
 
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
@@ -60,7 +60,7 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
 export interface StreamCallResponse {
   readonly cancel: () => void;
   readonly extractProviderSpecificFields?: (chunk: SDKStreamChunk) => unknown;
-  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => ReasoningBlock[] | undefined;
+  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => unknown;
   readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];

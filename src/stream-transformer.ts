@@ -62,7 +62,7 @@ export interface StreamTransformerConfig {
     responseMetadata: LanguageModelV3ResponseMetadata;
   };
   readonly extractProviderSpecificFields?: (chunk: SDKStreamChunk) => unknown;
-  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => ReasoningBlock[] | undefined;
+  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => unknown;
   readonly idGenerator: StreamIdGenerator;
   readonly includeRawChunks: boolean;
   readonly modelId: string;
@@ -210,17 +210,30 @@ export function createStreamTransformer(
 
   /**
    * Retains SAP's positional reasoning blocks until EOF, including late signature updates.
-   * @param incoming - Native deltas for each block position.
+   * @param incoming - Unvalidated native reasoning collection from the SDK.
    * @param controller - Output event controller.
    * @returns False after emitting a terminal validation error; true otherwise.
    */
   function collectReasoningBlocks(
-    incoming: ReasoningBlock[] | undefined,
+    incoming: unknown,
     controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
   ): boolean {
-    if (!incoming?.length) return true;
+    if (incoming === undefined) return true;
+    if (!Array.isArray(incoming)) {
+      handleStreamError(
+        new TypeError("Invalid Orchestration reasoning_content: expected an array."),
+        controller,
+        convertToAISDKError,
+        options,
+        modelId,
+        url,
+      );
+      return false;
+    }
+    const blocks: unknown[] = incoming;
+    if (blocks.length === 0) return true;
     reasoningBlocks ??= [];
-    for (const [index, value] of incoming.entries()) {
+    for (const [index, value] of blocks.entries()) {
       const parsed = orchestrationReasoningBlockSchema.safeParse(value);
       if (!parsed.success) {
         handleStreamError(parsed.error, controller, convertToAISDKError, options, modelId, url);
