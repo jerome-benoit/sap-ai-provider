@@ -16,6 +16,7 @@ import {
   type CommonBuildResult,
   type StreamCallResponse,
 } from "./base-language-model-strategy.js";
+import { disposeSapStream, executeSapStream, withSapStreamCleanup } from "./sap-http-stream.js";
 import {
   buildModelDeployment,
   convertResponseFormat,
@@ -141,19 +142,26 @@ export class FoundationModelsLanguageModelStrategy extends BaseLanguageModelStra
     requestConfig: CustomRequestConfig | undefined,
     _commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): Promise<StreamCallResponse> {
-    const streamResponse = await client.stream(request, abortSignal, requestConfig);
+    const streamResponse = await executeSapStream(
+      (streamRequestConfig) => client.stream(request, abortSignal, streamRequestConfig),
+      abortSignal,
+      requestConfig,
+    );
 
     const { requestId, responseHeaders, responseMetadata } = this.extractMetadata(streamResponse);
 
     return {
       cancel: () => {
-        streamResponse.stream.controller.abort();
+        disposeSapStream(streamResponse);
       },
       getFinishReason: () => streamResponse.getFinishReason(),
       requestId,
       responseHeaders,
       responseMetadata,
-      stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+      stream: withSapStreamCleanup(
+        streamResponse,
+        streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+      ),
     };
   }
 

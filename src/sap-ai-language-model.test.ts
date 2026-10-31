@@ -87,6 +87,8 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         return Promise.resolve(
           Object.defineProperties(
             {
+              findChoiceByIndex: () => undefined,
+              getAssistantMessage: () => undefined,
               getCitations: () => undefined,
               getIntermediateFailures: () => undefined,
             },
@@ -111,6 +113,8 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
 
       return Promise.resolve({
         _data: { final_result: { id: "chatcmpl-orch-test-123" } },
+        findChoiceByIndex: () => undefined,
+        getAssistantMessage: () => undefined,
         getCitations: () => undefined,
         getContent: () => "Hello!",
         getFinishReason: () => "stop",
@@ -158,12 +162,14 @@ vi.mock("@sap-ai-sdk/orchestration", () => {
         MockOrchestrationClient.streamChunks ??
         ([
           {
+            findChoiceByIndex: () => undefined,
             getDeltaContent: () => "Hello",
             getDeltaToolCalls: () => undefined,
             getFinishReason: () => null,
             getTokenUsage: () => undefined,
           },
           {
+            findChoiceByIndex: () => undefined,
             getDeltaContent: () => "!",
             getDeltaToolCalls: () => undefined,
             getFinishReason: () => "stop",
@@ -991,6 +997,7 @@ describe("SAPAILanguageModel", () => {
 
     return {
       _data: merged._data,
+      findChoiceByIndex: () => undefined,
       getDeltaContent: () => merged.deltaContent,
       getDeltaToolCalls: () => merged.deltaToolCalls,
       getFinishReason: () => merged.finishReason,

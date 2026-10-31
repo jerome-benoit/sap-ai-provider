@@ -3,6 +3,7 @@
  * into Vercel AI SDK LanguageModelV3StreamPart events.
  */
 import type {
+  JSONObject,
   LanguageModelV3CallOptions,
   LanguageModelV3FinishReason,
   LanguageModelV3ResponseMetadata,
@@ -10,6 +11,7 @@ import type {
   LanguageModelV3Usage,
   SharedV3Warning,
 } from "@ai-sdk/provider";
+import type { ReasoningBlock } from "@sap-ai-sdk/orchestration";
 
 import type {
   SDKCitation,
@@ -18,11 +20,16 @@ import type {
   SDKTokenUsage,
 } from "./strategy-utils.js";
 
+import { createAbortError } from "./abort-utils.js";
+import { orchestrationReasoningBlockSchema } from "./sap-ai-provider-options.js";
 import {
   buildAnthropicCacheMetadata,
+  buildOrchestrationReasoningMetadata,
   createAISDKRequestBodySummary,
+  getProviderFinishReason,
   mapFinishReason,
   mapTokenUsage,
+  parseProviderSpecificFields,
   sanitizeAsJSONArray,
 } from "./strategy-utils.js";
 
@@ -55,6 +62,8 @@ export interface StreamTransformerConfig {
     requestId?: string;
     responseMetadata: LanguageModelV3ResponseMetadata;
   };
+  readonly extractProviderSpecificFields?: (chunk: SDKStreamChunk) => unknown;
+  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => unknown;
   readonly idGenerator: StreamIdGenerator;
   readonly includeRawChunks: boolean;
   readonly modelId: string;
@@ -88,6 +97,13 @@ export interface ToolCallInProgress {
  */
 export class StreamIdGenerator {
   /**
+   * @returns A UUID string for identifying a native reasoning block.
+   */
+  generateReasoningBlockId(): string {
+    return crypto.randomUUID();
+  }
+
+  /**
    * @returns A UUID string for identifying the response.
    */
   generateResponseId(): string {
@@ -107,18 +123,6 @@ export class StreamIdGenerator {
   generateToolCallId(): string {
     return crypto.randomUUID();
   }
-}
-
-/**
- * Preserves a caller-provided reason while retaining standard abort classification.
- * @param reason - The original cancellation reason.
- * @returns An AbortError carrying the reason as its cause.
- * @internal
- */
-export function createAbortError(reason: unknown): Error {
-  const error = new Error("The operation was aborted.", { cause: reason });
-  error.name = "AbortError";
-  return error;
 }
 
 /**
@@ -164,6 +168,8 @@ export function createStreamTransformer(
     cancel,
     convertToAISDKError,
     extractChunkMetadata,
+    extractProviderSpecificFields,
+    extractReasoningBlocks,
     idGenerator,
     includeRawChunks,
     modelId,
@@ -187,6 +193,57 @@ export function createStreamTransformer(
   let resolvedRequestId = requestId;
   let tokenUsage: SDKTokenUsage | undefined;
   let citations: Map<string, SDKCitation> | undefined;
+  let providerSpecificFields: JSONObject | undefined;
+  let providerFinishReason: string | undefined;
+  let reasoningBlocks: undefined | { block: ReasoningBlock; id: string }[];
+
+  /**
+   * Retains SAP's positional reasoning blocks until EOF, including late signature updates.
+   * @param incoming - Unvalidated native reasoning collection from the SDK.
+   * @param controller - Output event controller.
+   * @returns False after emitting a terminal validation error; true otherwise.
+   */
+  function collectReasoningBlocks(
+    incoming: unknown,
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+  ): boolean {
+    if (incoming === undefined) return true;
+    if (!Array.isArray(incoming)) {
+      handleStreamError(
+        new TypeError("Invalid Orchestration reasoning_content: expected an array."),
+        controller,
+        convertToAISDKError,
+        options,
+        modelId,
+        url,
+      );
+      return false;
+    }
+    const blocks: unknown[] = incoming;
+    if (blocks.length === 0) return true;
+    reasoningBlocks ??= [];
+    for (const [index, value] of blocks.entries()) {
+      const parsed = orchestrationReasoningBlockSchema.safeParse(value);
+      if (!parsed.success) {
+        handleStreamError(parsed.error, controller, convertToAISDKError, options, modelId, url);
+        return false;
+      }
+      const block = parsed.data;
+      let state = reasoningBlocks[index];
+      if (state) {
+        state.block.content = (state.block.content ?? "") + (block.content ?? "");
+        if (block.signature) state.block.signature = block.signature;
+      } else {
+        state = { block, id: idGenerator.generateReasoningBlockId() };
+        reasoningBlocks.push(state);
+        controller.enqueue({ id: state.id, type: "reasoning-start" });
+      }
+      if (block.content) {
+        controller.enqueue({ delta: block.content, id: state.id, type: "reasoning-delta" });
+      }
+    }
+    return true;
+  }
 
   /**
    * Retains sources from early chunks when later SDK snapshots omit them.
@@ -291,6 +348,14 @@ export function createStreamTransformer(
           return;
         }
 
+        for (const state of reasoningBlocks ?? []) {
+          controller.enqueue({
+            id: state.id,
+            providerMetadata: buildOrchestrationReasoningMetadata(state.block, providerName),
+            type: "reasoning-end",
+          });
+        }
+
         const didEmitAnyToolCalls = finalizeToolCalls(
           controller,
           toolCallsInProgress,
@@ -304,12 +369,15 @@ export function createStreamTransformer(
 
         const finalFinishReason = streamResponseGetFinishReason();
         if (finalFinishReason) {
-          streamState.finishReason = mapFinishReason(finalFinishReason);
+          streamState.finishReason = mapFinishReason(finalFinishReason, providerFinishReason);
         } else if (didEmitAnyToolCalls) {
           streamState.finishReason = {
-            raw: undefined,
+            raw: providerFinishReason,
             unified: "tool-calls",
           };
+        }
+        if (providerFinishReason !== undefined) {
+          streamState.finishReason = { ...streamState.finishReason, raw: providerFinishReason };
         }
 
         // Use wire usage snapshots; SAP final aggregation can invent zero totals.
@@ -337,6 +405,7 @@ export function createStreamTransformer(
               ...buildAnthropicCacheMetadata(tokenUsage),
               finishReason: streamState.finishReason.raw ?? "unknown",
               finishReasonMapped: streamState.finishReason,
+              ...(providerSpecificFields && { providerSpecificFields }),
               ...(streamIntermediateFailures?.length
                 ? {
                     intermediateFailures: sanitizeAsJSONArray(streamIntermediateFailures),
@@ -388,6 +457,15 @@ export function createStreamTransformer(
         Object.assign(resolvedResponseMetadata, incomingMetadata);
         collectUsage(chunk.getTokenUsage?.());
         collectCitations(chunk.getCitations?.());
+        const incomingProviderFields = parseProviderSpecificFields(
+          extractProviderSpecificFields?.(chunk),
+        );
+        if (incomingProviderFields) {
+          providerSpecificFields = { ...providerSpecificFields, ...incomingProviderFields };
+          providerFinishReason =
+            getProviderFinishReason(incomingProviderFields) ?? providerFinishReason;
+        }
+        if (!collectReasoningBlocks(extractReasoningBlocks?.(chunk), controller)) return;
 
         if (streamState.isFirstChunk || metadataChanged) {
           streamState.isFirstChunk = false;
@@ -422,7 +500,7 @@ export function createStreamTransformer(
 
         const chunkFinishReason = chunk.getFinishReason();
         if (chunkFinishReason) {
-          streamState.finishReason = mapFinishReason(chunkFinishReason);
+          streamState.finishReason = mapFinishReason(chunkFinishReason, providerFinishReason);
 
           if (streamState.finishReason.unified === "tool-calls") {
             finalizeToolCalls(controller, toolCallsInProgress, idGenerator, emitToolInputStart);

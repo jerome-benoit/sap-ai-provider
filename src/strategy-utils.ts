@@ -18,6 +18,7 @@ import type {
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
+import type { ReasoningBlock } from "@sap-ai-sdk/orchestration";
 import type { ZodType } from "zod";
 
 import { z } from "zod";
@@ -26,7 +27,10 @@ import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 
 import { deepMerge } from "./deep-merge.js";
 import { normalizeHeaders } from "./sap-ai-error.js";
-import { validateModelParamsWithWarnings } from "./sap-ai-provider-options.js";
+import {
+  orchestrationReasoningBlockSchema,
+  validateModelParamsWithWarnings,
+} from "./sap-ai-provider-options.js";
 
 /**
  * @internal
@@ -260,6 +264,8 @@ export interface SDKResponse {
   getContent(): null | string | undefined;
   getFinishReason(): null | string | undefined;
   getIntermediateFailures?(): undefined | unknown[];
+  getProviderSpecificFields?(): unknown;
+  getReasoningBlocks?(): ReasoningBlock[] | undefined;
   getTokenUsage(): SDKTokenUsage | undefined;
   getToolCalls(): null | SDKToolCall[] | undefined;
   rawResponse: { headers: Headers | Record<string, string> };
@@ -422,10 +428,24 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
 
   const tokenUsage = response.getTokenUsage();
   const finishReasonRaw = response.getFinishReason();
-  const finishReason = mapFinishReason(finishReasonRaw);
+  const providerSpecificFields = parseProviderSpecificFields(
+    response.getProviderSpecificFields?.(),
+  );
+  const finishReason = mapFinishReason(
+    finishReasonRaw,
+    getProviderFinishReason(providerSpecificFields),
+  );
 
   const textContent = response.getContent();
   const toolCalls = response.getToolCalls();
+  for (const block of response.getReasoningBlocks?.() ?? []) {
+    const validatedBlock = orchestrationReasoningBlockSchema.parse(block);
+    content.push({
+      providerMetadata: buildOrchestrationReasoningMetadata(validatedBlock, providerName),
+      text: validatedBlock.content ?? "",
+      type: "reasoning",
+    });
+  }
   if (textContent) content.push({ text: textContent, type: "text" });
   for (const toolCall of toolCalls ?? []) {
     content.push({
@@ -464,11 +484,12 @@ export function buildGenerateResult(config: GenerateResultConfig): LanguageModel
     providerMetadata: {
       [providerName]: {
         ...buildAnthropicCacheMetadata(tokenUsage),
-        finishReason: finishReasonRaw ?? "unknown",
+        finishReason: finishReason.raw ?? "unknown",
         finishReasonMapped: finishReason,
         ...(intermediateFailures?.length
           ? { intermediateFailures: sanitizeAsJSONArray(intermediateFailures) }
           : {}),
+        ...(providerSpecificFields && { providerSpecificFields }),
         ...(requestId ? { requestId } : {}),
         version,
       },
@@ -938,12 +959,16 @@ export function isZodSchema(obj: unknown): obj is ZodType {
 
 /**
  * Maps provider finish reasons to Vercel AI SDK LanguageModelV3FinishReason.
- * @param reason - The raw finish reason string from the provider.
+ * @param reason - The SAP-harmonized finish reason used for unified classification.
+ * @param originalReason - An optional original provider reason, retained without remapping.
  * @returns The unified finish reason with both raw and unified representations.
  * @internal
  */
-export function mapFinishReason(reason: null | string | undefined): LanguageModelV3FinishReason {
-  const raw = reason ?? undefined;
+export function mapFinishReason(
+  reason: null | string | undefined,
+  originalReason?: string,
+): LanguageModelV3FinishReason {
+  const raw = originalReason ?? reason ?? undefined;
 
   if (!reason) {
     return { raw, unified: "other" };
@@ -1095,6 +1120,45 @@ export function normalizeEmbedding(embedding: number[] | string): EmbeddingModel
 
 const jsonReplacer = (_key: string, value: unknown): unknown =>
   typeof value === "bigint" ? value.toString() : value;
+
+/**
+ * Creates replayable native Orchestration metadata for a single reasoning block.
+ * @param block - Complete native block, including an optional opaque signature.
+ * @param providerName - Configured provider namespace.
+ * @returns Metadata retained by AI SDK reasoning history.
+ * @internal
+ */
+export function buildOrchestrationReasoningMetadata(
+  block: ReasoningBlock,
+  providerName: string,
+): SharedV3ProviderMetadata {
+  return { [providerName]: { reasoningContent: block } };
+}
+
+/**
+ * Reads an original provider finish reason without replacing it with malformed diagnostics.
+ * @param fields - Provider-specific diagnostics.
+ * @returns A non-empty original reason when available.
+ * @internal
+ */
+export function getProviderFinishReason(fields: JSONObject | undefined): string | undefined {
+  const reason = fields?.finish_reason;
+  return typeof reason === "string" && reason.length > 0 ? reason : undefined;
+}
+
+/**
+ * Retains JSON-safe provider-specific diagnostics without accepting non-record containers.
+ * @param value - Optional fields from a native SAP choice.
+ * @returns A JSON-safe record, or undefined for an invalid container.
+ * @internal
+ */
+export function parseProviderSpecificFields(value: unknown): JSONObject | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const fields: unknown = sanitizeAsJSONObject(value);
+  return fields !== null && typeof fields === "object" && !Array.isArray(fields)
+    ? (fields as JSONObject)
+    : undefined;
+}
 
 /**
  * Coerces an array into a JSON-conformant payload suitable for `providerMetadata` values.

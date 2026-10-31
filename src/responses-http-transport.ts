@@ -3,42 +3,32 @@ import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
-import { AISDKError, APICallError } from "@ai-sdk/provider";
+import { APICallError } from "@ai-sdk/provider";
 import { getFoundationModelDeploymentId, getResourceGroup } from "@sap-ai-sdk/ai-api/internal.js";
 import { executeRequest, getAiCoreDestination } from "@sap-ai-sdk/core";
 import { getTargetUrl } from "@sap-ai-sdk/core/internal.js";
-import { isErrorWithCause } from "@sap-cloud-sdk/util";
 
 import type { SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { createAbortError, throwIfAborted, waitWithAbort } from "./abort-utils.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
+import {
+  destroyHttpResponse,
+  ERROR_BODY_READ_FAILURE,
+  type FailedHttpRequest,
+  findFailedHttpRequest,
+  isDestroyableRequest,
+  preserveResponseBodyTimeout,
+  readHttpErrorBody,
+  type SAPHttpMiddleware,
+  type SAPHttpResponse,
+} from "./sap-http-stream.js";
 import {
   buildModelDeployment,
   createAISDKRequestBodySummary,
   mergeRequestConfig,
 } from "./strategy-utils.js";
-import { createAbortError } from "./stream-transformer.js";
-
-interface FailedHttpRequest extends Error {
-  isAxiosError: true;
-  response: SAPHttpResponse;
-}
-
-interface HttpResponseEvents {
-  destroy: (error?: Error) => void;
-  once: (event: string, listener: () => void) => unknown;
-  removeListener: (event: string, listener: () => void) => unknown;
-}
-
-type SAPHttpMiddleware = NonNullable<CustomRequestConfig["middleware"]>[number];
-
-type SAPHttpResponse = Awaited<ReturnType<typeof executeRequest>>;
-
-const ERROR_BODY_TRUNCATION = "...[truncated]";
-// Reserve the marker inside the shared HTTP diagnostic serializer's 2,000-character limit.
-const MAX_ERROR_BODY_BYTES = 2_000 - ERROR_BODY_TRUNCATION.length;
-const ERROR_BODY_READ_FAILURE = Symbol("sap-ai.responsesErrorBodyReadFailure");
 
 /**
  * Resolves a SAP deployment and adapts its HTTP transport to the OpenAI provider.
@@ -225,43 +215,11 @@ export async function createResponsesTransport(
         operation,
       );
       if (failedRequest) {
-        const decoder = new TextDecoder();
-        const reader = responseStream.getReader();
-        let retainedBytes = 0;
-        let text = "";
-        let truncated = false;
-        let readFailure: unknown;
-        try {
-          for (;;) {
-            const chunk = await reader.read();
-            if (chunk.done) {
-              text += decoder.decode();
-              break;
-            }
-            const remaining = MAX_ERROR_BODY_BYTES - retainedBytes;
-            text += decoder.decode(chunk.value.subarray(0, remaining), { stream: true });
-            retainedBytes += Math.min(chunk.value.byteLength, remaining);
-            if (chunk.value.byteLength > remaining) {
-              truncated = true;
-              await reader.cancel("HTTP error diagnostic limit exceeded");
-              break;
-            }
-          }
-        } catch (error) {
-          readFailure = error;
-          if (!truncated) text += decoder.decode();
-        } finally {
-          reader.releaseLock();
-        }
-        failedRequest.response.data = truncated ? text + ERROR_BODY_TRUNCATION : text;
-        if (!truncated) {
-          try {
-            failedRequest.response.data = JSON.parse(text) as unknown;
-          } catch {
-            failedRequest.response.data = text;
-          }
-        }
-        throwIfAborted(signal ?? undefined);
+        const readFailure = await readHttpErrorBody(
+          failedRequest.response,
+          responseStream,
+          signal ?? undefined,
+        );
         const failure = convertToAISDKError(failedError, {
           modelId: config.modelId,
           modelType: "languageModel",
@@ -377,216 +335,4 @@ function createByteStream(
     },
     { highWaterMark: 0 },
   );
-}
-
-/**
- * Releases an HTTP response that arrives after its caller has cancelled.
- * @param response - A late SDK response whose stream has no consumer.
- */
-function destroyHttpResponse(response: SAPHttpResponse): void {
-  const body: unknown = response.data;
-  const request: unknown = response.request;
-  if (isDestroyableRequest(body)) body.destroy();
-  if (isDestroyableRequest(request)) request.destroy();
-}
-
-/**
- * Finds the final Axios failure without crossing a classified AI SDK boundary.
- * @param error - Original rejection from the configured middleware chain.
- * @returns The nested failed request, if reachable within the bounded cause chain.
- */
-function findFailedHttpRequest(error: unknown): FailedHttpRequest | undefined {
-  const seen = new Set<object>();
-  let current = error;
-  for (let depth = 0; depth < 32; depth++) {
-    if (typeof current !== "object" || current === null || seen.has(current)) return undefined;
-    if (AISDKError.isInstance(current)) return undefined;
-    seen.add(current);
-    if (isFailedHttpRequest(current)) return current;
-    // SAP's legacy rootCause getter can recurse. Prefer its native cause even
-    // when undefined, and never inspect both representations of the same chain.
-    current =
-      "cause" in current
-        ? current.cause
-        : current instanceof Error && isErrorWithCause(current)
-          ? current.rootCause
-          : undefined;
-  }
-  return undefined;
-}
-
-/**
- * Identifies the native request used to close a preserved HTTP-error response.
- * @param request - Request attached to an Axios response.
- * @returns Whether the request supports cancellation by destruction.
- */
-function isDestroyableRequest(request: unknown): request is { destroy: () => void } {
-  return (
-    typeof request === "object" &&
-    request !== null &&
-    "destroy" in request &&
-    typeof request.destroy === "function"
-  );
-}
-
-/**
- * Identifies the HTTP errors whose response streams need preservation.
- * @param error - Failure reported by the SAP HTTP middleware chain.
- * @returns Whether the failure includes a native Axios response.
- */
-function isFailedHttpRequest(error: unknown): error is FailedHttpRequest {
-  return (
-    error instanceof Error &&
-    "isAxiosError" in error &&
-    error.isAxiosError === true &&
-    "response" in error &&
-    typeof error.response === "object" &&
-    error.response !== null
-  );
-}
-
-/**
- * Identifies native HTTP requests and response streams without importing Node APIs.
- * @param value - Native object returned by the SAP HTTP client.
- * @returns Whether lifecycle listeners and destruction are supported.
- */
-function isHttpResponseEvents(value: unknown): value is HttpResponseEvents {
-  return (
-    isDestroyableRequest(value) &&
-    "once" in value &&
-    typeof value.once === "function" &&
-    "removeListener" in value &&
-    typeof value.removeListener === "function"
-  );
-}
-
-/**
- * Keeps Axios's socket inactivity timeout effective after streamed headers settle.
- * @param response - Native response observed before configured middleware resumes.
- * @param requestConfig - Fallback settings when resolved Axios metadata is unavailable.
- * @param cleanups - Disposes responses abandoned by cancellation or middleware retries.
- */
-function preserveResponseBodyTimeout(
-  response: SAPHttpResponse,
-  requestConfig: CustomRequestConfig,
-  cleanups: Set<() => void>,
-): void {
-  const body: unknown = response.data;
-  const request: unknown = response.request;
-  if (!isHttpResponseEvents(body) || !isHttpResponseEvents(request)) return;
-  const responseConfig: unknown = "config" in response ? response.config : undefined;
-  const timeoutConfig =
-    typeof responseConfig === "object" && responseConfig !== null && !Array.isArray(responseConfig)
-      ? (responseConfig as Record<string, unknown>)
-      : requestConfig;
-
-  const release = () => {
-    request.removeListener("timeout", onTimeout);
-    body.removeListener("end", release);
-    body.removeListener("error", onFailure);
-    body.removeListener("close", onFailure);
-    cleanups.delete(dispose);
-  };
-  const onFailure = () => {
-    request.destroy();
-    release();
-  };
-  const dispose = () => {
-    request.removeListener("timeout", onTimeout);
-    // Keep the error observer until close: destruction can emit an error asynchronously.
-    body.destroy();
-    request.destroy();
-  };
-  const onTimeout = () => {
-    const nativeResponse: unknown = "res" in request ? request.res : undefined;
-    // A fully received body can remain buffered while configured middleware waits.
-    if (
-      typeof nativeResponse === "object" &&
-      nativeResponse !== null &&
-      "complete" in nativeResponse &&
-      nativeResponse.complete === true
-    ) {
-      release();
-      return;
-    }
-    const timeout: unknown = timeoutConfig.timeout;
-    const timeoutErrorMessage: unknown = timeoutConfig.timeoutErrorMessage;
-    const transitional: unknown = timeoutConfig.transitional;
-    const clarifyTimeoutError =
-      typeof transitional === "object" &&
-      transitional !== null &&
-      "clarifyTimeoutError" in transitional &&
-      transitional.clarifyTimeoutError === true;
-    const message =
-      typeof timeoutErrorMessage === "string" && timeoutErrorMessage
-        ? timeoutErrorMessage
-        : (typeof timeout === "number" || typeof timeout === "string") && timeout
-          ? `timeout of ${String(timeout)}ms exceeded`
-          : "timeout exceeded";
-    // Aborting the controller here would misclassify inactivity as caller cancellation.
-    body.destroy(
-      Object.assign(new Error(message), {
-        code: clarifyTimeoutError ? "ETIMEDOUT" : "ECONNABORTED",
-      }),
-    );
-    request.destroy();
-  };
-  request.once("timeout", onTimeout);
-  body.once("end", release);
-  body.once("error", onFailure);
-  body.once("close", onFailure);
-  cleanups.add(dispose);
-}
-
-/**
- * Preserves cancellation classification for arbitrary caller-provided reasons.
- * @param signal - The caller's abort signal.
- */
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw createAbortError(signal.reason);
-}
-
-/**
- * Cancels a caller's wait even when a SAP preparation step cannot accept a signal.
- * @param pending - SDK work whose late rejection must remain observed.
- * @param signal - Cancellation for the caller's wait.
- * @param onAbortedValue - Releases a result delivered after cancellation.
- * @returns The result or a classified abort error.
- */
-function waitWithAbort<T>(
-  pending: Promise<T>,
-  signal: AbortSignal | undefined,
-  onAbortedValue?: (value: T) => void,
-): Promise<T> {
-  if (!signal) return pending;
-  return new Promise<T>((resolve, reject) => {
-    let listening = true;
-    const cleanup = () => {
-      if (!listening) return;
-      listening = false;
-      signal.removeEventListener("abort", onAbort);
-    };
-    const onAbort = () => {
-      cleanup();
-      reject(createAbortError(signal.reason));
-    };
-    signal.addEventListener("abort", onAbort, { once: true });
-    pending.then(
-      (value) => {
-        cleanup();
-        if (signal.aborted) {
-          onAbortedValue?.(value);
-          reject(createAbortError(signal.reason));
-        } else {
-          resolve(value);
-        }
-      },
-      (error: unknown) => {
-        cleanup();
-        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Preserve SDK rejection values for the shared error converter.
-        reject(error);
-      },
-    );
-    if (signal.aborted) onAbort();
-  });
 }

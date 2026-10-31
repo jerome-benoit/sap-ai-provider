@@ -724,18 +724,32 @@ per-call `abortSignal` is merged with the provider-level `requestConfig` (see
 via the internal `mergeRequestConfig` helper. Any `signal` present on
 `requestConfig` is dropped so the AI SDK `abortSignal` always wins.
 
-The snippets below show the **Orchestration** call sites. The **Foundation Models**
+The snippets below illustrate **Orchestration** signal forwarding. The **Foundation Models**
 path uses `client.run()` for non-streaming and a 3-argument
 `client.stream(request, abortSignal, requestConfig)` for streaming; the same
 `mergeRequestConfig` helper is applied in both cases.
-Responses uses this helper through its fetch-compatible SAP transport, with
-explicit cleanup of the response iterator and native HTTP request. Its
+
+`abort-utils.ts` cancels preparation waits independently of the SDK's transport
+signal, observes late rejections, and releases late stream results without
+starting their SSE iterators. SDK deployment discovery can continue because its
+helpers expose no signal; the forwarded inference signal remains cancelled.
+
+`sap-http-stream.ts` separates final-failure capture outside configured middleware
+from transport lifecycle observation inside it. Cleanup retains original
+body/request identities, not mutable response containers. Successful streams lease
+those resources until iteration ends or cancellation closes them, so setup never
+tears down a live recovered body or a wrapper around it. A lease-scoped abort
+listener closes rejected requests after Axios has removed its own signal handler.
+The bounded HTTP error-body reader is shared with Responses. Native Orchestration
+and Foundation Models timeout observers cover failed responses only.
+
+Responses owns successful-body adaptation, iterator/request cleanup, and timeout
+observation in its fetch-compatible transport. Its
 [upgrade contract](#sdk-upgrade-contract) covers error-body reads and cancellation
-after an HTTP error has already been received.
-An innermost transport middleware keeps the native request's socket inactivity
-timeout effective after streamed headers settle, before configured middleware
-can delay consumption. Fully received bodies remain available during such a delay;
-active SSE traffic is not subject to an absolute duration limit.
+after HTTP error headers. The innermost lifecycle observer preserves socket
+inactivity timeouts before configured middleware can delay consumption. Fully
+received bodies remain available during that delay; active SSE traffic has no
+absolute duration limit.
 
 **Non-streaming (Orchestration):**
 
@@ -1044,8 +1058,8 @@ Key types for model configuration:
   "anthropic--claude-4.5-sonnet", "gemini-2.5-pro") with flexibility for custom models
 - **`SAPAISettings`**: Interface with `modelVersion`, `modelParams` (maxTokens,
   temperature, topP, etc.), `responseFormat`, `includeReasoning`, native
-  `responses` options, and
-  API-specific masking, filtering, grounding, and translation options
+  `responses` options, and API-specific `dropUnsupportedParams`, masking,
+  filtering, grounding, and translation options
 
 See `src/sap-ai-settings.ts` for complete type definitions.
 
@@ -1097,6 +1111,18 @@ message formats.
 The provider lazily selects **Orchestration**, **Foundation Models Chat
 Completions**, or **Responses**. API selection is explicit and follows provider,
 model, and invocation precedence; the default remains Orchestration.
+
+Orchestration supplies optional native-reasoning and provider-field extractors
+to the shared V3 result builder and stream transformer. One reasoning part
+represents each SAP block; complete block metadata is replayed through the prompt
+converter under the configured provider namespace. The stream transformer
+preserves positional blocks until EOF, appends content, and replaces signatures
+according to SDK semantics. Foundation Models leaves these capabilities unset.
+
+Provider-specific fields are captured from individual chunks because the SDK's
+final aggregate omits them. Unified finish reasons remain SAP-based; original
+provider reasons survive separately as raw diagnostics. Versioned facades retain
+the standard reasoning parts and their metadata without another conversion layer.
 
 Responses implements `LanguageModelAPIStrategy` directly because its request
 and event formats differ from Chat Completions. `@ai-sdk/openai` handles native

@@ -13,6 +13,7 @@ import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { throwIfAborted, waitWithAbort } from "./abort-utils.js";
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
@@ -30,11 +31,7 @@ import {
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
-import {
-  createAbortError,
-  createStreamTransformer,
-  StreamIdGenerator,
-} from "./stream-transformer.js";
+import { createStreamTransformer, StreamIdGenerator } from "./stream-transformer.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -59,6 +56,8 @@ export interface CommonBuildResult<TMessages extends unknown[] = unknown[], TToo
  */
 export interface StreamCallResponse {
   readonly cancel: () => void;
+  readonly extractProviderSpecificFields?: (chunk: SDKStreamChunk) => unknown;
+  readonly extractReasoningBlocks?: (chunk: SDKStreamChunk) => unknown;
   readonly getCitations?: () => SDKCitation[] | undefined;
   readonly getFinishReason: () => null | string | undefined;
   readonly getIntermediateFailures?: () => undefined | unknown[];
@@ -110,17 +109,21 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
-      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      throwIfAborted(options.abortSignal);
       const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings, commonParts);
 
-      const response = await this.executeApiCall(
-        client,
-        request,
-        mergeRequestConfig(config.requestConfig, options.abortSignal, options.headers),
+      const response = await waitWithAbort(
+        this.executeApiCall(
+          client,
+          request,
+          mergeRequestConfig(config.requestConfig, options.abortSignal, options.headers),
+        ),
+        options.abortSignal,
       );
+      throwIfAborted(options.abortSignal);
 
       return buildGenerateResult({
         providerName: commonParts.providerName,
@@ -148,7 +151,7 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      throwIfAborted(options.abortSignal);
       const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
@@ -162,6 +165,13 @@ export abstract class BaseLanguageModelStrategy<
         mergeRequestConfig(config.requestConfig, undefined, options.headers),
         commonParts,
       );
+      if (options.abortSignal?.aborted) {
+        try {
+          streamResponse.cancel();
+        } finally {
+          throwIfAborted(options.abortSignal);
+        }
+      }
 
       const idGenerator = new StreamIdGenerator();
 
@@ -171,6 +181,8 @@ export abstract class BaseLanguageModelStrategy<
         cancel: streamResponse.cancel,
         convertToAISDKError,
         extractChunkMetadata: (chunk) => this.extractMetadata(chunk),
+        extractProviderSpecificFields: streamResponse.extractProviderSpecificFields,
+        extractReasoningBlocks: streamResponse.extractReasoningBlocks,
         idGenerator,
         includeRawChunks: options.includeRawChunks ?? false,
         modelId: config.modelId,
@@ -240,6 +252,7 @@ export abstract class BaseLanguageModelStrategy<
     const messages = convertToSAPMessages(options.prompt, {
       escapeTemplatePlaceholders: this.getEscapeTemplatePlaceholders(sapOptions, settings),
       includeReasoning: this.getIncludeReasoning(sapOptions, settings),
+      nativeReasoningProviderName: this.getNativeReasoningProviderName(providerName),
       parsePartProviderOptions: this.getPartProviderOptionsParser(),
       warnings,
     });
@@ -400,6 +413,16 @@ export abstract class BaseLanguageModelStrategy<
       ("includeReasoning" in settings ? settings.includeReasoning : false) ??
       false
     );
+  }
+
+  /**
+   * Enables native reasoning history only for strategies supporting the Orchestration wire format.
+   * @param _providerName - Configured provider namespace.
+   * @returns The native reasoning namespace, or undefined for legacy text-only history.
+   * @internal
+   */
+  protected getNativeReasoningProviderName(_providerName: string): string | undefined {
+    return undefined;
   }
 
   /**

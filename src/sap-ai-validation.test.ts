@@ -993,3 +993,39 @@ describe.each([
     },
   );
 });
+
+describe("Orchestration unsupported-parameter policy", () => {
+  it.each(["foundation-models", "responses"] as const)(
+    "rejects explicit true and false outside Orchestration (%s)",
+    (api) => {
+      for (const dropUnsupportedParams of [true, false]) {
+        expect(() => {
+          validateSettings({ api, modelSettings: { dropUnsupportedParams } });
+        }).toThrow(UnsupportedFeatureError);
+        expect(() => {
+          validateSettings({ api, invocationSettings: { dropUnsupportedParams } });
+        }).toThrow(UnsupportedFeatureError);
+        expect(() => {
+          validateSettings({
+            api,
+            invocationSettings: { api },
+            modelApi: "orchestration",
+            modelSettings: { dropUnsupportedParams },
+          });
+        }).toThrow(ApiSwitchError);
+      }
+    },
+  );
+
+  it.each([null, "false", 0, {}, []])(
+    "rejects invalid model policy %j",
+    (dropUnsupportedParams) => {
+      expect(() => {
+        validateSettings({
+          api: "orchestration",
+          modelSettings: mockSettings({ dropUnsupportedParams }),
+        });
+      }).toThrow();
+    },
+  );
+});

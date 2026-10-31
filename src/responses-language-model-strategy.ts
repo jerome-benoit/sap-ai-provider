@@ -21,6 +21,7 @@ import { z } from "zod";
 import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { createAbortError } from "./abort-utils.js";
 import { convertResponsesCallToV4 } from "./responses-adapters-v3-to-v4.js";
 import {
   convertResponsesResultToV3,
@@ -30,7 +31,6 @@ import { createResponsesTransport } from "./responses-http-transport.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
 import { createAISDKRequestBodySummary } from "./strategy-utils.js";
-import { createAbortError } from "./stream-transformer.js";
 import { VERSION } from "./version.js";
 
 const MODEL_PARAMETERS = new Set([

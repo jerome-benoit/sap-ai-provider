@@ -155,6 +155,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       invocationSettings: sapOptions
         ? {
             api: sapOptions.api,
+            dropUnsupportedParams: sapOptions.dropUnsupportedParams,
             escapeTemplatePlaceholders: sapOptions.escapeTemplatePlaceholders,
             orchestrationConfigRef: sapOptions.orchestrationConfigRef,
             placeholderValues: sapOptions.placeholderValues,

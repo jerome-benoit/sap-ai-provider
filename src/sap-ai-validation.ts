@@ -12,7 +12,10 @@ import type {
 
 import { deepMerge } from "./deep-merge.js";
 import { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
-import { responsesModelOptionsSchema } from "./sap-ai-provider-options.js";
+import {
+  dropUnsupportedParamsSchema,
+  responsesModelOptionsSchema,
+} from "./sap-ai-provider-options.js";
 
 /**
  * Type guard for Foundation Models API settings.
@@ -116,6 +119,7 @@ function validateOrchestrationOnlyEmbeddingOptions(
  * Validates that Orchestration-only options are not used with a direct model API.
  *
  * Orchestration-only features:
+ * - `dropUnsupportedParams` - Unsupported parameter handling for the primary local model
  * - `fallbackModuleConfigs` - Prompt module fallback configuration list
  * - `filtering` - Content filtering module
  * - `grounding` - Document grounding module
@@ -151,6 +155,7 @@ function validateOrchestrationOnlyOptions(
  * @internal
  */
 const ORCHESTRATION_ONLY_FEATURE_KEYS = [
+  "dropUnsupportedParams",
   "fallbackModuleConfigs",
   "filtering",
   "grounding",
@@ -171,6 +176,7 @@ const ORCHESTRATION_ONLY_FEATURE_KEYS = [
 const ORCHESTRATION_ONLY_FEATURES: Readonly<
   Record<(typeof ORCHESTRATION_ONLY_FEATURE_KEYS)[number], string>
 > = {
+  dropUnsupportedParams: "Unsupported parameter handling (dropUnsupportedParams)",
   fallbackModuleConfigs: "Fallback module configurations (fallbackModuleConfigs)",
   filtering: "Content filtering",
   grounding: "Document grounding",
@@ -205,6 +211,7 @@ const FOUNDATION_MODELS_ONLY_FEATURES: Readonly<
  * @internal
  */
 const ORCHESTRATION_ONLY_INVOCATION_FEATURE_KEYS = [
+  "dropUnsupportedParams",
   "orchestrationConfigRef",
   "placeholderValues",
   "promptTemplateRef",
@@ -306,6 +313,7 @@ export interface ValidateSettingsOptions {
   readonly embeddingSettings?: SAPAIEmbeddingSettings;
   readonly invocationSettings?: {
     readonly api?: SAPAIApiType;
+    readonly dropUnsupportedParams?: boolean;
     readonly escapeTemplatePlaceholders?: boolean;
     readonly orchestrationConfigRef?: unknown;
     readonly placeholderValues?: unknown;
@@ -480,6 +488,15 @@ export function validateSettings(options: ValidateSettingsOptions): void {
   } else {
     if (modelResponses !== undefined) responsesModelOptionsSchema.parse(modelResponses);
     if (invocationResponses !== undefined) responsesModelOptionsSchema.parse(invocationResponses);
+  }
+
+  const modelDropUnsupportedParams = (modelSettings as OrchestrationModelSettings | undefined)
+    ?.dropUnsupportedParams;
+  if (modelDropUnsupportedParams !== undefined) {
+    dropUnsupportedParamsSchema.parse(modelDropUnsupportedParams);
+  }
+  if (invocationSettings?.dropUnsupportedParams !== undefined) {
+    dropUnsupportedParamsSchema.parse(invocationSettings.dropUnsupportedParams);
   }
 
   const modelEscape = (modelSettings as OrchestrationModelSettings | undefined)

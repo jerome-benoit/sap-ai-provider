@@ -8,6 +8,7 @@ import type {
   OrchestrationClient,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
+  OrchestrationStreamChunkResponse,
 } from "@sap-ai-sdk/orchestration";
 
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
@@ -29,6 +30,7 @@ import {
   parseSAPPartProviderOptions,
 } from "./sap-ai-provider-options.js";
 import { validateMaskingProvidersDeprecation } from "./sap-ai-validation.js";
+import { disposeSapStream, executeSapStream, withSapStreamCleanup } from "./sap-http-stream.js";
 import {
   convertResponseFormat,
   convertToolsToSAPFormat,
@@ -49,6 +51,7 @@ type OrchestrationClientInstance = InstanceType<typeof OrchestrationClient>;
  */
 interface OrchestrationResolvedState {
   readonly configRef: OrchestrationModelSettings["orchestrationConfigRef"];
+  readonly dropUnsupportedParams: boolean | undefined;
   readonly promptTemplateRef: PromptTemplateRef | undefined;
   readonly responseFormat: SAPResponseFormat | undefined;
   readonly tools: ChatCompletionTool[] | undefined;
@@ -115,6 +118,7 @@ const ORCHESTRATION_MODULE_KEYS = ["masking", "filtering", "grounding", "transla
  */
 const CONFIG_REF_IGNORED_MODULES = [
   ...ORCHESTRATION_MODULE_KEYS,
+  "dropUnsupportedParams",
   "fallbackModuleConfigs",
   "promptTemplateRef",
   "responseFormat",
@@ -128,7 +132,11 @@ const CONFIG_REF_IGNORED_MODULES = [
  * Subset of CONFIG_REF_IGNORED_MODULES that can be passed via providerOptions.
  * @internal
  */
-const CONFIG_REF_IGNORED_PROVIDER_OPTIONS = ["promptTemplateRef", "modelParams"] as const;
+const CONFIG_REF_IGNORED_PROVIDER_OPTIONS = [
+  "dropUnsupportedParams",
+  "promptTemplateRef",
+  "modelParams",
+] as const;
 
 /**
  * Copies non-empty orchestration modules from source to target.
@@ -259,7 +267,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     settings: OrchestrationModelSettings,
     commonParts: CommonBuildResult<ChatMessage[], SAPToolChoice | undefined>,
   ): OrchestrationClientInstance {
-    const { configRef, promptTemplateRef, responseFormat, tools } =
+    const { configRef, dropUnsupportedParams, promptTemplateRef, responseFormat, tools } =
       commonParts.resolvedState as OrchestrationResolvedState;
 
     if (configRef) {
@@ -267,6 +275,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     }
 
     const clientConfig = this.buildOrchestrationModuleConfig(config, settings, {
+      dropUnsupportedParams,
       modelParams: commonParts.modelParams,
       promptTemplateRef,
       responseFormat,
@@ -299,6 +308,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       getContent: () => response.getContent(),
       getFinishReason: () => response.getFinishReason(),
       getIntermediateFailures: () => response.getIntermediateFailures(),
+      getProviderSpecificFields: () => response.findChoiceByIndex(0)?.provider_specific_fields,
+      getReasoningBlocks: () => response.getAssistantMessage()?.reasoning_content,
       getTokenUsage: () => response.getTokenUsage(),
       getToolCalls: () => response.getToolCalls(),
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- SAP SDK types headers as any
@@ -322,10 +333,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = configRef
       ? undefined
       : this.buildSdkStreamOptions(settings.streamOptions);
-    const streamResponse = await client.stream(
-      request,
+    const streamResponse = await executeSapStream(
+      (streamRequestConfig) =>
+        client.stream(request, abortSignal, sdkStreamOptions, streamRequestConfig),
       abortSignal,
-      sdkStreamOptions,
       requestConfig,
     );
 
@@ -333,15 +344,22 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     return {
       cancel: () => {
-        streamResponse.stream.controller.abort();
+        disposeSapStream(streamResponse);
       },
+      extractProviderSpecificFields: (chunk) =>
+        (chunk as OrchestrationStreamChunkResponse).findChoiceByIndex(0)?.provider_specific_fields,
+      extractReasoningBlocks: (chunk) =>
+        (chunk as OrchestrationStreamChunkResponse).findChoiceByIndex(0)?.delta.reasoning_content,
       getCitations: () => streamResponse.getCitations(),
       getFinishReason: () => streamResponse.getFinishReason(),
       getIntermediateFailures: () => streamResponse.getIntermediateFailures(),
       requestId,
       responseHeaders,
       responseMetadata,
-      stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+      stream: withSapStreamCleanup(
+        streamResponse,
+        streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+      ),
     };
   }
 
@@ -358,6 +376,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       settings.escapeTemplatePlaceholders ??
       true
     );
+  }
+
+  protected override getNativeReasoningProviderName(providerName: string): string {
+    return providerName;
   }
 
   protected getParamMappings(): readonly ParamMapping[] {
@@ -405,7 +427,9 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     const tools = this.resolveTools(settings, options, warnings);
 
-    return { configRef, promptTemplateRef, responseFormat, tools };
+    const dropUnsupportedParams =
+      (sapOptions?.dropUnsupportedParams as boolean | undefined) ?? settings.dropUnsupportedParams;
+    return { configRef, dropUnsupportedParams, promptTemplateRef, responseFormat, tools };
   }
 
   /**
@@ -465,6 +489,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
    * @param config - Strategy configuration.
    * @param settings - Model settings.
    * @param params - Build parameters.
+   * @param params.dropUnsupportedParams - Optional unsupported-parameter policy for the primary model.
    * @param params.modelParams - LLM model parameters.
    * @param params.promptTemplateRef - Optional prompt template reference.
    * @param params.responseFormat - Optional response format specification.
@@ -477,6 +502,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     config: LanguageModelStrategyConfig,
     settings: OrchestrationModelSettings,
     params: {
+      readonly dropUnsupportedParams?: boolean;
       readonly modelParams: Record<string, unknown>;
       readonly promptTemplateRef?: PromptTemplateRef;
       readonly responseFormat?: unknown;
@@ -484,7 +510,14 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       readonly tools?: ChatCompletionTool[];
     },
   ): OrchestrationModuleConfig {
-    const { modelParams, promptTemplateRef, responseFormat, toolChoice, tools } = params;
+    const {
+      dropUnsupportedParams,
+      modelParams,
+      promptTemplateRef,
+      responseFormat,
+      toolChoice,
+      tools,
+    } = params;
 
     const promptConfig = promptTemplateRef
       ? this.buildTemplateRefPromptConfig(promptTemplateRef, tools, responseFormat)
@@ -501,6 +534,9 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
           name: config.modelId,
           params: effectiveModelParams,
           ...(settings.modelVersion ? { version: settings.modelVersion } : {}),
+          ...(dropUnsupportedParams !== undefined
+            ? { drop_unsupported_params: dropUnsupportedParams }
+            : {}),
         },
         prompt: promptConfig,
       },
@@ -617,7 +653,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     }
 
     for (const key of CONFIG_REF_IGNORED_PROVIDER_OPTIONS) {
-      if (sapOptions?.[key] && !settings[key as keyof OrchestrationModelSettings]) {
+      if (sapOptions?.[key] !== undefined && settings[key] === undefined) {
         ignoredSettings.push(`providerOptions.${key}`);
       }
     }

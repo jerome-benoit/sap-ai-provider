@@ -113,6 +113,12 @@ export type OrchestrationModelParams = CommonModelParams;
 /** Model settings when using Orchestration API with filtering, grounding, masking, and translation. */
 export interface OrchestrationModelSettings {
   readonly api?: "orchestration";
+  /**
+   * Whether Orchestration drops parameters unsupported by Responses-only models.
+   * Applies to the primary local model, not fallback models or stored configurations.
+   * Omitted values retain the SAP service default; false requests an explicit error.
+   */
+  readonly dropUnsupportedParams?: boolean;
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
   /**
@@ -308,6 +314,8 @@ export {
  */
 export interface SAPAISettings {
   readonly api?: SAPAIApiType;
+  /** Orchestration API only; controls unsupported parameters on the primary local model. */
+  readonly dropUnsupportedParams?: boolean;
   /** @default true */
   readonly escapeTemplatePlaceholders?: boolean;
   /** Orchestration API only. */
