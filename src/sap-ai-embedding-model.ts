@@ -147,7 +147,7 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       requestConfig: this.config.requestConfig,
     };
 
-    // Provider 4's readonly JSON metadata has the same wire shape as the public V3 contract.
+    // Bridge readonly strategy JSON to the mutable V3 contract without copying.
     return strategy.doEmbed(
       strategyConfig,
       this.settings,

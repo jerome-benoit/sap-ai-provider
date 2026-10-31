@@ -116,7 +116,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
     const { strategy, strategyConfig } = await this.prepareInvocation(options);
     const result = strategy.doGenerate(strategyConfig, this.settings, options);
-    // Strategies use provider 4's readonly JSON types; the V3 protocol and payloads are unchanged.
+    // Bridge readonly strategy JSON to the mutable V3 contract without copying.
     return result as Promise<LanguageModelV3GenerateResult>;
   }
 

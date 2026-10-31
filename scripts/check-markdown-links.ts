@@ -15,7 +15,7 @@ declare module "markdown-it" {
 }
 
 const markdown = new MarkdownIt({ html: true, linkify: true });
-// Restore www. autolinks without treating filenames or bare domains as URLs.
+// Recognize www. autolinks without treating filenames or bare domains as URLs.
 markdown.linkify.add("www.", {
   normalize(match) {
     match.url = `http://${match.url}`;
@@ -92,7 +92,7 @@ const linkAttributes: Record<string, string> = {
 };
 
 /**
- * Extract the former checker's HTML link attributes without its deprecated parser chain.
+ * Collect Markdown and inline HTML link destinations and same-document anchors.
  * @param source - Markdown with optional inline HTML and checker disable directives
  * @param ignoreDisable - Check links inside otherwise disabled sections when true
  * @returns Deduplicated links and existing same-document anchors
@@ -189,7 +189,7 @@ export async function run(args: string[]): Promise<number> {
 }
 
 /**
- * Apply extraction-wrapper policy, delegating protocol, request, retry, and status behavior unchanged.
+ * Apply link policy and delegate protocol, request, retry, and status handling to link-check.
  * @param link - Extracted link
  * @param baseUrl - Originating document directory URL, computed once for its links
  * @param anchors - Prefixed same-document anchors shared by this document's checks
@@ -232,7 +232,7 @@ async function checkDocumentLink(
 }
 
 /**
- * Preserve the former checker's encoded ATX heading slugs.
+ * Compute legacy URI-encoded ATX anchor names.
  * @param source - Markdown source after disable directives have been applied
  * @returns Heading fragment names in the legacy encoded form
  */
@@ -300,7 +300,7 @@ function parseHTMLDocument(
 }
 
 /**
- * Remove fenced code using the former checker's anchor-extraction behavior.
+ * Remove fenced blocks before legacy heading-anchor extraction.
  * @param source - Markdown source
  * @returns Source without fenced code blocks
  */
@@ -309,7 +309,7 @@ function removeCodeBlocks(source: string): string {
 }
 
 /**
- * Expand the former wrapper's supported configuration substitutions.
+ * Expand repository-base and environment placeholders in configuration values.
  * @param value - Replacement or header value
  * @returns Value with repository-base and environment substitutions applied
  */

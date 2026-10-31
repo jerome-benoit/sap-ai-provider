@@ -232,7 +232,7 @@ describe("Markdown link extraction", () => {
 });
 
 describe("Markdown link checking", () => {
-  it("checks restored www autolinks through the existing HTTP backend", async () => {
+  it("checks www autolinks through the HTTP backend", async () => {
     const requested = new Set<string>();
     const base = await serve((request, response) => {
       requested.add(request.url ?? "");

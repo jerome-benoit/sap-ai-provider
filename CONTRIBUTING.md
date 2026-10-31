@@ -153,24 +153,13 @@ Our development workflow follows these steps:
    ```
 
    Run `npm run lint:md:links` separately to check Markdown and inline HTML links,
-   including readable relative files, directories, and same-document anchors.
-   Bare `www.` URLs are checked as HTTP links; ordinary filenames and domains without
-   that prefix remain plain text.
-   The directory base URL is computed once per document with links; request options
-   and headers remain isolated per link.
-   The portable TypeScript checker replaces only link extraction with `markdown-it`
-   and `htmlparser2`; the existing `link-check` backend retains protocol, request,
-   retry, and status handling. HTML anchors come from parsed attributes, not stripped
-   comments or code. When disable directives alter Markdown, HTML links and anchors
-   must also occur in the original rendering; legacy ATX heading slugs remain intact.
-   Active reference links and images keep the original document's bindings and
-   first-definition precedence, including definitions inside disabled sections.
-   Filtering cannot create reference bindings absent from the original document.
-   `.markdown-links.json` keeps the previous configuration
-   shape and policy: placeholder exclusions, a 10-second timeout, accepted statuses
-   200, 206, and 403, and two HTTP 429 retries with a 5-second fallback. URL-specific
-   `httpHeaders`, local files, email MX checks, and backend fragment validation remain
-   unchanged. To check selected files or a fixture policy:
+   including relative files, directories, and same-document anchors. Bare `www.` URLs
+   are treated as HTTP links; plain domains and filenames are not autolinked. Link
+   destinations in code and HTML comments are excluded.
+
+   The default policy is `.markdown-links.json`. Set `ignoreDisable: true` to include
+   links within disabled sections. Active reference links use definitions from the
+   unfiltered document. Select files or a different policy explicitly:
 
    ```bash
    npm run lint:md:links -- README.md API_REFERENCE.md
