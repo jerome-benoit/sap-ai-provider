@@ -159,6 +159,9 @@ Our development workflow follows these steps:
    npm run check-build    # Verify outputs
    ```
 
+   `check-build` verifies export routing and compiles the published declarations as
+   strict NodeNext ESM and CommonJS consumers, with library checking enabled.
+
 7. **Test with examples** (requires SAP credentials)
 
    ```bash

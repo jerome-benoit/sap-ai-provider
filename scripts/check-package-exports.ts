@@ -1,4 +1,4 @@
-/** Verifies runtime and TypeScript declaration routing for the package being published. */
+/** Verifies export routing and strict TypeScript compatibility of published declarations. */
 import assert from "node:assert/strict";
 import { accessSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -90,4 +90,39 @@ for (const entryPoint of entryPoints) {
   );
 }
 
-console.log(`Verified ESM and CommonJS runtime and declarations for ${pkg.name}.`);
+const consumerFiles = ["cts", "mts"].map((extension) =>
+  resolve(`package-export-check.${extension}`),
+);
+const consumerSource = entryPoints
+  .map(
+    ({ specifier }, index) =>
+      `export * as provider${index.toString()} from ${JSON.stringify(specifier)};`,
+  )
+  .join("\n");
+const checkOptions: ts.CompilerOptions = {
+  ...compilerOptions,
+  noEmit: true,
+  skipLibCheck: false,
+  strict: true,
+  target: ts.ScriptTarget.ES2022,
+  types: ["node"],
+};
+const host = ts.createCompilerHost(checkOptions);
+const getSourceFile = host.getSourceFile.bind(host);
+host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) =>
+  consumerFiles.includes(resolve(fileName))
+    ? ts.createSourceFile(fileName, consumerSource, languageVersion, true)
+    : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+const program = ts.createProgram(consumerFiles, checkOptions, host);
+const diagnostics = ts.getPreEmitDiagnostics(program);
+assert.equal(
+  diagnostics.length,
+  0,
+  ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+    getCanonicalFileName: (fileName) => fileName,
+    getCurrentDirectory: () => ts.sys.getCurrentDirectory(),
+    getNewLine: () => ts.sys.newLine,
+  }),
+);
+
+console.log(`Verified ESM and CommonJS exports and strict declarations for ${pkg.name}.`);
