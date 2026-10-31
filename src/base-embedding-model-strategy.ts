@@ -12,6 +12,7 @@ import { TooManyEmbeddingValuesForCallError } from "@ai-sdk/provider";
 import type { SAPAIEmbeddingSettings } from "./sap-ai-settings.js";
 import type { EmbeddingModelAPIStrategy, EmbeddingModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { throwIfAborted, waitWithAbort } from "./abort-utils.js";
 import { deepMerge } from "./deep-merge.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
@@ -60,6 +61,7 @@ export abstract class BaseEmbeddingModelStrategy<
           values,
         });
       }
+      throwIfAborted(abortSignal);
       const embeddingOptions = config.parsedProviderOptions;
       const providerName = getProviderName(config.provider);
 
@@ -70,12 +72,16 @@ export abstract class BaseEmbeddingModelStrategy<
 
       const client = this.createClient(config, settings, embeddingOptions);
 
-      const response = await this.executeCall(
-        client,
-        values,
-        embeddingType,
-        mergeRequestConfig(config.requestConfig, abortSignal, options.headers),
+      const response = await waitWithAbort(
+        this.executeCall(
+          client,
+          values,
+          embeddingType,
+          mergeRequestConfig(config.requestConfig, abortSignal, options.headers),
+        ),
+        abortSignal,
       );
+      throwIfAborted(abortSignal);
 
       const embeddings = this.extractEmbeddings(response);
       const totalTokens = this.extractTokenCount(response);

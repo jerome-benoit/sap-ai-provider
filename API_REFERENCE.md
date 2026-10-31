@@ -479,11 +479,11 @@ explicitly when the model requires it.
 - **Anthropic Claude** (via AWS Bedrock) - Claude 3.x, 4.x models
 - **Google Gemini** (via GCP Vertex AI) - Gemini 2.x models
 - **Amazon Nova** (via AWS Bedrock) - Nova models
-- **Mistral AI**, **Cohere**, **SAP** (ABAP, RPT)
+- **Mistral AI**, **Cohere**, **SAP** (ABAP)
 
-> **Note:** Model availability depends on your SAP AI Core tenant configuration,
-> region, and subscription. The model ID you pass to `provider("model-name")`
-> can be any model available in your environment.
+> **Note:** Use a model ID available through the selected API and compatible with
+> the requested language-model or embedding operation. Native RPT tabular
+> prediction APIs are not exposed.
 
 **Discovering Available Models:**
 
@@ -1386,10 +1386,13 @@ const settings: SAPAIProviderSettings = {
 >   `CustomRequestConfig` `Record<string, any>` index signature; it is honoured
 >   end-to-end but is not a first-class typed field.)
 > - **Abort semantics.** The AI SDK `abortSignal` option always wins over any `signal`
->   set on `requestConfig`; the latter is dropped before forwarding. An already
->   aborted language-model call rejects with a non-retryable `APICallError`
->   (status 499), including when the signal has a custom reason. For in-flight
->   streaming cancellation, see [Request Cancellation](./ARCHITECTURE.md#request-cancellation).
+>   set on `requestConfig`; the latter is dropped before forwarding. Cancellation
+>   promptly rejects generation, stream setup, or embeddings with a non-retryable
+>   `APICallError` (status 499), including during deployment discovery and with
+>   custom reasons. Discovery itself can continue, but no inference request is
+>   dispatched after cancellation. An oversized embedding batch retains its
+>   batch-limit error before cancellation. For in-flight streaming cancellation,
+>   see [Request Cancellation](./ARCHITECTURE.md#request-cancellation).
 > - **SAP AI Core `AI-*` headers.** `requestConfig.headers` accepts service-specific
 >   headers that alter server-side behaviour:
 >   - **`AI-Object-Store-Secret-Name`** — names the object store secret used by the
@@ -2572,6 +2575,9 @@ explicit `overrideConfig`.
 `FilteringModule` already accepts IBM Granite Guardian 4.1 and input
 `target_selector` values (`last_messages` or `after_last_role`) from the SAP SDK.
 No provider-specific filter builder is required.
+`enable_reasoning` configures Granite Guardian's filter reasoning, not
+assistant-model reasoning. Module-level filter results are not projected into
+standard provider metadata.
 
 `fallbackModuleConfigs` accepts full SAP AI SDK `OrchestrationModuleConfig`
 objects. The provider sends the primary module configuration first, followed by
@@ -2986,6 +2992,11 @@ reasoning blocks. AI SDK 7 can then apply `onError` and configured stream retrie
 valid, non-empty provider `finish_reason`, falling back to the SAP value.
 Streaming retains fields omitted by later chunks and replaces updated keys
 shallowly. These diagnostics do not require `includeRawChunks`.
+
+Successful module-level `intermediate_results` are not projected into standard
+generation results or stream finish metadata. With
+`includeRawChunks: true`, raw events retain the SDK chunk payloads, including
+module results present in those chunks.
 
 **Generation response body:** `doGenerate().response.body` is a provider-built
 summary containing `content`, `finishReason`, `tokenUsage`, and `toolCalls`

@@ -20,6 +20,7 @@ import type {
   SDKTokenUsage,
 } from "./strategy-utils.js";
 
+import { createAbortError } from "./abort-utils.js";
 import { orchestrationReasoningBlockSchema } from "./sap-ai-provider-options.js";
 import {
   buildAnthropicCacheMetadata,
@@ -122,18 +123,6 @@ export class StreamIdGenerator {
   generateToolCallId(): string {
     return crypto.randomUUID();
   }
-}
-
-/**
- * Preserves a caller-provided reason while retaining standard abort classification.
- * @param reason - The original cancellation reason.
- * @returns An AbortError carrying the reason as its cause.
- * @internal
- */
-export function createAbortError(reason: unknown): Error {
-  const error = new Error("The operation was aborted.", { cause: reason });
-  error.name = "AbortError";
-  return error;
 }
 
 /**

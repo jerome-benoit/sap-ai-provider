@@ -478,13 +478,9 @@ For complete embedding API documentation, see
 
 ## Supported Models
 
-This provider supports all models available through SAP AI Core, including models
-from **OpenAI**, **Anthropic Claude**, **Google Gemini**, **Amazon Nova**,
-**Mistral AI**, **Cohere**, and **SAP** (ABAP, RPT).
-
-> **Note:** Model availability depends on your SAP AI Core tenant configuration,
-> region, and subscription. Use `provider("model-name")` with any model ID
-> available in your environment.
+This provider supports language models and text embeddings through the supported
+SAP AI Core APIs. Model availability and features depend on your tenant and the
+selected API. Native RPT tabular prediction APIs are not exposed.
 
 For details on discovering available models, see
 **[API Reference: Supported Models](./API_REFERENCE.md#supported-models)**.

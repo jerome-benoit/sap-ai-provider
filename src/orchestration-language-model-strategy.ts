@@ -30,6 +30,7 @@ import {
   parseSAPPartProviderOptions,
 } from "./sap-ai-provider-options.js";
 import { validateMaskingProvidersDeprecation } from "./sap-ai-validation.js";
+import { disposeSapStream, executeSapStream, withSapStreamCleanup } from "./sap-http-stream.js";
 import {
   convertResponseFormat,
   convertToolsToSAPFormat,
@@ -332,10 +333,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
     const sdkStreamOptions = configRef
       ? undefined
       : this.buildSdkStreamOptions(settings.streamOptions);
-    const streamResponse = await client.stream(
-      request,
+    const streamResponse = await executeSapStream(
+      (streamRequestConfig) =>
+        client.stream(request, abortSignal, sdkStreamOptions, streamRequestConfig),
       abortSignal,
-      sdkStreamOptions,
       requestConfig,
     );
 
@@ -343,7 +344,7 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
 
     return {
       cancel: () => {
-        streamResponse.stream.controller.abort();
+        disposeSapStream(streamResponse);
       },
       extractProviderSpecificFields: (chunk) =>
         (chunk as OrchestrationStreamChunkResponse).findChoiceByIndex(0)?.provider_specific_fields,
@@ -355,7 +356,10 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
       requestId,
       responseHeaders,
       responseMetadata,
-      stream: streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+      stream: withSapStreamCleanup(
+        streamResponse,
+        streamResponse.stream as AsyncIterable<SDKStreamChunk>,
+      ),
     };
   }
 

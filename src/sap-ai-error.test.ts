@@ -14,12 +14,12 @@ import {
 import { ErrorWithCause } from "@sap-cloud-sdk/util";
 import { describe, expect, it } from "vitest";
 
+import { createAbortError } from "./abort-utils.js";
 import {
   convertSAPErrorToAPICallError,
   convertToAISDKError,
   normalizeHeaders,
 } from "./sap-ai-error";
-import { createAbortError } from "./stream-transformer.js";
 
 interface ParsedResponseBody {
   error: {

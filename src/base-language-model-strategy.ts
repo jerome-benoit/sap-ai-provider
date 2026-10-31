@@ -13,6 +13,7 @@ import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
 import type { SAPAIModelSettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
 
+import { throwIfAborted, waitWithAbort } from "./abort-utils.js";
 import { convertToSAPMessages } from "./convert-to-sap-messages.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
@@ -30,11 +31,7 @@ import {
   type SDKResponse,
   type SDKStreamChunk,
 } from "./strategy-utils.js";
-import {
-  createAbortError,
-  createStreamTransformer,
-  StreamIdGenerator,
-} from "./stream-transformer.js";
+import { createStreamTransformer, StreamIdGenerator } from "./stream-transformer.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -112,17 +109,21 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     try {
-      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      throwIfAborted(options.abortSignal);
       const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
       const client = this.createClient(config, settings, commonParts);
 
-      const response = await this.executeApiCall(
-        client,
-        request,
-        mergeRequestConfig(config.requestConfig, options.abortSignal, options.headers),
+      const response = await waitWithAbort(
+        this.executeApiCall(
+          client,
+          request,
+          mergeRequestConfig(config.requestConfig, options.abortSignal, options.headers),
+        ),
+        options.abortSignal,
       );
+      throwIfAborted(options.abortSignal);
 
       return buildGenerateResult({
         providerName: commonParts.providerName,
@@ -150,7 +151,7 @@ export abstract class BaseLanguageModelStrategy<
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     try {
-      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      throwIfAborted(options.abortSignal);
       const commonParts = this.buildCommonParts(config, settings, options);
       const { request, warnings } = this.buildRequest(config, settings, options, commonParts);
 
@@ -164,6 +165,13 @@ export abstract class BaseLanguageModelStrategy<
         mergeRequestConfig(config.requestConfig, undefined, options.headers),
         commonParts,
       );
+      if (options.abortSignal?.aborted) {
+        try {
+          streamResponse.cancel();
+        } finally {
+          throwIfAborted(options.abortSignal);
+        }
+      }
 
       const idGenerator = new StreamIdGenerator();
 
