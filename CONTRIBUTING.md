@@ -152,6 +152,21 @@ Our development workflow follows these steps:
    npm run lint-fix       # Auto-fix issues
    ```
 
+   Run `npm run lint:md:links` separately to check Markdown and inline HTML links,
+   including readable relative files, directories, and same-document anchors.
+   The portable TypeScript checker replaces only link extraction with `markdown-it`
+   and `htmlparser2`; the existing `link-check` backend retains protocol, request,
+   retry, and status handling. `.markdown-links.json` keeps the previous configuration
+   shape and policy: placeholder exclusions, a 10-second timeout, accepted statuses
+   200, 206, and 403, and two HTTP 429 retries with a 5-second fallback. URL-specific
+   `httpHeaders`, local files, email MX checks, and existing fragment behavior remain
+   unchanged. To check selected files or a fixture policy:
+
+   ```bash
+   npm run lint:md:links -- README.md API_REFERENCE.md
+   npm run lint:md:links -- --config path/to/policy.json path/to/document.md
+   ```
+
 6. **Build the library**
 
    ```bash
@@ -159,8 +174,13 @@ Our development workflow follows these steps:
    npm run check-build    # Verify outputs
    ```
 
-   `check-build` verifies export routing and compiles the published declarations as
-   strict NodeNext ESM and CommonJS consumers, with library checking enabled.
+   `check-build` verifies export routing, checks the published declarations, and emits
+   declarations from strict NodeNext ESM and CommonJS consumers with library checking
+   enabled. The consumers export inferred provider, model, bound operation, tool-schema,
+   and provider-option types, catching names that downstream declaration emission cannot
+   express as well as contract incompatibilities.
+   The official V2/V3 provider contract aliases are development-only dependencies;
+   both builds inline their declarations, so consumers need no alias packages.
 
 7. **Test with examples** (requires SAP credentials)
 

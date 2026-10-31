@@ -9,12 +9,13 @@
  */
 
 import type {
-  LanguageModelV3CallOptions,
   LanguageModelV4,
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamResult,
+  LanguageModelV3CallOptions as StrategyLanguageModelCallOptions,
 } from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions } from "@ai-sdk/provider-v3";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -100,9 +101,12 @@ function normalizeCallOptions(
   options: LanguageModelV4CallOptions,
 ): InternalLanguageModelCallOptions {
   const { prompt, reasoning, ...rest } = options;
-  return {
+  const normalized: Pick<InternalLanguageModelCallOptions, "reasoning"> &
+    StrategyLanguageModelCallOptions = {
     ...rest,
     ...(reasoning !== undefined && reasoning !== "provider-default" ? { reasoning } : {}),
     prompt: normalizeV4PromptToV3(prompt),
   };
+  // V4 JSON values pass through unchanged; the core exposes the mutable V3 JSON contract.
+  return normalized as InternalLanguageModelCallOptions;
 }

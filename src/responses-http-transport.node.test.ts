@@ -1,5 +1,5 @@
 /** SAP HTTP transport contracts for Responses requests and response cancellation. */
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions } from "@ai-sdk/provider-v3";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
 import { APICallError } from "@ai-sdk/provider";

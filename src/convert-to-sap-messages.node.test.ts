@@ -1,5 +1,5 @@
 /** Node-specific cross-realm and public error-boundary tests for SAP message conversion. */
-import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
+import type { LanguageModelV3Prompt } from "@ai-sdk/provider-v3";
 
 import { InvalidPromptError, UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { runInNewContext } from "node:vm";

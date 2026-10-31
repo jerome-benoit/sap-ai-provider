@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 interface EntryPoint {
+  specification: 2 | 3 | 4;
   specifier: string;
   stem: string;
 }
@@ -18,12 +19,14 @@ const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8")) as {
 const standaloneV2 = pkg.name === "@jerome-benoit/sap-ai-provider-v2";
 assert.ok(standaloneV2 || pkg.name === "@jerome-benoit/sap-ai-provider", "Unexpected package name");
 
-const entryPoints: EntryPoint[] = [{ specifier: pkg.name, stem: "index" }];
+const entryPoints: EntryPoint[] = [
+  { specification: standaloneV2 ? 2 : 3, specifier: pkg.name, stem: "index" },
+];
 if (!standaloneV2) {
   entryPoints.push(
-    { specifier: `${pkg.name}/v2`, stem: "index-v2" },
-    { specifier: `${pkg.name}/v3`, stem: "index" },
-    { specifier: `${pkg.name}/v4`, stem: "index-v4" },
+    { specification: 2, specifier: `${pkg.name}/v2`, stem: "index-v2" },
+    { specification: 3, specifier: `${pkg.name}/v3`, stem: "index" },
+    { specification: 4, specifier: `${pkg.name}/v4`, stem: "index-v4" },
   );
 }
 assert.deepEqual(
@@ -94,14 +97,34 @@ const consumerFiles = ["cts", "mts"].map((extension) =>
   resolve(`package-export-check.${extension}`),
 );
 const consumerSource = entryPoints
-  .map(
-    ({ specifier }, index) =>
-      `export * as provider${index.toString()} from ${JSON.stringify(specifier)};`,
-  )
+  .map(({ specification, specifier }, index) => {
+    const suffix = index.toString();
+    const providerType = `ProviderV${specification.toString()}`;
+    const contractModule =
+      specification === 4 ? "@ai-sdk/provider" : `@ai-sdk/provider-v${specification.toString()}`;
+    return [
+      `import type { ${providerType} as Contract${suffix} } from ${JSON.stringify(contractModule)};`,
+      `import { createSAPAIProvider as create${suffix}, sapAILanguageModelProviderOptions as optionsSchema${suffix} } from ${JSON.stringify(specifier)};`,
+      `export const provider${suffix} = create${suffix}();`,
+      `const checked${suffix}: Contract${suffix} = provider${suffix};`,
+      `void checked${suffix};`,
+      `export const model${suffix} = provider${suffix}("gpt-4.1");`,
+      `export const generate${suffix} = model${suffix}.doGenerate.bind(model${suffix});`,
+      `export const stream${suffix} = model${suffix}.doStream.bind(model${suffix});`,
+      `export const embedding${suffix} = provider${suffix}.textEmbeddingModel("text-embedding-3-small");`,
+      `export const embed${suffix} = embedding${suffix}.doEmbed.bind(embedding${suffix});`,
+      `declare const options${suffix}: Parameters<typeof model${suffix}.doGenerate>[0];`,
+      `export const tools${suffix} = options${suffix}.tools;`,
+      `const tool${suffix} = options${suffix}.tools?.[0];`,
+      `export const schema${suffix} = tool${suffix}?.type === "function" ? tool${suffix}.inputSchema : undefined;`,
+      `export const providerOptions${suffix} = optionsSchema${suffix};`,
+    ].join("\n");
+  })
   .join("\n");
 const checkOptions: ts.CompilerOptions = {
   ...compilerOptions,
-  noEmit: true,
+  declaration: true,
+  emitDeclarationOnly: true,
   skipLibCheck: false,
   strict: true,
   target: ts.ScriptTarget.ES2022,
@@ -114,7 +137,9 @@ host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceF
     ? ts.createSourceFile(fileName, consumerSource, languageVersion, true)
     : getSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
 const program = ts.createProgram(consumerFiles, checkOptions, host);
-const diagnostics = ts.getPreEmitDiagnostics(program);
+const diagnostics = [...ts.getPreEmitDiagnostics(program)];
+const emitted = diagnostics.length === 0 ? program.emit(undefined, () => undefined) : undefined;
+if (emitted !== undefined) diagnostics.push(...emitted.diagnostics);
 assert.equal(
   diagnostics.length,
   0,
@@ -124,5 +149,6 @@ assert.equal(
     getNewLine: () => ts.sys.newLine,
   }),
 );
+assert.equal(emitted?.emitSkipped, false, "Consumer declaration emission was skipped");
 
 console.log(`Verified ESM and CommonJS exports and strict declarations for ${pkg.name}.`);

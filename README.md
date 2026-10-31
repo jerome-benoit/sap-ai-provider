@@ -70,7 +70,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 - 📡 **Streaming Support** - Real-time text generation with structured V3 blocks
 - 🔒 **Data Masking** - Built-in SAP DPI integration for privacy
 - 🛡️ **Content Filtering** - Azure Content Safety and Llama Guard support
-- 🔧 **TypeScript Support** - Full type safety and IntelliSense
+- 🔧 **TypeScript Support** - Typed SDK contracts, IntelliSense, and portable
+  declaration inference
 - 🎨 **Multiple Models** - Support for OpenAI, Claude, Gemini, Nova, and more
 - 🔄 **AI SDK 5–7 Compatibility** - Versioned V2, V3, and V4 entrypoints
   preserve the matching Vercel AI SDK provider specification

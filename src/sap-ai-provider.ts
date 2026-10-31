@@ -1,8 +1,9 @@
+import type { ProviderV3 } from "@ai-sdk/provider-v3";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
-import { NoSuchModelError, ProviderV3 } from "@ai-sdk/provider";
+import { NoSuchModelError } from "@ai-sdk/provider";
 import { setGlobalLogLevel } from "@sap-cloud-sdk/util";
 
 import { SAPAIEmbeddingModel, SAPAIEmbeddingModelId } from "./sap-ai-embedding-model.js";

@@ -2,8 +2,9 @@
  * Zod schemas for runtime validation of per-call options via `providerOptions['sap-ai']`.
  */
 
-import type { JSONObject, SharedV3Warning } from "@ai-sdk/provider";
+import type { SharedV3Warning } from "@ai-sdk/provider";
 import type { InferSchema } from "@ai-sdk/provider-utils";
+import type { JSONObject } from "@ai-sdk/provider-v3";
 import type { OrchestrationConfigRefOverride } from "@sap-ai-sdk/orchestration";
 
 import { lazySchema, zodSchema } from "@ai-sdk/provider-utils";
