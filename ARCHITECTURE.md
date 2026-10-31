@@ -1629,6 +1629,12 @@ removes the `/v2`, `/v3`, and `/v4` exports, leaving only the V2 root API.
 Run it in a separate clean checkout. Do not run `prepare:v2` manually before
 `npm publish`: its lifecycle builds V2, prepares it, and verifies the prepared exports.
 
+Development-only `minimatch` overrides are restricted to ESLint, its config-array
+package, and typescript-estree while those callers require the vulnerable 10.x
+line. Their reviewed APIs remain available in the fixed 11.x line. Remove these
+overrides when the parents accept a fixed version. npm applies overrides only
+at the project root; they do not constrain consumers of the published provider.
+
 ### Key Design Decisions
 
 1. **Single source of truth**: All SAP AI Core logic lives in the V3 implementation
