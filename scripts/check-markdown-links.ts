@@ -151,6 +151,8 @@ export async function run(args: string[]): Promise<number> {
       try {
         const document = extractDocument(readFileSync(file, "utf8"), configuration.ignoreDisable);
         const links = [...document.links];
+        if (links.length === 0) continue;
+        const baseUrl = pathToFileURL(dirname(resolve(file))).href;
         const anchors = Array.from(document.anchors, (anchor) => `#${anchor}`);
         const messages = new Array<string>(links.length);
         linkCount += links.length;
@@ -163,7 +165,7 @@ export async function run(args: string[]): Promise<number> {
               if (link === undefined) return;
               let status: string;
               try {
-                status = await checkDocumentLink(link, file, anchors, configuration);
+                status = await checkDocumentLink(link, baseUrl, anchors, configuration);
               } catch (error) {
                 status = `FAIL ${error instanceof Error ? error.message : String(error)}`;
               }
@@ -189,14 +191,14 @@ export async function run(args: string[]): Promise<number> {
 /**
  * Apply extraction-wrapper policy, delegating protocol, request, retry, and status behavior unchanged.
  * @param link - Extracted link
- * @param file - Originating Markdown file
+ * @param baseUrl - Originating document directory URL, computed once for its links
  * @param anchors - Prefixed same-document anchors shared by this document's checks
  * @param configuration - Existing checker configuration
  * @returns Printable status, with failures prefixed by FAIL
  */
 async function checkDocumentLink(
   link: string,
-  file: string,
+  baseUrl: string,
   anchors: readonly string[],
   configuration: Configuration,
 ): Promise<string> {
@@ -215,7 +217,6 @@ async function checkDocumentLink(
         headers[name] = substitute(value);
     }
   }
-  const baseUrl = pathToFileURL(dirname(resolve(file))).href;
   if (link.startsWith(baseUrl) && /^\/*#/.test(link.slice(baseUrl.length)))
     link = link.replace(/^[^#]+/, "");
   const result = await checkLink(link, {
