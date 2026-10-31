@@ -12,7 +12,7 @@ import type {
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamResult,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v3";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -115,12 +115,16 @@ export class SAPAILanguageModel implements LanguageModelV3 {
 
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
     const { strategy, strategyConfig } = await this.prepareInvocation(options);
-    return strategy.doGenerate(strategyConfig, this.settings, options);
+    const result = strategy.doGenerate(strategyConfig, this.settings, options);
+    // Strategies use provider 4's readonly JSON types; the V3 protocol and payloads are unchanged.
+    return result as Promise<LanguageModelV3GenerateResult>;
   }
 
   async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
     const { strategy, strategyConfig } = await this.prepareInvocation(options);
-    return strategy.doStream(strategyConfig, this.settings, options);
+    const result = strategy.doStream(strategyConfig, this.settings, options);
+    // Preserve the stream itself while exposing AI SDK 6's mutable JSON contract.
+    return result as Promise<LanguageModelV3StreamResult>;
   }
 
   supportsUrl(url: URL): boolean {

@@ -70,7 +70,8 @@ SAP's enterprise-grade AI models through the familiar Vercel AI SDK interface.
 - 📡 **Streaming Support** - Real-time text generation with structured V3 blocks
 - 🔒 **Data Masking** - Built-in SAP DPI integration for privacy
 - 🛡️ **Content Filtering** - Azure Content Safety and Llama Guard support
-- 🔧 **TypeScript Support** - Full type safety and IntelliSense
+- 🔧 **TypeScript Support** - Typed SDK contracts, IntelliSense, and portable
+  declaration inference
 - 🎨 **Multiple Models** - Support for OpenAI, Claude, Gemini, Nova, and more
 - 🔄 **AI SDK 5–7 Compatibility** - Versioned V2, V3, and V4 entrypoints
   preserve the matching Vercel AI SDK provider specification
@@ -187,8 +188,10 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 ```
 
 The V2 type contracts are bundled at build time; neither package installs a second
-provider package through the `@ai-sdk/provider-v2` alias. When using V2 with AI SDK 6,
-use the latest 6.x patch: the initial 6.0.0 embedding compatibility adapter has an
+provider package through the `@ai-sdk/provider-v2` alias. AI SDK 6 adapts V2 models
+in compatibility mode and emits SDK warnings. Use the root or `/v3` entrypoint for
+native SDK 6 support without compatibility warnings. If V2 compatibility is
+required, use the latest 6.x patch: the initial 6.0.0 embedding adapter has an
 upstream warning-handling failure that is absent in 6.0.280.
 
 See [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)

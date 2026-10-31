@@ -423,7 +423,8 @@ export function withSapStreamCleanup<T>(
 
   /**
    * Iterates SDK chunks while releasing the owned transport on every exit.
-   * @returns The unchanged SDK chunk sequence.
+   * @returns The SDK iterator with finalization cleanup.
+   * @yields {T} Each original SDK chunk.
    */
   async function* iterate(): AsyncGenerator<T> {
     try {

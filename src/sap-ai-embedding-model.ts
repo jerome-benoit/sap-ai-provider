@@ -10,7 +10,7 @@ import type {
   EmbeddingModelV3,
   EmbeddingModelV3CallOptions,
   EmbeddingModelV3Result,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v3";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -147,6 +147,12 @@ export class SAPAIEmbeddingModel implements EmbeddingModelV3 {
       requestConfig: this.config.requestConfig,
     };
 
-    return strategy.doEmbed(strategyConfig, this.settings, options, this.maxEmbeddingsPerCall);
+    // Provider 4's readonly JSON metadata has the same wire shape as the public V3 contract.
+    return strategy.doEmbed(
+      strategyConfig,
+      this.settings,
+      options,
+      this.maxEmbeddingsPerCall,
+    ) as Promise<EmbeddingModelV3Result>;
   }
 }

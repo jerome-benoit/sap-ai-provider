@@ -4,6 +4,7 @@
 
 import type { SharedV3Warning } from "@ai-sdk/provider";
 import type { InferSchema } from "@ai-sdk/provider-utils";
+import type { JSONObject } from "@ai-sdk/provider-v3";
 import type { OrchestrationConfigRefOverride } from "@sap-ai-sdk/orchestration";
 
 import { lazySchema, zodSchema } from "@ai-sdk/provider-utils";
@@ -296,7 +297,9 @@ export const orchestrationConfigRefSchema = z.union([
  * Responses options must be JSON with string metadata values; the delegate validates other fields.
  * @internal
  */
-export const responsesModelOptionsSchema = z
+export const responsesModelOptionsSchema: z.ZodType<
+  JSONObject & { readonly metadata?: null | Record<string, string> }
+> = z
   .object({
     metadata: z.record(z.string(), z.string()).nullable().optional(),
   })

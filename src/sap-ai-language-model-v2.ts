@@ -10,7 +10,7 @@
 import type {
   LanguageModelV2,
   LanguageModelV2CallOptions,
-  LanguageModelV3CallOptions,
+  LanguageModelV3CallOptions as StrategyLanguageModelCallOptions,
 } from "@ai-sdk/provider";
 import type {
   LanguageModelV2Content,
@@ -20,6 +20,7 @@ import type {
   SharedV2Headers,
   SharedV2ProviderMetadata,
 } from "@ai-sdk/provider-v2";
+import type { LanguageModelV3CallOptions } from "@ai-sdk/provider-v3";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -173,10 +174,12 @@ export class SAPAILanguageModelV2 implements LanguageModelV2 {
  * @returns Call options for the shared V3 core.
  */
 function normalizeCallOptions(options: CompatibleV2CallOptions): LanguageModelV3CallOptions {
-  return {
+  const normalized: StrategyLanguageModelCallOptions = {
     ...options,
     prompt: normalizeV2PromptToV3(options.prompt),
     // Legacy provider-defined tools keep their unsupported warning/skip behavior.
     tools: options.tools as LanguageModelV3CallOptions["tools"],
   };
+  // Prompt normalization preserves JSON values; only the core's mutable JSON type is narrower.
+  return normalized as LanguageModelV3CallOptions;
 }

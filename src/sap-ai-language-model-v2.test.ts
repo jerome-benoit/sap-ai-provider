@@ -1,7 +1,7 @@
 /** V2 facade result conversion and error propagation. */
 
-import type { LanguageModelV3GenerateResult, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import type { LanguageModelV2CallOptions } from "@ai-sdk/provider-v2";
+import type { LanguageModelV3GenerateResult, LanguageModelV3StreamPart } from "@ai-sdk/provider-v3";
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { afterEach, describe, expect, it, vi } from "vitest";

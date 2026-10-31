@@ -4,7 +4,7 @@ import type {
   LanguageModelV3Prompt,
   LanguageModelV3ProviderTool,
   LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+} from "@ai-sdk/provider-v3";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
