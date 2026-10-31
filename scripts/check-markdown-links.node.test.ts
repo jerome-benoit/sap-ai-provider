@@ -129,9 +129,108 @@ describe("Markdown link extraction", () => {
     );
     expect([...document.links]).toEqual(["kept.txt"]);
   });
+
+  it("preserves original reference bindings and normalized labels across disabled definitions", () => {
+    const source = [
+      "[full][MiXeD   Label]",
+      "[collapsed][]",
+      "[shortcut]",
+      "![image][PICTURE]",
+      "",
+      "<!-- markdown-link-check-disable -->",
+      "[mixed label]: full.txt",
+      "[collapsed]: collapsed.txt",
+      "[shortcut]: shortcut.txt",
+      "[picture]: picture.png",
+      "[unused]: https://unused.invalid/ignored",
+      "[disabled](disabled.txt)",
+      "<!-- markdown-link-check-enable -->",
+    ].join("\n");
+    const active = ["full.txt", "collapsed.txt", "shortcut.txt", "picture.png"];
+    expect(extractDocument(source).links).toEqual(new Set(active));
+    expect(extractDocument(source, true).links).toEqual(new Set([...active, "disabled.txt"]));
+  });
+
+  it.each([
+    ["absent", ""],
+    ["present", "[other]: other.txt\n\n"],
+  ])(
+    "does not create reference bindings from filtered script context when original bindings are %s",
+    async (_name, definitions) => {
+      const source = [
+        definitions,
+        "<!-- markdown-link-check-disable -->",
+        '<a href="missing.txt">disabled</a>',
+        "",
+        "<script>",
+        "<!-- markdown-link-check-enable -->",
+        "[ghost]: missing.txt",
+        "</script>",
+        "",
+        "[visible][ghost]",
+      ].join("\n");
+      expect(extractDocument(source).links).toEqual(new Set());
+      expect(await run(fixture(source).args)).toBe(0);
+    },
+  );
+
+  it("keeps reference bindings isolated between documents", () => {
+    expect(extractDocument("[visible][target]\n\n[target]: first.txt").links).toEqual(
+      new Set(["first.txt"]),
+    );
+    expect(extractDocument("[visible][target]").links).toEqual(new Set());
+    expect(extractDocument("[visible][target]\n\n[target]: second.txt").links).toEqual(
+      new Set(["second.txt"]),
+    );
+  });
 });
 
 describe("Markdown link checking", () => {
+  it.each([
+    ["link", "[visible][target]"],
+    ["image", "![visible][target]"],
+  ])("checks the original reference destination for an active %s", async (_name, reference) => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === "/original" ? 404 : 200).end();
+    });
+    const test = fixture(
+      [
+        reference,
+        "",
+        "<!-- markdown-link-check-disable -->",
+        `[target]: ${base}/original`,
+        "<!-- markdown-link-check-enable -->",
+        "",
+        `[target]: ${base}/fallback`,
+      ].join("\n"),
+    );
+    expect(await run(test.args)).toBe(1);
+    expect(requested).toEqual(new Set(["/original"]));
+  });
+
+  it("checks a valid original reference instead of a broken fallback definition", async () => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === "/original" ? 200 : 404).end();
+    });
+    const test = fixture(
+      [
+        "[visible][target]",
+        "",
+        "<!-- markdown-link-check-disable -->",
+        `[target]: ${base}/original`,
+        "<!-- markdown-link-check-enable -->",
+        "",
+        `[target]: ${base}/fallback`,
+      ].join("\n"),
+    );
+    expect(await run(test.args)).toBe(0);
+    expect(requested).toEqual(new Set(["/original"]));
+  });
+
   const disabledSection =
     "<!-- markdown-link-check-disable -->removed<!-- markdown-link-check-enable -->";
   it.each([

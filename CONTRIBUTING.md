@@ -159,6 +159,9 @@ Our development workflow follows these steps:
    retry, and status handling. HTML anchors come from parsed attributes, not stripped
    comments or code. When disable directives alter Markdown, HTML links and anchors
    must also occur in the original rendering; legacy ATX heading slugs remain intact.
+   Active reference links and images keep the original document's bindings and
+   first-definition precedence, including definitions inside disabled sections.
+   Filtering cannot create reference bindings absent from the original document.
    `.markdown-links.json` keeps the previous configuration
    shape and policy: placeholder exclusions, a 10-second timeout, accepted statuses
    200, 206, and 403, and two HTTP 429 retries with a 5-second fallback. URL-specific

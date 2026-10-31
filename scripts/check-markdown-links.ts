@@ -1,5 +1,5 @@
 import { Parser } from "htmlparser2";
-import MarkdownIt from "markdown-it";
+import MarkdownIt, { type Env } from "markdown-it";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -7,9 +7,20 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { z } from "zod";
 
+declare module "markdown-it" {
+  interface Env {
+    /** Original bindings restored before filtered inline parsing. */
+    readonly linkCheckOriginalEnvironment?: Env;
+  }
+}
+
 const markdown = new MarkdownIt({ html: true, linkify: true });
 // Rendering is parsed, never served or executed; the backend validates extracted protocols.
 markdown.validateLink = () => true;
+markdown.core.ruler.after("block", "link_check_original_references", (state) => {
+  const original = state.env.linkCheckOriginalEnvironment;
+  if (original !== undefined) state.env.references = original.references;
+});
 const configurationSchema = z.looseObject({
   $schema: z.string().optional(),
   aliveStatusCodes: z.array(z.number().int()).optional(),
@@ -33,7 +44,7 @@ const configurationSchema = z.looseObject({
 type Configuration = z.infer<typeof configurationSchema>;
 
 interface LinkCheckOptions extends Configuration {
-  anchors: string[];
+  anchors: readonly string[];
   baseUrl: string;
   headers: Record<string, string>;
 }
@@ -88,10 +99,16 @@ export function extractDocument(
     ])
       source = source.replace(pattern, "");
   }
-  const document = parseHTMLDocument(source);
-  if (source !== originalSource && (document.links.size > 0 || document.anchors.size > 0)) {
+  const originalEnvironment: Env = {};
+  const original = parseHTMLDocument(originalSource, originalEnvironment);
+  const document =
+    source === originalSource
+      ? original
+      : parseHTMLDocument(source, {
+          linkCheckOriginalEnvironment: originalEnvironment,
+        });
+  if (source !== originalSource) {
     // Filtering must not invent HTML attributes by changing markup or parser context.
-    const original = parseHTMLDocument(originalSource);
     for (const link of document.links) if (!original.links.has(link)) document.links.delete(link);
     for (const anchor of document.anchors)
       if (!original.anchors.has(anchor)) document.anchors.delete(anchor);
@@ -122,6 +139,7 @@ export async function run(args: string[]): Promise<number> {
       try {
         const document = extractDocument(readFileSync(file, "utf8"), configuration.ignoreDisable);
         const links = [...document.links];
+        const anchors = Array.from(document.anchors, (anchor) => `#${anchor}`);
         const messages = new Array<string>(links.length);
         linkCount += links.length;
         let next = 0;
@@ -133,7 +151,7 @@ export async function run(args: string[]): Promise<number> {
               if (link === undefined) return;
               let status: string;
               try {
-                status = await checkDocumentLink(link, file, document.anchors, configuration);
+                status = await checkDocumentLink(link, file, anchors, configuration);
               } catch (error) {
                 status = `FAIL ${error instanceof Error ? error.message : String(error)}`;
               }
@@ -160,14 +178,14 @@ export async function run(args: string[]): Promise<number> {
  * Apply extraction-wrapper policy, delegating protocol, request, retry, and status behavior unchanged.
  * @param link - Extracted link
  * @param file - Originating Markdown file
- * @param anchors - Same-document anchor names
+ * @param anchors - Prefixed same-document anchors shared by this document's checks
  * @param configuration - Existing checker configuration
  * @returns Printable status, with failures prefixed by FAIL
  */
 async function checkDocumentLink(
   link: string,
   file: string,
-  anchors: Set<string>,
+  anchors: readonly string[],
   configuration: Configuration,
 ): Promise<string> {
   if (configuration.ignorePatterns?.some(({ pattern }) => new RegExp(pattern).test(link)))
@@ -190,7 +208,7 @@ async function checkDocumentLink(
     link = link.replace(/^[^#]+/, "");
   const result = await checkLink(link, {
     ...configuration,
-    anchors: [...anchors].map((anchor) => `#${anchor}`),
+    anchors,
     baseUrl,
     headers,
   });
@@ -246,9 +264,13 @@ function markdownFiles(directory: string): string[] {
 /**
  * Collect real HTML link and anchor attributes from rendered Markdown.
  * @param source - Markdown source without HTML sanitization or code stripping
+ * @param environment - Document-local bindings and optional original-rendering context
  * @returns Deduplicated HTML attribute values, excluding comments and code text
  */
-function parseHTMLDocument(source: string): { anchors: Set<string>; links: Set<string> } {
+function parseHTMLDocument(
+  source: string,
+  environment: Env,
+): { anchors: Set<string>; links: Set<string> } {
   const links = new Set<string>();
   const anchors = new Set<string>();
   const parser = new Parser({
@@ -260,7 +282,7 @@ function parseHTMLDocument(source: string): { anchors: Set<string>; links: Set<s
       if (name === "a" && attributes.name !== undefined) anchors.add(attributes.name);
     },
   });
-  parser.end(markdown.render(source));
+  parser.end(markdown.render(source, environment));
   return { anchors, links };
 }
 
