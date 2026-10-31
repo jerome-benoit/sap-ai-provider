@@ -101,13 +101,33 @@ describe("Markdown link extraction", () => {
     expect(document.links.has("fenced-code.html")).toBe(false);
   });
 
+  it("preserves userinfo and complete targets in HTTPS autolinks", () => {
+    const password = `${"x".repeat(64)}%40ss`;
+    const url = `https://reader:${password}@example.com:8443/private?mode=review#section`;
+    expect(extractDocument(url).links).toEqual(new Set([url]));
+  });
+
+  it("separates HTTP authorities from adjacent text and URL suffixes", () => {
+    const document = extractDocument(
+      "https://valid.test<reader@example.net/path>\n\nhttps://valid.test/private?email=reader@example.net#part",
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "https://valid.test",
+        "https://valid.test/private?email=reader@example.net#part",
+        "mailto:reader@example.net",
+      ]),
+    );
+  });
+
   it("normalizes www autolinks with punctuation, ports, and Unicode", () => {
     const document = extractDocument(
-      "(www.example.com/a(b)). www.example.com:8080/path?x=1&y=2#part www.bücher.de/é",
+      "(www.example.com/a(b)). www.example.com:8080/path?x=1&y=2#part www.bücher.de/é www.example.com/a@b?email=c@d#x@y",
     );
     expect(document.links).toEqual(
       new Set([
         "http://www.example.com/a(b)",
+        "http://www.example.com/a@b?email=c@d#x@y",
         "http://www.example.com:8080/path?x=1&y=2#part",
         "http://www.xn--bcher-kva.de/%C3%A9",
       ]),
@@ -232,6 +252,31 @@ describe("Markdown link extraction", () => {
 });
 
 describe("Markdown link checking", () => {
+  it("checks authenticated HTTP autolinks at their complete targets", async () => {
+    const requested = new Set<string>();
+    let authorization = "";
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      if (request.url === "/present" && request.headers.authorization !== authorization) {
+        response.writeHead(401, { "www-authenticate": 'Basic realm="fixture"' }).end();
+        return;
+      }
+      response.writeHead(request.url === "/" || request.url === "/present" ? 200 : 404).end();
+    });
+    const authority = new URL(base).host;
+    const password = "x".repeat(64);
+    authorization = `Basic ${Buffer.from(`${authority}${password}`).toString("base64")}`;
+    // The userinfo prefix resolves to the live root if the URL is truncated.
+    const missing = fixture(`http://${authority}:${password}@${authority}/missing`);
+    expect(await run(missing.args)).toBe(1);
+    expect(requested).toEqual(new Set(["/missing"]));
+
+    requested.clear();
+    const present = fixture(`http://${authority}${password}@${authority}/present`);
+    expect(await run(present.args)).toBe(0);
+    expect(requested).toEqual(new Set(["/present"]));
+  });
+
   it("checks www autolinks through the HTTP backend", async () => {
     const requested = new Set<string>();
     const base = await serve((request, response) => {

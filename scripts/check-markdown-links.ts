@@ -15,6 +15,26 @@ declare module "markdown-it" {
 }
 
 const markdown = new MarkdownIt({ html: true, linkify: true });
+// Separate prefix and target matching to prevent fallback to a partial authority.
+let httpPatterns: undefined | { prefix: RegExp; target: RegExp };
+const httpAutolink = {
+  validate(text: string, position: number) {
+    const rules = markdown.linkify.re;
+    const patterns = (httpPatterns ??= {
+      prefix: new RegExp(
+        String.raw`//(?:(?:(?!${rules.src_ZCc}|${rules.get_text_separators().source}|[/?#]).)*@)?`,
+        "iy",
+      ),
+      target: new RegExp(rules.get_url_host_port().source + rules.get_path().source, "iy"),
+    });
+    patterns.prefix.lastIndex = position;
+    if (!patterns.prefix.test(text)) return 0;
+    patterns.target.lastIndex = patterns.prefix.lastIndex;
+    return patterns.target.test(text) ? patterns.target.lastIndex - position : 0;
+  },
+};
+markdown.linkify.add("http:", httpAutolink);
+markdown.linkify.add("https:", httpAutolink);
 // Recognize www. autolinks without treating filenames or bare domains as URLs.
 markdown.linkify.add("www.", {
   normalize(match) {
