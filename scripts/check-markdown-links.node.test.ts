@@ -101,6 +101,52 @@ describe("Markdown link extraction", () => {
     expect(document.links.has("fenced-code.html")).toBe(false);
   });
 
+  it("normalizes www autolinks with punctuation, ports, and Unicode", () => {
+    const document = extractDocument(
+      "(www.example.com/a(b)). www.example.com:8080/path?x=1&y=2#part www.bücher.de/é",
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://www.example.com/a(b)",
+        "http://www.example.com:8080/path?x=1&y=2#part",
+        "http://www.xn--bcher-kva.de/%C3%A9",
+      ]),
+    );
+  });
+
+  it("does not invent www autolinks from plain domains, code, attributes, or disabled context", () => {
+    const document = extractDocument(
+      [
+        "README.md example.com README.md/example.com example.xn--p1ai 1.2.3.4",
+        "`www.example.com/inline-code`",
+        "```text\nwww.example.com/fenced-code\n```",
+        "<!-- www.example.com/comment -->",
+        '<span title="www.example.com/attribute">text</span>',
+        "<!-- markdown-link-check-disable -->\nwww.example.com/disabled\n<!-- markdown-link-check-enable -->",
+        "ww<!-- markdown-link-check-disable -->removed<!-- markdown-link-check-enable -->w.example.com/joined",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(new Set());
+  });
+
+  it("preserves existing destinations when www appears in labels, attributes, or email", () => {
+    const document = extractDocument(
+      [
+        "[www.example.com/label](target.txt)",
+        '<a href="www.example.com/relative">www.example.com/body</a>',
+        "name@www.example.com www.name@example.com",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "mailto:name@www.example.com",
+        "mailto:www.name@example.com",
+        "target.txt",
+        "www.example.com/relative",
+      ]),
+    );
+  });
+
   it("collects duplicate heading slugs and explicit HTML anchors", () => {
     const document = extractDocument(
       '# A **heading**\n\n# A **heading**\n\n<a name="old"></a><div id="explicit"></div>',
@@ -186,6 +232,26 @@ describe("Markdown link extraction", () => {
 });
 
 describe("Markdown link checking", () => {
+  it("checks restored www autolinks through the existing HTTP backend", async () => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === "/present" ? 200 : 404).end();
+    });
+    const test = fixture("www.example.com/present", {
+      replacementPatterns: [{ pattern: "^http://www\\.example\\.com/", replacement: `${base}/` }],
+    });
+    expect(await run(test.args)).toBe(0);
+    expect(requested).toEqual(new Set(["/present"]));
+  });
+
+  it("rejects a missing local target reached through a www autolink", async () => {
+    const test = fixture("www.example.com/missing.txt", {
+      replacementPatterns: [{ pattern: "^http://www\\.example\\.com/", replacement: "./" }],
+    });
+    expect(await run(test.args)).toBe(1);
+  });
+
   it.each([
     ["link", "[visible][target]"],
     ["image", "![visible][target]"],

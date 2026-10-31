@@ -15,6 +15,18 @@ declare module "markdown-it" {
 }
 
 const markdown = new MarkdownIt({ html: true, linkify: true });
+// Restore www. autolinks without treating filenames or bare domains as URLs.
+markdown.linkify.add("www.", {
+  normalize(match) {
+    match.url = `http://${match.url}`;
+  },
+  validate(text, position, self) {
+    const pattern = self.re.get_relative_proto_validator();
+    // Validate the full host; the linkifier has already counted the "www." prefix.
+    pattern.lastIndex = position - 4;
+    return pattern.test(text) ? pattern.lastIndex - position : 0;
+  },
+});
 // Rendering is parsed, never served or executed; the backend validates extracted protocols.
 markdown.validateLink = () => true;
 markdown.core.ruler.after("block", "link_check_original_references", (state) => {

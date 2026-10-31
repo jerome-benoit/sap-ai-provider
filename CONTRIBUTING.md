@@ -154,6 +154,8 @@ Our development workflow follows these steps:
 
    Run `npm run lint:md:links` separately to check Markdown and inline HTML links,
    including readable relative files, directories, and same-document anchors.
+   Bare `www.` URLs are checked as HTTP links; ordinary filenames and domains without
+   that prefix remain plain text.
    The portable TypeScript checker replaces only link extraction with `markdown-it`
    and `htmlparser2`; the existing `link-check` backend retains protocol, request,
    retry, and status handling. HTML anchors come from parsed attributes, not stripped
