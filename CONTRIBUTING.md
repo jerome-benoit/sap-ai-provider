@@ -156,10 +156,13 @@ Our development workflow follows these steps:
    including readable relative files, directories, and same-document anchors.
    The portable TypeScript checker replaces only link extraction with `markdown-it`
    and `htmlparser2`; the existing `link-check` backend retains protocol, request,
-   retry, and status handling. `.markdown-links.json` keeps the previous configuration
+   retry, and status handling. HTML anchors come from parsed attributes, not stripped
+   comments or code. When disable directives alter Markdown, HTML links and anchors
+   must also occur in the original rendering; legacy ATX heading slugs remain intact.
+   `.markdown-links.json` keeps the previous configuration
    shape and policy: placeholder exclusions, a 10-second timeout, accepted statuses
    200, 206, and 403, and two HTTP 429 retries with a 5-second fallback. URL-specific
-   `httpHeaders`, local files, email MX checks, and existing fragment behavior remain
+   `httpHeaders`, local files, email MX checks, and backend fragment validation remain
    unchanged. To check selected files or a fixture policy:
 
    ```bash

@@ -78,6 +78,7 @@ export function extractDocument(
   source: string,
   ignoreDisable = false,
 ): { anchors: Set<string>; links: Set<string> } {
+  const originalSource = source;
   if (!ignoreDisable) {
     for (const pattern of [
       /(<!--[ \t]+markdown-link-check-disable[ \t]+-->[\S\s]*?<!--[ \t]+markdown-link-check-enable[ \t]+-->)/gm,
@@ -87,16 +88,16 @@ export function extractDocument(
     ])
       source = source.replace(pattern, "");
   }
-  const links = new Set<string>();
-  const parser = new Parser({
-    onopentag(name, attributes) {
-      const attribute = linkAttributes[name];
-      const link = attribute ? attributes[attribute] : undefined;
-      if (link) links.add(link);
-    },
-  });
-  parser.end(markdown.render(source));
-  return { anchors: documentAnchors(source), links };
+  const document = parseHTMLDocument(source);
+  if (source !== originalSource && (document.links.size > 0 || document.anchors.size > 0)) {
+    // Filtering must not invent HTML attributes by changing markup or parser context.
+    const original = parseHTMLDocument(originalSource);
+    for (const link of document.links) if (!original.links.has(link)) document.links.delete(link);
+    for (const anchor of document.anchors)
+      if (!original.anchors.has(anchor)) document.anchors.delete(anchor);
+  }
+  for (const anchor of headingAnchors(source)) document.anchors.add(anchor);
+  return document;
 }
 
 /**
@@ -200,11 +201,11 @@ async function checkDocumentLink(
 }
 
 /**
- * Preserve the former checker's ATX heading slugs and explicit HTML anchor semantics.
+ * Preserve the former checker's encoded ATX heading slugs.
  * @param source - Markdown source after disable directives have been applied
- * @returns Anchor names in the same encoded form as extracted fragment links
+ * @returns Heading fragment names in the legacy encoded form
  */
-function documentAnchors(source: string): Set<string> {
+function headingAnchors(source: string): Set<string> {
   const withoutCode = removeCodeBlocks(source);
   const headings = (withoutCode.match(/^#+ .*$/gm) ?? []).map((heading) =>
     encodeURIComponent(
@@ -226,17 +227,7 @@ function documentAnchors(source: string): Set<string> {
     }
     duplicates.set(heading, 0);
   }
-  const anchors = new Set(duplicates.keys());
-  const html = withoutCode
-    .replace(/<!--[\S\s]+?-->/gm, "")
-    .replace(/(?<!\\)`[\S\s]+?(?<!\\)`/gm, "");
-  for (const pattern of [
-    /<[^\s]+.*?id=["']([^"']*?)["'].*?>/gim,
-    /<a.*?name=["']([^"']*?)["'].*?>/gim,
-  ]) {
-    for (const match of html.matchAll(pattern)) if (match[1] !== undefined) anchors.add(match[1]);
-  }
-  return anchors;
+  return new Set(duplicates.keys());
 }
 
 /**
@@ -250,6 +241,27 @@ function markdownFiles(directory: string): string[] {
     if (entry.isDirectory()) return entry.name === "node_modules" ? [] : markdownFiles(path);
     return (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md") ? [path] : [];
   });
+}
+
+/**
+ * Collect real HTML link and anchor attributes from rendered Markdown.
+ * @param source - Markdown source without HTML sanitization or code stripping
+ * @returns Deduplicated HTML attribute values, excluding comments and code text
+ */
+function parseHTMLDocument(source: string): { anchors: Set<string>; links: Set<string> } {
+  const links = new Set<string>();
+  const anchors = new Set<string>();
+  const parser = new Parser({
+    onopentag(name, attributes) {
+      const attribute = linkAttributes[name];
+      const link = attribute ? attributes[attribute] : undefined;
+      if (link) links.add(link);
+      if (attributes.id !== undefined) anchors.add(attributes.id);
+      if (name === "a" && attributes.name !== undefined) anchors.add(attributes.name);
+    },
+  });
+  parser.end(markdown.render(source));
+  return { anchors, links };
 }
 
 /**

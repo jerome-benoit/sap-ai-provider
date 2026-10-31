@@ -132,6 +132,25 @@ describe("Markdown link extraction", () => {
 });
 
 describe("Markdown link checking", () => {
+  const disabledSection =
+    "<!-- markdown-link-check-disable -->removed<!-- markdown-link-check-enable -->";
+  it.each([
+    ["HTML comments", '<<!-- removed -->a id="fabricated"></a>'],
+    ["inline code", '<`removed`a id="fabricated"></a>'],
+    ["disabled sections", `<${disabledSection}a id="fabricated"></a>`],
+    [
+      "disabled script context",
+      '<!-- markdown-link-check-disable -->\n<script>\n<!-- markdown-link-check-enable -->\n<a id="fabricated"></a>\n</script>',
+    ],
+    [
+      "disabled fenced-code context",
+      '<!-- markdown-link-check-disable -->\n```html\n<!-- markdown-link-check-enable -->\n<a id="fabricated"></a>\n```',
+    ],
+  ])("rejects fabricated anchors from %s", async (_name, source) => {
+    const test = fixture(`[missing anchor](#fabricated)\n\n${source}`);
+    expect(await run(test.args)).toBe(1);
+  });
+
   it("preserves backend defaults when policy fields are omitted", async () => {
     const requested = new Set<string>();
     const base = await serve((request, response) => {
