@@ -25,7 +25,7 @@ export default defineConfig([
         ...(isTsV6 ? { ignoreDeprecations: "6.0" } : {}),
       },
       // Inline legacy contracts so consumers do not install a second provider package.
-      resolve: ["@ai-sdk/provider-v2", "json-schema"],
+      resolve: ["@ai-sdk/provider-v2", "@ai-sdk/provider-v3", "json-schema"],
     },
     entry: ["src/index-v2.ts"],
     format: ["cjs", "esm"],

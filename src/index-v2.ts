@@ -176,6 +176,23 @@ export { resolveApi, validateSettings } from "./sap-ai-validation.js";
  */
 export { VERSION } from "./version.js";
 
+/** Public contract types keep downstream inferred declarations nameable. */
+export type {
+  JSONArray,
+  JSONObject,
+  JSONSchema7,
+  JSONValue,
+  LanguageModelV2ResponseMetadata,
+} from "@ai-sdk/provider-v2";
+
+/** The shared core exposes distinct V3 JSON types in provider options and compatible tools. */
+export type {
+  LanguageModelV3CallOptions,
+  JSONArray as V3JSONArray,
+  JSONObject as V3JSONObject,
+  JSONValue as V3JSONValue,
+} from "@ai-sdk/provider-v3";
+
 /**
  * SAP AI SDK request configuration type for {@link SAPAIProviderSettings.requestConfig}.
  *

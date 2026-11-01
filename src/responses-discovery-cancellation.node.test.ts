@@ -1,5 +1,5 @@
 /** Caller cancellation during real SAP deployment discovery. */
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions } from "@ai-sdk/provider-v3";
 import type { ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 

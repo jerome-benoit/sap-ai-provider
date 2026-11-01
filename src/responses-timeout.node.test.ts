@@ -1,5 +1,5 @@
 /** SAP response-body timeouts preserve inactivity semantics with the native HTTP adapter. */
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
+import type { LanguageModelV3CallOptions } from "@ai-sdk/provider-v3";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";

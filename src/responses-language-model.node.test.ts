@@ -1,9 +1,6 @@
 /** Responses contracts exercised through the public providers and the real SAP HTTP client. */
 import type {
   JSONSchema7,
-  LanguageModelV3CallOptions,
-  LanguageModelV3StreamPart,
-  LanguageModelV3ToolResultOutput,
   LanguageModelV4Prompt,
   LanguageModelV4StreamPart,
   LanguageModelV4Text,
@@ -13,6 +10,11 @@ import type {
   LanguageModelV2CallOptions,
   LanguageModelV2ToolResultOutput,
 } from "@ai-sdk/provider-v2";
+import type {
+  LanguageModelV3CallOptions,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolResultOutput,
+} from "@ai-sdk/provider-v3";
 import type { IncomingHttpHeaders, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 

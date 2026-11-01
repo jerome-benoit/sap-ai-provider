@@ -9,6 +9,9 @@ AI SDK 6. Use `/v2` for AI SDK 5 (also supported by AI SDK 6 compatibility),
 and `/v4` for AI SDK 7. Package release versions are independent of provider
 specification versions and AI SDK majors.
 
+AI SDK 6 emits compatibility warnings when adapting V2 models. Use the root or
+`/v3` entrypoint for native SDK 6 support.
+
 `@jerome-benoit/sap-ai-provider/v3` aliases the root V3 API: both resolve to
 the same ESM/CommonJS modules and TypeScript declarations, including the same
 `sapai` instance within each module format. The standalone V2 package has no
@@ -2243,6 +2246,21 @@ type SAPAIEmbeddingProviderOptions = {
 ---
 
 ## Types
+
+Type-only contract exports give downstream libraries public names when emitting
+inferred declarations from model methods, tool schemas, and provider options.
+
+| Types                                                 | Entrypoints                       |
+| ----------------------------------------------------- | --------------------------------- |
+| `JSONArray`, `JSONObject`, `JSONSchema7`, `JSONValue` | Root, `/v3`, `/v2`, standalone V2 |
+| `LanguageModelV3CallOptions`                          | Root, `/v3`, `/v2`, standalone V2 |
+| `LanguageModelV3ResponseMetadata`                     | Root, `/v3`                       |
+| `LanguageModelV2ResponseMetadata`                     | `/v2`, standalone V2              |
+| `V3JSONArray`, `V3JSONObject`, `V3JSONValue`          | `/v2`, standalone V2              |
+
+The unprefixed JSON types match the selected provider contract. The V2 entrypoints
+also name the distinct V3 JSON types exposed by shared-core provider options and
+compatible tool inputs; these are not interchangeable with V2 JSON types.
 
 ### `SAPAIModelId`
 

@@ -61,7 +61,8 @@ accept pull requests.
 ### Prerequisites
 
 - [mise](https://mise.jdx.dev/)
-- Node.js 22.12 or higher and npm 11.16 or higher, if mise is not used
+- Without mise: the Node.js version declared by `devEngines.runtime.version` in
+  `package.json`, and npm 11.16 or higher
 - Git
 - SAP AI Core service key (for testing with real API)
 
@@ -77,13 +78,13 @@ accept pull requests.
 2. **Install the development runtime**
 
    [Activate mise](https://mise.jdx.dev/getting-started.html#activate-mise) in
-   your shell, then install the Node.js version declared in `package.json`:
+   your shell, then install the development Node.js version declared in `package.json`:
 
    ```bash
    mise install
    ```
 
-   Without mise, install Node.js 22.12 or newer manually.
+   Without mise, install that development Node.js version manually.
 
 3. **Install dependencies**
 
@@ -152,12 +153,37 @@ Our development workflow follows these steps:
    npm run lint-fix       # Auto-fix issues
    ```
 
+   Run `npm run lint:md:links` separately to check Markdown and inline HTML links,
+   including relative files, directories, and same-document anchors. Bare HTTP(S)
+   URLs are also checked, and `www.` URLs use HTTP. Plain domains and filenames
+   are not autolinked. Links in code and HTML comments are excluded.
+   Unicode and percent-encoded HTTP(S) hostnames follow URL normalization.
+   Extraction retains encoded path, query, and fragment data.
+
+   The default policy is `.markdown-links.json`. Set `ignoreDisable: true` in the
+   policy to check links within disabled sections. Reference links outside disabled
+   sections can still use definitions inside them. Select files or a different
+   policy explicitly:
+
+   ```bash
+   npm run lint:md:links -- README.md API_REFERENCE.md
+   npm run lint:md:links -- --config path/to/policy.json path/to/document.md
+   ```
+
 6. **Build the library**
 
    ```bash
    npm run build
    npm run check-build    # Verify outputs
    ```
+
+   `check-build` verifies export routing, checks the published declarations, and emits
+   declarations from strict NodeNext ESM and CommonJS consumers with library checking
+   enabled. The consumers export inferred provider, model, bound operation, tool-schema,
+   and provider-option types, catching names that downstream declaration emission cannot
+   express as well as contract incompatibilities.
+   The official V2/V3 provider contract aliases are development-only dependencies;
+   both builds inline their declarations, so consumers need no alias packages.
 
 7. **Test with examples** (requires SAP credentials)
 

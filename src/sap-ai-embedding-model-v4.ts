@@ -10,6 +10,7 @@ import type {
   EmbeddingModelV4CallOptions,
   EmbeddingModelV4Result,
 } from "@ai-sdk/provider";
+import type { EmbeddingModelV3CallOptions } from "@ai-sdk/provider-v3";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
@@ -65,6 +66,7 @@ export class SAPAIEmbeddingModelV4 implements EmbeddingModelV4 {
   }
 
   doEmbed(options: EmbeddingModelV4CallOptions): Promise<EmbeddingModelV4Result> {
-    return this.internalModel.doEmbed(options);
+    // Narrow only JSON readonly types; preserve the original options and provider metadata.
+    return this.internalModel.doEmbed(options as EmbeddingModelV3CallOptions);
   }
 }
