@@ -61,7 +61,8 @@ accept pull requests.
 ### Prerequisites
 
 - [mise](https://mise.jdx.dev/)
-- Node.js 22.12 or higher and npm 11.16 or higher, if mise is not used
+- Without mise: the Node.js version declared by `devEngines.runtime.version` in
+  `package.json`, and npm 11.16 or higher
 - Git
 - SAP AI Core service key (for testing with real API)
 
@@ -77,13 +78,13 @@ accept pull requests.
 2. **Install the development runtime**
 
    [Activate mise](https://mise.jdx.dev/getting-started.html#activate-mise) in
-   your shell, then install the Node.js version declared in `package.json`:
+   your shell, then install the development Node.js version declared in `package.json`:
 
    ```bash
    mise install
    ```
 
-   Without mise, install Node.js 22.12 or newer manually.
+   Without mise, install that development Node.js version manually.
 
 3. **Install dependencies**
 
@@ -154,16 +155,13 @@ Our development workflow follows these steps:
 
    Run `npm run lint:md:links` separately to check Markdown and inline HTML links,
    including relative files, directories, and same-document anchors. Bare HTTP(S)
-   URLs retain their userinfo, host, port, and path, including absolute DNS names.
-   Bare `www.` URLs are treated as HTTP links, including paths containing `_` or `*`.
-   Plain domains and filenames are not autolinked. URL candidate bounds follow the
-   document length, so the checker does not substitute a fixed-size prefix for a
-   long target. Links and explicit anchors follow HTML tree-building rules, not
-   script text. Link destinations in code and HTML comments are excluded.
+   URLs are also checked, and `www.` URLs use HTTP. Plain domains and filenames
+   are not autolinked. Links in code and HTML comments are excluded.
 
-   The default policy is `.markdown-links.json`. Set `ignoreDisable: true` to include
-   links within disabled sections. Active reference links use definitions from the
-   unfiltered document. Select files or a different policy explicitly:
+   The default policy is `.markdown-links.json`. Set `ignoreDisable: true` in the
+   policy to check links within disabled sections. Reference links outside disabled
+   sections can still use definitions inside them. Select files or a different
+   policy explicitly:
 
    ```bash
    npm run lint:md:links -- README.md API_REFERENCE.md

@@ -187,12 +187,11 @@ import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
 // import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 ```
 
-The V2 type contracts are bundled at build time; neither package installs a second
-provider package through the `@ai-sdk/provider-v2` alias. AI SDK 6 adapts V2 models
-in compatibility mode and emits SDK warnings. Use the root or `/v3` entrypoint for
-native SDK 6 support without compatibility warnings. If V2 compatibility is
-required, use the latest 6.x patch: the initial 6.0.0 embedding adapter has an
-upstream warning-handling failure that is absent in 6.0.280.
+For AI SDK 6, prefer the main package's root or `/v3` entrypoint.
+V2 models use the SDK's compatibility layer and emit compatibility warnings.
+If V2 compatibility is required, use a current 6.x patch. See
+[V2 embedding troubleshooting](./TROUBLESHOOTING.md#problem-v2-embeddings-fail-with-ai-sdk-600)
+if embedding requests fail.
 
 See [Architecture - Versioned Packages](./ARCHITECTURE.md#versioned-package-architecture-v4--v3--v2)
 for the V4/V3/V2 packaging model.
