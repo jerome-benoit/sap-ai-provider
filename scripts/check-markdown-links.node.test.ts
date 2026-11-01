@@ -107,6 +107,44 @@ describe("Markdown link extraction", () => {
     expect(extractDocument(url).links).toEqual(new Set([url]));
   });
 
+  it.each([
+    "https://example。sub．example｡com/missing",
+    "http://www.example。sub．example｡com/missing",
+    "https://ex%61mple%2Ecom/a%2Fb?q=c%3Fd#e%23f",
+    "http://www.ex-ample%2ecom/missing",
+    "http://www.example%2Ecom%2E/missing",
+    "http://www.example%2Ecom%E3%80%82:8443/path?q=1#part",
+    `http://www.${"%C3%BC".repeat(32)}/missing`,
+    "https://example.com/path。segment?q=a，b#c）d",
+    "https://example.com/path𐄀segment",
+    "https://example。com。",
+  ])("preserves the complete destination of %s", (url) => {
+    const source = url.startsWith("http://www.") ? url.slice(7) : url;
+    const links = [...extractDocument(source).links];
+    expect(links.map((link) => new URL(link).href)).toEqual([new URL(url).href]);
+  });
+
+  it("normalizes mapped HTTP hostnames without rewriting other URL components", () => {
+    const document = extractDocument(
+      "[target](https://reader:p%40ss@ｅx%61mple.com:8443/a%2Fb/../c?q=d%3Fe#f%23g)",
+    );
+    expect(document.links).toEqual(
+      new Set(["https://reader:p%40ss@example.com:8443/a%2Fb/../c?q=d%3Fe#f%23g"]),
+    );
+  });
+
+  it("recovers later WWW destinations after malformed encoded labels", () => {
+    const document = extractDocument(
+      "www.bad%ZZ.www.after-invalid.test/_part_/file\n\nwww.bad%2.www.after-short.test/_part_/file",
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://www.after-invalid.test/_part_/file",
+        "http://www.after-short.test/_part_/file",
+      ]),
+    );
+  });
+
   it("separates HTTP authorities from adjacent text and URL suffixes", () => {
     const document = extractDocument(
       "https://valid.test<reader@example.net/path>\n\nhttps://valid.test/private?email=reader@example.net#part",
@@ -210,6 +248,14 @@ describe("Markdown link extraction", () => {
         "http://www.other.test/*part*/file",
         "http://www.wrapped.test/_part_/file",
       ]),
+    );
+  });
+
+  it("preserves nested WWW path data and later destinations across inline offsets", () => {
+    const first = `www.example.com/${"www.".repeat(2048)}tail.test`;
+    const document = extractDocument(`**prefix** text ${first} next www.second.test/_part_/file`);
+    expect(document.links).toEqual(
+      new Set([`http://${first}`, "http://www.second.test/_part_/file"]),
     );
   });
 
@@ -548,9 +594,26 @@ describe("Markdown link checking", () => {
     expect(requested).toEqual(new Set(["/missing?case=deep", "/missing?case=dot"]));
   });
 
+  it("checks a mapped IPv4 hostname at the intended origin", async () => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === "/present" ? 200 : 404).end();
+    });
+    const target = `${base.replace("127.0.0.1", "１２７.０.０.１")}/present`;
+    const test = fixture(`[target](${target})`, {
+      replacementPatterns: [{ pattern: "^http://xn--[^/]+", replacement: `${base}/wrong-host` }],
+    });
+    expect(await run(test.args)).toBe(0);
+    expect(requested).toEqual(new Set(["/present"]));
+  });
+
   it.each([
     ["WWW emphasis", "www.example.test/_missing_/file", "/_missing_/file"],
     ["WWW terminal star", "www.example.test/_part_/missing*", "/_part_/missing*"],
+    ["Unicode hostname", "https://example。com/missing", "/missing"],
+    ["encoded hostname", "https://ex%61mple%2Ecom/missing", "/missing"],
+    ["Unicode path", "https://example.com/missing。tail", "/missing%E3%80%82tail"],
     [
       "long HTTP",
       `https://length.test/${"x".repeat(10000)}/missing`,

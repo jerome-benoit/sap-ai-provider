@@ -2,7 +2,7 @@ import MarkdownIt, { type Env, type Token } from "markdown-it";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { domainToASCII, fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { defaultTreeAdapter, type DefaultTreeAdapterTypes, parse } from "parse5";
 import { z } from "zod";
@@ -15,6 +15,29 @@ declare module "markdown-it" {
 }
 
 const markdown = new MarkdownIt({ html: true, linkify: true });
+const nativeNormalizeLink = markdown.normalizeLink.bind(markdown);
+markdown.normalizeLink = (url) => {
+  const match = /^(?:https?:)?\/\/[^/?#\\]*/i.exec(url);
+  if (match) {
+    const authority = match[0];
+    const start = Math.max(authority.indexOf("//") + 2, authority.lastIndexOf("@") + 1);
+    const colon = authority.indexOf(":", start);
+    const end = colon < 0 ? authority.length : colon;
+    const hostname = authority.slice(start, end);
+    if (/\P{ASCII}/u.test(hostname)) {
+      const ascii = domainToASCII(hostname);
+      if (ascii) url = url.slice(0, start) + ascii + url.slice(end);
+    }
+  }
+  return nativeNormalizeLink(url);
+};
+// The path extension precedes native alternatives and must end with "|".
+const unicodePathPunctuation = new RegExp(
+  String.raw`(?=[^\x00-\x7f])${markdown.linkify.re.src_P}|`,
+);
+markdown.linkify.re.get_path_extra = () => unicodePathPunctuation;
+const unicodeDomainDot = String.raw`[\u3002\uff0e\uff61]`;
+const domainDot = String.raw`(?:\.|${unicodeDomainDot})`;
 const nativeRules = new MarkdownIt("zero");
 const [nativeText] = nativeRules.inline.ruler.getRules("");
 nativeRules.core.ruler.enableOnly(["linkify"]);
@@ -24,6 +47,7 @@ if (nativeText === undefined || nativeLinkify === undefined)
 const wwwInlineTokens = new WeakSet<Token[]>();
 interface AutolinkPatterns {
   dnsDot: RegExp;
+  dot: RegExp;
   emailDomain: RegExp;
   hostEnd: RegExp;
   ipv6: RegExp;
@@ -49,8 +73,22 @@ function hasDomainRoot(
   end: number,
   patterns: AutolinkPatterns,
 ): boolean {
-  const dot = text.lastIndexOf(".", end - 1);
+  let dot = end - 1;
+  let encoded = false;
+  for (; dot >= start; dot--) {
+    patterns.dot.lastIndex = dot;
+    if (patterns.dot.test(text)) break;
+    if (text.charCodeAt(dot) === 37) encoded = true;
+  }
   if (dot < start) return false;
+  if (encoded) {
+    const ascii = domainToASCII(text.slice(dot + 1, end));
+    if (ascii) {
+      const rootEnd = ascii.endsWith(".") ? ascii.length - 1 : ascii.length;
+      patterns.root.lastIndex = ascii.lastIndexOf(".", rootEnd - 1) + 1;
+      return patterns.root.test(ascii) && patterns.root.lastIndex === rootEnd;
+    }
+  }
   patterns.root.lastIndex = dot + 1;
   return patterns.root.test(text) && patterns.root.lastIndex === end;
 }
@@ -74,8 +112,9 @@ function matchHostname(text: string, start: number, patterns: AutolinkPatterns):
     }
     labels++;
     cursor = patterns.label.lastIndex;
-    if (text[cursor] !== ".") break;
-    cursor++;
+    patterns.dot.lastIndex = cursor;
+    if (!patterns.dot.test(text)) break;
+    cursor = patterns.dot.lastIndex;
   }
   return cursor;
 }
@@ -102,21 +141,26 @@ function rejectWwwHostname(text: string, start: number, end: number): 0 {
 function validateAutolink(text: string, position: number, www: boolean): number {
   if (!autolinkPatterns) {
     const rules = markdown.linkify.re;
-    const boundary = `(?!${rules.get_pseudo_letter().source}|-)`;
+    const letter = rules.get_pseudo_letter().source;
+    const escape = String.raw`%[\da-f]{2}`;
+    const atom = `(?:${escape}|${letter})`;
+    const encodedLabel = `(?=(?:${letter}|-)*${escape})${atom}(?:(?:${atom}|-)*${atom})?`;
+    const boundary = `(?!${letter}|-|%)`;
     autolinkPatterns = {
-      dnsDot: /\.(?=[/?#]|:\d)/y,
+      dnsDot: new RegExp(String.raw`(?:\.(?=[/?#]|:\d)|${unicodeDomainDot})`, "y"),
+      dot: new RegExp(domainDot, "y"),
       emailDomain: new RegExp(
-        `(?<=${rules.get_mail_name().source}@(?:${rules.get_pseudo_letter().source}|[.-]){0,${String(rules.opts.maxLength)}})`,
+        `(?<=${rules.get_mail_name().source}@(?:${atom}|${domainDot}|-){0,${String(rules.opts.maxLength)}})`,
         "iy",
       ),
       hostEnd: new RegExp(rules.get_host_terminator().source, "iy"),
       ipv6: new RegExp(rules.get_ipv6_url_host().source, "iy"),
-      label: new RegExp(rules.get_domain().source + boundary, "iy"),
+      label: new RegExp(`(?:${encodedLabel}|${rules.get_domain().source})${boundary}`, "iy"),
       prefix: new RegExp(
         String.raw`//(?:(?:(?!${rules.src_ZCc}|${rules.get_text_separators().source}|[/?#]).)*@)?`,
         "iy",
       ),
-      root: new RegExp(rules.get_domain_root().source + boundary, "iy"),
+      root: new RegExp(`(?:${encodedLabel}|${rules.get_domain_root().source})${boundary}`, "iy"),
       suffix: new RegExp(
         rules.get_port().source + rules.get_host_terminator().source + rules.get_path().source,
         "iy",
@@ -219,6 +263,8 @@ markdown.inline.ruler.at("text", (state, silent) => {
     const length = markdown.linkify.testSchemaAt(source, "www.", offset + 4);
     if (length === 0) continue;
     let end = offset + 4 + length;
+    // Retain the preceding boundary when skipping an accepted destination.
+    wwwSearch.lastIndex = end - start + contextLength - 1;
     while (end > offset) {
       const marker = state.src.charCodeAt(end - 1);
       if (marker !== 42 && marker !== 95 && marker !== 126) break;

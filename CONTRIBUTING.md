@@ -157,6 +157,8 @@ Our development workflow follows these steps:
    including relative files, directories, and same-document anchors. Bare HTTP(S)
    URLs are also checked, and `www.` URLs use HTTP. Plain domains and filenames
    are not autolinked. Links in code and HTML comments are excluded.
+   Unicode and percent-encoded HTTP(S) hostnames follow URL normalization.
+   Extraction retains encoded path, query, and fragment data.
 
    The default policy is `.markdown-links.json`. Set `ignoreDisable: true` in the
    policy to check links within disabled sections. Reference links outside disabled
