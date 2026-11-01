@@ -154,9 +154,10 @@ Our development workflow follows these steps:
 
    Run `npm run lint:md:links` separately to check Markdown and inline HTML links,
    including relative files, directories, and same-document anchors. Bare HTTP(S)
-   URLs retain their userinfo, host, port, and path. Bare `www.` URLs are treated as
-   HTTP links; plain domains and filenames are not autolinked. Link destinations in
-   code and HTML comments are excluded.
+   URLs retain their userinfo, host, port, and path, including absolute DNS names.
+   Bare `www.` URLs are treated as HTTP links; plain domains and filenames are not
+   autolinked. Links and explicit anchors follow HTML tree-building rules, not
+   script text. Link destinations in code and HTML comments are excluded.
 
    The default policy is `.markdown-links.json`. Set `ignoreDisable: true` to include
    links within disabled sections. Active reference links use definitions from the

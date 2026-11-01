@@ -1,10 +1,10 @@
-import { Parser } from "htmlparser2";
 import MarkdownIt, { type Env } from "markdown-it";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
+import { defaultTreeAdapter, type DefaultTreeAdapterTypes, parse } from "parse5";
 import { z } from "zod";
 
 declare module "markdown-it" {
@@ -15,22 +15,127 @@ declare module "markdown-it" {
 }
 
 const markdown = new MarkdownIt({ html: true, linkify: true });
-// Separate prefix and target matching to prevent fallback to a partial authority.
-let httpPatterns: undefined | { prefix: RegExp; target: RegExp };
-const httpAutolink = {
-  validate(text: string, position: number) {
+interface AutolinkPatterns {
+  dnsDot: RegExp;
+  emailDomain: RegExp;
+  hostEnd: RegExp;
+  ipv6: RegExp;
+  label: RegExp;
+  prefix: RegExp;
+  root: RegExp;
+  suffix: RegExp;
+}
+let autolinkPatterns: AutolinkPatterns | undefined;
+
+/**
+ * Match complete hostname labels without backtracking across label boundaries.
+ * @param text - Linkifier input
+ * @param start - Hostname offset
+ * @param rootForm - Require multiple labels and the native root-label form
+ * @param patterns - Cached public linkifier patterns
+ * @returns End offset, or zero when no hostname matches
+ */
+function matchHostname(
+  text: string,
+  start: number,
+  rootForm: boolean,
+  patterns: AutolinkPatterns,
+): number {
+  let cursor = start;
+  let labels = 0;
+  let lastLabelStart = cursor;
+  for (;;) {
+    patterns.label.lastIndex = cursor;
+    if (!patterns.label.test(text)) {
+      if (labels === 0) return 0;
+      cursor--;
+      break;
+    }
+    lastLabelStart = cursor;
+    labels++;
+    cursor = patterns.label.lastIndex;
+    if (text[cursor] !== ".") break;
+    cursor++;
+  }
+  if (rootForm) {
+    patterns.root.lastIndex = lastLabelStart;
+    if (labels < 2 || !patterns.root.test(text) || patterns.root.lastIndex !== cursor) return 0;
+  }
+  return cursor;
+}
+
+/**
+ * Validate HTTP(S) and WWW autolinks using complete hostname labels.
+ * @param text - Linkifier input with a length-limited candidate tail
+ * @param position - Offset immediately after the schema prefix
+ * @param www - Whether to require the native WWW hostname form
+ * @returns Matched length after the schema prefix, or zero
+ */
+function validateAutolink(text: string, position: number, www: boolean): number {
+  if (!autolinkPatterns) {
     const rules = markdown.linkify.re;
-    const patterns = (httpPatterns ??= {
+    const boundary = `(?!${rules.get_pseudo_letter().source}|-)`;
+    autolinkPatterns = {
+      dnsDot: /\.(?=[/?#]|:\d)/y,
+      emailDomain: new RegExp(
+        `(?<=${rules.get_mail_name().source}@(?:${rules.get_pseudo_letter().source}|[.-]){0,${String(rules.opts.maxLength)}})`,
+        "iy",
+      ),
+      hostEnd: new RegExp(rules.get_host_terminator().source, "iy"),
+      ipv6: new RegExp(rules.get_ipv6_url_host().source, "iy"),
+      label: new RegExp(rules.get_domain().source + boundary, "iy"),
       prefix: new RegExp(
         String.raw`//(?:(?:(?!${rules.src_ZCc}|${rules.get_text_separators().source}|[/?#]).)*@)?`,
         "iy",
       ),
-      target: new RegExp(rules.get_url_host_port().source + rules.get_path().source, "iy"),
-    });
-    patterns.prefix.lastIndex = position;
+      root: new RegExp(rules.get_domain_root().source + boundary, "iy"),
+      suffix: new RegExp(
+        rules.get_port().source + rules.get_host_terminator().source + rules.get_path().source,
+        "iy",
+      ),
+    };
+  }
+  const patterns = autolinkPatterns;
+  let cursor = www ? position - 4 : position;
+  if (www) {
+    // Email domains must not become WWW links when fuzzy email recognition stops early.
+    patterns.emailDomain.lastIndex = cursor;
+    if (patterns.emailDomain.test(text)) {
+      const hostnameStart = text.lastIndexOf("@", cursor - 1) + 1;
+      const hostnameEnd = matchHostname(text, hostnameStart, true, patterns);
+      patterns.hostEnd.lastIndex = hostnameEnd;
+      if (hostnameEnd > cursor && patterns.hostEnd.test(text)) return 0;
+    }
+  } else {
+    // Separate prefix and target matching to prevent fallback to a partial authority.
+    patterns.prefix.lastIndex = cursor;
     if (!patterns.prefix.test(text)) return 0;
-    patterns.target.lastIndex = patterns.prefix.lastIndex;
-    return patterns.target.test(text) ? patterns.target.lastIndex - position : 0;
+    cursor = patterns.prefix.lastIndex;
+  }
+  if (text[cursor] === "[") {
+    patterns.ipv6.lastIndex = cursor;
+    if (!patterns.ipv6.test(text)) return 0;
+    cursor = patterns.ipv6.lastIndex;
+  } else {
+    cursor = matchHostname(text, cursor, www, patterns);
+    if (cursor === 0) return 0;
+    patterns.dnsDot.lastIndex = cursor;
+    if (patterns.dnsDot.test(text)) cursor = patterns.dnsDot.lastIndex;
+  }
+  patterns.suffix.lastIndex = cursor;
+  if (!patterns.suffix.test(text)) return 0;
+  const end = patterns.suffix.lastIndex;
+  if (www && text[end] === "@") {
+    // A bare WWW hostname does not introduce userinfo.
+    patterns.label.lastIndex = end + 1;
+    if (patterns.label.test(text)) return 0;
+  }
+  return end - position;
+}
+
+const httpAutolink = {
+  validate(text: string, position: number) {
+    return validateAutolink(text, position, false);
   },
 };
 markdown.linkify.add("http:", httpAutolink);
@@ -40,11 +145,8 @@ markdown.linkify.add("www.", {
   normalize(match) {
     match.url = `http://${match.url}`;
   },
-  validate(text, position, self) {
-    const pattern = self.re.get_relative_proto_validator();
-    // Validate the full host; the linkifier has already counted the "www." prefix.
-    pattern.lastIndex = position - 4;
-    return pattern.test(text) ? pattern.lastIndex - position : 0;
+  validate(text, position) {
+    return validateAutolink(text, position, true);
   },
 });
 // Rendering is parsed, never served or executed; the backend validates extracted protocols.
@@ -127,7 +229,7 @@ export function extractDocument(
       /(<!--[ \t]+markdown-link-check-disable[ \t]+-->[\S\s]*?<!--[ \t]+markdown-link-check-enable[ \t]+-->)/gm,
       /(<!--[ \t]+markdown-link-check-disable[ \t]+-->[\S\s]*(?!<!--[ \t]+markdown-link-check-enable[ \t]+-->))/gm,
       /(<!--[ \t]+markdown-link-check-disable-next-line[ \t]+-->\r?\n[^\r\n]*)/gm,
-      /([^\r\n]*<!--[ \t]+markdown-link-check-disable-line[ \t]+-->[^\r\n]*)/gm,
+      /(?<![^\r\n])[^\r\n]*<!--[ \t]+markdown-link-check-disable-line[ \t]+-->[^\r\n]*/g,
     ])
       source = source.replace(pattern, "");
   }
@@ -306,16 +408,26 @@ function parseHTMLDocument(
 ): { anchors: Set<string>; links: Set<string> } {
   const links = new Set<string>();
   const anchors = new Set<string>();
-  const parser = new Parser({
-    onopentag(name, attributes) {
-      const attribute = linkAttributes[name];
-      const link = attribute ? attributes[attribute] : undefined;
-      if (link) links.add(link);
-      if (attributes.id !== undefined) anchors.add(attributes.id);
-      if (name === "a" && attributes.name !== undefined) anchors.add(attributes.name);
-    },
-  });
-  parser.end(markdown.render(source, environment));
+  const nodes: DefaultTreeAdapterTypes.Node[] = [parse(markdown.render(source, environment))];
+  for (let node = nodes.pop(); node !== undefined; node = nodes.pop()) {
+    if ("childNodes" in node) {
+      const children = defaultTreeAdapter.getChildNodes(node);
+      for (let index = children.length - 1; index >= 0; index--) {
+        const child = children[index];
+        if (child !== undefined) nodes.push(child);
+      }
+    }
+    if ("content" in node) nodes.push(defaultTreeAdapter.getTemplateContent(node));
+    if (!defaultTreeAdapter.isElementNode(node)) continue;
+    const name = defaultTreeAdapter.getTagName(node);
+    const linkAttribute = linkAttributes[name];
+    for (const attribute of defaultTreeAdapter.getAttrList(node)) {
+      if (attribute.namespace !== undefined || attribute.prefix !== undefined) continue;
+      if (attribute.name === linkAttribute && attribute.value) links.add(attribute.value);
+      if (attribute.name === "id" || (name === "a" && attribute.name === "name"))
+        anchors.add(attribute.value);
+    }
+  }
   return { anchors, links };
 }
 

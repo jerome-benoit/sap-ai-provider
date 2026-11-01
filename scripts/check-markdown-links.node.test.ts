@@ -120,6 +120,67 @@ describe("Markdown link extraction", () => {
     );
   });
 
+  it("preserves DNS root dots before URL suffixes without consuming sentence punctuation", () => {
+    const document = extractDocument(
+      [
+        "http://example.test./path?x=1#part",
+        "https://example.test.:8443/private",
+        "https://example.test.?q=1#part",
+        "www.bücher.de./é?x=1#part",
+        "https://sentence.test.",
+        "(www.sentence.test).",
+        "@www.punctuation.test",
+        "note.www.punctuation.test",
+        "www.trailing.test@",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://example.test./path?x=1#part",
+        "http://www.punctuation.test",
+        "http://www.sentence.test",
+        "http://www.trailing.test",
+        "http://www.xn--bcher-kva.de./%C3%A9?x=1#part",
+        "https://example.test.:8443/private",
+        "https://example.test.?q=1#part",
+        "https://sentence.test",
+      ]),
+    );
+  });
+
+  it("preserves deep DNS hosts and IPv6 targets", () => {
+    const host = `${"a.".repeat(12)}example.test`;
+    const document = extractDocument(
+      `https://${host}/path?x=1#part\n\nwww.${host}/path?x=1#part\n\nhttps://[::1]:8080/path?x=1#part`,
+    );
+    expect(document.links).toEqual(
+      new Set([
+        `http://www.${host}/path?x=1#part`,
+        `https://${host}/path?x=1#part`,
+        "https://[::1]:8080/path?x=1#part",
+      ]),
+    );
+  });
+
+  it("does not accept a prefix of a malformed deep punycode hostname", () => {
+    const document = extractDocument(`https://${"xn--a.".repeat(64)}invalid-/missing`);
+    expect(document.links).toEqual(new Set());
+  });
+
+  it("does not reclassify deep email addresses as WWW autolinks", () => {
+    const host = `${"a.".repeat(12)}example.test`;
+    const document = extractDocument(
+      [
+        `reader@www.${host}`,
+        `reader@prefix.www.${host}`,
+        `contact:reader@prefix.www.${host}`,
+        `www.reader@${host}`,
+        `www.reader:8080@${host}`,
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(new Set());
+  });
+
   it("normalizes www autolinks with punctuation, ports, and Unicode", () => {
     const document = extractDocument(
       "(www.example.com/a(b)). www.example.com:8080/path?x=1&y=2#part www.bücher.de/é www.example.com/a@b?email=c@d#x@y",
@@ -167,6 +228,43 @@ describe("Markdown link extraction", () => {
     );
   });
 
+  it("excludes escaped script data from links and anchors across MIME types", () => {
+    const payload = JSON.stringify({
+      template:
+        "<!--<script></script><a href='missing-json.txt' id='json-ghost' name='json-name'>text</a>-->",
+    });
+    const document = extractDocument(
+      [
+        `<script type="application/json">${payload}</script>`,
+        "<script><!--<script></script><a href='missing-js.txt' id='js-ghost'>text</a>--></script>",
+        '<a href="known.txt" id="outside" name="outside-name">real</a>',
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(new Set(["known.txt"]));
+    expect(document.anchors).toEqual(new Set(["outside", "outside-name"]));
+  });
+
+  it("ignores attributes on elements discarded by HTML tree construction", () => {
+    const document = extractDocument(
+      '<select><a href="missing.txt" id="ghost">text</a></select>\n\n<a href="known.txt" id="outside">real</a>',
+    );
+    expect(document.links).toEqual(new Set(["known.txt"]));
+    expect(document.anchors).toEqual(new Set(["outside"]));
+  });
+
+  it("traverses template contents and foreign elements without promoting qualified attributes", () => {
+    const document = extractDocument(
+      [
+        '<template><a href="outer.txt" id="outer">outer</a><template><a href="inner.txt" id="inner">inner</a></template></template>',
+        '<svg><![CDATA[<a href="missing.txt" id="ghost">text</a>]]><a xlink:href="qualified.txt" xml:id="qualified-id"></a><a xlink:href="ignored.txt" href="svg.txt" id="svg">svg</a><template><a href="svg-template.txt">template</a></template><foreignObject><a href="html.txt" id="html">HTML</a></foreignObject></svg>',
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set(["html.txt", "inner.txt", "outer.txt", "svg-template.txt", "svg.txt"]),
+    );
+    expect(document.anchors).toEqual(new Set(["html", "inner", "outer", "svg"]));
+  });
+
   it("collects duplicate heading slugs and explicit HTML anchors", () => {
     const document = extractDocument(
       '# A **heading**\n\n# A **heading**\n\n<a name="old"></a><div id="explicit"></div>',
@@ -194,6 +292,30 @@ describe("Markdown link extraction", () => {
       ].join("\n"),
     );
     expect([...document.links]).toEqual(["kept.txt"]);
+  });
+
+  it("filters disable-line markers on CR and LF physical lines without splitting Unicode separators", () => {
+    const source = [
+      '<!-- markdown-link-check-disable-line --><a href="start.txt">start</a>\r\n',
+      '<a href="first.txt">first</a>\n',
+      '<a href="before.txt">before</a>\u2028<!-- markdown-link-check-disable-line --><a href="middle.txt">middle</a>\u2029<!-- markdown-link-check-disable-line --><a href="after.txt">after</a>\r',
+      '<a href="kept.txt">kept</a>\r\n',
+      '<a href="last.txt">last</a>\n',
+      '<a href="end.txt">end</a><!-- markdown-link-check-disable-line -->',
+    ].join("");
+    expect(extractDocument(source).links).toEqual(new Set(["first.txt", "kept.txt", "last.txt"]));
+    expect(extractDocument(source, true).links).toEqual(
+      new Set([
+        "after.txt",
+        "before.txt",
+        "end.txt",
+        "first.txt",
+        "kept.txt",
+        "last.txt",
+        "middle.txt",
+        "start.txt",
+      ]),
+    );
   });
 
   it("preserves original reference bindings and normalized labels across disabled definitions", () => {
@@ -275,6 +397,36 @@ describe("Markdown link checking", () => {
     const present = fixture(`http://${authority}${password}@${authority}/present`);
     expect(await run(present.args)).toBe(0);
     expect(requested).toEqual(new Set(["/present"]));
+  });
+
+  it("checks complete absolute and deep DNS targets instead of a live root", async () => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === "/" ? 200 : 404).end();
+    });
+    const test = fixture(
+      `https://example.test.:8080/missing?case=dot\n\nwww.${"a.".repeat(12)}example.test/missing?case=deep`,
+      { replacementPatterns: [{ pattern: "^https?://[^/]+", replacement: base }] },
+    );
+    expect(await run(test.args)).toBe(1);
+    expect(requested).toEqual(new Set(["/missing?case=deep", "/missing?case=dot"]));
+  });
+
+  it("requests only real links outside escaped script data", async () => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === "/outside" ? 200 : 404).end();
+    });
+    const payload = JSON.stringify({
+      template: `<!--<script></script><a href='${base}/phantom'>text</a>-->`,
+    });
+    const test = fixture(
+      `<script type="application/json">${payload}</script>\n\n<a href="${base}/outside">real</a>`,
+    );
+    expect(await run(test.args)).toBe(0);
+    expect(requested).toEqual(new Set(["/outside"]));
   });
 
   it("checks www autolinks through the HTTP backend", async () => {
