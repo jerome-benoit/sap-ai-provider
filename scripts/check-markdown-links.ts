@@ -1,4 +1,4 @@
-import MarkdownIt, { type Env } from "markdown-it";
+import MarkdownIt, { type Env, type Token } from "markdown-it";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -15,6 +15,13 @@ declare module "markdown-it" {
 }
 
 const markdown = new MarkdownIt({ html: true, linkify: true });
+const nativeRules = new MarkdownIt("zero");
+const [nativeText] = nativeRules.inline.ruler.getRules("");
+nativeRules.core.ruler.enableOnly(["linkify"]);
+const [nativeLinkify] = nativeRules.core.ruler.getRules("");
+if (nativeText === undefined || nativeLinkify === undefined)
+  throw new Error("Markdown parser has no native text or linkification rule");
+const wwwInlineTokens = new WeakSet<Token[]>();
 interface AutolinkPatterns {
   dnsDot: RegExp;
   emailDomain: RegExp;
@@ -26,24 +33,38 @@ interface AutolinkPatterns {
   suffix: RegExp;
 }
 let autolinkPatterns: AutolinkPatterns | undefined;
+let rejectedWwwHostname: undefined | { end: number; start: number; text: string };
+
+/**
+ * Validate the final native root label of a multi-label hostname.
+ * @param text - Linkifier input
+ * @param start - Hostname offset
+ * @param end - End of the complete hostname labels
+ * @param patterns - Cached public linkifier patterns
+ * @returns Whether the hostname has the native multi-label root form
+ */
+function hasDomainRoot(
+  text: string,
+  start: number,
+  end: number,
+  patterns: AutolinkPatterns,
+): boolean {
+  const dot = text.lastIndexOf(".", end - 1);
+  if (dot < start) return false;
+  patterns.root.lastIndex = dot + 1;
+  return patterns.root.test(text) && patterns.root.lastIndex === end;
+}
 
 /**
  * Match complete hostname labels without backtracking across label boundaries.
  * @param text - Linkifier input
  * @param start - Hostname offset
- * @param rootForm - Require multiple labels and the native root-label form
  * @param patterns - Cached public linkifier patterns
  * @returns End offset, or zero when no hostname matches
  */
-function matchHostname(
-  text: string,
-  start: number,
-  rootForm: boolean,
-  patterns: AutolinkPatterns,
-): number {
+function matchHostname(text: string, start: number, patterns: AutolinkPatterns): number {
   let cursor = start;
   let labels = 0;
-  let lastLabelStart = cursor;
   for (;;) {
     patterns.label.lastIndex = cursor;
     if (!patterns.label.test(text)) {
@@ -51,22 +72,29 @@ function matchHostname(
       cursor--;
       break;
     }
-    lastLabelStart = cursor;
     labels++;
     cursor = patterns.label.lastIndex;
     if (text[cursor] !== ".") break;
     cursor++;
   }
-  if (rootForm) {
-    patterns.root.lastIndex = lastLabelStart;
-    if (labels < 2 || !patterns.root.test(text) || patterns.root.lastIndex !== cursor) return 0;
-  }
   return cursor;
 }
 
 /**
+ * Reuse a rejected hostname span across nested WWW candidates.
+ * @param text - Exact bounded validator input
+ * @param start - Start of the rejected hostname
+ * @param end - Exclusive end of complete labels, before any port or path
+ * @returns Zero to reject the candidate
+ */
+function rejectWwwHostname(text: string, start: number, end: number): 0 {
+  rejectedWwwHostname = { end, start, text };
+  return 0;
+}
+
+/**
  * Validate HTTP(S) and WWW autolinks using complete hostname labels.
- * @param text - Linkifier input with a length-limited candidate tail
+ * @param text - Untruncated linkifier input within its parsing boundary
  * @param position - Offset immediately after the schema prefix
  * @param www - Whether to require the native WWW hostname form
  * @returns Matched length after the schema prefix, or zero
@@ -98,13 +126,24 @@ function validateAutolink(text: string, position: number, www: boolean): number 
   const patterns = autolinkPatterns;
   let cursor = www ? position - 4 : position;
   if (www) {
+    if (
+      rejectedWwwHostname?.text === text &&
+      cursor >= rejectedWwwHostname.start &&
+      cursor < rejectedWwwHostname.end
+    )
+      return 0;
     // Email domains must not become WWW links when fuzzy email recognition stops early.
     patterns.emailDomain.lastIndex = cursor;
     if (patterns.emailDomain.test(text)) {
       const hostnameStart = text.lastIndexOf("@", cursor - 1) + 1;
-      const hostnameEnd = matchHostname(text, hostnameStart, true, patterns);
+      const hostnameEnd = matchHostname(text, hostnameStart, patterns);
       patterns.hostEnd.lastIndex = hostnameEnd;
-      if (hostnameEnd > cursor && patterns.hostEnd.test(text)) return 0;
+      if (
+        hostnameEnd > cursor &&
+        hasDomainRoot(text, hostnameStart, hostnameEnd, patterns) &&
+        patterns.hostEnd.test(text)
+      )
+        return rejectWwwHostname(text, hostnameStart, hostnameEnd);
     }
   } else {
     // Separate prefix and target matching to prevent fallback to a partial authority.
@@ -112,18 +151,25 @@ function validateAutolink(text: string, position: number, www: boolean): number 
     if (!patterns.prefix.test(text)) return 0;
     cursor = patterns.prefix.lastIndex;
   }
+  const hostnameStart = cursor;
   if (text[cursor] === "[") {
     patterns.ipv6.lastIndex = cursor;
     if (!patterns.ipv6.test(text)) return 0;
     cursor = patterns.ipv6.lastIndex;
   } else {
-    cursor = matchHostname(text, cursor, www, patterns);
+    cursor = matchHostname(text, cursor, patterns);
     if (cursor === 0) return 0;
+    if (www && !hasDomainRoot(text, hostnameStart, cursor, patterns))
+      return rejectWwwHostname(text, hostnameStart, cursor);
+  }
+  const hostnameEnd = cursor;
+  if (text[hostnameStart] !== "[") {
     patterns.dnsDot.lastIndex = cursor;
     if (patterns.dnsDot.test(text)) cursor = patterns.dnsDot.lastIndex;
   }
   patterns.suffix.lastIndex = cursor;
-  if (!patterns.suffix.test(text)) return 0;
+  if (!patterns.suffix.test(text))
+    return www ? rejectWwwHostname(text, hostnameStart, hostnameEnd) : 0;
   const end = patterns.suffix.lastIndex;
   if (www && text[end] === "@") {
     // A bare WWW hostname does not introduce userinfo.
@@ -148,6 +194,64 @@ markdown.linkify.add("www.", {
   validate(text, position) {
     return validateAutolink(text, position, true);
   },
+});
+const wwwSearch = new RegExp(markdown.linkify.re.get_schema_search());
+
+// Keep URL-internal syntax in text; native rules retain delimiter and email precedence.
+markdown.inline.ruler.at("text", (state, silent) => {
+  if (silent || state.linkLevel > 0) return nativeText(state, silent);
+  const start = state.pos;
+  if (!nativeText(state, true)) return false;
+  const runEnd = state.pos;
+  state.pos = start;
+  const pendingLength = state.pending.length;
+  const contextLength = Math.min(1, pendingLength);
+  const text = state.pending.slice(pendingLength - contextLength) + state.src.slice(start, runEnd);
+  wwwSearch.lastIndex = 0;
+  for (let match = wwwSearch.exec(text); match !== null; match = wwwSearch.exec(text)) {
+    if (match[2]?.toLowerCase() !== "www.") continue;
+    const offset = start - contextLength + wwwSearch.lastIndex - 4;
+    if (offset < start) continue;
+    if (offset === start && pendingLength === 0 && state.tokens.at(-1)?.type === "text_special")
+      continue;
+    wwwInlineTokens.add(state.tokens);
+    const source = state.posMax === state.src.length ? state.src : state.src.slice(0, state.posMax);
+    const length = markdown.linkify.testSchemaAt(source, "www.", offset + 4);
+    if (length === 0) continue;
+    let end = offset + 4 + length;
+    while (end > offset) {
+      const marker = state.src.charCodeAt(end - 1);
+      if (marker !== 42 && marker !== 95 && marker !== 126) break;
+      end--;
+    }
+    if (end <= runEnd) continue;
+    state.pending += state.src.slice(start, end);
+    state.pos = end;
+    return true;
+  }
+  return nativeText(state, false);
+});
+
+// Pretest affected blocks on their parsed text, without changing native per-token filtering.
+markdown.core.ruler.at("linkify", (state) => {
+  const originals = new Map<Token, string>();
+  for (const token of state.tokens) {
+    if (token.type !== "inline" || !token.children || !wwwInlineTokens.has(token.children))
+      continue;
+    const text = token.children
+      .filter((child) => child.type === "text")
+      .map((child) => child.content)
+      .join("\n");
+    if (text !== token.content) {
+      originals.set(token, token.content);
+      token.content = text;
+    }
+  }
+  try {
+    nativeLinkify(state);
+  } finally {
+    for (const [token, content] of originals) token.content = content;
+  }
 });
 // Rendering is parsed, never served or executed; the backend validates extracted protocols.
 markdown.validateLink = () => true;
@@ -223,6 +327,11 @@ export function extractDocument(
   source: string,
   ignoreDisable = false,
 ): { anchors: Set<string>; links: Set<string> } {
+  const maxLength = Math.max(1, source.length);
+  if (markdown.linkify.re.opts.maxLength !== maxLength) {
+    markdown.linkify.set({ maxLength });
+    autolinkPatterns = undefined;
+  }
   const originalSource = source;
   if (!ignoreDisable) {
     for (const pattern of [
@@ -408,7 +517,14 @@ function parseHTMLDocument(
 ): { anchors: Set<string>; links: Set<string> } {
   const links = new Set<string>();
   const anchors = new Set<string>();
-  const nodes: DefaultTreeAdapterTypes.Node[] = [parse(markdown.render(source, environment))];
+  let html: string;
+  rejectedWwwHostname = undefined;
+  try {
+    html = markdown.render(source, environment);
+  } finally {
+    rejectedWwwHostname = undefined;
+  }
+  const nodes: DefaultTreeAdapterTypes.Node[] = [parse(html)];
   for (let node = nodes.pop(); node !== undefined; node = nodes.pop()) {
     if ("childNodes" in node) {
       const children = defaultTreeAdapter.getChildNodes(node);

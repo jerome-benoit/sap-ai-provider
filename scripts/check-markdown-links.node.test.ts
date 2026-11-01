@@ -195,6 +195,141 @@ describe("Markdown link extraction", () => {
     );
   });
 
+  it("preserves complete WWW paths before inline emphasis splits them", () => {
+    const document = extractDocument(
+      [
+        "prefix www.example.test/_missing_/file then www.other.test/*part*/file",
+        "` https://code.test/`www.after-code.test/_part_/file",
+        "*www.wrapped.test/_part_/file*",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://www.after-code.test/_part_/file",
+        "http://www.example.test/_missing_/file",
+        "http://www.other.test/*part*/file",
+        "http://www.wrapped.test/_part_/file",
+      ]),
+    );
+  });
+
+  it("retains native email precedence for WWW-prefixed local parts", () => {
+    const document = extractDocument(
+      "www.name!tag@example.com www.name+tag@example.com foo!www.name+tag@example.com",
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "mailto:foo!www.name+tag@example.com",
+        "mailto:www.name!tag@example.com",
+        "mailto:www.name+tag@example.com",
+      ]),
+    );
+  });
+
+  it("distinguishes enclosing delimiters from unmatched terminal URL markers", () => {
+    const document = extractDocument(
+      [
+        "www.literal-star.test/file*",
+        "www.literal-stars.test/file**",
+        "www.literal-tildes.test/file~~",
+        "*www.emphasis.test/_part_/file*",
+        "**www.strong.test/_part_/file**",
+        "_www.underscore.test/*part*/file_",
+        "__www.strong-underscore.test/*part*/file__",
+        "~~www.strike.test/_part_/file~~",
+        "_www.bare.test_",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://www.bare.test",
+        "http://www.emphasis.test/_part_/file",
+        "http://www.literal-star.test/file*",
+        "http://www.literal-stars.test/file**",
+        "http://www.literal-tildes.test/file~~",
+        "http://www.strike.test/_part_/file",
+        "http://www.strong-underscore.test/*part*/file",
+        "http://www.strong.test/_part_/file",
+        "http://www.underscore.test/*part*/file",
+      ]),
+    );
+  });
+
+  it("preserves URL-internal bracket and backtick syntax as URI data", () => {
+    const document = extractDocument(
+      "www.brackets.test/[visible](missing.txt)\n\nwww.code-path.test/[`code`]",
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://www.brackets.test/%5Bvisible%5D(missing.txt)",
+        "http://www.code-path.test/%5B%60code%60%5D",
+      ]),
+    );
+  });
+
+  it("preserves entity and escape barriers without hiding later WWW paths", () => {
+    const document = extractDocument(
+      [
+        "\\@www.escaped.test/_hidden_/file",
+        "&copy;www.entity.test/_hidden_/file",
+        "\\@prefix www.visible.test/_part_/file",
+        "&copy; www.spaced.test/_part_/file",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set(["http://www.spaced.test/_part_/file", "http://www.visible.test/_part_/file"]),
+    );
+  });
+
+  it("keeps WWW paths out of code, attributes, and existing link labels", () => {
+    const document = extractDocument(
+      [
+        "[www.label.test/_part_/file](target.txt)",
+        "[www.reference.test/[nested]/_part_][target]",
+        "![www.image.test/_part_/file](image.png)",
+        "[target]: reference.txt",
+        '<a href="html.txt">www.body.test/_part_/file</a>',
+        '<span title="www.attribute.test/_part_/file">text</span>',
+        "`www.code.test/_part_/file`",
+        "```text\nwww.fenced.test/_part_/file\n```",
+        "<!-- www.comment.test/_part_/file -->",
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set(["html.txt", "image.png", "reference.txt", "target.txt"]),
+    );
+  });
+
+  it("preserves long HTTP and WWW destinations across changing document lengths", () => {
+    const http = `https://length.test/${"x".repeat(10000)}/missing`;
+    const www = `www.length.test/${"x".repeat(25000)}/_missing_/file`;
+    expect(extractDocument(http).links).toEqual(new Set([http]));
+    expect(extractDocument("www.short.test/_part_/file").links).toEqual(
+      new Set(["http://www.short.test/_part_/file"]),
+    );
+    expect(extractDocument(www).links).toEqual(new Set([`http://${www}`]));
+    expect(extractDocument(http).links).toEqual(new Set([http]));
+  });
+
+  it("does not hide valid WWW paths after rejected hostname or email spans", () => {
+    const document = extractDocument(
+      [
+        `reader@${"www.".repeat(64)}example.test www.after-email.test/_part_/file`,
+        "www.invalid-.www.after-label.test/_part_/file",
+        "www.bad-root/next/www.after-root.test/_part_/file",
+        `www.${"a".repeat(64)}-www.after-long-label.test/_part_/file`,
+      ].join("\n\n"),
+    );
+    expect(document.links).toEqual(
+      new Set([
+        "http://www.after-email.test/_part_/file",
+        "http://www.after-label.test/_part_/file",
+        "http://www.after-long-label.test/_part_/file",
+        "http://www.after-root.test/_part_/file",
+      ]),
+    );
+  });
+
   it("does not invent www autolinks from plain domains, code, attributes, or disabled context", () => {
     const document = extractDocument(
       [
@@ -411,6 +546,41 @@ describe("Markdown link checking", () => {
     );
     expect(await run(test.args)).toBe(1);
     expect(requested).toEqual(new Set(["/missing?case=deep", "/missing?case=dot"]));
+  });
+
+  it.each([
+    ["WWW emphasis", "www.example.test/_missing_/file", "/_missing_/file"],
+    ["WWW terminal star", "www.example.test/_part_/missing*", "/_part_/missing*"],
+    [
+      "long HTTP",
+      `https://length.test/${"x".repeat(10000)}/missing`,
+      `/${"x".repeat(10000)}/missing`,
+    ],
+  ])("rejects the complete %s target instead of a live prefix", async (_name, source, path) => {
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === path ? 404 : 200).end();
+    });
+    const test = fixture(source, {
+      replacementPatterns: [{ pattern: "^https?://[^/]+", replacement: base }],
+    });
+    expect(await run(test.args)).toBe(1);
+    expect(requested).toEqual(new Set([path]));
+  });
+
+  it("accepts a complete long WWW target when that exact target is reachable", async () => {
+    const path = `/${"x".repeat(10000)}/_present_/file`;
+    const requested = new Set<string>();
+    const base = await serve((request, response) => {
+      requested.add(request.url ?? "");
+      response.writeHead(request.url === path ? 200 : 404).end();
+    });
+    const test = fixture(`www.length.test${path}`, {
+      replacementPatterns: [{ pattern: "^https?://[^/]+", replacement: base }],
+    });
+    expect(await run(test.args)).toBe(0);
+    expect(requested).toEqual(new Set([path]));
   });
 
   it("requests only real links outside escaped script data", async () => {
