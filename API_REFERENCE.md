@@ -618,10 +618,14 @@ and custom output such as compaction have no V3 equivalent and are rejected,
 not downloaded or silently dropped. Interrupted EOF maps to `other`; native
 deprecation warnings map to legacy warning messages.
 
-Native V4 user and tool-result files preserve their tagged data, URLs, and provider
-references. Media types normalize to lower case, and tagged text files become
-text parts. Configured SAP namespaces take precedence over existing `openai`
-options and references, including nested tool-result content.
+Native V4 user files and function-tool result files support tagged inline data,
+URLs, and provider references. File content in `openai.custom` results supports
+inline data and URLs; provider references are omitted with a warning. Other native
+tools use tool-specific result formats.
+
+Media types normalize to lower case, and tagged text files become text parts.
+The configured SAP namespace takes precedence over existing `openai` options
+and references, including nested tool-result content.
 
 Assistant `file` history is rejected before discovery or HTTP on every entrypoint.
 Native V4 also rejects assistant `reasoning-file` history and custom kinds other

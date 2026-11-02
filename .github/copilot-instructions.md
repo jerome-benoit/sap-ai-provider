@@ -196,10 +196,10 @@ All commands should pass; execution time depends on the environment.
 │   │   # V4 Facade Layer (AI SDK 7: LanguageModelV4/EmbeddingModelV4)
 │   ├── index-v4.ts                                   # V4 public API exports (AI SDK 7 facade)
 │   ├── sap-ai-provider-v4.ts                         # V4 provider factory
-│   ├── sap-ai-language-model-v4.ts                   # V4 language model facade
+│   ├── sap-ai-language-model-v4.ts                   # Native Responses and legacy API dispatch
 │   ├── sap-ai-embedding-model-v4.ts                  # V4 embedding model facade
-│   ├── sap-ai-adapters-v4-to-v3.ts                   # V4 prompt normalization
-│   ├── sap-ai-adapters-v3-to-v4.ts                   # V4 result conversion
+│   ├── sap-ai-adapters-v4-to-v3.ts                   # Legacy API prompt normalization
+│   ├── sap-ai-adapters-v3-to-v4.ts                   # Legacy API result and stream conversion
 │   │
 │   │   # V2 Facade Layer (AI SDK 5: LanguageModelV2/EmbeddingModelV2)
 │   ├── index-v2.ts                                   # V2 public API exports (AI SDK 5 facade)
@@ -214,6 +214,7 @@ All commands should pass; execution time depends on the environment.
 │   ├── sap-ai-error.ts                               # Error handling system
 │   ├── sap-ai-validation.ts                          # API resolution & validation
 │   ├── sap-ai-strategy.ts                            # Strategy factory (lazy loading)
+│   ├── language-model-invocation.ts                 # Shared per-call API preparation
 │   ├── strategy-utils.ts                             # Shared strategy utilities
 │   ├── stream-transformer.ts                         # SAP stream lifecycle and V3 event conversion
 │   ├── base-language-model-strategy.ts              # Base class for language model strategies (Template Method)
@@ -223,6 +224,7 @@ All commands should pass; execution time depends on the environment.
 │   ├── foundation-models-language-model-strategy.ts # Foundation Models API strategy
 │   ├── foundation-models-embedding-model-strategy.ts# Foundation Models embedding strategy
 │   ├── convert-to-sap-messages.ts                   # Message format conversion
+│   ├── responses-prompt.ts                          # Native V4 tagged-media and history preparation
 │   ├── deep-merge.ts                                 # Deep merge utility
 │   ├── version.ts                                    # Package version constant
 │   └── *.test.ts                                     # Co-located unit tests

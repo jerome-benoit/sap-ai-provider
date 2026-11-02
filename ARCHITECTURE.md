@@ -1078,9 +1078,9 @@ include:
 - `ChatCompletionTool`: Function definitions and parameters
 
 See `src/sap-ai-settings.ts` for the main settings interface and re-exported SAP
-AI SDK types. Responses uses the V3 language-model contract and
-`@ai-sdk/openai` for protocol conversion, with SAP deployment and HTTP transport
-types at its transport boundary. See
+AI SDK types. Responses uses native V4 contracts and V3 compatibility adapters.
+`@ai-sdk/openai` handles protocol conversion; SAP deployment and HTTP transport
+types remain at the transport boundary. See
 [Strategy Pattern (API Selection)](#strategy-pattern-api-selection) for that
 separation and the [Responses API contract](./API_REFERENCE.md#responses-api) for
 its public options.
@@ -1668,8 +1668,10 @@ Run it in a separate clean checkout. Do not run `prepare:v2` manually before
 
 ### Key Design Decisions
 
-1. **Single source of truth**: All SAP AI Core logic lives in the V3 implementation
-2. **Thin facades**: V2 and V4 translate interface contracts without duplicating business logic
+1. **Shared infrastructure**: All entrypoints share SAP authentication, API
+   validation, and strategy selection.
+2. **Contract-specific dispatch**: V2 wraps V3; V4 uses native Responses,
+   V3-compatible language strategies for other APIs, and V3 embeddings.
 3. **Versioned entrypoints**: One main package supports AI SDK 5–7 without mixing model contracts
 4. **Standalone V2 publication**: Existing V2 consumers retain their dedicated package
 5. **Adapter isolation**: Version conversions remain centralized and independently testable
