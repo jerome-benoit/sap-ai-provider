@@ -1,15 +1,14 @@
 /** Fetch-compatible Responses transport backed by the SAP SDK HTTP client. */
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 
 import { APICallError } from "@ai-sdk/provider";
-import { getFoundationModelDeploymentId, getResourceGroup } from "@sap-ai-sdk/ai-api/internal.js";
+import { getFoundationModelDeploymentId } from "@sap-ai-sdk/ai-api/internal.js";
 import { executeRequest, getAiCoreDestination } from "@sap-ai-sdk/core";
-import { getTargetUrl } from "@sap-ai-sdk/core/internal.js";
 
 import type { SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { AISDKRequestBodySummary } from "./strategy-utils.js";
 
 import { createAbortError, throwIfAborted, waitWithAbort } from "./abort-utils.js";
 import { convertToAISDKError, normalizeHeaders } from "./sap-ai-error.js";
@@ -24,26 +23,38 @@ import {
   type SAPHttpMiddleware,
   type SAPHttpResponse,
 } from "./sap-http-stream.js";
-import {
-  buildModelDeployment,
-  createAISDKRequestBodySummary,
-  mergeRequestConfig,
-} from "./strategy-utils.js";
+import { buildModelDeployment, mergeRequestConfig } from "./strategy-utils.js";
+
+/**
+ * Prompt-independent diagnostics and cancellation for one Responses invocation.
+ * @internal
+ */
+export interface ResponsesRequestContext {
+  abortSignal?: AbortSignal;
+  getRequestBodySummary: () => AISDKRequestBodySummary;
+  headers?: Record<string, string | undefined>;
+  operation: "doGenerate" | "doStream";
+}
 
 /**
  * Resolves a SAP deployment and adapts its HTTP transport to the OpenAI provider.
  * @param config - SAP deployment and transport configuration.
  * @param settings - Resolved model settings.
- * @param options - Standard AI SDK call options.
+ * @param context - Invocation cancellation, headers, and safe diagnostics.
  * @returns The deployment base URL and a fetch-compatible SAP transport.
  * @internal
  */
 export async function createResponsesTransport(
   config: LanguageModelStrategyConfig,
   settings: SAPAISettings,
-  options: LanguageModelV3CallOptions,
-): Promise<{ baseURL: string; dispose: (reason?: unknown) => void; fetch: FetchFunction }> {
-  throwIfAborted(options.abortSignal);
+  context: ResponsesRequestContext,
+): Promise<{
+  baseURL: string;
+  dispose: (reason?: unknown) => void;
+  fetch: FetchFunction;
+  getBodyReadFailure: (error: unknown) => APICallError | undefined;
+}> {
+  throwIfAborted(context.abortSignal);
   const deployment = buildModelDeployment(config, settings.modelVersion);
   // SAP's discovery helpers expose no signal; cancel the wait and observe late rejections.
   const [deploymentId, destination] = await waitWithAbort(
@@ -51,18 +62,29 @@ export async function createResponsesTransport(
       getFoundationModelDeploymentId(deployment, "azure-openai", config.destination),
       getAiCoreDestination(config.destination),
     ]),
-    options.abortSignal,
+    context.abortSignal,
   );
-  throwIfAborted(options.abortSignal);
+  throwIfAborted(context.abortSignal);
 
   const deploymentPath = `/inference/deployments/${encodeURIComponent(deploymentId)}`;
-  const baseURL = getTargetUrl(destination.url, deploymentPath);
+  const destinationUrl = destination.url.replace(/\/$/, "");
+  const baseURL = `${destinationUrl}${new URL(destinationUrl).pathname === "/" ? "/v2" : ""}${deploymentPath}`;
   const endpoint = new URL(`${baseURL}/responses`);
   const requestConfig = mergeRequestConfig(
     config.requestConfig,
-    options.abortSignal,
-    options.headers,
+    context.abortSignal,
+    context.headers,
   );
+  const bodyReadFailures = new WeakSet<APICallError>();
+  const getBodyReadFailure = (error: unknown): APICallError | undefined =>
+    APICallError.isInstance(error) &&
+    error.statusCode !== undefined &&
+    error.statusCode >= 200 &&
+    error.statusCode < 300 &&
+    APICallError.isInstance(error.cause) &&
+    bodyReadFailures.has(error.cause)
+      ? error.cause
+      : undefined;
   const activeRequests = new Set<(reason?: unknown) => void>();
   let disposed = false;
   let disposalReason: unknown;
@@ -89,13 +111,8 @@ export async function createResponsesTransport(
     if (init?.method !== "POST" || typeof init.body !== "string") {
       throw new TypeError("SAP Responses requires a POST request with a JSON body.");
     }
-    const body: unknown = JSON.parse(init.body);
-    const operation =
-      typeof body === "object" && body !== null && "stream" in body && body.stream === true
-        ? "doStream"
-        : "doGenerate";
     const controller = new AbortController();
-    const signal = options.abortSignal ?? init.signal;
+    const signal = context.abortSignal ?? init.signal;
     const bodyTimeoutCleanups = new Set<() => void>();
     let abortFailedRequest: (() => void) | undefined;
     let activeResponse: SAPHttpResponse | undefined;
@@ -156,6 +173,8 @@ export async function createResponsesTransport(
     const preserveErrorResponse: SAPHttpMiddleware =
       ({ fn }) =>
       async (request) => {
+        // Install the delegate's serialized body once, before caller middleware and retries.
+        request.data = init.body;
         try {
           return await fn(request);
         } catch (error) {
@@ -182,10 +201,10 @@ export async function createResponsesTransport(
       const pendingResponse = executeRequest(
         {
           apiVersion: "2024-10-21",
-          resourceGroup: getResourceGroup(deployment),
+          resourceGroup: "resourceGroup" in deployment ? deployment.resourceGroup : undefined,
           url: `${deploymentPath}/responses`,
         },
-        body,
+        undefined,
         {
           ...requestConfig,
           headers: { ...Object.fromEntries(headers), ...configuredHeaders },
@@ -211,8 +230,8 @@ export async function createResponsesTransport(
         controller,
         cleanup,
         config,
-        options,
-        operation,
+        context,
+        bodyReadFailures,
       );
       if (failedRequest) {
         const readFailure = await readHttpErrorBody(
@@ -223,8 +242,8 @@ export async function createResponsesTransport(
         const failure = convertToAISDKError(failedError, {
           modelId: config.modelId,
           modelType: "languageModel",
-          operation,
-          requestBody: createAISDKRequestBodySummary(options),
+          operation: context.operation,
+          requestBody: context.getRequestBodySummary(),
           url: "sap-ai:responses",
         });
         // Secondary body diagnostics must not enter the native cause chain:
@@ -244,7 +263,7 @@ export async function createResponsesTransport(
     }
   };
 
-  return { baseURL, dispose, fetch };
+  return { baseURL, dispose, fetch, getBodyReadFailure };
 }
 
 /**
@@ -253,8 +272,8 @@ export async function createResponsesTransport(
  * @param requestController - Controls the upstream SAP request.
  * @param cleanup - Removes the caller's abort listener.
  * @param config - Model configuration for safe error conversion.
- * @param options - Standard AI SDK call options.
- * @param operation - Operation derived from the delegate's request body.
+ * @param context - Invocation operation and safe diagnostics.
+ * @param bodyReadFailures - Errors owned by this invocation's body-read boundary.
  * @returns A native byte stream consumed by the OpenAI provider.
  */
 function createByteStream(
@@ -262,8 +281,8 @@ function createByteStream(
   requestController: AbortController,
   cleanup: () => void,
   config: LanguageModelStrategyConfig,
-  options: LanguageModelV3CallOptions,
-  operation: "doGenerate" | "doStream",
+  context: ResponsesRequestContext,
+  bodyReadFailures: WeakSet<APICallError>,
 ): ReadableStream<Uint8Array> {
   if (
     typeof body !== "object" ||
@@ -321,15 +340,15 @@ function createByteStream(
           requestController.abort(error);
           cleanupStream();
           source.destroy?.();
-          controller.error(
-            convertToAISDKError(failure, {
-              modelId: config.modelId,
-              modelType: "languageModel",
-              operation,
-              requestBody: createAISDKRequestBodySummary(options),
-              url: "sap-ai:responses",
-            }),
-          );
+          const converted = convertToAISDKError(failure, {
+            modelId: config.modelId,
+            modelType: "languageModel",
+            operation: context.operation,
+            requestBody: context.getRequestBodySummary(),
+            url: "sap-ai:responses",
+          });
+          if (APICallError.isInstance(converted)) bodyReadFailures.add(converted);
+          controller.error(converted);
         }
       },
     },

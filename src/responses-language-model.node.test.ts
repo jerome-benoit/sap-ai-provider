@@ -15,6 +15,7 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolResultOutput,
 } from "@ai-sdk/provider-v3";
+import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { IncomingHttpHeaders, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -22,7 +23,8 @@ import { APICallError, LoadAPIKeyError, UnsupportedFunctionalityError } from "@a
 import { generateText, streamText, tool } from "ai";
 import { execFile } from "node:child_process";
 import { getEventListeners } from "node:events";
-import { createServer } from "node:http";
+import { Agent, createServer } from "node:http";
+import { Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -40,6 +42,7 @@ type Reply = (response: ServerResponse, request: WireRequest) => Promise<void> |
 interface WireRequest {
   body: Record<string, unknown>;
   headers: IncomingHttpHeaders;
+  rawBody: string;
   url: URL;
 }
 
@@ -308,11 +311,13 @@ describe("Responses over SAP AI Core HTTP", () => {
   const server = createServer((request, response) => {
     void (async () => {
       let body = "";
+      request.setEncoding("utf8");
       for await (const chunk of request) body += String(chunk);
       const capture: WireRequest = {
         body: JSON.parse(body || "{}") as Record<string, unknown>,
         headers: request.headers,
-        url: new URL(request.url ?? "/", destinationUrl),
+        rawBody: body,
+        url: new URL(`${destinationUrl}${request.url ?? "/"}`),
       };
       requests.push(capture);
       const next = replies.shift();
@@ -352,6 +357,143 @@ describe("Responses over SAP AI Core HTTP", () => {
       ...overrides,
     };
   }
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s preserves large serialized bodies through caller middleware and transforms",
+    async (operation) => {
+      const middlewareBodies: unknown[] = [];
+      const transformedBodies: unknown[] = [];
+      const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+      const requestConfig: CustomRequestConfig = {
+        headers: { "X-Fixture-Keep": "provider", "X-Fixture-Override": "provider" },
+        httpAgent: agent,
+        middleware: [
+          ({ fn }) =>
+            async (request) => {
+              middlewareBodies.push(request.data);
+              return fn(request);
+            },
+        ],
+        params: { fixture: "string-body" },
+        proxy: false,
+        timeout: 5_000,
+        transformRequest: [
+          (data: unknown) => {
+            transformedBodies.push(data);
+            return data;
+          },
+        ],
+      };
+      if (operation === "doStream") replies.push((response) => events(response, streamEvents()));
+      const model = createSAPAIProvider(settings({ requestConfig }))("gpt-6.1-sol");
+      const text = "Large Grüße 🌍 fixture ".repeat(16_384);
+      try {
+        const options = {
+          headers: { "x-fixture-keep": undefined, "x-fixture-override": "caller" },
+          prompt: [{ content: [{ text, type: "text" as const }], role: "user" as const }],
+        };
+        if (operation === "doGenerate") await model.doGenerate(options);
+        else await collect((await model.doStream(options)).stream);
+
+        expect(requests).toHaveLength(1);
+        const captured = requests[0];
+        if (!captured) throw new Error("Expected the serialized HTTP request");
+        expect(Buffer.byteLength(captured.rawBody)).toBeGreaterThan(256 * 1024);
+        expect(middlewareBodies).toEqual([captured.rawBody]);
+        expect(transformedBodies).toEqual([captured.rawBody]);
+        expect(captured.rawBody).toContain(text);
+        expect(captured.headers).toMatchObject({
+          "x-fixture-keep": "provider",
+          "x-fixture-override": "caller",
+        });
+        expect(captured.headers.authorization).toBeUndefined();
+        expect(captured.url.searchParams.get("fixture")).toBe("string-body");
+      } finally {
+        agent.destroy();
+      }
+    },
+  );
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s retains caller body mutation across middleware retry attempts",
+    async (operation) => {
+      const transformedBodies: unknown[] = [];
+      const retryBodies: unknown[] = [];
+      const retryOnce: NonNullable<CustomRequestConfig["middleware"]>[number] =
+        ({ fn }) =>
+        async (request) => {
+          retryBodies.push(request.data);
+          const first = await fn(request);
+          if (first.status !== 503) return first;
+          const data: unknown = first.data;
+          if (!(data instanceof Readable)) throw new Error("Expected the real SAP HTTP body");
+          data.destroy();
+          if (typeof request.data !== "string") throw new Error("Expected serialized retry body");
+          request.data = request.data.replace('"store":false', '"store":true');
+          retryBodies.push(request.data);
+          return fn(request);
+        };
+      replies.push((response) => {
+        json(response, { error: { message: "Retry this fixture" } }, 503);
+      });
+      if (operation === "doStream") replies.push((response) => events(response, streamEvents()));
+      const model = createSAPAIProvider(
+        settings({
+          requestConfig: {
+            middleware: [retryOnce],
+            transformRequest: [
+              (data: unknown) => {
+                transformedBodies.push(data);
+                return data;
+              },
+            ],
+            validateStatus: (status: number) => status < 600,
+          },
+        }),
+      )("gpt-6.1-sol");
+
+      if (operation === "doGenerate") await model.doGenerate({ prompt });
+      else await collect((await model.doStream({ prompt })).stream);
+
+      expect(requests).toHaveLength(2);
+      expect(requests.map((request) => request.body.store)).toEqual([false, true]);
+      expect(retryBodies).toEqual(requests.map((request) => request.rawBody));
+      expect(transformedBodies).toEqual(retryBodies);
+    },
+  );
+
+  it.each([
+    ["", "/v2"],
+    ["/", "/v2"],
+    ["//", "//v2"],
+    ["/v2/", "/v2"],
+    ["/v2///", "/v2//"],
+    ["/custom/base///", "/custom/base//"],
+  ])(
+    "keeps destination %s request and parser diagnostic URLs aligned without ID discovery",
+    async (path, prefix) => {
+      replies.push((response) => {
+        json(response, { ...reply, output: "invalid-fixture-output" });
+      });
+      const model = createSAPAIProvider(
+        settings({
+          destination: { authentication: "NoAuthentication", url: `${destinationUrl}${path}` },
+        }),
+      )("gpt-6.1-sol");
+
+      const error: unknown = await model.doGenerate({ prompt }).catch((error: unknown) => error);
+
+      expect(requests).toHaveLength(1);
+      const expectedPath = `${prefix}/inference/deployments/responses-test/responses`;
+      expect(requests[0]?.url.pathname).toBe(expectedPath);
+      expect(requests[0]?.headers["ai-resource-group"]).toBe("default");
+      expect(APICallError.isInstance(error)).toBe(true);
+      if (!APICallError.isInstance(error)) throw new Error("Expected the fixture parser error");
+      expect(error.statusCode).toBe(200);
+      expect(error.isRetryable).toBe(false);
+      expect(new URL(error.url).pathname).toBe(expectedPath);
+    },
+  );
 
   it("generates text at the deployment Responses endpoint with SAP transport settings", async () => {
     const ignoredSignal = AbortSignal.abort("provider signal must be ignored");
