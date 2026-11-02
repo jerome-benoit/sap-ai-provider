@@ -13,34 +13,12 @@ import type {
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamResult,
 } from "@ai-sdk/provider-v3";
-import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
-import type { CustomRequestConfig } from "@sap-ai-sdk/core";
-import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
-import { parseProviderOptions } from "@ai-sdk/provider-utils";
+import type { LanguageModelInvocationConfig } from "./language-model-invocation.js";
+import type { SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
-import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
-
-import {
-  getProviderName,
-  sapAILanguageModelProviderOptions,
-  validateModelParamsSettings,
-} from "./sap-ai-provider-options.js";
-import {
-  getOrCreateLanguageModelStrategy,
-  type LanguageModelAPIStrategy,
-  type LanguageModelStrategyConfig,
-} from "./sap-ai-strategy.js";
-import { resolveApi, validateSettings } from "./sap-ai-validation.js";
-
-/** @internal */
-interface SAPAILanguageModelConfig {
-  readonly deploymentConfig: DeploymentIdConfig | ResourceGroupConfig;
-  readonly destination?: HttpDestinationOrFetchOptions;
-  readonly provider: string;
-  readonly providerApi?: SAPAIApiType;
-  readonly requestConfig?: CustomRequestConfig;
-}
+import { prepareLanguageModelInvocation } from "./language-model-invocation.js";
+import { validateModelParamsSettings } from "./sap-ai-provider-options.js";
 
 /**
  * SAP AI Language Model implementing Vercel AI SDK LanguageModelV3.
@@ -93,7 +71,7 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   }
 
   /** @internal */
-  private readonly config: SAPAILanguageModelConfig;
+  private readonly config: LanguageModelInvocationConfig;
 
   /** @internal */
   private readonly settings: SAPAISettings;
@@ -104,7 +82,11 @@ export class SAPAILanguageModel implements LanguageModelV3 {
    * @param config - Model configuration.
    * @internal
    */
-  constructor(modelId: SAPAIModelId, settings: SAPAISettings, config: SAPAILanguageModelConfig) {
+  constructor(
+    modelId: SAPAIModelId,
+    settings: SAPAISettings,
+    config: LanguageModelInvocationConfig,
+  ) {
     if (settings.modelParams) {
       validateModelParamsSettings(settings.modelParams);
     }
@@ -114,15 +96,25 @@ export class SAPAILanguageModel implements LanguageModelV3 {
   }
 
   async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
-    const { strategy, strategyConfig } = await this.prepareInvocation(options);
-    const result = strategy.doGenerate(strategyConfig, this.settings, options);
+    const { selected, strategyConfig } = await prepareLanguageModelInvocation(
+      this.modelId,
+      this.settings,
+      this.config,
+      options.providerOptions,
+    );
+    const result = selected.strategy.doGenerate(strategyConfig, this.settings, options);
     // Bridge readonly strategy JSON to the mutable V3 contract without copying.
     return result as Promise<LanguageModelV3GenerateResult>;
   }
 
   async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
-    const { strategy, strategyConfig } = await this.prepareInvocation(options);
-    const result = strategy.doStream(strategyConfig, this.settings, options);
+    const { selected, strategyConfig } = await prepareLanguageModelInvocation(
+      this.modelId,
+      this.settings,
+      this.config,
+      options.providerOptions,
+    );
+    const result = selected.strategy.doStream(strategyConfig, this.settings, options);
     // Preserve the stream itself while exposing AI SDK 6's mutable JSON contract.
     return result as Promise<LanguageModelV3StreamResult>;
   }
@@ -133,55 +125,5 @@ export class SAPAILanguageModel implements LanguageModelV3 {
       return /^data:image\//i.test(url.href);
     }
     return false;
-  }
-
-  /**
-   * Prepares common invocation context for doGenerate and doStream.
-   * @param options - AI SDK call options.
-   * @returns Strategy and configuration for the invocation.
-   * @internal
-   */
-  private async prepareInvocation(options: LanguageModelV3CallOptions): Promise<{
-    strategy: LanguageModelAPIStrategy;
-    strategyConfig: LanguageModelStrategyConfig;
-  }> {
-    const providerName = getProviderName(this.config.provider);
-    const sapOptions = await parseProviderOptions({
-      provider: providerName,
-      providerOptions: options.providerOptions,
-      schema: sapAILanguageModelProviderOptions,
-    });
-
-    const effectiveApi = resolveApi(this.config.providerApi, this.settings.api, sapOptions?.api);
-
-    validateSettings({
-      api: effectiveApi,
-      invocationSettings: sapOptions
-        ? {
-            api: sapOptions.api,
-            dropUnsupportedParams: sapOptions.dropUnsupportedParams,
-            escapeTemplatePlaceholders: sapOptions.escapeTemplatePlaceholders,
-            orchestrationConfigRef: sapOptions.orchestrationConfigRef,
-            placeholderValues: sapOptions.placeholderValues,
-            promptTemplateRef: sapOptions.promptTemplateRef,
-            responses: sapOptions.responses,
-          }
-        : undefined,
-      modelApi: this.settings.api,
-      modelSettings: this.settings,
-    });
-
-    const strategy = await getOrCreateLanguageModelStrategy(effectiveApi);
-
-    const strategyConfig: LanguageModelStrategyConfig = {
-      deploymentConfig: this.config.deploymentConfig,
-      destination: this.config.destination,
-      modelId: this.modelId,
-      parsedProviderOptions: sapOptions,
-      provider: this.config.provider,
-      requestConfig: this.config.requestConfig,
-    };
-
-    return { strategy, strategyConfig };
   }
 }

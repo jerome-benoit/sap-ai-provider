@@ -1,4 +1,4 @@
-/** Entry adapter: normalize AI SDK 7 (V4) prompts to the internal V3 format. */
+/** Entry adapter: normalize V4 prompts for the V3 Orchestration/Foundation Models strategies. */
 
 import type {
   LanguageModelV3FilePart,
@@ -34,7 +34,7 @@ const TOP_LEVEL_REFERENCE_ERROR =
   "V4 provider reference file data has no top-level V3 prompt equivalent and is not fetched. Resolve the reference before calling the model.";
 
 /**
- * Normalizes an AI SDK 7 (spec V4) prompt to the internal V3 prompt format.
+ * Normalizes an AI SDK 7 prompt for the legacy API strategies.
  *
  * - Tagged file data is unwrapped: `data` to raw bytes/string, `url` to the
  *   `URL` object, `text` to a V3 text part. Top-level `reference` values are
@@ -52,7 +52,7 @@ const TOP_LEVEL_REFERENCE_ERROR =
  *   options retain their V3-compatible shapes. Downstream SAP conversion may
  *   still ignore unsupported parts with warnings.
  * @param prompt - The V4 prompt received from AI SDK 7.
- * @returns The equivalent V3 prompt for the internal core.
+ * @returns The equivalent V3 prompt for Orchestration or Foundation Models.
  * @throws {UnsupportedFunctionalityError} For V4-only shapes with no V3 equivalent.
  */
 export function normalizeV4PromptToV3(prompt: LanguageModelV4Prompt): LanguageModelV3Prompt {

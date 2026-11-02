@@ -11,7 +11,7 @@ see [API Reference](./API_REFERENCE.md).
 **3-layer architecture** bridging your application to SAP AI services:
 
 - **Application** → **Provider** → **SAP AI Core** → AI Models
-- Implements Vercel AI SDK's V3 core with V2 and V4 compatibility facades
+- Implements Vercel AI SDK V3 strategies with V2 compatibility and native V4 Responses
 - Uses SAP AI SDK clients for Orchestration and Foundation Models Chat Completions;
   Responses delegates its protocol to `@ai-sdk/openai` through SAP's HTTP transport
 - Converts messages and results through the selected API strategy
@@ -300,10 +300,10 @@ src/
 │   # V4 Facade Layer (AI SDK 7; LanguageModelV4/EmbeddingModelV4)
 ├── index-v4.ts                                     # V4 public API exports (AI SDK 7 facade)
 ├── sap-ai-provider-v4.ts                           # V4 facade provider factory
-├── sap-ai-language-model-v4.ts                     # V4 language model facade
+├── sap-ai-language-model-v4.ts                     # Native Responses and legacy API dispatch
 ├── sap-ai-embedding-model-v4.ts                    # V4 embedding model facade
-├── sap-ai-adapters-v4-to-v3.ts                     # V4 prompt normalization
-├── sap-ai-adapters-v3-to-v4.ts                     # V4 result conversion
+├── sap-ai-adapters-v4-to-v3.ts                     # Legacy API prompt normalization
+├── sap-ai-adapters-v3-to-v4.ts                     # Legacy API result conversion
 │
 │   # V2 Facade Layer (AI SDK 5; AI SDK 6 compatibility)
 ├── index-v2.ts                                     # V2 public API exports (AI SDK 5 facade)
@@ -318,6 +318,7 @@ src/
 ├── sap-ai-error.ts                                 # Error handling system
 ├── sap-ai-validation.ts                            # API resolution & validation
 ├── sap-ai-strategy.ts                              # Strategy factory (lazy loading)
+├── language-model-invocation.ts                    # Shared per-call API preparation
 ├── strategy-utils.ts                               # Shared strategy utilities
 ├── stream-transformer.ts                           # Shared stream lifecycle, tool input, and metadata conversion
 ├── base-language-model-strategy.ts                 # Base class for language model strategies (Template Method)
@@ -325,8 +326,9 @@ src/
 ├── orchestration-language-model-strategy.ts       # Orchestration API strategy
 ├── orchestration-embedding-model-strategy.ts      # Orchestration embedding strategy
 ├── foundation-models-language-model-strategy.ts   # Foundation Models API strategy
-├── responses-language-model-strategy.ts           # Responses adapter and metadata conversion
+├── responses-language-model-strategy.ts           # Native V4 Responses and V3 compatibility
 ├── responses-http-transport.ts                    # SAP transport for the Responses delegate
+├── responses-prompt.ts                            # Native tagged-media and history preparation
 ├── foundation-models-embedding-model-strategy.ts  # Foundation Models embedding strategy
 ├── convert-to-sap-messages.ts                     # Message format conversion
 ├── deep-merge.ts                                   # Deep merge utility
@@ -1124,9 +1126,9 @@ final aggregate omits them. Unified finish reasons remain SAP-based; original
 provider reasons survive separately as raw diagnostics. Versioned facades retain
 the standard reasoning parts and their metadata without another conversion layer.
 
-Responses implements `LanguageModelAPIStrategy` directly because its request
-and event formats differ from Chat Completions. `@ai-sdk/openai` handles native
-Responses message conversion, SSE events, function calls, usage, and reasoning
+Responses implements the shared V3 strategy methods plus native V4 entrypoints,
+because its request and event formats differ from Chat Completions.
+`@ai-sdk/openai` handles native message conversion, SSE events, function calls, usage, and reasoning
 history. `responses-http-transport.ts` adapts the SAP SDK HTTP client to its
 fetch interface, preserving SAP authentication, deployment discovery and model
 version selection, custom destinations, request configuration, and cancellation.
@@ -1147,17 +1149,26 @@ Recovery accepts a recorded direct cause of a successful-status API error, not
 delegate wording or arbitrary nested causes. Parser and schema failures remain
 distinct from transport failures.
 
-The shared strategy contract remains V3. `responses-adapters-v3-to-v4.ts` tags V3
-prompt files and tool-result media for the OpenAI 4 V4 delegate.
-`responses-adapters-v4-to-v3.ts` converts results and stream events back to V3.
-These delegate adapters are separate from the public facade adapters because
-their conversion directions and compatibility policies differ. File bytes are
-not copied, and stream conversion runs inside the existing demand-driven reader.
-V4-only outputs without a V3 equivalent are rejected explicitly rather than dropped.
+`language-model-invocation.ts` resolves, parses, and validates API settings once
+per invocation before any specification-specific prompt conversion. A cached
+discriminated strategy descriptor selects native V4 Responses or the existing
+V3 Orchestration/Foundation Models strategies. The cache remains keyed only by
+API, with shared pending loads and eviction after failed initialization.
 
-Module-local result types describe the V4 fields retained through V3-shaped
-objects: text and event citations, `structuredOutputText`, and tool-input
-`inputEncoding`. They do not widen public V3 contracts or package exports.
+`responses-prompt.ts` prepares native V4 tagged media, references, and provider
+namespaces without copying file bytes. It rejects assistant file and
+reasoning-file history, unsupported custom kinds, and compaction without an
+item ID before discovery. Supported compaction and encrypted reasoning retain
+their native history, including encrypted reasoning without an item ID.
+
+Only legacy Responses entrypoints use `responses-adapters-v3-to-v4.ts` and
+`responses-adapters-v4-to-v3.ts`. They reject output without a V3 equivalent and
+map interrupted finish reasons and deprecated warnings to legacy values.
+Compatibility conversion stays inside the existing disposal and stream-error
+boundary; failures produce error events rather than raw stream rejections.
+Native V4 preserves all delegate content and events, including custom content,
+reasoning files, tagged generated files, citations, approvals, native warnings,
+`structuredOutputText`, text tool-input encoding, and interrupted EOF.
 
 The strategy translates metadata between the configured SAP namespace and the
 OpenAI delegate on every message and content part. This preserves response item
@@ -1184,7 +1195,13 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
   checks tagged media, canonical URLs, and provider file references.
 - [`responses-adapters-v4-to-v3.test.ts`](./src/responses-adapters-v4-to-v3.test.ts)
   checks generated files, warning and finish-reason conversion, and rejection of
-  unrepresentable V4 output.
+  output unrepresentable in V3.
+- [`responses-prompt.test.ts`](./src/responses-prompt.test.ts) checks native tagged
+  media, byte identity, canonical URLs, namespace precedence, and history rejection.
+- [`responses-native-contract.test.ts`](./src/responses-native-contract.test.ts)
+  uses typed delegate doubles for native files, reasoning files, and deprecated
+  warnings that the installed wire parser does not produce. It also checks native
+  event fidelity and legacy conversion-error cancellation.
 - [`responses-http-transport.node.test.ts`](./src/responses-http-transport.node.test.ts)
   checks deployment URLs, destinations, request configuration, header precedence,
   status policies, response backpressure, cancellation during pending SDK setup,
@@ -1215,8 +1232,8 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
   check deployment discovery, serialized string bodies through caller middleware,
   transforms and retries, native reasoning history, provider namespaces, late SSE
   error classification, and cancellation
-  across the supported facades. The versioned adapter suites check each AI SDK
-  contract before it reaches the shared V3 strategy.
+  across the supported entrypoints. The versioned adapter suites check legacy
+  compatibility separately from native V4 Responses.
 
 An equivalent public SAP API may replace an internal helper only after it
 preserves destinations, deployment selection, request configuration, middleware
@@ -1251,7 +1268,7 @@ graph TB
         BaseLM[BaseLanguageModelStrategy<br/>━━━━━━━━━━━━━━━━━━<br/>Template Method:<br/>• buildCommonParts#40;#41;<br/>• abstract buildRequest#40;#41;]
         OrchLM[OrchestrationLanguageModelStrategy]
         FMLM[FoundationModelsLanguageModelStrategy]
-        ResponsesLM[ResponsesLanguageModelStrategy]
+        ResponsesLM[ResponsesLanguageModelStrategy<br/>Native V4 + V3 compatibility]
     end
 
     subgraph "Embedding Model Strategies"
@@ -1532,9 +1549,11 @@ four package entrypoints use **three artifact families**: `index.*`,
 
 ### V4 Facade Layer
 
-The V4 facade normalizes AI SDK 7 prompts into the shared V3 core and converts
-generated and streamed V3 results back to V4 shapes. V4-only content with no V3
-equivalent is rejected explicitly rather than silently discarded.
+V4 language calls share API preparation with V3, then dispatch Responses directly
+to its native V4 strategy. Orchestration and Foundation Models normalize V4
+prompts to V3 and convert results back. V4 embeddings still wrap the V3 model.
+URL capabilities remain conservative because high-level SDK capability lookup
+precedes invocation-level API overrides; capabilities are not shared mutable state.
 
 ### V4 Source Files
 
@@ -1542,19 +1561,19 @@ equivalent is rejected explicitly rather than silently discarded.
 src/
 ├── index-v4.ts                    # V4 public API exports (AI SDK 7 facade)
 ├── sap-ai-provider-v4.ts          # V4 provider factory
-├── sap-ai-language-model-v4.ts    # V4 language model facade
-├── sap-ai-embedding-model-v4.ts   # V4 embedding model facade
-├── sap-ai-adapters-v4-to-v3.ts    # Prompt normalization
-└── sap-ai-adapters-v3-to-v4.ts    # Result and stream conversion
+├── sap-ai-language-model-v4.ts    # Native Responses and legacy API dispatch
+├── sap-ai-embedding-model-v4.ts   # V3 embedding facade
+├── language-model-invocation.ts  # Shared API preparation
+├── responses-prompt.ts           # Native V4 Responses history
+├── sap-ai-adapters-v4-to-v3.ts    # Legacy API prompt normalization
+└── sap-ai-adapters-v3-to-v4.ts    # Legacy API result and stream conversion
 ```
 
 ### V2 Facade Layer
 
-The V2 package uses a **facade pattern** that wraps the internal V3 implementation.
-The official provider v2 result types are a development-only dependency: both builds
-inline them and their JSON Schema types into the published declarations. Consumers
-do not install the `@ai-sdk/provider-v2` alias. This preserves AI SDK 5 result
-compatibility without copying upstream definitions into our source.
+The V2 package uses a facade that wraps the internal V3 implementation and
+preserves AI SDK 5 result contracts. Its published declarations include the
+required V2 types.
 
 V2 language-model inputs use the current upstream contracts, accepting both
 provider-tool discriminators shipped with AI SDK 5 and 6. Warning declarations

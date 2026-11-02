@@ -1,8 +1,8 @@
 /**
  * SAP AI Provider V4 - Vercel AI SDK ProviderV4 implementation for SAP AI Core.
  *
- * Creates V4 facades over the shared V3 models. Validation and settings-merge
- * utilities are shared with the V2 and V3 factories.
+ * Creates V4 models with native Responses and V3 compatibility for other APIs.
+ * Validation and settings merging are shared with the V2 and V3 factories.
  */
 
 import type { ImageModelV4, ProviderV4 } from "@ai-sdk/provider";

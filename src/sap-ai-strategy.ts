@@ -5,6 +5,9 @@ import type {
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
   LanguageModelV3StreamResult,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamResult,
 } from "@ai-sdk/provider";
 import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
@@ -71,8 +74,34 @@ export interface LanguageModelStrategyConfig {
   readonly requestConfig?: CustomRequestConfig;
 }
 
+/**
+ * API discrimination is cached with the strategy, not inferred from model defaults.
+ * @internal
+ */
+export type ResolvedLanguageModelStrategy =
+  | { api: "responses"; strategy: ResponsesLanguageModelAPIStrategy }
+  | { api: Exclude<SAPAIApiType, "responses">; strategy: LanguageModelAPIStrategy };
+
+/**
+ * Native Responses entrypoints alongside legacy V3 compatibility.
+ * @internal
+ */
+export interface ResponsesLanguageModelAPIStrategy extends LanguageModelAPIStrategy {
+  doGenerateV4(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV4CallOptions,
+  ): Promise<LanguageModelV4GenerateResult>;
+
+  doStreamV4(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV4CallOptions,
+  ): Promise<LanguageModelV4StreamResult>;
+}
+
 /** @internal */
-const languageModelStrategyCache = new Map<SAPAIApiType, Promise<LanguageModelAPIStrategy>>();
+const languageModelStrategyCache = new Map<SAPAIApiType, Promise<ResolvedLanguageModelStrategy>>();
 
 /** @internal */
 const embeddingModelStrategyCache = new Map<SAPAIApiType, Promise<EmbeddingModelAPIStrategy>>();
@@ -114,7 +143,7 @@ export function getOrCreateEmbeddingModelStrategy(
  */
 export function getOrCreateLanguageModelStrategy(
   api: SAPAIApiType,
-): Promise<LanguageModelAPIStrategy> {
+): Promise<ResolvedLanguageModelStrategy> {
   const cached = languageModelStrategyCache.get(api);
   if (cached) {
     return cached;
@@ -158,22 +187,24 @@ async function createEmbeddingModelStrategy(api: SAPAIApiType): Promise<Embeddin
  * @param api - SAP AI API type.
  * @returns Language model strategy.
  */
-async function createLanguageModelStrategy(api: SAPAIApiType): Promise<LanguageModelAPIStrategy> {
+async function createLanguageModelStrategy(
+  api: SAPAIApiType,
+): Promise<ResolvedLanguageModelStrategy> {
   if (api === "responses") {
     const { ResponsesLanguageModelStrategy } =
       await import("./responses-language-model-strategy.js");
-    return new ResponsesLanguageModelStrategy();
+    return { api, strategy: new ResponsesLanguageModelStrategy() };
   }
 
   if (api === "foundation-models") {
     const { AzureOpenAiChatClient } = await import("@sap-ai-sdk/foundation-models");
     const { FoundationModelsLanguageModelStrategy } =
       await import("./foundation-models-language-model-strategy.js");
-    return new FoundationModelsLanguageModelStrategy(AzureOpenAiChatClient);
+    return { api, strategy: new FoundationModelsLanguageModelStrategy(AzureOpenAiChatClient) };
   }
 
   const { OrchestrationClient } = await import("@sap-ai-sdk/orchestration");
   const { OrchestrationLanguageModelStrategy } =
     await import("./orchestration-language-model-strategy.js");
-  return new OrchestrationLanguageModelStrategy(OrchestrationClient);
+  return { api, strategy: new OrchestrationLanguageModelStrategy(OrchestrationClient) };
 }

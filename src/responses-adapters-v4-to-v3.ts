@@ -15,28 +15,6 @@ import type {
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 
-import { ORIGINAL_V4_FINISH_REASON } from "./adapter-metadata.js";
-
-/** V3-compatible content retaining V4 text citations for the V4 facade. */
-type ResponsesV3Content =
-  | Exclude<LanguageModelV3Content, { type: "text" }>
-  | (Extract<LanguageModelV3Content, { type: "text" }> &
-      Pick<Extract<LanguageModelV4Content, { type: "text" }>, "citations">);
-
-/** Internal result extensions survive V3-shaped spreads without widening public V3 APIs. */
-type ResponsesV3GenerateResult = Omit<LanguageModelV3GenerateResult, "content"> &
-  Pick<LanguageModelV4GenerateResult, "structuredOutputText"> & {
-    content: ResponsesV3Content[];
-  };
-
-/** Only existing V3 event kinds carry these preserved V4 fields. */
-type ResponsesV3StreamPart =
-  | Exclude<LanguageModelV3StreamPart, { type: "text-end" | "tool-input-start" }>
-  | (Extract<LanguageModelV3StreamPart, { type: "text-end" }> &
-      Pick<Extract<LanguageModelV4StreamPart, { type: "text-end" }>, "citations">)
-  | (Extract<LanguageModelV3StreamPart, { type: "tool-input-start" }> &
-      Pick<Extract<LanguageModelV4StreamPart, { type: "tool-input-start" }>, "inputEncoding">);
-
 /**
  * Unwraps V4 generated files and maps warnings and finish reasons to V3.
  * @param result - The OpenAI V4 generation result.
@@ -44,7 +22,7 @@ type ResponsesV3StreamPart =
  */
 export function convertResponsesResultToV3(
   result: LanguageModelV4GenerateResult,
-): ResponsesV3GenerateResult {
+): LanguageModelV3GenerateResult {
   return {
     ...result,
     content: result.content.map(convertContent),
@@ -60,7 +38,7 @@ export function convertResponsesResultToV3(
  */
 export function convertResponsesStreamPartToV3(
   part: LanguageModelV4StreamPart,
-): ResponsesV3StreamPart {
+): LanguageModelV3StreamPart {
   switch (part.type) {
     case "custom":
     case "reasoning-file":
@@ -83,7 +61,7 @@ export function convertResponsesStreamPartToV3(
  * @param part - Generated V4 content.
  * @returns Content representable by the shared V3 core.
  */
-function convertContent(part: LanguageModelV4Content): ResponsesV3Content {
+function convertContent(part: LanguageModelV4Content): LanguageModelV3Content {
   if (part.type === "custom" || part.type === "reasoning-file") {
     throw new UnsupportedFunctionalityError({
       functionality: `Responses '${part.type}' output has no V3 equivalent.`,
@@ -93,7 +71,7 @@ function convertContent(part: LanguageModelV4Content): ResponsesV3Content {
 }
 
 /**
- * Preserves native finish diagnostics when V3 cannot name the unified reason.
+ * Maps interrupted output to the closest legacy finish reason.
  * @param reason - The V4 finish reason.
  * @returns The corresponding V3 finish reason.
  */
@@ -101,8 +79,7 @@ function convertFinishReason(
   reason: LanguageModelV4GenerateResult["finishReason"],
 ): LanguageModelV3FinishReason {
   if (reason.unified !== "interrupted") return reason as LanguageModelV3FinishReason;
-  const converted: LanguageModelV3FinishReason = { ...reason, unified: "other" };
-  return Object.defineProperty(converted, ORIGINAL_V4_FINISH_REASON, { value: reason });
+  return { ...reason, unified: "other" };
 }
 
 /**
