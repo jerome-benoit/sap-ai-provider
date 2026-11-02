@@ -184,9 +184,10 @@ For Orchestration and Foundation Models, V4 tagged files normalize through V3:
   options for inline data, URLs, and references.
 - Text file variants become V3 text parts and retain provider options.
 
-V4 assistant `reasoning-file` and `custom` parts throw
-`UnsupportedFunctionalityError`. Custom items nested in tool-result content
-are instead preserved and serialized as JSON by the shared SAP converter.
+For Orchestration and Foundation Models, V4 assistant `reasoning-file` and
+`custom` parts throw `UnsupportedFunctionalityError`. Custom items nested in
+tool-result content are instead preserved and serialized as JSON by the shared
+SAP converter.
 
 ## V2 Facade Package API
 
