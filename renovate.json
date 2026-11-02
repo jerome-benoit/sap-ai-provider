@@ -22,9 +22,9 @@
       "rangeStrategy": "bump"
     },
     {
-      "description": "Pin the @ai-sdk/provider-v2 alias to @ai-sdk/provider v2 (LanguageModelV2/EmbeddingModelV2 types)",
+      "description": "Keep versioned provider aliases on their respective specification majors",
       "matchDepTypes": ["devDependencies"],
-      "matchDepNames": ["@ai-sdk/provider-v2"],
+      "matchDepNames": ["@ai-sdk/provider-v2", "@ai-sdk/provider-v3"],
       "matchUpdateTypes": ["major"],
       "enabled": false
     }
