@@ -1,6 +1,11 @@
 /** Unit tests for shared strategy utilities. */
 
-import type { LanguageModelV3FunctionTool, SharedV3Warning } from "@ai-sdk/provider";
+import type {
+  LanguageModelV3CallOptions,
+  LanguageModelV3FunctionTool,
+  LanguageModelV4CallOptions,
+  SharedV3Warning,
+} from "@ai-sdk/provider";
 
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +14,7 @@ import {
   buildAnthropicCacheMetadata,
   computeNoCache,
   convertToolsToSAPFormat,
+  createAISDKRequestBodySummary,
   extractCompletionMetadata,
   extractToolParameters,
   mapFinishReason,
@@ -32,6 +38,58 @@ const buildFunctionTool = (
   name: "lookup",
   type: "function",
   ...overrides,
+});
+
+describe("safe language model request summaries", () => {
+  it.each(["image", "IMAGE/PNG", "image/*"])(
+    "recognizes native tagged %s files without exposing their contents",
+    (mediaType) => {
+      const options: LanguageModelV4CallOptions = {
+        prompt: [
+          {
+            content: [
+              {
+                data: { reference: { "sap-ai": "private-file-reference" }, type: "reference" },
+                mediaType,
+                type: "file",
+              },
+            ],
+            role: "user",
+          },
+        ],
+      };
+      const summary = createAISDKRequestBodySummary(options);
+      expect(summary).toMatchObject({ hasImageParts: true, promptMessages: 1, tools: 0 });
+      expect(JSON.stringify(summary)).not.toContain("private-file-reference");
+    },
+  );
+
+  it("retains the legacy optional diagnostic fields", () => {
+    const options: LanguageModelV3CallOptions = {
+      maxOutputTokens: 12,
+      prompt: [{ content: [{ text: "private-prompt", type: "text" }], role: "user" }],
+      responseFormat: { type: "json" },
+      seed: 7,
+      stopSequences: ["private-stop"],
+      temperature: 0.2,
+      toolChoice: { type: "auto" },
+      topK: 3,
+      topP: 0.9,
+    };
+    expect(createAISDKRequestBodySummary(options)).toEqual({
+      hasImageParts: false,
+      maxOutputTokens: 12,
+      promptMessages: 1,
+      responseFormatType: "json",
+      seed: 7,
+      stopSequences: 1,
+      temperature: 0.2,
+      toolChoiceType: "auto",
+      tools: 0,
+      topK: 3,
+      topP: 0.9,
+    });
+  });
 });
 
 describe("convertToolsToSAPFormat", () => {

@@ -2,15 +2,15 @@
 import type {
   LanguageModelV3CallOptions,
   LanguageModelV3GenerateResult,
-  LanguageModelV3Prompt,
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
-  LanguageModelV3ToolResultOutput,
   LanguageModelV4,
   LanguageModelV4CallOptions,
   LanguageModelV4Citation,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
   SharedV3ProviderMetadata,
-  SharedV3ProviderOptions,
   SharedV3Warning,
 } from "@ai-sdk/provider";
 
@@ -20,29 +20,39 @@ import { z } from "zod";
 
 import type { ResponsesRequestContext } from "./responses-http-transport.js";
 import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
-import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
-import type { AISDKRequestBodySummary } from "./strategy-utils.js";
+import type {
+  LanguageModelStrategyConfig,
+  ResponsesLanguageModelAPIStrategy,
+} from "./sap-ai-strategy.js";
+import type { AISDKRequestBodySummary, ParamMapping } from "./strategy-utils.js";
 
-import { createAbortError } from "./abort-utils.js";
+import { throwIfAborted } from "./abort-utils.js";
 import { convertResponsesCallToV4 } from "./responses-adapters-v3-to-v4.js";
 import {
   convertResponsesResultToV3,
   convertResponsesStreamPartToV3,
 } from "./responses-adapters-v4-to-v3.js";
 import { createResponsesTransport } from "./responses-http-transport.js";
+import { prepareResponsesPrompt, toOpenAIProviderOptions } from "./responses-prompt.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
-import { createAISDKRequestBodySummary } from "./strategy-utils.js";
+import { applyParameterOverrides, createAISDKRequestBodySummary } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
-const MODEL_PARAMETERS = new Set([
-  "frequencyPenalty",
-  "maxTokens",
-  "parallel_tool_calls",
-  "presencePenalty",
-  "temperature",
-  "topP",
-]);
+const RESPONSES_PARAM_MAPPINGS: readonly ParamMapping[] = [
+  {
+    camelCaseKey: "frequencyPenalty",
+    optionKey: "frequencyPenalty",
+    outputKey: "frequencyPenalty",
+  },
+  { camelCaseKey: "maxTokens", optionKey: "maxOutputTokens", outputKey: "maxTokens" },
+  { camelCaseKey: "parallel_tool_calls", outputKey: "parallel_tool_calls" },
+  { camelCaseKey: "presencePenalty", optionKey: "presencePenalty", outputKey: "presencePenalty" },
+  { camelCaseKey: "temperature", optionKey: "temperature", outputKey: "temperature" },
+  { camelCaseKey: "topP", optionKey: "topP", outputKey: "topP" },
+] as const;
+
+const MODEL_PARAMETERS = new Set(RESPONSES_PARAM_MAPPINGS.map(({ outputKey }) => outputKey));
 
 const OPENAI_STREAM_ERROR_SCHEMA = z.object({
   data: z.object({ type: z.enum(["error", "response.failed"]) }).loose(),
@@ -51,18 +61,61 @@ const OPENAI_STREAM_ERROR_SCHEMA = z.object({
   statusCode: z.number().int().min(400).max(599),
 });
 
-type PromptPart = Exclude<LanguageModelV3Prompt[number], { role: "system" }>["content"][number];
-
 /**
  * Responses strategy shared by the V2, V3, and V4 public providers.
  * @internal
  */
-export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy {
-  async doGenerate(
+export class ResponsesLanguageModelStrategy implements ResponsesLanguageModelAPIStrategy {
+  doGenerate(
     config: LanguageModelStrategyConfig,
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
+    return this.generate(config, settings, options, true);
+  }
+
+  doGenerateV4(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV4CallOptions,
+  ): Promise<LanguageModelV4GenerateResult> {
+    return this.generate(config, settings, options, false);
+  }
+
+  doStream(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions,
+  ): Promise<LanguageModelV3StreamResult> {
+    return this.stream(config, settings, options, true);
+  }
+
+  doStreamV4(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV4CallOptions,
+  ): Promise<LanguageModelV4StreamResult> {
+    return this.stream(config, settings, options, false);
+  }
+
+  private generate(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions,
+    legacy: true,
+  ): Promise<LanguageModelV3GenerateResult>;
+  private generate(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV4CallOptions,
+    legacy: false,
+  ): Promise<LanguageModelV4GenerateResult>;
+  private async generate(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions | LanguageModelV4CallOptions,
+    legacy: boolean,
+  ) {
     let dispose: ((reason?: unknown) => void) | undefined;
     let requestBody: AISDKRequestBodySummary | undefined;
     const context: ResponsesRequestContext = {
@@ -73,17 +126,22 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     };
     let getBodyReadFailure: ((error: unknown) => APICallError | undefined) | undefined;
     try {
-      const prepared = await prepareModel(config, settings, options, context);
+      throwIfAborted(options.abortSignal);
+      const inputOptions = legacy
+        ? convertResponsesCallToV4(options as LanguageModelV3CallOptions)
+        : (options as LanguageModelV4CallOptions);
+      const prepared = await prepareModel(config, settings, inputOptions, context);
       dispose = prepared.dispose;
       getBodyReadFailure = prepared.getBodyReadFailure;
       const { input, model, providerName, warnings } = prepared;
-      const result = convertResponsesResultToV3(await model.doGenerate(input));
-      return {
-        ...result,
-        content: result.content.map((part) => fromOpenAIContent(part, providerName)),
-        providerMetadata: responseMetadata(result.providerMetadata, providerName),
-        warnings: [...warnings, ...result.warnings],
+      const native = await model.doGenerate(input);
+      const result: LanguageModelV4GenerateResult = {
+        ...native,
+        content: native.content.map((part) => fromOpenAIContent(part, providerName)),
+        providerMetadata: responseMetadata(native.providerMetadata, providerName),
+        warnings: [...warnings, ...native.warnings],
       };
+      return legacy ? convertResponsesResultToV3(result) : result;
     } catch (error) {
       const failure = convertError(error, config, context, getBodyReadFailure);
       dispose?.(failure);
@@ -91,11 +149,24 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     }
   }
 
-  async doStream(
+  private stream(
     config: LanguageModelStrategyConfig,
     settings: SAPAIModelSettings,
     options: LanguageModelV3CallOptions,
-  ): Promise<LanguageModelV3StreamResult> {
+    legacy: true,
+  ): Promise<LanguageModelV3StreamResult>;
+  private stream(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV4CallOptions,
+    legacy: false,
+  ): Promise<LanguageModelV4StreamResult>;
+  private async stream(
+    config: LanguageModelStrategyConfig,
+    settings: SAPAIModelSettings,
+    options: LanguageModelV3CallOptions | LanguageModelV4CallOptions,
+    legacy: boolean,
+  ) {
     let dispose: ((reason?: unknown) => void) | undefined;
     let requestBody: AISDKRequestBodySummary | undefined;
     const context: ResponsesRequestContext = {
@@ -106,7 +177,11 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     };
     let getBodyReadFailure: ((error: unknown) => APICallError | undefined) | undefined;
     try {
-      const prepared = await prepareModel(config, settings, options, context);
+      throwIfAborted(options.abortSignal);
+      const inputOptions = legacy
+        ? convertResponsesCallToV4(options as LanguageModelV3CallOptions)
+        : (options as LanguageModelV4CallOptions);
+      const prepared = await prepareModel(config, settings, inputOptions, context);
       dispose = prepared.dispose;
       getBodyReadFailure = prepared.getBodyReadFailure;
       const { input, model, providerName, warnings } = prepared;
@@ -116,7 +191,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
       const isCancelled = () => cancelled;
       return {
         ...result,
-        stream: new ReadableStream<LanguageModelV3StreamPart>(
+        stream: new ReadableStream<LanguageModelV3StreamPart | LanguageModelV4StreamPart>(
           {
             async cancel(reason) {
               cancelled = true;
@@ -129,35 +204,32 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
             },
             async pull(controller) {
               try {
-                if (options.abortSignal?.aborted)
-                  throw createAbortError(options.abortSignal.reason);
+                throwIfAborted(options.abortSignal);
                 const next = await reader.read();
                 if (isCancelled()) return;
-                if (options.abortSignal?.aborted)
-                  throw createAbortError(options.abortSignal.reason);
+                throwIfAborted(options.abortSignal);
                 if (next.done) {
                   reader.releaseLock();
                   controller.close();
                   return;
                 }
-                const part = convertResponsesStreamPartToV3(next.value);
+                let part = next.value;
                 if (part.type === "stream-start") {
-                  controller.enqueue({ ...part, warnings: [...warnings, ...part.warnings] });
+                  part = { ...part, warnings: [...warnings, ...part.warnings] };
                 } else if (part.type === "finish") {
-                  controller.enqueue({
+                  part = {
                     ...part,
                     providerMetadata: responseMetadata(part.providerMetadata, providerName),
-                  });
+                  };
                 } else if (part.type === "error") {
-                  controller.enqueue({
+                  part = {
                     ...part,
                     error: convertError(part.error, config, context, getBodyReadFailure),
-                  });
+                  };
                 } else if ("providerMetadata" in part || part.type === "text-end") {
-                  controller.enqueue(fromOpenAIContent(part, providerName));
-                } else {
-                  controller.enqueue(part);
+                  part = fromOpenAIContent(part, providerName);
                 }
+                controller.enqueue(legacy ? convertResponsesStreamPartToV3(part) : part);
               } catch (error) {
                 if (isCancelled()) return;
                 const failure = convertError(error, config, context, getBodyReadFailure);
@@ -241,7 +313,7 @@ function fromOpenAI(
 
 /**
  * Remaps only citation source metadata, retaining untouched sources and positions.
- * @param citations - V4 citations preserved through the shared V3 core.
+ * @param citations - Native V4 text citations.
  * @param providerName - Resolved SAP provider namespace.
  * @returns The original array unless a source namespace changes.
  */
@@ -268,7 +340,7 @@ function fromOpenAICitations(
 
 /**
  * Applies the same namespace policy to direct metadata and nested citation sources.
- * @param part - Content or a text-end event, including preserved V4 citation fields.
+ * @param part - Native content or a text-end event.
  * @param providerName - Resolved SAP provider namespace.
  * @returns The original part when no metadata changes, otherwise an immutable copy.
  */
@@ -319,7 +391,7 @@ function modelResponseFormat(
 async function prepareModel(
   config: LanguageModelStrategyConfig,
   settings: SAPAISettings,
-  options: LanguageModelV3CallOptions,
+  options: LanguageModelV4CallOptions,
   context: ResponsesRequestContext,
 ): Promise<{
   dispose: (reason?: unknown) => void;
@@ -329,12 +401,17 @@ async function prepareModel(
   providerName: string;
   warnings: SharedV3Warning[];
 }> {
-  if (options.abortSignal?.aborted) {
-    throw createAbortError(options.abortSignal.reason);
-  }
+  throwIfAborted(options.abortSignal);
   const providerName = getProviderName(config.provider);
   const sapOptions = config.parsedProviderOptions;
   const parameters = { ...settings.modelParams, ...sapOptions?.modelParams };
+  applyParameterOverrides(
+    parameters,
+    options,
+    sapOptions?.modelParams,
+    settings.modelParams,
+    RESPONSES_PARAM_MAPPINGS,
+  );
   const warnings: SharedV3Warning[] = Object.keys(parameters)
     .filter((key) => !MODEL_PARAMETERS.has(key))
     .map((key) => ({
@@ -364,30 +441,29 @@ async function prepareModel(
   if (typeof reasoning === "string" && reasoning !== "provider-default") {
     responseOptions.reasoningEffort = reasoning;
   }
-  const input: LanguageModelV3CallOptions = {
+  const input: LanguageModelV4CallOptions = {
     ...options,
-    frequencyPenalty: options.frequencyPenalty ?? parameters.frequencyPenalty,
-    maxOutputTokens: options.maxOutputTokens ?? parameters.maxTokens,
-    presencePenalty: options.presencePenalty ?? parameters.presencePenalty,
-    prompt: toOpenAIPrompt(options.prompt, providerName),
+    frequencyPenalty: parameters.frequencyPenalty,
+    maxOutputTokens: parameters.maxTokens,
+    presencePenalty: parameters.presencePenalty,
+    prompt: prepareResponsesPrompt(options.prompt, providerName),
     providerOptions: {
       ...options.providerOptions,
       openai: responseOptions,
     },
     responseFormat: options.responseFormat ?? modelResponseFormat(settings),
-    temperature: options.temperature ?? parameters.temperature,
+    temperature: parameters.temperature,
     tools: options.tools?.map((tool) =>
       tool.type === "function"
         ? {
             ...tool,
-            providerOptions: toOpenAI(tool.providerOptions, providerName),
+            providerOptions: toOpenAIProviderOptions(tool.providerOptions, providerName),
             strict: tool.strict ?? false,
           }
         : tool,
     ),
-    topP: options.topP ?? parameters.topP,
+    topP: parameters.topP,
   };
-  const convertedInput = convertResponsesCallToV4(input);
   const transport = await createResponsesTransport(config, settings, context);
   const model = createOpenAI({
     // Authentication is supplied by SAP's transport, not an OpenAI API key.
@@ -398,7 +474,7 @@ async function prepareModel(
   return {
     dispose: transport.dispose,
     getBodyReadFailure: transport.getBodyReadFailure,
-    input: convertedInput,
+    input,
     model,
     providerName,
     warnings,
@@ -420,100 +496,4 @@ function responseMetadata(
     ...mapped,
     [providerName]: { ...mapped?.[providerName], api: "responses", version: VERSION },
   };
-}
-
-/**
- * Restores the native namespace used by OpenAI's history converter.
- * @param options - Provider options on a message, part, or tool.
- * @param providerName - Configured SAP provider namespace.
- * @returns Options with a native OpenAI slice.
- */
-function toOpenAI(
-  options: SharedV3ProviderOptions | undefined,
-  providerName: string,
-): SharedV3ProviderOptions | undefined {
-  if (providerName === "openai" || !options?.[providerName]) return options;
-  return { ...options, openai: { ...options.openai, ...options[providerName] } };
-}
-
-/**
- * Translates provider-specific file IDs and metadata nested in tool output.
- * @param output - Tool output.
- * @param providerName - Configured SAP provider namespace.
- * @returns Tool output with native Responses identifiers.
- */
-function toOpenAIOutput(
-  output: LanguageModelV3ToolResultOutput & { providerOptions?: SharedV3ProviderOptions },
-  providerName: string,
-): LanguageModelV3ToolResultOutput {
-  const mappedOutput = {
-    ...output,
-    providerOptions: toOpenAI(output.providerOptions, providerName),
-  };
-  if (mappedOutput.type !== "content") return mappedOutput;
-  return {
-    ...mappedOutput,
-    value: mappedOutput.value.map((part) => ({
-      ...part,
-      ...((part.type === "file-id" || part.type === "image-file-id") &&
-      typeof part.fileId !== "string" &&
-      part.fileId[providerName]
-        ? { fileId: { ...part.fileId, openai: part.fileId[providerName] } }
-        : {}),
-      ...("providerOptions" in part
-        ? { providerOptions: toOpenAI(part.providerOptions, providerName) }
-        : {}),
-    })),
-  };
-}
-
-/**
- * Translates one prompt part while preserving its message-specific type.
- * @param part - Input part.
- * @param providerName - Configured SAP provider namespace.
- * @returns The translated input part.
- */
-function toOpenAIPart<T extends PromptPart>(part: T, providerName: string): T {
-  return {
-    ...part,
-    ...(part.type === "tool-result" ? { output: toOpenAIOutput(part.output, providerName) } : {}),
-    providerOptions: toOpenAI(part.providerOptions, providerName),
-  };
-}
-
-/**
- * Preserves reasoning IDs, encrypted content, and tool metadata across requests.
- * @param prompt - The normalized AI SDK prompt.
- * @param providerName - Configured SAP provider namespace.
- * @returns The prompt understood by the Responses delegate.
- */
-function toOpenAIPrompt(
-  prompt: LanguageModelV3Prompt,
-  providerName: string,
-): LanguageModelV3Prompt {
-  return prompt.map((message) => {
-    const providerOptions = toOpenAI(message.providerOptions, providerName);
-    switch (message.role) {
-      case "assistant":
-        return {
-          ...message,
-          content: message.content.map((part) => toOpenAIPart(part, providerName)),
-          providerOptions,
-        };
-      case "system":
-        return { ...message, providerOptions };
-      case "tool":
-        return {
-          ...message,
-          content: message.content.map((part) => toOpenAIPart(part, providerName)),
-          providerOptions,
-        };
-      case "user":
-        return {
-          ...message,
-          content: message.content.map((part) => toOpenAIPart(part, providerName)),
-          providerOptions,
-        };
-    }
-  });
 }

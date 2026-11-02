@@ -1,8 +1,8 @@
 /**
  * `@jerome-benoit/sap-ai-provider/v4` AI SDK 7 (spec V4) entrypoint.
  *
- * Exposes the V4 facades (`LanguageModelV4` / `EmbeddingModelV4` /
- * `ProviderV4`) over the internal V3 core. Import via the `v4` subpath:
+ * Exposes `LanguageModelV4`, `EmbeddingModelV4`, and `ProviderV4`.
+ * Responses is native V4; other APIs retain V3 compatibility. Import via `v4`:
  * @example
  * ```typescript
  * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v4";
@@ -34,7 +34,7 @@ export { ApiSwitchError, UnsupportedFeatureError } from "./sap-ai-error.js";
 
 /**
  * Language model class implementing LanguageModelV4 for SAP AI Core.
- * V4 facade over internal implementation.
+ * Native Responses and V3-compatible Orchestration/Foundation Models.
  */
 export { SAPAILanguageModelV4 as SAPAILanguageModel } from "./sap-ai-language-model-v4.js";
 

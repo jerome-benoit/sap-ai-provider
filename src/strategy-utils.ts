@@ -13,6 +13,7 @@ import type {
   LanguageModelV3GenerateResult,
   LanguageModelV3ResponseMetadata,
   LanguageModelV3Usage,
+  LanguageModelV4CallOptions,
   SharedV3ProviderMetadata,
   SharedV3Warning,
 } from "@ai-sdk/provider";
@@ -764,13 +765,15 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
  * @internal
  */
 export function createAISDKRequestBodySummary(
-  options: LanguageModelV3CallOptions,
+  options: LanguageModelV3CallOptions | LanguageModelV4CallOptions,
 ): AISDKRequestBodySummary {
   return {
     hasImageParts: options.prompt.some(
       (message) =>
         message.role === "user" &&
-        message.content.some((part) => part.type === "file" && part.mediaType.startsWith("image/")),
+        message.content.some(
+          (part) => part.type === "file" && /^image(?:\/|$)/i.test(part.mediaType),
+        ),
     ),
     maxOutputTokens: options.maxOutputTokens,
     promptMessages: options.prompt.length,

@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type * as ResponsesStrategyModule from "./responses-language-model-strategy.js";
 
 import {
   clearStrategyCaches,
@@ -38,6 +40,39 @@ describe("Responses strategy selection", () => {
       getOrCreateLanguageModelStrategy("foundation-models"),
     ]);
     expect(responsesStrategy).not.toBe(foundationStrategy);
+    expect(responsesStrategy.api).toBe("responses");
+    expect(foundationStrategy.api).toBe("foundation-models");
+    expect(responsesStrategy.strategy).not.toBe(foundationStrategy.strategy);
+  });
+
+  it("evicts failed language strategy initialization and shares the replacement", async () => {
+    const actual = await vi.importActual<typeof ResponsesStrategyModule>(
+      "./responses-language-model-strategy.js",
+    );
+    const failure = new Error("Fixture strategy initialization failure");
+    let attempts = 0;
+    vi.doMock("./responses-language-model-strategy.js", () => ({
+      ResponsesLanguageModelStrategy: class extends actual.ResponsesLanguageModelStrategy {
+        constructor() {
+          super();
+          if (attempts++ === 0) throw failure;
+        }
+      },
+    }));
+    try {
+      const pending = getOrCreateLanguageModelStrategy("responses");
+      expect(getOrCreateLanguageModelStrategy("responses")).toBe(pending);
+      await expect(pending).rejects.toBe(failure);
+      const replacement = getOrCreateLanguageModelStrategy("responses");
+      expect(replacement).not.toBe(pending);
+      expect(getOrCreateLanguageModelStrategy("responses")).toBe(replacement);
+      const selected = await replacement;
+      expect(selected.api).toBe("responses");
+      expect(attempts).toBe(2);
+      expect(await getOrCreateLanguageModelStrategy("responses")).toBe(selected);
+    } finally {
+      vi.doUnmock("./responses-language-model-strategy.js");
+    }
   });
 
   it("rejects Responses embedding strategy selection", async () => {

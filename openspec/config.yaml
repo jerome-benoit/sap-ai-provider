@@ -20,7 +20,7 @@ context: |
 
   ### Architecture Patterns
   - Two published packages: main package with root and identical /v3 (V3 / AI SDK 6), /v2 (V2 / AI SDK 5), /v4 (V4 / AI SDK 7), plus standalone -v2
-  - V2 also supports AI SDK 6 compatibility; both facades share the V3 implementation
+  - V2 also supports AI SDK 6 compatibility; V4 Responses is native, while other V4 language APIs and embeddings use V3 compatibility
   - Package release versions, provider specifications (V2/V3/V4), and AI SDK majors (5/6/7) are independent
   - Uses zod schemas for validation
   - Lazy loading of SAP SDK strategies (the SDK packages are runtime dependencies)
@@ -32,11 +32,13 @@ context: |
   - src/index.ts - V3 public API exports (AI SDK 6 root and /v3 share the same artifacts)
   - src/index-v2.ts - V2 public API exports (AI SDK 5 facade; also AI SDK 6 compatibility)
   - src/index-v4.ts - V4 public API exports (AI SDK 7 facade)
-  - src/sap-ai-provider-v4.ts - V4 provider factory (shared V3 settings and implementation)
-  - src/sap-ai-language-model-v4.ts - V4 language model (wraps V3)
+  - src/sap-ai-provider-v4.ts - V4 provider factory (shared settings)
+  - src/sap-ai-language-model-v4.ts - Native V4 Responses and legacy API dispatch
   - src/sap-ai-embedding-model-v4.ts - V4 embedding model (wraps V3)
-  - src/sap-ai-adapters-v4-to-v3.ts - V4 prompt normalization
-  - src/sap-ai-adapters-v3-to-v4.ts - V4 result and stream conversion
+  - src/language-model-invocation.ts - Shared per-call API selection and validation
+  - src/responses-prompt.ts - Native V4 Responses history preparation
+  - src/sap-ai-adapters-v4-to-v3.ts - V4 prompt normalization for legacy APIs
+  - src/sap-ai-adapters-v3-to-v4.ts - Legacy API result and stream conversion
   - src/sap-ai-provider.ts - V3 provider factory
   - src/sap-ai-provider-v2.ts - V2 provider factory (wraps V3)
   - src/sap-ai-language-model.ts - V3 language model (LanguageModelV3)

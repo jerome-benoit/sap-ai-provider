@@ -4,8 +4,8 @@
  * This module provides the language model implementation that connects to SAP AI Core
  * services (Orchestration, Foundation Models Chat Completions, or OpenAI Responses)
  * for text generation and streaming.
- * It wraps the internal V3 model: V4 prompts are normalized on entry and V3
- * results are converted on exit.
+ * Responses uses its native V4 contract; other APIs normalize prompts and results
+ * through the shared V3 strategies.
  */
 
 import type {
@@ -15,21 +15,21 @@ import type {
   LanguageModelV4StreamResult,
   LanguageModelV3CallOptions as StrategyLanguageModelCallOptions,
 } from "@ai-sdk/provider";
-import type { LanguageModelV3CallOptions } from "@ai-sdk/provider-v3";
-import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api/internal.js";
+import type { DeploymentIdConfig, ResourceGroupConfig } from "@sap-ai-sdk/ai-api";
 import type { CustomRequestConfig } from "@sap-ai-sdk/core";
 import type { HttpDestinationOrFetchOptions } from "@sap-cloud-sdk/connectivity";
 
 import type { SAPAIApiType, SAPAIModelId, SAPAISettings } from "./sap-ai-settings.js";
 
+import { prepareLanguageModelInvocation } from "./language-model-invocation.js";
 import {
   convertGenerateResultToV4,
   createV4StreamFromInternal,
 } from "./sap-ai-adapters-v3-to-v4.js";
 import { normalizeV4PromptToV3 } from "./sap-ai-adapters-v4-to-v3.js";
-import { SAPAILanguageModel as SAPAILanguageModelInternal } from "./sap-ai-language-model.js";
+import { validateModelParamsSettings } from "./sap-ai-provider-options.js";
 
-type InternalLanguageModelCallOptions = LanguageModelV3CallOptions & {
+type LegacyLanguageModelCallOptions = StrategyLanguageModelCallOptions & {
   readonly reasoning?: Exclude<
     LanguageModelV4CallOptions["reasoning"],
     "provider-default" | undefined
@@ -56,15 +56,18 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
   readonly specificationVersion = "v4" as const;
 
   get provider(): string {
-    return this.internalModel.provider;
+    return this.config.provider;
   }
 
   get supportedUrls(): Record<string, RegExp[]> {
-    return this.internalModel.supportedUrls;
+    return { "image/*": [/^https:\/\/.+$/i, /^data:image\/.*$/] };
   }
 
   /** @internal */
-  private readonly internalModel: SAPAILanguageModelInternal;
+  private readonly config: SAPAILanguageModelV4Config;
+
+  /** @internal */
+  private readonly settings: SAPAISettings;
 
   /**
    * @param modelId - Model identifier.
@@ -73,17 +76,45 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
    * @internal
    */
   constructor(modelId: SAPAIModelId, settings: SAPAISettings, config: SAPAILanguageModelV4Config) {
+    if (settings.modelParams) validateModelParamsSettings(settings.modelParams);
     this.modelId = modelId;
-    this.internalModel = new SAPAILanguageModelInternal(modelId, settings, config);
+    this.settings = settings;
+    this.config = config;
   }
 
   async doGenerate(options: LanguageModelV4CallOptions): Promise<LanguageModelV4GenerateResult> {
-    const result = await this.internalModel.doGenerate(normalizeCallOptions(options));
+    const { selected, strategyConfig } = await prepareLanguageModelInvocation(
+      this.modelId,
+      this.settings,
+      this.config,
+      options.providerOptions,
+    );
+    if (selected.api === "responses") {
+      return selected.strategy.doGenerateV4(strategyConfig, this.settings, options);
+    }
+    const result = await selected.strategy.doGenerate(
+      strategyConfig,
+      this.settings,
+      normalizeCallOptions(options),
+    );
     return convertGenerateResultToV4(result);
   }
 
   async doStream(options: LanguageModelV4CallOptions): Promise<LanguageModelV4StreamResult> {
-    const result = await this.internalModel.doStream(normalizeCallOptions(options));
+    const { selected, strategyConfig } = await prepareLanguageModelInvocation(
+      this.modelId,
+      this.settings,
+      this.config,
+      options.providerOptions,
+    );
+    if (selected.api === "responses") {
+      return selected.strategy.doStreamV4(strategyConfig, this.settings, options);
+    }
+    const result = await selected.strategy.doStream(
+      strategyConfig,
+      this.settings,
+      normalizeCallOptions(options),
+    );
     return {
       request: result.request,
       response: result.response,
@@ -97,16 +128,11 @@ export class SAPAILanguageModelV4 implements LanguageModelV4 {
  * @param options - V4 model call options.
  * @returns Internal call options with V4 reasoning available to the SAP strategies.
  */
-function normalizeCallOptions(
-  options: LanguageModelV4CallOptions,
-): InternalLanguageModelCallOptions {
+function normalizeCallOptions(options: LanguageModelV4CallOptions): LegacyLanguageModelCallOptions {
   const { prompt, reasoning, ...rest } = options;
-  const normalized: Pick<InternalLanguageModelCallOptions, "reasoning"> &
-    StrategyLanguageModelCallOptions = {
+  return {
     ...rest,
     ...(reasoning !== undefined && reasoning !== "provider-default" ? { reasoning } : {}),
     prompt: normalizeV4PromptToV3(prompt),
   };
-  // V4 JSON values pass through unchanged; the core exposes the mutable V3 JSON contract.
-  return normalized as InternalLanguageModelCallOptions;
 }

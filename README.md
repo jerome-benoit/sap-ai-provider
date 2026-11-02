@@ -164,12 +164,12 @@ npm install @jerome-benoit/sap-ai-provider ai@^7
 ```
 
 The V4 entrypoint exposes the same provider aliases and version-independent
-helpers as the root V3 entrypoint. Its standardized `reasoning` option maps to
-SAP's `reasoning_effort` model parameter. `provider-default` preserves an
-explicit `modelParams.reasoning_effort`; a stored `orchestrationConfigRef` owns
-the model configuration and ignores local reasoning options with a warning.
-See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7) for the
-full normalization and precedence contract.
+helpers as the root V3 entrypoint. Orchestration and Foundation Models normalize
+V4 prompts through their V3 strategies. Responses uses native V4 input and output.
+The standardized `reasoning` option overrides the selected API's reasoning effort;
+`provider-default` preserves configured defaults. A stored Orchestration
+configuration owns model parameters and ignores local reasoning options with a
+warning. See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7).
 
 **V2 facade:** AI SDK 5, AI SDK 6 through its V2 compatibility layer, and other `LanguageModelV2`/`EmbeddingModelV2`
 consumers can use the main package's `v2` subpath or the dedicated V2 package:
@@ -272,7 +272,13 @@ The default remains Orchestration; model names do not change API selection.
 Responses uses your existing SAP credentials and deployment configuration.
 It bypasses Orchestration modules, and embeddings need an explicit
 `api: "foundation-models"` or `api: "orchestration"` override.
-Responses rejects assistant file history rather than silently omitting it.
+With `/v4`, Responses preserves native compaction, tagged file references, and
+encrypted reasoning history without a V3 roundtrip. Root, `/v3`, and `/v2` retain
+their compatibility conversions and reject output with no legacy equivalent.
+All entrypoints reject assistant file history; native V4 also rejects assistant
+reasoning-file history and unsupported custom kinds before discovery or HTTP.
+Supported `openai.compaction` history requires an item ID. Native output support
+does not imply that every output can be replayed as assistant history.
 See the [Responses API reference](./API_REFERENCE.md#responses-api) for options,
 reasoning history, and a [runnable example](./examples/example-responses.ts).
 

@@ -148,19 +148,17 @@ const languageModel = provider("gpt-4.1");
 const embeddingModel = provider.embedding("text-embedding-3-small");
 ```
 
-The subpath exports `SAPAILanguageModel`, `SAPAIEmbeddingModel`, and
-`SAPAIProvider` as V4 facades over the shared V3 core. The provider exposes
-`chat()`, `languageModel()`, `embedding()`, `embeddingModel()`, and the
-deprecated `textEmbeddingModel()` alias. Version-independent settings, SAP SDK
-clients, builders, validation helpers, error types, and `VERSION` match the root
-entrypoint.
+The subpath exports V4 `SAPAILanguageModel`, `SAPAIEmbeddingModel`, and
+`SAPAIProvider`. Responses uses its native V4 contract; other language APIs and
+embeddings use V3 compatibility conversion. The provider exposes `chat()`,
+`languageModel()`, `embedding()`, `embeddingModel()`, and the deprecated
+`textEmbeddingModel()` alias. Version-independent helpers match the root entrypoint.
 
-The standardized V4 `reasoning` option is forwarded as SAP's harmonized
-`reasoning_effort` model parameter. An explicit level overrides
-`providerOptions["sap-ai"].modelParams.reasoning_effort`, which overrides the
-model setting. `provider-default` adds no override: it preserves an explicitly
-configured `modelParams.reasoning_effort`, or leaves the parameter unset when
-none is configured. Support for each level depends on the selected model.
+The standardized V4 `reasoning` option overrides the selected API's reasoning
+effort. Responses uses native `reasoningEffort`; the other APIs use SAP's
+`reasoning_effort` model parameter. An explicit level overrides the corresponding
+invocation option, which overrides the model default. `provider-default` adds no
+override. Support for each level depends on the selected model.
 
 For locally configured Orchestration calls, resolved model parameters, tools,
 response format, and modules are supplied to the SAP SDK client configuration
@@ -168,7 +166,7 @@ for both generation and streaming. When `orchestrationConfigRef` is set, the
 referenced server configuration owns these settings instead; local generation
 options, including explicit `reasoning`, are ignored with a warning.
 
-V4 tagged file data is normalized before it reaches the shared core:
+For Orchestration and Foundation Models, V4 tagged files normalize through V3:
 
 - Full media types such as `image/png` are preserved.
 - Bare and wildcard media types such as `image` and `image/*` are resolved
@@ -179,16 +177,17 @@ V4 tagged file data is normalized before it reaches the shared core:
   producing an invalid SAP payload.
 - Top-level provider references are rejected explicitly and never fetched.
   References nested in tool-result content map to V3 `file-id` or `image-file-id`
-  according to media type. Orchestration and Foundation Models serialize these
-  as JSON tool output; Responses forwards native file or image references.
-  The provider does not fetch these references.
+  according to media type. These APIs serialize references as JSON tool output;
+  the provider does not fetch them. Native Responses references are described
+  [below](#responses-api).
 - Tool-result images retain their image category and per-part `imageDetail`
   options for inline data, URLs, and references.
 - Text file variants become V3 text parts and retain provider options.
 
-V4 assistant `reasoning-file` and `custom` parts throw
-`UnsupportedFunctionalityError`. Custom items nested in tool-result content
-are instead preserved and serialized as JSON by the shared SAP converter.
+For Orchestration and Foundation Models, V4 assistant `reasoning-file` and
+`custom` parts throw `UnsupportedFunctionalityError`. Custom items nested in
+tool-result content are instead preserved and serialized as JSON by the shared
+SAP converter.
 
 ## V2 Facade Package API
 
@@ -566,8 +565,10 @@ streaming, and complete tool-result round trips with an optional argument.
   `reasoning` value overrides `responses.reasoningEffort`;
   `provider-default` preserves the configured value.
 - Standard generation options such as `maxOutputTokens`, `temperature`, and
-  `topP` keep their precedence over `modelParams`. Responses-specific parameters
-  belong in `responses`; unsupported `modelParams` keys produce warnings.
+  `topP` take precedence over invocation `modelParams`, which override model defaults.
+  Within invocation `modelParams`, an `undefined` value preserves the configured default.
+  Responses-specific parameters belong in `responses`; unsupported `modelParams`
+  keys produce warnings.
 - SAP service bindings, `AICORE_SERVICE_KEY`, destinations, `resourceGroup`,
   `deploymentId`, and `modelVersion` use the existing SAP deployment and
   authentication flow. HTTP requests use the SAP SDK transport, retaining
@@ -609,27 +610,46 @@ that identifies the invoked generation or streaming operation.
 
 **Compatibility across provider versions:**
 
-The `@ai-sdk/openai` 4.x delegate implements the V4 provider contract and is
-adapted to the shared V3 core. Generated inline files retain their bytes or
-base64 data; the V4 facade restores tagged file data.
-A clean EOF without a completion event reports `other` through V2/V3 and
-`interrupted` through V4. The delegate's raw reason is retained where the
-public contract supports it.
-Generated file URLs, reasoning files, and custom output blocks such as
-compaction have no V3 equivalent and are rejected explicitly; they are not
-fetched or silently omitted.
-Assistant `file` history is rejected with `UnsupportedFunctionalityError`
-before deployment discovery or HTTP, across all entrypoints. User files and
-media nested in tool results keep their supported conversions.
+Responses on `/v4` uses the delegate's native V4 contract. It preserves custom
+content such as compaction, tagged generated files, reasoning files, native
+warnings, approvals, citations, `structuredOutputText`, and text tool-input
+encoding. A clean EOF without a completion event reports `interrupted`.
 
-Inline legacy tool-result categories must agree with the current delegate's
-classification of the exact media type: `image-data` requires the literal
-top-level type `image`, while `file-data` requires a non-image type.
-Contradictions such as `file-data` with `image/png`, or `image-data` with
-`application/pdf` or `IMAGE/PNG`, throw `UnsupportedFunctionalityError` before
-deployment discovery or HTTP. The V3 adapter does not normalize or rewrite these
-media types. V4 unified file inputs and V2 media inputs use their existing
-MIME-based normalization; normalized images remain supported.
+Root, `/v3`, and `/v2` retain their compatibility conversions. Inline generated
+files retain their bytes or base64 data. Generated file URLs, reasoning files,
+and custom output such as compaction have no V3 equivalent and are rejected,
+not downloaded or silently dropped. Interrupted EOF maps to `other`; native
+deprecation warnings map to legacy warning messages.
+
+Native V4 user files and function-tool result files support tagged inline data,
+URLs, and provider references. File content in `openai.custom` results supports
+inline data and URLs; provider references are omitted with a warning. Other native
+tools use tool-specific result formats.
+Inline `Uint8Array` views retain their native byte ranges without copying bytes,
+even across JavaScript realms or when range properties are overridden.
+
+Media types normalize to lower case, and tagged text files become text parts.
+The configured SAP namespace takes precedence over existing `openai` options
+and references, including nested tool-result content.
+
+Assistant `file` history is rejected before discovery or HTTP on every entrypoint.
+Native V4 also rejects assistant `reasoning-file` history and custom kinds other
+than `openai.compaction`, which requires a non-null item ID. Supported compaction
+and encrypted reasoning history retain their IDs and ciphertext; encrypted
+reasoning without an item ID remains supported. Native output support does not
+establish universal assistant-history replay.
+
+URL capabilities remain conservative across API overrides: high-level AI SDK calls
+can download files not advertised as supported URLs, even when the invocation
+selects Responses. Direct native calls retain supported tagged URLs without a
+provider-side download.
+
+Inline legacy tool-result categories must agree with their case-insensitive MIME
+type: `image-data` requires an image type, while `file-data` requires a non-image
+type. Both `image/png` and `IMAGE/PNG` are accepted as image data and rejected as
+file data. Contradictions such as `image-data` with `application/pdf` throw
+`UnsupportedFunctionalityError` before discovery or HTTP. The shared Responses
+prompt preparation normalizes media casing for V2, V3, and native V4 inputs.
 
 V4 text citations use the same SAP namespace for their source provider metadata
 in generation results and `text-end` events. Source fields and text offsets are
@@ -4102,7 +4122,7 @@ For the current package version, see [package.json](./package.json).
   repository uses AI SDK 7 as a development dependency.
 - **SAP AI SDK:** `@sap-ai-sdk/orchestration`, `@sap-ai-sdk/foundation-models`,
   and the shared SAP deployment and HTTP clients
-- **Responses conversion:** `@ai-sdk/openai` 4.x (V4 delegate adapted to the shared V3 core)
+- **Responses protocol:** `@ai-sdk/openai` 4.x (native V4, with V3/V2 compatibility adapters)
 - **Node.js:** >= 22.12
 
 > **Note:** For exact dependency versions, always refer to `package.json` in the

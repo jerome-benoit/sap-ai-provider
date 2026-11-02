@@ -102,7 +102,7 @@ function convertToolItem(item: V3ToolItem): V4ToolItem {
       return item;
     case "file-data":
     case "image-data": {
-      const delegateIsImage = getTopLevelMediaType(item.mediaType) === "image";
+      const delegateIsImage = getTopLevelMediaType(item.mediaType.toLowerCase()) === "image";
       if (delegateIsImage !== (item.type === "image-data")) {
         throw new UnsupportedFunctionalityError({
           functionality:

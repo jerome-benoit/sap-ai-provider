@@ -28,6 +28,7 @@ import { Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { runInNewContext } from "node:vm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -110,10 +111,10 @@ type V4ToolOutputItem = Extract<
  * @param stream - AI SDK stream.
  * @returns All consumer-visible parts.
  */
-async function collect(
-  stream: ReadableStream<LanguageModelV3StreamPart>,
-): Promise<LanguageModelV3StreamPart[]> {
-  const parts: LanguageModelV3StreamPart[] = [];
+async function collect<T extends LanguageModelV3StreamPart | LanguageModelV4StreamPart>(
+  stream: ReadableStream<T>,
+): Promise<T[]> {
+  const parts: T[] = [];
   for await (const part of stream) {
     if (part.type === "error") throw part.error;
     parts.push(part);
@@ -495,6 +496,651 @@ describe("Responses over SAP AI Core HTTP", () => {
     },
   );
 
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s exposes native compaction and replays its encrypted history under a custom namespace",
+    async (operation) => {
+      const compaction = { encrypted_content: "cipher-cmp", id: "cmp-1", type: "compaction" };
+      const compacted = { ...reply, output: [compaction] };
+      replies.push((response) => {
+        if (operation === "doGenerate") json(response, compacted);
+        else
+          return events(response, [
+            { response: compacted, type: "response.created" },
+            { item: compaction, output_index: 0, type: "response.output_item.done" },
+            { response: compacted, type: "response.completed" },
+          ]);
+      });
+      const model = createSAPAIProviderV4(settings({ name: "sap-custom" }))("gpt-6.1-sol");
+      const content =
+        operation === "doGenerate"
+          ? (await model.doGenerate({ prompt })).content
+          : await collect((await model.doStream({ prompt })).stream);
+      const custom = content.find((part) => part.type === "custom");
+      expect(custom).toMatchObject({
+        kind: "openai.compaction",
+        providerMetadata: { "sap-custom": { encryptedContent: "cipher-cmp", itemId: "cmp-1" } },
+        type: "custom",
+      });
+      if (!custom) throw new Error("Expected native compaction output");
+      await model.doGenerate({
+        prompt: [
+          ...prompt,
+          {
+            content: [
+              { kind: custom.kind, providerOptions: custom.providerMetadata, type: "custom" },
+            ],
+            role: "assistant",
+          },
+        ],
+      });
+      expect(requests).toHaveLength(2);
+      expect(requests[1]?.body.input).toContainEqual(compaction);
+    },
+  );
+
+  it("lets AI SDK 7 replay compaction response messages without a V3 boundary", async () => {
+    const compaction = { encrypted_content: "sdk-cipher", id: "sdk-cmp", type: "compaction" };
+    replies.push((response) => {
+      json(response, { ...reply, output: [compaction, message] });
+    });
+    const model = createSAPAIProviderV4(settings({ name: "sap-custom" }))("gpt-6.1-sol");
+    const first = await generateText({ maxRetries: 0, model, prompt: "Compact the fixture" });
+    await generateText({
+      maxRetries: 0,
+      messages: [...first.finalStep.response.messages, { content: "Continue", role: "user" }],
+      model,
+    });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.body.input).toContainEqual(compaction);
+  });
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s accepts native references and tagged text after invocation-level API selection",
+    async (operation) => {
+      const namespace = "sap-custom";
+      const file = {
+        data: {
+          reference: { [namespace]: "file-right", openai: "wrong-file" },
+          type: "reference" as const,
+        },
+        mediaType: "IMAGE/PNG",
+        providerOptions: { [namespace]: { imageDetail: "high" }, openai: { imageDetail: "low" } },
+        type: "file" as const,
+      };
+      const textFile = {
+        data: { text: "Tagged document", type: "text" as const },
+        mediaType: "TEXT/PLAIN",
+        type: "file" as const,
+      };
+      const model = createSAPAIProviderV4(settings({ api: "orchestration", name: namespace }))(
+        "gpt-6.1-sol",
+      );
+      const history: LanguageModelV4Prompt = [
+        { content: [file, textFile], role: "user" },
+        {
+          content: [
+            {
+              input: {},
+              toolCallId: "tool-file",
+              toolName: "capture",
+              type: "tool-call",
+            },
+            {
+              output: { type: "content", value: [file] },
+              toolCallId: "assistant-file",
+              toolName: "capture",
+              type: "tool-result",
+            },
+            {
+              providerOptions: { [namespace]: { reasoningEncryptedContent: "cipher-without-id" } },
+              text: "",
+              type: "reasoning",
+            },
+          ],
+          role: "assistant",
+        },
+        {
+          content: [
+            {
+              output: { type: "content", value: [file, textFile] },
+              toolCallId: "tool-file",
+              toolName: "capture",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      const invocation = {
+        prompt: history,
+        providerOptions: { [namespace]: { api: "responses" } },
+      };
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect((await model.doStream(invocation)).stream);
+      } else await model.doGenerate(invocation);
+      expect(requests).toHaveLength(1);
+      const input = requests[0]?.body.input;
+      expect(input).toContainEqual({
+        content: [
+          { detail: "high", file_id: "file-right", type: "input_image" },
+          { text: "Tagged document", type: "input_text" },
+        ],
+        role: "user",
+      });
+      expect(input).toContainEqual({
+        call_id: "tool-file",
+        output: [
+          { detail: "high", file_id: "file-right", type: "input_image" },
+          { text: "Tagged document", type: "input_text" },
+        ],
+        type: "function_call_output",
+      });
+      expect(input).toContainEqual({
+        encrypted_content: "cipher-without-id",
+        summary: [],
+        type: "reasoning",
+      });
+    },
+  );
+
+  it.each<Extract<LanguageModelV4Prompt[number], { role: "assistant" }>["content"][number]>([
+    { data: { data: new Uint8Array([1]), type: "data" }, mediaType: "image/png", type: "file" },
+    {
+      data: { type: "url", url: new URL("https://example.com/file.png") },
+      mediaType: "image/png",
+      type: "file",
+    },
+    { data: { text: "Assistant text file", type: "text" }, mediaType: "text/plain", type: "file" },
+    {
+      data: { reference: { "sap-custom": "file-id" }, type: "reference" },
+      mediaType: "image/png",
+      type: "file",
+    },
+    { data: { data: "aGk=", type: "data" }, mediaType: "image/png", type: "reasoning-file" },
+    {
+      data: { type: "url", url: new URL("https://example.com/reasoning.png") },
+      mediaType: "image/png",
+      type: "reasoning-file",
+    },
+    { kind: "other.unsupported", type: "custom" },
+    {
+      kind: "openai.compaction",
+      providerOptions: { "sap-custom": { encryptedContent: "cipher" } },
+      type: "custom",
+    },
+    {
+      kind: "openai.compaction",
+      providerOptions: { "sap-custom": { itemId: null } },
+      type: "custom",
+    },
+    {
+      kind: "openai.compaction",
+      providerOptions: { openai: { itemId: "old-id" }, "sap-custom": { itemId: null } },
+      type: "custom",
+    },
+  ])(
+    "rejects unsupported native assistant $type history before discovery and HTTP",
+    async (part) => {
+      const model = createSAPAIProviderV4(
+        settings({ deploymentId: undefined, name: "sap-custom" }),
+      )("gpt-6.1-sol");
+      for (const operation of ["doGenerate", "doStream"] as const) {
+        await expect(
+          model[operation]({
+            prompt: [...prompt, { content: [part], role: "assistant" }],
+          }),
+        ).rejects.toSatisfy((error: unknown) => UnsupportedFunctionalityError.isInstance(error));
+      }
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  it.each(["{}", ""])(
+    "preserves native structuredOutputText %j and all response messages",
+    async (text) => {
+      replies.push((response) => {
+        json(response, {
+          ...reply,
+          output: [
+            {
+              ...message,
+              content: [{ annotations: [], text: "draft", type: "output_text" }],
+              id: "draft",
+              phase: "commentary",
+            },
+            {
+              ...message,
+              content: [{ annotations: [], text, type: "output_text" }],
+              id: "final",
+              phase: "final_answer",
+            },
+          ],
+        });
+      });
+      const result = await createSAPAIProviderV4(settings())("gpt-6.1-sol").doGenerate({
+        prompt,
+        responseFormat: { type: "json" },
+      });
+      expect(result.structuredOutputText).toBe(text);
+      expect(
+        result.content.filter((part) => part.type === "text").map((part) => part.text),
+      ).toEqual(["draft", text]);
+    },
+  );
+
+  it("preserves native MCP approvals and namespaced execution-denied output options", async () => {
+    const approval = {
+      arguments: "{}",
+      id: "approval-1",
+      name: "read",
+      server_label: "fixture",
+      type: "mcp_approval_request",
+    };
+    replies.push((response) => {
+      json(response, { ...reply, output: [approval] });
+    });
+    const model = createSAPAIProviderV4(settings({ name: "sap-custom" }))("gpt-6.1-sol");
+    const result = await model.doGenerate({ prompt });
+    const request = result.content.find((part) => part.type === "tool-approval-request");
+    const call = result.content.find((part) => part.type === "tool-call");
+    expect(request).toMatchObject({ approvalId: "approval-1", toolCallId: call?.toolCallId });
+    expect(call).toMatchObject({ dynamic: true, providerExecuted: true, toolName: "mcp.read" });
+    await model.doGenerate({
+      prompt: [
+        ...prompt,
+        {
+          content: [
+            { approvalId: "approval-1", approved: false, type: "tool-approval-response" },
+            {
+              output: {
+                providerOptions: {
+                  openai: { approvalId: "wrong" },
+                  "sap-custom": { approvalId: "approval-1" },
+                },
+                type: "execution-denied",
+              },
+              toolCallId: "call-denied",
+              toolName: "mcp.read",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ],
+    });
+    expect(requests[1]?.body.input).toContainEqual({
+      approval_request_id: "approval-1",
+      approve: false,
+      type: "mcp_approval_response",
+    });
+    expect(requests[1]?.body.input).not.toContainEqual(
+      expect.objectContaining({ call_id: "call-denied" }),
+    );
+  });
+
+  it("preserves native text tool input encoding through real SSE", async () => {
+    const item = {
+      call_id: "custom-call",
+      id: "custom-item",
+      input: "",
+      name: "editor",
+      type: "custom_tool_call",
+    };
+    replies.push((response) =>
+      events(response, [
+        { response: reply, type: "response.created" },
+        { item, output_index: 0, type: "response.output_item.added" },
+        {
+          item: { ...item, input: "hello", status: "completed" },
+          output_index: 0,
+          type: "response.output_item.done",
+        },
+        { response: { ...reply, output: [] }, type: "response.completed" },
+      ]),
+    );
+    const result = await createSAPAIProviderV4(settings())("gpt-6.1-sol").doStream({ prompt });
+    expect(await collect(result.stream)).toContainEqual(
+      expect.objectContaining({
+        id: "custom-call",
+        inputEncoding: "text",
+        toolName: "editor",
+        type: "tool-input-start",
+      }),
+    );
+  });
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["provider", "model"] as const).map((level) => ({ level, operation })),
+    ),
+  )(
+    "$operation switches native Responses, legacy, and back with $level defaults",
+    async ({ level, operation }) => {
+      const model = createSAPAIProviderV4(
+        settings({
+          api: level === "provider" ? "responses" : "orchestration",
+          name: "sap-custom",
+        }),
+      )("gpt-6.1-sol", level === "model" ? { api: "responses" } : {});
+      const chatReply = {
+        choices: [
+          {
+            finish_reason: "stop",
+            index: 0,
+            message: { content: "Legacy fixture", role: "assistant" },
+          },
+        ],
+        id: "chat-switch",
+        usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+      };
+      const nativePrompt: LanguageModelV4Prompt = [
+        {
+          content: [
+            {
+              data: { reference: { "sap-custom": "native-file" }, type: "reference" },
+              mediaType: "image/png",
+              type: "file",
+            },
+          ],
+          role: "user",
+        },
+      ];
+      for (const api of ["responses", "foundation-models", "responses"] as const) {
+        replies.push((response) => {
+          if (api === "responses") {
+            if (operation === "doStream") return events(response, streamEvents());
+            json(response, reply);
+          } else if (operation === "doGenerate") {
+            json(response, chatReply);
+          } else {
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            response.end(
+              `data: ${JSON.stringify({
+                choices: [
+                  { delta: { content: "Legacy fixture" }, finish_reason: "stop", index: 0 },
+                ],
+                id: "chat-switch",
+                usage: chatReply.usage,
+              })}\n\ndata: [DONE]\n\n`,
+            );
+          }
+        });
+        const invocation = {
+          prompt: api === "responses" ? nativePrompt : prompt,
+          ...(api === "foundation-models" ? { providerOptions: { "sap-custom": { api } } } : {}),
+        };
+        if (operation === "doStream") await collect((await model.doStream(invocation)).stream);
+        else await model.doGenerate(invocation);
+      }
+      expect(requests.map((request) => request.url.pathname)).toEqual([
+        "/v2/inference/deployments/responses-test/responses",
+        "/v2/inference/deployments/responses-test/chat/completions",
+        "/v2/inference/deployments/responses-test/responses",
+      ]);
+      expect(requests[0]?.body.input).toContainEqual({
+        content: [{ file_id: "native-file", type: "input_image" }],
+        role: "user",
+      });
+      expect(requests[2]?.body.input).toEqual(requests[0]?.body.input);
+      expect(requests[1]?.body).toHaveProperty("messages");
+      expect(requests[1]?.body).not.toHaveProperty("input");
+    },
+  );
+
+  it.each(["doGenerate", "doStream"] as const)(
+    "%s validates incompatible API settings before native or legacy prompt conversion",
+    async (operation) => {
+      const model = createSAPAIProviderV4(settings({ deploymentId: undefined }))("gpt-6.1-sol", {
+        responses: { reasoningEffort: "low" },
+      });
+      await expect(
+        model[operation]({
+          prompt: [
+            {
+              content: [
+                {
+                  data: { reference: { "sap-ai": "native-file" }, type: "reference" },
+                  mediaType: "image/png",
+                  type: "file",
+                },
+              ],
+              role: "user",
+            },
+          ],
+          providerOptions: { "sap-ai": { api: "foundation-models" } },
+        }),
+      ).rejects.toMatchObject({ name: "ApiSwitchError" });
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["high", "provider-default"] as const).map((reasoning) => ({ operation, reasoning })),
+    ),
+  )(
+    "$operation preserves native parameter precedence with reasoning=$reasoning",
+    async ({ operation, reasoning }) => {
+      const model = createSAPAIProviderV4(settings())("gpt-6.1-sol", {
+        modelParams: { maxTokens: 80, parallel_tool_calls: true },
+        responses: { reasoningEffort: "low", store: false },
+      });
+      const invocation = {
+        maxOutputTokens: 23,
+        prompt,
+        providerOptions: {
+          "sap-ai": {
+            responses: { parallelToolCalls: false, reasoningEffort: "medium", store: true },
+          },
+        },
+        reasoning,
+        tools,
+      };
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect((await model.doStream(invocation)).stream);
+      } else await model.doGenerate(invocation);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.body).toMatchObject({
+        max_output_tokens: 23,
+        parallel_tool_calls: false,
+        reasoning: { effort: reasoning === "high" ? "high" : "medium" },
+        store: true,
+        tools: [expect.objectContaining({ strict: false, type: "function" })],
+      });
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["v3", "v4"] as const).map((version) => ({ operation, version })),
+    ),
+  )(
+    "$version $operation retains model defaults for undefined invocation parameters",
+    async ({ operation, version }) => {
+      const provider = version === "v4" ? createSAPAIProviderV4 : createSAPAIProvider;
+      const model = provider(settings())("gpt-4.1", {
+        modelParams: {
+          maxTokens: 41,
+          parallel_tool_calls: false,
+          temperature: 0.65,
+          topP: 0.75,
+        },
+      });
+      const invocation = {
+        prompt,
+        providerOptions: {
+          "sap-ai": {
+            modelParams: {
+              maxTokens: undefined,
+              parallel_tool_calls: undefined,
+              temperature: undefined,
+              topP: undefined,
+            },
+          },
+        },
+        topP: 0,
+      };
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect<LanguageModelV3StreamPart | LanguageModelV4StreamPart>(
+          (await model.doStream(invocation)).stream,
+        );
+      } else await model.doGenerate(invocation);
+      expect(requests[0]?.body).toMatchObject({
+        max_output_tokens: 41,
+        parallel_tool_calls: false,
+        temperature: 0.65,
+        top_p: 0,
+      });
+    },
+  );
+
+  it.each(["image", "IMAGE", "IMAGE/PNG"])(
+    "advertises remote %s images conservatively to the AI SDK download hook",
+    async (mediaType) => {
+      const image = new URL("https://example.com/image.png");
+      const downloads: { isUrlSupportedByModel: boolean; url: URL }[][] = [];
+      const model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
+      const result = await generateText({
+        experimental_download: (requests: { isUrlSupportedByModel: boolean; url: URL }[]) => {
+          downloads.push(requests);
+          return Promise.resolve(requests.map(() => null));
+        },
+        maxRetries: 0,
+        messages: [{ content: [{ data: image, mediaType, type: "file" }], role: "user" }],
+        model,
+      });
+      expect(result.text).toBe("Grüße from SAP");
+      expect(downloads).toEqual([[{ isUrlSupportedByModel: true, url: image }]]);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.body.input).toContainEqual({
+        content: [{ image_url: image.href, type: "input_image" }],
+        role: "user",
+      });
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["v2", "v3", "v4"] as const).flatMap((version) =>
+        ["image/png", "IMAGE/PNG"].map((mediaType) => ({ mediaType, operation, version })),
+      ),
+    ),
+  )(
+    "$version $operation treats $mediaType user URLs and tool data as images",
+    async ({ mediaType, operation, version }) => {
+      const data = "iVBORw0KGgo=";
+      const url = new URL("https://example.com/image.png");
+      const call = {
+        input: {},
+        toolCallId: "image-call",
+        toolName: "capture",
+        type: "tool-call" as const,
+      };
+      const result = {
+        toolCallId: "image-call",
+        toolName: "capture",
+        type: "tool-result" as const,
+      };
+      if (operation === "doStream") replies.push((response) => events(response, streamEvents()));
+      if (version === "v4") {
+        const model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
+        const prompt: LanguageModelV4Prompt = [
+          { content: [{ data: { type: "url", url }, mediaType, type: "file" }], role: "user" },
+          { content: [call], role: "assistant" },
+          {
+            content: [
+              {
+                ...result,
+                output: {
+                  type: "content",
+                  value: [
+                    {
+                      data: { data, type: "data" },
+                      mediaType,
+                      type: "file",
+                    },
+                  ],
+                },
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        if (operation === "doGenerate") await model.doGenerate({ prompt });
+        else await collect((await model.doStream({ prompt })).stream);
+      } else if (version === "v2") {
+        const model = createSAPAIProviderV2(settings())("gpt-6.1-sol");
+        const prompt: LanguageModelV2CallOptions["prompt"] = [
+          { content: [{ data: url, mediaType, type: "file" }], role: "user" },
+          { content: [call], role: "assistant" },
+          {
+            content: [
+              {
+                ...result,
+                output: {
+                  type: "content",
+                  value: [
+                    {
+                      data,
+                      mediaType,
+                      type: "media",
+                    },
+                  ],
+                },
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        if (operation === "doGenerate") await model.doGenerate({ prompt });
+        else {
+          for await (const part of (await model.doStream({ prompt })).stream) {
+            if (part.type === "error") throw part.error;
+          }
+        }
+      } else {
+        const model = createSAPAIProvider(settings())("gpt-6.1-sol");
+        const prompt: LanguageModelV3CallOptions["prompt"] = [
+          { content: [{ data: url, mediaType, type: "file" }], role: "user" },
+          { content: [call], role: "assistant" },
+          {
+            content: [
+              {
+                ...result,
+                output: {
+                  type: "content",
+                  value: [
+                    {
+                      data,
+                      mediaType,
+                      type: "image-data",
+                    },
+                  ],
+                },
+              },
+            ],
+            role: "tool",
+          },
+        ];
+        if (operation === "doGenerate") await model.doGenerate({ prompt });
+        else await collect((await model.doStream({ prompt })).stream);
+      }
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.body.input).toContainEqual({
+        content: [{ image_url: url.href, type: "input_image" }],
+        role: "user",
+      });
+      expect(requests[0]?.body.input).toContainEqual({
+        call_id: "image-call",
+        output: [{ image_url: `data:image/png;base64,${data}`, type: "input_image" }],
+        type: "function_call_output",
+      });
+    },
+  );
+
   it("generates text at the deployment Responses endpoint with SAP transport settings", async () => {
     const ignoredSignal = AbortSignal.abort("provider signal must be ignored");
     const model = createSAPAIProvider(
@@ -545,7 +1191,8 @@ describe("Responses over SAP AI Core HTTP", () => {
         [
           { mediaType: "image/png", type: "file-data" as const },
           { mediaType: "application/pdf", type: "image-data" as const },
-          { mediaType: "IMAGE/PNG", type: "image-data" as const },
+          { mediaType: "IMAGE/PNG", type: "file-data" as const },
+          { mediaType: "APPLICATION/PDF", type: "image-data" as const },
         ].map((item) => ({ item, operation, role })),
       ),
     ),
@@ -648,6 +1295,105 @@ describe("Responses over SAP AI Core HTTP", () => {
           type: "function_call_output",
         });
       }
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      [
+        {
+          bytes: [137, 80, 78, 71, 13, 10, 26, 10],
+          filename: "image.png",
+          mediaType: "image/png",
+          wire: { image_url: "data:image/png;base64,iVBORw0KGgo=", type: "input_image" },
+        },
+        {
+          bytes: [37, 80, 68, 70, 45, 49, 46, 52],
+          filename: "report.pdf",
+          mediaType: "application/pdf",
+          wire: {
+            file_data: "data:application/pdf;base64,JVBERi0xLjQ=",
+            filename: "report.pdf",
+            type: "input_file",
+          },
+        },
+      ].flatMap((item) =>
+        (["foreign-realm", "local-own", "local-inherited"] as const).map((view) => ({
+          item,
+          operation,
+          view,
+        })),
+      ),
+    ),
+  )(
+    "preserves $view sliced $item.mediaType tool-result bytes during $operation",
+    async ({ item, operation, view }) => {
+      const padded = [170, 187, ...item.bytes, 204, 221];
+      const data =
+        view === "foreign-realm"
+          ? (runInNewContext(
+              `new Uint8Array(${JSON.stringify(padded)}).subarray(2, 10)`,
+            ) as Uint8Array)
+          : new Uint8Array(padded).subarray(2, 10);
+      if (view === "foreign-realm") {
+        expect(data).not.toBeInstanceOf(Uint8Array);
+      } else if (view === "local-own") {
+        Object.defineProperties(data, {
+          buffer: { value: new ArrayBuffer(32) },
+          byteLength: { value: 0 },
+          byteOffset: { value: 0 },
+          length: { value: 0 },
+        });
+      } else {
+        const prototype = Object.create(Uint8Array.prototype) as object;
+        const get = () => {
+          throw new Error("Range accessor must not run");
+        };
+        Object.defineProperties(prototype, {
+          buffer: { get },
+          byteLength: { get },
+          byteOffset: { get },
+          length: { get },
+        });
+        Object.setPrototypeOf(data, prototype);
+      }
+      const model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
+      const history: LanguageModelV4Prompt = [
+        ...imageToolHistory,
+        {
+          content: [
+            {
+              output: {
+                type: "content",
+                value: [
+                  {
+                    data: { data, type: "data" },
+                    filename: item.filename,
+                    mediaType: item.mediaType,
+                    type: "file",
+                  },
+                ],
+              },
+              toolCallId: "image-call",
+              toolName: "capture",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect((await model.doStream({ prompt: history })).stream);
+      } else {
+        await model.doGenerate({ prompt: history });
+      }
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.body.input).toContainEqual({
+        call_id: "image-call",
+        output: [item.wire],
+        type: "function_call_output",
+      });
     },
   );
 
@@ -1493,8 +2239,11 @@ describe("Responses over SAP AI Core HTTP", () => {
     },
   );
 
-  it("rejects a pre-aborted call before opening an HTTP request", async () => {
-    const model = createSAPAIProvider(settings())("gpt-6.1-sol");
+  it.each(["v3", "v4"] as const)("rejects a pre-aborted %s call before HTTP", async (version) => {
+    const model =
+      version === "v4"
+        ? createSAPAIProviderV4(settings())("gpt-6.1-sol")
+        : createSAPAIProvider(settings())("gpt-6.1-sol");
     await expect(
       model.doGenerate({ abortSignal: AbortSignal.abort("fixture cancellation"), prompt }),
     ).rejects.toMatchObject({ isRetryable: false });
