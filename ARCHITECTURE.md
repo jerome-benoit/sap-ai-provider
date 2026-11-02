@@ -1150,7 +1150,7 @@ delegate wording or arbitrary nested causes. Parser and schema failures remain
 distinct from transport failures.
 
 `language-model-invocation.ts` resolves, parses, and validates API settings once
-per invocation before any specification-specific prompt conversion. A cached
+per invocation before the selected strategy prepares its prompt. A cached
 discriminated strategy descriptor selects native V4 Responses or the existing
 V3 Orchestration/Foundation Models strategies. The cache remains keyed only by
 API, with shared pending loads and eviction after failed initialization.
