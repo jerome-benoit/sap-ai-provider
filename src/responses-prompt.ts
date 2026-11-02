@@ -10,7 +10,7 @@ import type {
 
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 
-import { getURLHref } from "./convert-to-sap-messages.js";
+import { getURLHref, toLocalUint8Array } from "./convert-to-sap-messages.js";
 
 /**
  * Preserves supported V4 history and rejects variants the delegate silently omits.
@@ -118,7 +118,10 @@ function prepareFile(
     return { providerOptions, text: part.data.text, type: "text" };
   }
   let data = part.data;
-  if (data.type === "reference" && providerName !== "openai") {
+  if (data.type === "data" && typeof data.data !== "string") {
+    const bytes = toLocalUint8Array(data.data);
+    if (bytes !== data.data) data = { ...data, data: bytes };
+  } else if (data.type === "reference" && providerName !== "openai") {
     const references: Readonly<Record<string, string>> = data.reference;
     const reference = references[providerName];
     if (reference !== undefined) {

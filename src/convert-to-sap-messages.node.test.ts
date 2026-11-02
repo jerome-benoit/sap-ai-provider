@@ -5,7 +5,7 @@ import { InvalidPromptError, UnsupportedFunctionalityError } from "@ai-sdk/provi
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
-import { convertToSAPMessages } from "./convert-to-sap-messages.js";
+import { convertToSAPMessages, toLocalUint8Array } from "./convert-to-sap-messages.js";
 import { createSAPAIProvider } from "./sap-ai-provider.js";
 
 describe("convertToSAPMessages across JavaScript realms", () => {
@@ -91,6 +91,65 @@ describe("convertToSAPMessages across JavaScript realms", () => {
     ];
 
     expect(() => convertToSAPMessages(prompt)).toThrow("Unsupported file data type");
+  });
+});
+
+describe("local byte views", () => {
+  it("retains local Uint8Array and Buffer identity", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const buffer = Buffer.from([1, 2, 3]);
+    expect(toLocalUint8Array(bytes)).toBe(bytes);
+    expect(toLocalUint8Array(buffer)).toBe(buffer);
+  });
+
+  it("shares the backing buffer and exact range of a foreign view", () => {
+    const bytes = runInNewContext("new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4)") as Uint8Array;
+    const local = toLocalUint8Array(bytes);
+    expect(local).toBeInstanceOf(Uint8Array);
+    expect(local.buffer).toBe(bytes.buffer);
+    expect(local.byteOffset).toBe(1);
+    expect(local.byteLength).toBe(3);
+    expect([...local]).toEqual([1, 2, 3]);
+  });
+
+  it("uses the native byte range when foreign properties are overridden", () => {
+    const bytes = runInNewContext("new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4)") as Uint8Array;
+    const buffer = bytes.buffer;
+    Object.defineProperties(bytes, {
+      buffer: { value: new ArrayBuffer(32) },
+      byteLength: { value: 20 },
+      byteOffset: { value: 10 },
+      length: { value: 20 },
+    });
+    const local = toLocalUint8Array(bytes);
+    expect(local.buffer).toBe(buffer);
+    expect(local.byteOffset).toBe(1);
+    expect(local.byteLength).toBe(3);
+    expect([...local]).toEqual([1, 2, 3]);
+  });
+
+  it("retains the backing buffer and offset of an empty foreign view", () => {
+    const bytes = runInNewContext("new Uint8Array([9, 8]).subarray(1, 1)") as Uint8Array;
+    const local = toLocalUint8Array(bytes);
+    expect(local.buffer).toBe(bytes.buffer);
+    expect(local.byteOffset).toBe(1);
+    expect(local.byteLength).toBe(0);
+  });
+
+  it("rejects a detached foreign view", () => {
+    const bytes = runInNewContext("new Uint8Array([1, 2, 3])") as Uint8Array<ArrayBuffer>;
+    structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+    expect(() => toLocalUint8Array(bytes)).toThrow(UnsupportedFunctionalityError);
+  });
+
+  it("rejects an out-of-bounds foreign view instead of normalizing it to empty bytes", () => {
+    const bytes = runInNewContext(`(() => {
+      const buffer = new ArrayBuffer(8, { maxByteLength: 16 });
+      const view = new Uint8Array(buffer, 2, 4);
+      buffer.resize(1);
+      return view;
+    })()`) as Uint8Array;
+    expect(() => toLocalUint8Array(bytes)).toThrow(UnsupportedFunctionalityError);
   });
 });
 

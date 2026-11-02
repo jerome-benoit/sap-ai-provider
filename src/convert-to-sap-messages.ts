@@ -62,10 +62,20 @@ const ARRAY_BUFFER_BYTE_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
   ArrayBuffer.prototype,
   "byteLength",
 );
+const TYPED_ARRAY_PROTOTYPE = Object.getPrototypeOf(Uint8Array.prototype) as object;
+
+const TYPED_ARRAY_BUFFER_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  TYPED_ARRAY_PROTOTYPE,
+  "buffer",
+);
+const TYPED_ARRAY_BYTE_OFFSET_DESCRIPTOR = Object.getOwnPropertyDescriptor(
+  TYPED_ARRAY_PROTOTYPE,
+  "byteOffset",
+);
 
 /** Native Uint8Array length descriptor, immune to subclass overrides. */
 const TYPED_ARRAY_LENGTH_DESCRIPTOR = Object.getOwnPropertyDescriptor(
-  Object.getPrototypeOf(Uint8Array.prototype) as object,
+  TYPED_ARRAY_PROTOTYPE,
   "length",
 );
 
@@ -73,7 +83,7 @@ const SUPPORTED_IMAGE_FORMATS = ["image/png", "image/jpeg", "image/jpg", "image/
 
 /** Native cross-realm typed array brand descriptor. */
 const TYPED_ARRAY_TAG_DESCRIPTOR = Object.getOwnPropertyDescriptor(
-  Object.getPrototypeOf(Uint8Array.prototype) as object,
+  TYPED_ARRAY_PROTOTYPE,
   Symbol.toStringTag,
 );
 
@@ -95,6 +105,33 @@ export function getURLHref(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Normalizes foreign Uint8Array views without copying their backing buffer.
+ * @param bytes - Inline file bytes.
+ * @returns The local input or a local view over the same byte range.
+ * @throws {UnsupportedFunctionalityError} For invalid foreign byte views.
+ * @internal
+ */
+export function toLocalUint8Array(bytes: Uint8Array): Uint8Array {
+  if (bytes instanceof Uint8Array) return bytes;
+  if (isUint8Array(bytes)) {
+    try {
+      Uint8Array.prototype.at.call(bytes, 0);
+      const buffer: unknown = TYPED_ARRAY_BUFFER_DESCRIPTOR?.get?.call(bytes);
+      const byteOffset: unknown = TYPED_ARRAY_BYTE_OFFSET_DESCRIPTOR?.get?.call(bytes);
+      const length: unknown = TYPED_ARRAY_LENGTH_DESCRIPTOR?.get?.call(bytes);
+      if (buffer !== undefined && typeof byteOffset === "number" && typeof length === "number") {
+        return new Uint8Array(buffer as ArrayBufferLike, byteOffset, length);
+      }
+    } catch {
+      // Native checks reject detached and out-of-bounds views.
+    }
+  }
+  throw new UnsupportedFunctionalityError({
+    functionality: "Invalid Uint8Array file data.",
+  });
 }
 
 /**

@@ -28,6 +28,7 @@ import { Readable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { runInNewContext } from "node:vm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -1249,6 +1250,74 @@ describe("Responses over SAP AI Core HTTP", () => {
           type: "function_call_output",
         });
       }
+    },
+  );
+
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      [
+        {
+          bytes: [137, 80, 78, 71, 13, 10, 26, 10],
+          filename: "image.png",
+          mediaType: "image/png",
+          wire: { image_url: "data:image/png;base64,iVBORw0KGgo=", type: "input_image" },
+        },
+        {
+          bytes: [37, 80, 68, 70, 45, 49, 46, 52],
+          filename: "report.pdf",
+          mediaType: "application/pdf",
+          wire: {
+            file_data: "data:application/pdf;base64,JVBERi0xLjQ=",
+            filename: "report.pdf",
+            type: "input_file",
+          },
+        },
+      ].map((item) => ({ item, operation })),
+    ),
+  )(
+    "preserves foreign-realm sliced $item.mediaType tool-result bytes during $operation",
+    async ({ item, operation }) => {
+      const data = runInNewContext(
+        `new Uint8Array(${JSON.stringify([170, 187, ...item.bytes, 204, 221])}).subarray(2, 10)`,
+      ) as Uint8Array;
+      expect(data).not.toBeInstanceOf(Uint8Array);
+      const model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
+      const history: LanguageModelV4Prompt = [
+        ...imageToolHistory,
+        {
+          content: [
+            {
+              output: {
+                type: "content",
+                value: [
+                  {
+                    data: { data, type: "data" },
+                    filename: item.filename,
+                    mediaType: item.mediaType,
+                    type: "file",
+                  },
+                ],
+              },
+              toolCallId: "image-call",
+              toolName: "capture",
+              type: "tool-result",
+            },
+          ],
+          role: "tool",
+        },
+      ];
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect((await model.doStream({ prompt: history })).stream);
+      } else {
+        await model.doGenerate({ prompt: history });
+      }
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.body.input).toContainEqual({
+        call_id: "image-call",
+        output: [item.wire],
+        type: "function_call_output",
+      });
     },
   );
 
