@@ -32,6 +32,21 @@ import {
   validateModelParamsWithWarnings,
 } from "./sap-ai-provider-options.js";
 
+/** Safe language-model request diagnostics without prompt contents. */
+export interface AISDKRequestBodySummary {
+  hasImageParts: boolean;
+  maxOutputTokens?: number;
+  promptMessages: number;
+  responseFormatType?: string;
+  seed?: number;
+  stopSequences?: number;
+  temperature?: number;
+  toolChoiceType?: string;
+  tools: number;
+  topK?: number;
+  topP?: number;
+}
+
 /**
  * @internal
  */
@@ -748,19 +763,9 @@ export function convertToolsToSAPFormat<T extends SAPTool<unknown>>(
  * @returns An object summarizing the request for debugging.
  * @internal
  */
-export function createAISDKRequestBodySummary(options: LanguageModelV3CallOptions): {
-  hasImageParts: boolean;
-  maxOutputTokens?: number;
-  promptMessages: number;
-  responseFormatType?: string;
-  seed?: number;
-  stopSequences?: number;
-  temperature?: number;
-  toolChoiceType?: string;
-  tools: number;
-  topK?: number;
-  topP?: number;
-} {
+export function createAISDKRequestBodySummary(
+  options: LanguageModelV3CallOptions,
+): AISDKRequestBodySummary {
   return {
     hasImageParts: options.prompt.some(
       (message) =>

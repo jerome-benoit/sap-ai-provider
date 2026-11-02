@@ -18,8 +18,10 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { APICallError } from "@ai-sdk/provider";
 import { z } from "zod";
 
+import type { ResponsesRequestContext } from "./responses-http-transport.js";
 import type { SAPAIModelSettings, SAPAISettings } from "./sap-ai-settings.js";
 import type { LanguageModelAPIStrategy, LanguageModelStrategyConfig } from "./sap-ai-strategy.js";
+import type { AISDKRequestBodySummary } from "./strategy-utils.js";
 
 import { createAbortError } from "./abort-utils.js";
 import { convertResponsesCallToV4 } from "./responses-adapters-v3-to-v4.js";
@@ -62,9 +64,18 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3GenerateResult> {
     let dispose: ((reason?: unknown) => void) | undefined;
+    let requestBody: AISDKRequestBodySummary | undefined;
+    const context: ResponsesRequestContext = {
+      abortSignal: options.abortSignal,
+      getRequestBodySummary: () => (requestBody ??= createAISDKRequestBodySummary(options)),
+      headers: options.headers,
+      operation: "doGenerate",
+    };
+    let getBodyReadFailure: ((error: unknown) => APICallError | undefined) | undefined;
     try {
-      const prepared = await prepareModel(config, settings, options);
+      const prepared = await prepareModel(config, settings, options, context);
       dispose = prepared.dispose;
+      getBodyReadFailure = prepared.getBodyReadFailure;
       const { input, model, providerName, warnings } = prepared;
       const result = convertResponsesResultToV3(await model.doGenerate(input));
       return {
@@ -74,7 +85,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
         warnings: [...warnings, ...result.warnings],
       };
     } catch (error) {
-      const failure = convertError(error, config, options, "doGenerate");
+      const failure = convertError(error, config, context, getBodyReadFailure);
       dispose?.(failure);
       throw failure;
     }
@@ -86,9 +97,18 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
     options: LanguageModelV3CallOptions,
   ): Promise<LanguageModelV3StreamResult> {
     let dispose: ((reason?: unknown) => void) | undefined;
+    let requestBody: AISDKRequestBodySummary | undefined;
+    const context: ResponsesRequestContext = {
+      abortSignal: options.abortSignal,
+      getRequestBodySummary: () => (requestBody ??= createAISDKRequestBodySummary(options)),
+      headers: options.headers,
+      operation: "doStream",
+    };
+    let getBodyReadFailure: ((error: unknown) => APICallError | undefined) | undefined;
     try {
-      const prepared = await prepareModel(config, settings, options);
+      const prepared = await prepareModel(config, settings, options, context);
       dispose = prepared.dispose;
+      getBodyReadFailure = prepared.getBodyReadFailure;
       const { input, model, providerName, warnings } = prepared;
       const result = await model.doStream(input);
       const reader = result.stream.getReader();
@@ -131,7 +151,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                 } else if (part.type === "error") {
                   controller.enqueue({
                     ...part,
-                    error: convertError(part.error, config, options, "doStream"),
+                    error: convertError(part.error, config, context, getBodyReadFailure),
                   });
                 } else if ("providerMetadata" in part || part.type === "text-end") {
                   controller.enqueue(fromOpenAIContent(part, providerName));
@@ -140,7 +160,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
                 }
               } catch (error) {
                 if (isCancelled()) return;
-                const failure = convertError(error, config, options, "doStream");
+                const failure = convertError(error, config, context, getBodyReadFailure);
                 dispose?.(failure);
                 // Cleanup failures must not replace the original request or cancellation error.
                 await reader.cancel(error).catch(() => undefined);
@@ -158,7 +178,7 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
         ),
       };
     } catch (error) {
-      const failure = convertError(error, config, options, "doStream");
+      const failure = convertError(error, config, context, getBodyReadFailure);
       dispose?.(failure);
       throw failure;
     }
@@ -169,28 +189,19 @@ export class ResponsesLanguageModelStrategy implements LanguageModelAPIStrategy 
  * Applies the provider's shared error contract without copying transport credentials.
  * @param error - Delegate or SAP transport error.
  * @param config - Model configuration.
- * @param options - Invocation options.
- * @param operation - Generation operation.
+ * @param context - Invocation operation and safe diagnostics.
+ * @param getBodyReadFailure - Recovers body-read failures owned by this invocation.
  * @returns The corresponding AI SDK error.
  */
 function convertError(
   error: unknown,
   config: LanguageModelStrategyConfig,
-  options: LanguageModelV3CallOptions,
-  operation: "doGenerate" | "doStream",
+  context: ResponsesRequestContext,
+  getBodyReadFailure?: (error: unknown) => APICallError | undefined,
 ) {
-  // The delegate can hide a classified body-read failure under a successful HTTP status.
-  if (
-    APICallError.isInstance(error) &&
-    error.message === "Failed to process successful response" &&
-    error.statusCode !== undefined &&
-    error.statusCode >= 200 &&
-    error.statusCode < 300 &&
-    APICallError.isInstance(error.cause)
-  ) {
-    return error.cause;
-  }
-  if (operation === "doStream" && !APICallError.isInstance(error)) {
+  const bodyReadFailure = getBodyReadFailure?.(error);
+  if (bodyReadFailure) return bodyReadFailure;
+  if (context.operation === "doStream" && !APICallError.isInstance(error)) {
     const parsed = OPENAI_STREAM_ERROR_SCHEMA.safeParse(error);
     if (parsed.success) {
       return new APICallError({
@@ -198,7 +209,7 @@ function convertError(
         data: parsed.data.data,
         isRetryable: parsed.data.isRetryable,
         message: parsed.data.message,
-        requestBodyValues: createAISDKRequestBodySummary(options),
+        requestBodyValues: context.getRequestBodySummary(),
         statusCode: parsed.data.statusCode,
         url: "sap-ai:responses",
       });
@@ -207,8 +218,8 @@ function convertError(
   return convertToAISDKError(error, {
     modelId: config.modelId,
     modelType: "languageModel",
-    operation,
-    requestBody: createAISDKRequestBodySummary(options),
+    operation: context.operation,
+    requestBody: context.getRequestBodySummary(),
     url: "sap-ai:responses",
   });
 }
@@ -302,14 +313,17 @@ function modelResponseFormat(
  * @param config - SAP deployment and transport configuration.
  * @param settings - Model defaults.
  * @param options - Invocation options.
+ * @param context - Invocation cancellation, headers, and safe diagnostics.
  * @returns The delegate and its normalized invocation.
  */
 async function prepareModel(
   config: LanguageModelStrategyConfig,
   settings: SAPAISettings,
   options: LanguageModelV3CallOptions,
+  context: ResponsesRequestContext,
 ): Promise<{
   dispose: (reason?: unknown) => void;
+  getBodyReadFailure: (error: unknown) => APICallError | undefined;
   input: LanguageModelV4CallOptions;
   model: LanguageModelV4;
   providerName: string;
@@ -374,14 +388,21 @@ async function prepareModel(
     topP: options.topP ?? parameters.topP,
   };
   const convertedInput = convertResponsesCallToV4(input);
-  const transport = await createResponsesTransport(config, settings, options);
+  const transport = await createResponsesTransport(config, settings, context);
   const model = createOpenAI({
     // Authentication is supplied by SAP's transport, not an OpenAI API key.
     apiKey: "sap-ai-core",
     baseURL: transport.baseURL,
     fetch: transport.fetch,
   }).responses(config.modelId);
-  return { dispose: transport.dispose, input: convertedInput, model, providerName, warnings };
+  return {
+    dispose: transport.dispose,
+    getBodyReadFailure: transport.getBodyReadFailure,
+    input: convertedInput,
+    model,
+    providerName,
+    warnings,
+  };
 }
 
 /**

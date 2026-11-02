@@ -1132,6 +1132,21 @@ fetch interface, preserving SAP authentication, deployment discovery and model
 version selection, custom destinations, request configuration, and cancellation.
 There is no second credential store or OpenAI API key.
 
+The delegate serializes each request once. The transport passes no body to SAP's
+`executeRequest` serializer and installs that string in its outer request
+middleware before caller middleware. Caller middleware and request transforms
+therefore receive the serialized string; retry middleware can retain body changes
+between attempts. SAP still owns authentication and HTTP execution.
+
+Transport context contains only cancellation, headers, the explicit generation
+operation, and a callback that computes a safe request summary once, only on
+failure. It does not inspect prompt types or parse the serialized request.
+Each invocation records only API errors emitted by its response-body read
+boundary in a private weak set.
+Recovery accepts a recorded direct cause of a successful-status API error, not
+delegate wording or arbitrary nested causes. Parser and schema failures remain
+distinct from transport failures.
+
 The shared strategy contract remains V3. `responses-adapters-v3-to-v4.ts` tags V3
 prompt files and tool-result media for the OpenAI 4 V4 delegate.
 `responses-adapters-v4-to-v3.ts` converts results and stream events back to V3.
@@ -1153,12 +1168,14 @@ strategy, and validation rejects incompatible API-specific settings. See the
 
 #### SDK Upgrade Contract
 
-`responses-http-transport.ts` imports deployment helpers
-`getFoundationModelDeploymentId` and `getResourceGroup` through
-`@sap-ai-sdk/ai-api/internal.js`, and `getTargetUrl` through
-`@sap-ai-sdk/core/internal.js`. These internal helper exports, the SAP HTTP
-middleware/error shapes, and the OpenAI delegate's stream behavior form an
-upgrade-sensitive boundary. Passing the current suite does not establish
+`responses-http-transport.ts` imports only the cached deployment-ID resolver
+`getFoundationModelDeploymentId` through `@sap-ai-sdk/ai-api/internal.js`; the
+public SDK has no equivalent cached resolver. Resource groups come from normalized
+deployment configuration, and the transport composes its deployment URL locally.
+Destination URL composition follows SAP's existing policy: remove one trailing
+slash, then append `/v2` only when the remaining URL pathname is `/`.
+The resolver, SAP HTTP middleware/error shapes, and OpenAI delegate stream behavior
+form an upgrade-sensitive boundary. Passing the current suite does not establish
 compatibility with later SDK versions.
 
 When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
@@ -1195,8 +1212,9 @@ When upgrading SAP or OpenAI SDK dependencies, run the contract regressions:
   socket closure, and connection reuse after success or failure.
 - [`responses-language-model.node.test.ts`](./src/responses-language-model.node.test.ts)
   and [`responses-language-model-strategy.test.ts`](./src/responses-language-model-strategy.test.ts)
-  check deployment discovery, serialized requests and media, native reasoning
-  history, provider namespaces, late SSE error classification, and cancellation
+  check deployment discovery, serialized string bodies through caller middleware,
+  transforms and retries, native reasoning history, provider namespaces, late SSE
+  error classification, and cancellation
   across the supported facades. The versioned adapter suites check each AI SDK
   contract before it reaches the shared V3 strategy.
 

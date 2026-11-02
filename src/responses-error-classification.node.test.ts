@@ -301,21 +301,31 @@ describe("Responses transport failure classification", () => {
       expect(error.isRetryable).toBe(false);
       expect(error.message).toContain(operation);
       expect(error.cause).toBe(source);
+      expect(error.requestBodyValues).toMatchObject({
+        hasImageParts: false,
+        promptMessages: 1,
+        tools: 0,
+      });
+      expect(JSON.stringify(error.requestBodyValues)).not.toContain("Read the fixture");
       expect(interceptedBodies[0]?.destroyed).toBe(true);
       expect(requests).toHaveLength(1);
     },
   );
 
-  it.each(["doGenerate", "doStream"] as const)(
-    "%s preserves a classified SAP failure and all its diagnostics by identity",
-    async (operation) => {
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      [503, 499, undefined].map((statusCode) => ({ operation, statusCode })),
+    ),
+  )(
+    "$operation preserves a classified body failure with status $statusCode by identity",
+    async ({ operation, statusCode }) => {
       const source = new APICallError({
         isRetryable: true,
         message: "Fixture SAP service unavailable",
         requestBodyValues: { fixture: true },
         responseBody: "Fixture backend failure",
         responseHeaders: { "retry-after": "0", "x-request-id": "fixture-sap-failure" },
-        statusCode: 503,
+        statusCode,
         url: "sap-ai:responses",
       });
       const model = createSAPAIProvider(settings(failingBody(source)))("gpt-6.1-sol");
