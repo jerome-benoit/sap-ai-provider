@@ -1272,15 +1272,46 @@ describe("Responses over SAP AI Core HTTP", () => {
             type: "input_file",
           },
         },
-      ].map((item) => ({ item, operation })),
+      ].flatMap((item) =>
+        (["foreign-realm", "local-own", "local-inherited"] as const).map((view) => ({
+          item,
+          operation,
+          view,
+        })),
+      ),
     ),
   )(
-    "preserves foreign-realm sliced $item.mediaType tool-result bytes during $operation",
-    async ({ item, operation }) => {
-      const data = runInNewContext(
-        `new Uint8Array(${JSON.stringify([170, 187, ...item.bytes, 204, 221])}).subarray(2, 10)`,
-      ) as Uint8Array;
-      expect(data).not.toBeInstanceOf(Uint8Array);
+    "preserves $view sliced $item.mediaType tool-result bytes during $operation",
+    async ({ item, operation, view }) => {
+      const padded = [170, 187, ...item.bytes, 204, 221];
+      const data =
+        view === "foreign-realm"
+          ? (runInNewContext(
+              `new Uint8Array(${JSON.stringify(padded)}).subarray(2, 10)`,
+            ) as Uint8Array)
+          : new Uint8Array(padded).subarray(2, 10);
+      if (view === "foreign-realm") {
+        expect(data).not.toBeInstanceOf(Uint8Array);
+      } else if (view === "local-own") {
+        Object.defineProperties(data, {
+          buffer: { value: new ArrayBuffer(32) },
+          byteLength: { value: 0 },
+          byteOffset: { value: 0 },
+          length: { value: 0 },
+        });
+      } else {
+        const prototype = Object.create(Uint8Array.prototype) as object;
+        const get = () => {
+          throw new Error("Range accessor must not run");
+        };
+        Object.defineProperties(prototype, {
+          buffer: { get },
+          byteLength: { get },
+          byteOffset: { get },
+          length: { get },
+        });
+        Object.setPrototypeOf(data, prototype);
+      }
       const model = createSAPAIProviderV4(settings())("gpt-6.1-sol");
       const history: LanguageModelV4Prompt = [
         ...imageToolHistory,

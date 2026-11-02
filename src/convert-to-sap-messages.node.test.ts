@@ -96,10 +96,78 @@ describe("convertToSAPMessages across JavaScript realms", () => {
 
 describe("local byte views", () => {
   it("retains local Uint8Array and Buffer identity", () => {
-    const bytes = new Uint8Array([1, 2, 3]);
-    const buffer = Buffer.from([1, 2, 3]);
+    const bytes = new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4);
+    const buffer = Buffer.from([9, 1, 2, 3, 8]).subarray(1, 4);
     expect(toLocalUint8Array(bytes)).toBe(bytes);
     expect(toLocalUint8Array(buffer)).toBe(buffer);
+  });
+
+  it.each(["buffer", "byteOffset", "byteLength", "length"] as const)(
+    "uses the native range when a local %s property is masked",
+    (property) => {
+      const bytes = new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4);
+      const buffer = bytes.buffer;
+      Object.defineProperty(bytes, property, {
+        value: property === "buffer" ? new ArrayBuffer(32) : 0,
+      });
+      const local = toLocalUint8Array(bytes);
+      expect(local.buffer).toBe(buffer);
+      expect(local.byteOffset).toBe(1);
+      expect(local.byteLength).toBe(3);
+      expect(local.length).toBe(3);
+      expect([...local]).toEqual([1, 2, 3]);
+      new Uint8Array(buffer)[2] = 7;
+      expect(local[1]).toBe(7);
+    },
+  );
+
+  it("uses the native range when local properties are masked on a prototype", () => {
+    const bytes = new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4);
+    const buffer = bytes.buffer;
+    const prototype = Object.create(Uint8Array.prototype) as object;
+    Object.defineProperties(prototype, {
+      buffer: { value: new ArrayBuffer(32) },
+      byteLength: { value: 20 },
+      byteOffset: { value: 10 },
+      length: { value: 20 },
+    });
+    Object.setPrototypeOf(bytes, prototype);
+    const local = toLocalUint8Array(bytes);
+    expect(local.buffer).toBe(buffer);
+    expect(local.byteOffset).toBe(1);
+    expect(local.byteLength).toBe(3);
+    expect([...local]).toEqual([1, 2, 3]);
+  });
+
+  it("ignores local accessors whose reported range changes between reads", () => {
+    const bytes = new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4);
+    const buffer = bytes.buffer;
+    let reads = 0;
+    Object.defineProperty(bytes, "byteLength", { get: () => (reads++ === 0 ? 3 : 0) });
+    const local = toLocalUint8Array(bytes);
+    expect(local.buffer).toBe(buffer);
+    expect(local.byteOffset).toBe(1);
+    expect(local.byteLength).toBe(3);
+    expect(local.byteLength).toBe(3);
+    expect([...local]).toEqual([1, 2, 3]);
+    expect(reads).toBe(0);
+  });
+
+  it("ignores throwing inherited range accessors on local views", () => {
+    const bytes = new Uint8Array([9, 1, 2, 3, 8]).subarray(1, 4);
+    const buffer = bytes.buffer;
+    const prototype = Object.create(Uint8Array.prototype) as object;
+    Object.defineProperty(prototype, "buffer", {
+      get: () => {
+        throw new Error("Range accessor must not run");
+      },
+    });
+    Object.setPrototypeOf(bytes, prototype);
+    const local = toLocalUint8Array(bytes);
+    expect(local.buffer).toBe(buffer);
+    expect(local.byteOffset).toBe(1);
+    expect(local.byteLength).toBe(3);
+    expect([...local]).toEqual([1, 2, 3]);
   });
 
   it("shares the backing buffer and exact range of a foreign view", () => {

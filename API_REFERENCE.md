@@ -622,8 +622,8 @@ Native V4 user files and function-tool result files support tagged inline data,
 URLs, and provider references. File content in `openai.custom` results supports
 inline data and URLs; provider references are omitted with a warning. Other native
 tools use tool-specific result formats.
-Inline `Uint8Array` views retain their byte ranges across JavaScript realms
-without copying the underlying bytes.
+Inline `Uint8Array` views retain their native byte ranges without copying bytes,
+even across JavaScript realms or when range properties are overridden.
 
 Media types normalize to lower case, and tagged text files become text parts.
 The configured SAP namespace takes precedence over existing `openai` options

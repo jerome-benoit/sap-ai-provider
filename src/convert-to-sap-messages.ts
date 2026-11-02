@@ -108,17 +108,18 @@ export function getURLHref(value: unknown): string | undefined {
 }
 
 /**
- * Normalizes foreign Uint8Array views without copying their backing buffer.
+ * Normalizes foreign and shadowed local Uint8Array views without copying bytes.
  * @param bytes - Inline file bytes.
- * @returns The local input or a local view over the same byte range.
- * @throws {UnsupportedFunctionalityError} For invalid foreign byte views.
+ * @returns The original local view or a local view over its native byte range.
+ * @throws {UnsupportedFunctionalityError} For invalid byte views.
  * @internal
  */
 export function toLocalUint8Array(bytes: Uint8Array): Uint8Array {
-  if (bytes instanceof Uint8Array) return bytes;
   if (isUint8Array(bytes)) {
     try {
+      const reusable = canReuseUint8Array(bytes);
       Uint8Array.prototype.at.call(bytes, 0);
+      if (reusable) return bytes;
       const buffer: unknown = TYPED_ARRAY_BUFFER_DESCRIPTOR?.get?.call(bytes);
       const byteOffset: unknown = TYPED_ARRAY_BYTE_OFFSET_DESCRIPTOR?.get?.call(bytes);
       const length: unknown = TYPED_ARRAY_LENGTH_DESCRIPTOR?.get?.call(bytes);
@@ -146,6 +147,31 @@ function base64SextetValue(charCode: number): number {
   if (charCode === 0x2b) return 62;
   if (charCode === 0x2f) return 63;
   return -1;
+}
+
+/**
+ * Checks whether serializers can read a local view's native range properties.
+ * @param bytes - A genuine Uint8Array view.
+ * @returns Whether the local input can be reused without exposing range overrides.
+ */
+function canReuseUint8Array(bytes: Uint8Array): boolean {
+  try {
+    let prototype: null | object = bytes instanceof Uint8Array ? bytes : null;
+    while (
+      prototype !== null &&
+      prototype !== TYPED_ARRAY_PROTOTYPE &&
+      !Object.hasOwn(prototype, "buffer") &&
+      !Object.hasOwn(prototype, "byteOffset") &&
+      !Object.hasOwn(prototype, "byteLength") &&
+      !Object.hasOwn(prototype, "length")
+    ) {
+      prototype = Object.getPrototypeOf(prototype) as null | object;
+    }
+    return prototype === TYPED_ARRAY_PROTOTYPE;
+  } catch {
+    // Use native range accessors when prototype inspection fails.
+    return false;
+  }
 }
 
 /**
