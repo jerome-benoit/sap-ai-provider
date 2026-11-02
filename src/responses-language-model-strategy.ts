@@ -24,9 +24,9 @@ import type {
   LanguageModelStrategyConfig,
   ResponsesLanguageModelAPIStrategy,
 } from "./sap-ai-strategy.js";
-import type { AISDKRequestBodySummary } from "./strategy-utils.js";
+import type { AISDKRequestBodySummary, ParamMapping } from "./strategy-utils.js";
 
-import { createAbortError } from "./abort-utils.js";
+import { throwIfAborted } from "./abort-utils.js";
 import { convertResponsesCallToV4 } from "./responses-adapters-v3-to-v4.js";
 import {
   convertResponsesResultToV3,
@@ -36,17 +36,23 @@ import { createResponsesTransport } from "./responses-http-transport.js";
 import { prepareResponsesPrompt, toOpenAIProviderOptions } from "./responses-prompt.js";
 import { convertToAISDKError } from "./sap-ai-error.js";
 import { getProviderName } from "./sap-ai-provider-options.js";
-import { createAISDKRequestBodySummary } from "./strategy-utils.js";
+import { applyParameterOverrides, createAISDKRequestBodySummary } from "./strategy-utils.js";
 import { VERSION } from "./version.js";
 
-const MODEL_PARAMETERS = new Set([
-  "frequencyPenalty",
-  "maxTokens",
-  "parallel_tool_calls",
-  "presencePenalty",
-  "temperature",
-  "topP",
-]);
+const RESPONSES_PARAM_MAPPINGS: readonly ParamMapping[] = [
+  {
+    camelCaseKey: "frequencyPenalty",
+    optionKey: "frequencyPenalty",
+    outputKey: "frequencyPenalty",
+  },
+  { camelCaseKey: "maxTokens", optionKey: "maxOutputTokens", outputKey: "maxTokens" },
+  { camelCaseKey: "parallel_tool_calls", outputKey: "parallel_tool_calls" },
+  { camelCaseKey: "presencePenalty", optionKey: "presencePenalty", outputKey: "presencePenalty" },
+  { camelCaseKey: "temperature", optionKey: "temperature", outputKey: "temperature" },
+  { camelCaseKey: "topP", optionKey: "topP", outputKey: "topP" },
+] as const;
+
+const MODEL_PARAMETERS = new Set(RESPONSES_PARAM_MAPPINGS.map(({ outputKey }) => outputKey));
 
 const OPENAI_STREAM_ERROR_SCHEMA = z.object({
   data: z.object({ type: z.enum(["error", "response.failed"]) }).loose(),
@@ -120,7 +126,7 @@ export class ResponsesLanguageModelStrategy implements ResponsesLanguageModelAPI
     };
     let getBodyReadFailure: ((error: unknown) => APICallError | undefined) | undefined;
     try {
-      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      throwIfAborted(options.abortSignal);
       const inputOptions = legacy
         ? convertResponsesCallToV4(options as LanguageModelV3CallOptions)
         : (options as LanguageModelV4CallOptions);
@@ -171,7 +177,7 @@ export class ResponsesLanguageModelStrategy implements ResponsesLanguageModelAPI
     };
     let getBodyReadFailure: ((error: unknown) => APICallError | undefined) | undefined;
     try {
-      if (options.abortSignal?.aborted) throw createAbortError(options.abortSignal.reason);
+      throwIfAborted(options.abortSignal);
       const inputOptions = legacy
         ? convertResponsesCallToV4(options as LanguageModelV3CallOptions)
         : (options as LanguageModelV4CallOptions);
@@ -198,12 +204,10 @@ export class ResponsesLanguageModelStrategy implements ResponsesLanguageModelAPI
             },
             async pull(controller) {
               try {
-                if (options.abortSignal?.aborted)
-                  throw createAbortError(options.abortSignal.reason);
+                throwIfAborted(options.abortSignal);
                 const next = await reader.read();
                 if (isCancelled()) return;
-                if (options.abortSignal?.aborted)
-                  throw createAbortError(options.abortSignal.reason);
+                throwIfAborted(options.abortSignal);
                 if (next.done) {
                   reader.releaseLock();
                   controller.close();
@@ -397,12 +401,17 @@ async function prepareModel(
   providerName: string;
   warnings: SharedV3Warning[];
 }> {
-  if (options.abortSignal?.aborted) {
-    throw createAbortError(options.abortSignal.reason);
-  }
+  throwIfAborted(options.abortSignal);
   const providerName = getProviderName(config.provider);
   const sapOptions = config.parsedProviderOptions;
   const parameters = { ...settings.modelParams, ...sapOptions?.modelParams };
+  applyParameterOverrides(
+    parameters,
+    options,
+    sapOptions?.modelParams,
+    settings.modelParams,
+    RESPONSES_PARAM_MAPPINGS,
+  );
   const warnings: SharedV3Warning[] = Object.keys(parameters)
     .filter((key) => !MODEL_PARAMETERS.has(key))
     .map((key) => ({
@@ -434,16 +443,16 @@ async function prepareModel(
   }
   const input: LanguageModelV4CallOptions = {
     ...options,
-    frequencyPenalty: options.frequencyPenalty ?? parameters.frequencyPenalty,
-    maxOutputTokens: options.maxOutputTokens ?? parameters.maxTokens,
-    presencePenalty: options.presencePenalty ?? parameters.presencePenalty,
+    frequencyPenalty: parameters.frequencyPenalty,
+    maxOutputTokens: parameters.maxTokens,
+    presencePenalty: parameters.presencePenalty,
     prompt: prepareResponsesPrompt(options.prompt, providerName),
     providerOptions: {
       ...options.providerOptions,
       openai: responseOptions,
     },
     responseFormat: options.responseFormat ?? modelResponseFormat(settings),
-    temperature: options.temperature ?? parameters.temperature,
+    temperature: parameters.temperature,
     tools: options.tools?.map((tool) =>
       tool.type === "function"
         ? {
@@ -453,7 +462,7 @@ async function prepareModel(
           }
         : tool,
     ),
-    topP: options.topP ?? parameters.topP,
+    topP: parameters.topP,
   };
   const transport = await createResponsesTransport(config, settings, context);
   const model = createOpenAI({

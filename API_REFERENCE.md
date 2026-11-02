@@ -564,8 +564,10 @@ streaming, and complete tool-result round trips with an optional argument.
   `reasoning` value overrides `responses.reasoningEffort`;
   `provider-default` preserves the configured value.
 - Standard generation options such as `maxOutputTokens`, `temperature`, and
-  `topP` keep their precedence over `modelParams`. Responses-specific parameters
-  belong in `responses`; unsupported `modelParams` keys produce warnings.
+  `topP` take precedence over invocation `modelParams`, which override model defaults.
+  Within invocation `modelParams`, an `undefined` value preserves the configured default.
+  Responses-specific parameters belong in `responses`; unsupported `modelParams`
+  keys produce warnings.
 - SAP service bindings, `AICORE_SERVICE_KEY`, destinations, `resourceGroup`,
   `deploymentId`, and `modelVersion` use the existing SAP deployment and
   authentication flow. HTTP requests use the SAP SDK transport, retaining

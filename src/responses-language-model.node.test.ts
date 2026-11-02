@@ -952,6 +952,51 @@ describe("Responses over SAP AI Core HTTP", () => {
     },
   );
 
+  it.each(
+    (["doGenerate", "doStream"] as const).flatMap((operation) =>
+      (["v3", "v4"] as const).map((version) => ({ operation, version })),
+    ),
+  )(
+    "$version $operation retains model defaults for undefined invocation parameters",
+    async ({ operation, version }) => {
+      const provider = version === "v4" ? createSAPAIProviderV4 : createSAPAIProvider;
+      const model = provider(settings())("gpt-4.1", {
+        modelParams: {
+          maxTokens: 41,
+          parallel_tool_calls: false,
+          temperature: 0.65,
+          topP: 0.75,
+        },
+      });
+      const invocation = {
+        prompt,
+        providerOptions: {
+          "sap-ai": {
+            modelParams: {
+              maxTokens: undefined,
+              parallel_tool_calls: undefined,
+              temperature: undefined,
+              topP: undefined,
+            },
+          },
+        },
+        topP: 0,
+      };
+      if (operation === "doStream") {
+        replies.push((response) => events(response, streamEvents()));
+        await collect<LanguageModelV3StreamPart | LanguageModelV4StreamPart>(
+          (await model.doStream(invocation)).stream,
+        );
+      } else await model.doGenerate(invocation);
+      expect(requests[0]?.body).toMatchObject({
+        max_output_tokens: 41,
+        parallel_tool_calls: false,
+        temperature: 0.65,
+        top_p: 0,
+      });
+    },
+  );
+
   it.each(["image", "IMAGE", "IMAGE/PNG"])(
     "advertises remote %s images conservatively to the AI SDK download hook",
     async (mediaType) => {
