@@ -8,11 +8,18 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { SAPAILanguageModel } from "./sap-ai-language-model.js";
 
 import { createSAPAIProvider } from "./sap-ai-provider.js";
+
+interface FixtureOwner {
+  readonly controller: AbortController;
+  readonly id: string;
+  readonly pending: Set<Promise<unknown>>;
+  readonly watchdogs: Set<ReturnType<typeof setTimeout>>;
+}
 
 type Operation = "doGenerate" | "doStream";
 
@@ -21,6 +28,7 @@ interface RequestRecord {
   response: ServerResponse;
   socket: Socket;
 }
+
 const TIMEOUT = 200;
 const WATCHDOG = 2_000;
 const prompt: LanguageModelV3CallOptions["prompt"] = [
@@ -51,22 +59,13 @@ const startFrames = [
 ];
 
 /**
- * Encodes native Responses SSE events.
- * @param frames - Events returned by the local server.
- * @returns Complete SSE records.
- */
-function events(frames: Record<string, unknown>[]): string {
-  return frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("");
-}
-
-/**
  * Consumes either public operation, surfacing stream error events.
  * @param model - Public SAP model.
  * @param operation - Requested generation operation.
  * @param signal - Caller cancellation.
  * @returns Received output or the operation's failure.
  */
-async function invoke(
+async function consumeOperation(
   model: SAPAILanguageModel,
   operation: Operation,
   signal?: AbortSignal,
@@ -84,6 +83,15 @@ async function invoke(
   }
 }
 
+/**
+ * Encodes native Responses SSE events.
+ * @param frames - Events returned by the local server.
+ * @returns Complete SSE records.
+ */
+function events(frames: Record<string, unknown>[]): string {
+  return frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("");
+}
+
 describe("Responses native-adapter response-body timeout", () => {
   let destinationUrl: string;
   let mode: "active" | "complete" | "idle" | "output-then-idle";
@@ -91,31 +99,43 @@ describe("Responses native-adapter response-body timeout", () => {
   let bodyReadable!: () => void;
   let ready: Promise<void>;
   const requests: RequestRecord[] = [];
-  let incoming: Promise<void>;
-  let requestReceived!: () => void;
+  let incoming: Promise<RequestRecord>;
+  let requestReceived!: (record: RequestRecord) => void;
+  let ownerId = 0;
+  let currentOwner: FixtureOwner;
+  const owners = new Set<FixtureOwner>();
+  const modelOwners = new WeakMap<SAPAILanguageModel, FixtureOwner>();
   const server = createServer((request, response) => {
+    const owner = currentOwner;
+    const notifyRequest = requestReceived;
+    const requestMode = mode;
+    const requestStatus = status;
+    const socket = request.socket;
+    const closed = new Promise<void>((resolve) => socket.once("close", resolve));
     void (async () => {
       let raw = "";
       for await (const chunk of request) raw += String(chunk);
       const body = JSON.parse(raw) as { stream?: boolean };
-      const socket = request.socket;
-      requests.push({
-        closed: new Promise<void>((resolve) => socket.once("close", resolve)),
-        response,
-        socket,
-      });
-      requestReceived();
-      response.statusCode = status;
+      if (
+        owner.controller.signal.aborted ||
+        request.headers["x-timeout-fixture-owner"] !== owner.id
+      ) {
+        throw new Error("Request escaped its timeout fixture owner");
+      }
+      const record = { closed, response, socket };
+      requests.push(record);
+      notifyRequest(record);
+      response.statusCode = requestStatus;
       response.setHeader("retry-after", "7");
       response.setHeader("x-request-id", "fixture-timeout");
       response.setHeader("content-type", body.stream ? "text/event-stream" : "application/json");
-      if (mode === "idle" || mode === "output-then-idle") {
+      if (requestMode === "idle" || requestMode === "output-then-idle") {
         response.write(
           body.stream
-            ? mode === "output-then-idle"
+            ? requestMode === "output-then-idle"
               ? events(startFrames)
               : "data: "
-            : status >= 400
+            : requestStatus >= 400
               ? "<html>Fixture unavailable"
               : '{"id":"partial"',
         );
@@ -124,7 +144,7 @@ describe("Responses native-adapter response-body timeout", () => {
       }
       if (body.stream) {
         response.write(events(startFrames));
-        if (mode === "active") {
+        if (requestMode === "active") {
           for (let index = 0; index < 12; index++) {
             await delay(40);
             if (response.destroyed) return;
@@ -141,21 +161,60 @@ describe("Responses native-adapter response-body timeout", () => {
     })().catch((error: unknown) => response.destroy(error instanceof Error ? error : undefined));
   });
 
-  beforeAll(async () => {
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    destinationUrl = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
-  });
-  beforeEach(() => {
+  /** Initializes an isolated timeout fixture. */
+  function resetFixture(): void {
+    if (owners.size > 0) throw new Error("Previous timeout fixture is not drained");
+    currentOwner = {
+      controller: new AbortController(),
+      id: String(++ownerId),
+      pending: new Set(),
+      watchdogs: new Set(),
+    };
+    owners.add(currentOwner);
     mode = "idle";
     status = 200;
     requests.length = 0;
-    incoming = new Promise<void>((resolve) => {
+    incoming = new Promise<RequestRecord>((resolve) => {
       requestReceived = resolve;
     });
     ready = new Promise<void>((resolve) => {
       bodyReadable = resolve;
     });
+  }
+
+  /**
+   * Cancels operations and closes their sockets before fixture state is reset.
+   * @returns Settlement of tracked operations and socket closures.
+   */
+  async function drainFixture(): Promise<void> {
+    for (const owner of owners) {
+      owner.controller.abort("timeout fixture teardown");
+      for (const watchdog of owner.watchdogs) clearTimeout(watchdog);
+      owner.watchdogs.clear();
+    }
+    server.closeAllConnections();
+    for (const owner of owners) await Promise.all(owner.pending);
+    server.closeAllConnections();
+    for (const request of requests) await request.closed;
+    owners.clear();
+  }
+
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    destinationUrl = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
+    resetFixture();
+    mode = "complete";
+    try {
+      // Resolve cold SDK setup before measuring response-body inactivity.
+      expect(await invoke(model(false), "doGenerate")).toMatchObject({
+        content: [{ text: "Fixture complete", type: "text" }],
+      });
+    } finally {
+      await drainFixture();
+    }
   });
+  beforeEach(resetFixture);
+  afterEach(drainFixture);
   afterAll(async () => {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
@@ -167,7 +226,30 @@ describe("Responses native-adapter response-body timeout", () => {
   });
 
   /**
-   * Uses middleware only to observe actual response bytes without changing the SAP client.
+   * Owns every operation until teardown, including recovery calls.
+   * @param value - Fixture model.
+   * @param operation - Requested public operation.
+   * @param signal - Optional caller cancellation.
+   * @returns The operation's output or classified failure.
+   */
+  function invoke(
+    value: SAPAILanguageModel,
+    operation: Operation,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const owner = modelOwners.get(value);
+    if (!owner) throw new Error("Expected a fixture-owned model");
+    owner.controller.signal.throwIfAborted();
+    const ownedSignal = signal
+      ? AbortSignal.any([signal, owner.controller.signal])
+      : owner.controller.signal;
+    const result = consumeOperation(value, operation, ownedSignal);
+    owner.pending.add(result);
+    return result;
+  }
+
+  /**
+   * Creates a fixture-owned model with response-body observation.
    * @param native - Whether to select Axios's native adapter path through maxRedirects.
    * @param postHeaderDelay - User middleware delay after the underlying client receives headers.
    * @param clarifyTimeoutError - Axios timeout classification to preserve with the custom message.
@@ -178,14 +260,16 @@ describe("Responses native-adapter response-body timeout", () => {
     postHeaderDelay = 0,
     clarifyTimeoutError?: boolean,
   ): SAPAILanguageModel {
+    const owner = currentOwner;
+    const notifyReadable = bodyReadable;
     const middleware: NonNullable<CustomRequestConfig["middleware"]>[number] =
       ({ fn }) =>
       async (request) => {
         const response = await fn(request);
         const body: unknown = response.data;
         if (!(body instanceof Readable)) throw new Error("Expected a real SAP HTTP response body");
-        if (body.readableLength > 0) bodyReadable();
-        else body.once("readable", bodyReadable);
+        if (body.readableLength > 0) notifyReadable();
+        else body.once("readable", notifyReadable);
         return response;
       };
     const waitAfterHeaders: NonNullable<CustomRequestConfig["middleware"]>[number] =
@@ -195,7 +279,7 @@ describe("Responses native-adapter response-body timeout", () => {
         await delay(postHeaderDelay);
         return response;
       };
-    return createSAPAIProvider({
+    const value = createSAPAIProvider({
       api: "responses",
       deploymentId: "timeout-fixture",
       destination: { authentication: "NoAuthentication", url: destinationUrl },
@@ -207,10 +291,13 @@ describe("Responses native-adapter response-body timeout", () => {
               timeoutErrorMessage: "Fixture custom timeout",
               transitional: { clarifyTimeoutError },
             }),
+        headers: { "x-timeout-fixture-owner": owner.id },
         middleware: [middleware, ...(postHeaderDelay > 0 ? [waitAfterHeaders] : [])],
         timeout: TIMEOUT,
       },
     })("gpt-6.1-sol");
+    modelOwners.set(value, owner);
+    return value;
   }
 
   /**
@@ -223,21 +310,27 @@ describe("Responses native-adapter response-body timeout", () => {
     value: SAPAILanguageModel,
     operation: Operation,
   ): Promise<{ error: unknown; watchdogFired: boolean }> {
+    const owner = modelOwners.get(value);
+    if (!owner) throw new Error("Expected a fixture-owned model");
     const controller = new AbortController();
     const result = invoke(value, operation, controller.signal);
-    // Start the body-read watchdog only after cold SDK setup reaches the fixture.
-    await Promise.race([incoming, result]);
+    const firstRequest = Promise.race([incoming, result.then(() => undefined)]);
+    // Start the body-read watchdog only after this operation reaches the fixture.
+    await firstRequest;
+    owner.controller.signal.throwIfAborted();
     const timeout = setTimeout(() => {
       controller.abort("fixture watchdog: provider timeout did not settle");
     }, WATCHDOG);
+    owner.watchdogs.add(timeout);
     try {
       const error = await result;
-      const first = requests[0];
+      const first = await firstRequest;
       if (!first) throw new Error("Expected a real HTTP request");
       await first.closed;
       return { error, watchdogFired: controller.signal.aborted };
     } finally {
       clearTimeout(timeout);
+      owner.watchdogs.delete(timeout);
     }
   }
 
@@ -271,6 +364,7 @@ describe("Responses native-adapter response-body timeout", () => {
         expect(await invoke(value, "doGenerate")).toMatchObject({
           content: [{ text: "Fixture complete", type: "text" }],
         });
+        expect(requests).toHaveLength(2);
         const recovered = requests[1];
         if (!recovered) throw new Error("Expected a recovered HTTP connection");
         await delay(TIMEOUT * 2);
@@ -278,6 +372,7 @@ describe("Responses native-adapter response-body timeout", () => {
         expect(await invoke(value, "doGenerate")).toMatchObject({
           content: [{ text: "Fixture complete", type: "text" }],
         });
+        expect(requests).toHaveLength(3);
         expect(requests[2]?.socket).toBe(recovered.socket);
       }
     },
@@ -334,9 +429,11 @@ describe("Responses native-adapter response-body timeout", () => {
   it("keeps active SSE open beyond several timeout intervals", async () => {
     mode = "active";
     const controller = new AbortController();
+    const owner = currentOwner;
     const watchdog = setTimeout(() => {
       controller.abort("fixture active-stream watchdog");
     }, WATCHDOG);
+    owner.watchdogs.add(watchdog);
     try {
       const started = performance.now();
       expect(await invoke(model(), "doStream", controller.signal)).toBe("Fixture complete");
@@ -344,13 +441,14 @@ describe("Responses native-adapter response-body timeout", () => {
       expect(controller.signal.aborted).toBe(false);
     } finally {
       clearTimeout(watchdog);
+      owner.watchdogs.delete(watchdog);
     }
   });
 
   it("keeps caller cancellation distinct from the body timeout", async () => {
     const controller = new AbortController();
     const result = invoke(model(), "doGenerate", controller.signal);
-    await ready;
+    await Promise.race([ready, result]);
     const first = requests[0];
     if (!first) throw new Error("Expected an idle HTTP response");
 
