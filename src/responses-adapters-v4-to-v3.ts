@@ -34,11 +34,11 @@ export function convertResponsesResultToV3(
 /**
  * Converts one delegate event inside the existing demand-driven stream wrapper.
  * @param part - The OpenAI V4 event.
- * @returns The corresponding V3 event.
+ * @returns The corresponding V3 event, or null for a keepalive.
  */
 export function convertResponsesStreamPartToV3(
   part: LanguageModelV4StreamPart,
-): LanguageModelV3StreamPart {
+): LanguageModelV3StreamPart | null {
   switch (part.type) {
     case "custom":
     case "reasoning-file":
@@ -49,6 +49,8 @@ export function convertResponsesStreamPartToV3(
       return convertGeneratedFile(part);
     case "finish":
       return { ...part, finishReason: convertFinishReason(part.finishReason) };
+    case "ping":
+      return null;
     case "stream-start":
       return { ...part, warnings: part.warnings.map(convertWarning) };
     default:

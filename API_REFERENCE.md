@@ -614,6 +614,7 @@ Responses on `/v4` uses the delegate's native V4 contract. It preserves custom
 content such as compaction, tagged generated files, reasoning files, native
 warnings, approvals, citations, `structuredOutputText`, and text tool-input
 encoding. A clean EOF without a completion event reports `interrupted`.
+Native V4 keepalive events (`ping`) pass through `/v4`; legacy entrypoints omit them.
 
 Root, `/v3`, and `/v2` retain their compatibility conversions. Inline generated
 files retain their bytes or base64 data. Generated file URLs, reasoning files,
