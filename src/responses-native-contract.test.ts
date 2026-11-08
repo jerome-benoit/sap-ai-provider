@@ -8,6 +8,7 @@ import type {
 import { UnsupportedFunctionalityError } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createSAPAIProvider as createSAPAIProviderV2 } from "./sap-ai-provider-v2.js";
 import { createSAPAIProviderV4 } from "./sap-ai-provider-v4.js";
 import { createSAPAIProvider } from "./sap-ai-provider.js";
 
@@ -101,9 +102,11 @@ describe("native Responses V4 output contract", () => {
   it("retains every native stream variant and honors demand and cancellation", async () => {
     const parts: LanguageModelV4StreamPart[] = [
       { type: "stream-start", warnings },
+      { type: "ping" },
       ...content,
       { id: "tool", inputEncoding: "text", toolName: "editor", type: "tool-input-start" },
       { rawValue: { fixture: "raw" }, type: "raw" },
+      { type: "ping" },
       { finishReason: { raw: "eof", unified: "interrupted" }, type: "finish", usage },
     ];
     let reads = 0;
@@ -151,6 +154,105 @@ describe("native Responses V4 output contract", () => {
     reader.releaseLock();
     expect(cancel).toHaveBeenCalledWith("consumer finished");
     expect(delegate.dispose).toHaveBeenCalledWith("consumer finished");
+  });
+
+  describe.each([
+    { create: createSAPAIProviderV2, version: "V2" },
+    { create: createSAPAIProvider, version: "V3" },
+  ])("Responses $version keepalive compatibility", ({ create, version }) => {
+    it("skips keepalives without prefetching or losing text and finish events", async () => {
+      const source: LanguageModelV4StreamPart[] = [
+        { type: "ping" },
+        { type: "ping" },
+        { id: "text", type: "text-start" },
+        { type: "ping" },
+        { delta: "kept", id: "text", type: "text-delta" },
+        { id: "text", type: "text-end" },
+        { finishReason: { raw: "stop", unified: "stop" }, type: "finish", usage },
+        { type: "ping" },
+      ];
+      let reads = 0;
+      delegate.stream.mockResolvedValue({
+        stream: new ReadableStream<LanguageModelV4StreamPart>(
+          {
+            pull(controller) {
+              const part = source[reads++];
+              if (part) controller.enqueue(part);
+              else controller.close();
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+      });
+      const result = await create(settings)("fixture").doStream({ prompt });
+      expect(reads).toBe(0);
+      const reader = result.stream.getReader();
+      const first = await reader.read();
+      expect(first.value).toEqual({ id: "text", type: "text-start" });
+      expect(reads).toBe(3);
+      const second = await reader.read();
+      expect(second.value).toEqual({ delta: "kept", id: "text", type: "text-delta" });
+      expect(reads).toBe(5);
+      const types = [first.value?.type, second.value?.type];
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        types.push(next.value.type);
+        if (next.value.type === "finish") {
+          expect(next.value.finishReason).toEqual(
+            version === "V2" ? "stop" : { raw: "stop", unified: "stop" },
+          );
+        }
+      }
+      reader.releaseLock();
+      expect(types).toEqual(["text-start", "text-delta", "text-end", "finish"]);
+    });
+
+    it("closes a stream containing only keepalives", async () => {
+      delegate.stream.mockResolvedValue({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
+          start(controller) {
+            controller.enqueue({ type: "ping" });
+            controller.enqueue({ type: "ping" });
+            controller.close();
+          },
+        }),
+      });
+      const result = await create(settings)("fixture").doStream({ prompt });
+      const reader = result.stream.getReader();
+      expect(await reader.read()).toEqual({ done: true, value: undefined });
+      reader.releaseLock();
+    });
+
+    it("cancels the delegate while waiting after a skipped keepalive", async () => {
+      let waiting: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        waiting = resolve;
+      });
+      let reads = 0;
+      const cancel = vi.fn();
+      delegate.stream.mockResolvedValue({
+        stream: new ReadableStream<LanguageModelV4StreamPart>(
+          {
+            cancel,
+            pull(controller) {
+              if (reads++ === 0) controller.enqueue({ type: "ping" });
+              else waiting();
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+      });
+      const result = await create(settings)("fixture").doStream({ prompt });
+      const reader = result.stream.getReader();
+      const pending = reader.read();
+      await blocked;
+      await reader.cancel("consumer stopped");
+      expect(await pending).toEqual({ done: true, value: undefined });
+      reader.releaseLock();
+      expect(cancel).toHaveBeenCalledWith("consumer stopped");
+      expect(delegate.dispose).toHaveBeenCalledWith("consumer stopped");
+    });
   });
 
   it("keeps unsupported legacy generation output inside disposal and error classification", async () => {

@@ -204,32 +204,38 @@ export class ResponsesLanguageModelStrategy implements ResponsesLanguageModelAPI
             },
             async pull(controller) {
               try {
-                throwIfAborted(options.abortSignal);
-                const next = await reader.read();
-                if (isCancelled()) return;
-                throwIfAborted(options.abortSignal);
-                if (next.done) {
-                  reader.releaseLock();
-                  controller.close();
-                  return;
+                for (;;) {
+                  throwIfAborted(options.abortSignal);
+                  const next = await reader.read();
+                  if (isCancelled()) return;
+                  throwIfAborted(options.abortSignal);
+                  if (next.done) {
+                    reader.releaseLock();
+                    controller.close();
+                    return;
+                  }
+                  let part = next.value;
+                  if (part.type === "stream-start") {
+                    part = { ...part, warnings: [...warnings, ...part.warnings] };
+                  } else if (part.type === "finish") {
+                    part = {
+                      ...part,
+                      providerMetadata: responseMetadata(part.providerMetadata, providerName),
+                    };
+                  } else if (part.type === "error") {
+                    part = {
+                      ...part,
+                      error: convertError(part.error, config, context, getBodyReadFailure),
+                    };
+                  } else if ("providerMetadata" in part || part.type === "text-end") {
+                    part = fromOpenAIContent(part, providerName);
+                  }
+                  const converted = legacy ? convertResponsesStreamPartToV3(part) : part;
+                  if (converted !== null) {
+                    controller.enqueue(converted);
+                    return;
+                  }
                 }
-                let part = next.value;
-                if (part.type === "stream-start") {
-                  part = { ...part, warnings: [...warnings, ...part.warnings] };
-                } else if (part.type === "finish") {
-                  part = {
-                    ...part,
-                    providerMetadata: responseMetadata(part.providerMetadata, providerName),
-                  };
-                } else if (part.type === "error") {
-                  part = {
-                    ...part,
-                    error: convertError(part.error, config, context, getBodyReadFailure),
-                  };
-                } else if ("providerMetadata" in part || part.type === "text-end") {
-                  part = fromOpenAIContent(part, providerName);
-                }
-                controller.enqueue(legacy ? convertResponsesStreamPartToV3(part) : part);
               } catch (error) {
                 if (isCancelled()) return;
                 const failure = convertError(error, config, context, getBodyReadFailure);
