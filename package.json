@@ -29,7 +29,7 @@
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "24.22.2",
+      "version": "24.22.3",
       "onFail": "ignore"
     },
     "packageManager": {
@@ -142,8 +142,8 @@
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
     "@vitest/coverage-v8": "5.1.0",
-    "ai": "7.0.165",
-    "dotenv": "18.0.9",
+    "ai": "7.0.166",
+    "dotenv": "18.0.10",
     "eslint": "10.14.0",
     "eslint-plugin-jsdoc": "65.4.5",
     "eslint-plugin-perfectionist": "5.13.0",
