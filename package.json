@@ -169,7 +169,7 @@
     "@typescript-eslint/typescript-estree": {
       "minimatch@>=10.0.0 <11.0.0": ">=11.0.1 <12.0.0"
     },
-    "basic-ftp": ">=6.2.2 <7.0.0",
+    "basic-ftp": ">=6.2.4 <7.0.0",
     "esbuild": ">=0.28.2 <0.29.0",
     "eslint": {
       "minimatch@>=10.0.0 <11.0.0": ">=11.0.1 <12.0.0"
