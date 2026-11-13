@@ -3425,11 +3425,11 @@ definitions.
 
 **Filter Configuration Types:**
 
-| Type                                | Description                                                  |
-| ----------------------------------- | ------------------------------------------------------------ |
-| `GraniteGuardian41Category`         | Granite Guardian 4.1 filter category                         |
-| `GraniteGuardian41FilterOptions`    | Granite Guardian 4.1 filter options, e.g. `enable_reasoning` |
-| `GraniteGuardian41FilterReturnType` | Granite Guardian 4.1 filter configuration                    |
+| Type                                | Description                                                      |
+| ----------------------------------- | ---------------------------------------------------------------- |
+| `GraniteGuardian41Category`         | IBM Granite Guardian 4.1 filter category                         |
+| `GraniteGuardian41FilterOptions`    | IBM Granite Guardian 4.1 filter options, e.g. `enable_reasoning` |
+| `GraniteGuardian41FilterReturnType` | IBM Granite Guardian 4.1 filter configuration                    |
 
 **Content & Response Types:**
 
