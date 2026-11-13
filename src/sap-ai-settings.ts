@@ -293,6 +293,9 @@ export type SAPAIModelSettings =
 /** Re-exported SAP AI SDK orchestration types. */
 export type {
   FilteringModule,
+  GraniteGuardian41Category,
+  GraniteGuardian41FilterOptions,
+  GraniteGuardian41FilterReturnType,
   GroundingModule,
   MaskingModule,
   TranslationModule,

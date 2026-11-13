@@ -2592,7 +2592,7 @@ export interface OrchestrationModelSettings {
 
 **Orchestration-Only Features:**
 
-- `filtering` - Content safety filtering (Azure Content Safety, LlamaGuard, IBM Granite Guardian)
+- `filtering` - Content safety filtering (Azure Content Safety, Llama Guard, IBM Granite Guardian)
 - `fallbackModuleConfigs` - Ordered fallback `OrchestrationModuleConfig` entries used when local orchestration configuration is active
 - `dropUnsupportedParams` - Unsupported-parameter policy for the primary local model
 - `grounding` - Document-based RAG via SAP HANA Vector Engine
@@ -3423,6 +3423,14 @@ definitions.
 | `TranslationApplyToCategory`         | Translation scope selector       |
 | `DocumentTranslationApplyToSelector` | Document translation selector    |
 
+**Filter Configuration Types:**
+
+| Type                                | Description                                                  |
+| ----------------------------------- | ------------------------------------------------------------ |
+| `GraniteGuardian41Category`         | Granite Guardian 4.1 filter category                         |
+| `GraniteGuardian41FilterOptions`    | Granite Guardian 4.1 filter options, e.g. `enable_reasoning` |
+| `GraniteGuardian41FilterReturnType` | Granite Guardian 4.1 filter configuration                    |
+
 **Content & Response Types:**
 
 | Type              | Description                         |
@@ -3838,8 +3846,9 @@ function buildGraniteGuardian41Filter(categories: readonly [GraniteGuardian41Cat
 **Returns:** IBM Granite Guardian 4.1 filter configuration
 
 **Filter placement:** the configuration applies to whichever module section
-contains it, so use it under `filtering.input` or `filtering.output`. Set
-`target_selector` on the returned object when a message scope is required.
+contains it, so use it under `filtering.input` or `filtering.output`. For an
+input placement, add the input-scoped `target_selector` with an object spread:
+`{ ...buildGraniteGuardian41Filter(["harm"]), target_selector: { after_last_role: "user" } }`.
 
 > **Note:** Granite Guardian needs a separate backend call per enabled category,
 > so enabling several categories multiplies latency and cost. Prefer the catch-all
