@@ -293,6 +293,9 @@ export type SAPAIModelSettings =
 /** Re-exported SAP AI SDK orchestration types. */
 export type {
   FilteringModule,
+  GraniteGuardian41Category,
+  GraniteGuardian41FilterOptions,
+  GraniteGuardian41FilterReturnType,
   GroundingModule,
   MaskingModule,
   TranslationModule,
@@ -302,6 +305,7 @@ export {
   buildAzureContentSafetyFilter,
   buildDocumentGroundingConfig,
   buildDpiMaskingProvider,
+  buildGraniteGuardian41Filter,
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the upstream deprecated public API.
   buildLlamaGuard38BFilter,
   buildTranslationConfig,
