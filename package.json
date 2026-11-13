@@ -127,10 +127,10 @@
     "@ai-sdk/openai": "^4.0.111",
     "@ai-sdk/provider": "^4.0.37",
     "@ai-sdk/provider-utils": "^5.0.76",
-    "@sap-ai-sdk/ai-api": "^2.17.0",
-    "@sap-ai-sdk/core": "^2.17.0",
-    "@sap-ai-sdk/foundation-models": "^2.17.0",
-    "@sap-ai-sdk/orchestration": "^2.17.0",
+    "@sap-ai-sdk/ai-api": "^2.18.0",
+    "@sap-ai-sdk/core": "^2.18.0",
+    "@sap-ai-sdk/foundation-models": "^2.18.0",
+    "@sap-ai-sdk/orchestration": "^2.18.0",
     "@sap-cloud-sdk/connectivity": "^4.10.0",
     "@sap-cloud-sdk/util": "^4.10.0",
     "zod": "^4.6.7"
@@ -159,7 +159,7 @@
     "tsup": "9.0.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.1",
+    "typescript-eslint": "8.72.2",
     "vitest": "5.1.0"
   },
   "overrides": {
@@ -169,7 +169,7 @@
     "@typescript-eslint/typescript-estree": {
       "minimatch@>=10.0.0 <11.0.0": ">=11.0.1 <12.0.0"
     },
-    "basic-ftp": ">=6.2.2 <7.0.0",
+    "basic-ftp": ">=6.2.4 <7.0.0",
     "esbuild": ">=0.28.2 <0.29.0",
     "eslint": {
       "minimatch@>=10.0.0 <11.0.0": ">=11.0.1 <12.0.0"
