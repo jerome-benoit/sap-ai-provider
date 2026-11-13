@@ -118,6 +118,7 @@ consistently:
   - [`buildDpiMaskingProvider(config)`](#builddpimaskingproviderconfig)
   - [`buildAzureContentSafetyFilter(type, config?)`](#buildazurecontentsafetyfiltertype-config)
   - [`buildLlamaGuard38BFilter(type, categories)`](#buildllamaguard38bfiltertype-categories)
+  - [`buildGraniteGuardian41Filter(categories, options?)`](#buildgraniteguardian41filtercategories-options)
   - [`buildDocumentGroundingConfig(config)`](#builddocumentgroundingconfigconfig)
   - [`buildTranslationConfig(type, config)`](#buildtranslationconfigtype-config)
   - [`resolveApi(providerApi, modelApi, invocationApi)`](#resolveapiproviderapi-modelapi-invocationapi)
@@ -2611,9 +2612,9 @@ the direct model APIs. Each fallback owns its full SDK model configuration;
 stored configurations ignore the local option with a warning and retain their
 explicit `overrideConfig`.
 
-`FilteringModule` already accepts IBM Granite Guardian 4.1 and input
+`FilteringModule` accepts IBM Granite Guardian 4.1 and input
 `target_selector` values (`last_messages` or `after_last_role`) from the SAP SDK.
-No provider-specific filter builder is required.
+Build Granite Guardian configurations with [`buildGraniteGuardian41Filter(categories, options?)`](#buildgraniteguardian41filtercategories-options).
 `enable_reasoning` configures Granite Guardian's filter reasoning, not
 assistant-model reasoning. Module-level filter results are not projected into
 standard provider metadata.
@@ -3807,6 +3808,51 @@ const provider = createSAPAIProvider({
     filtering: {
       input: {
         filters: [buildLlamaGuard38BFilter("input", ["hate", "violent_crimes"])],
+      },
+    },
+  },
+});
+```
+
+---
+
+### `buildGraniteGuardian41Filter(categories, options?)`
+
+Creates an IBM Granite Guardian 4.1 filter configuration for content safety
+filtering.
+
+**Signature:**
+
+```typescript
+function buildGraniteGuardian41Filter(categories: readonly [GraniteGuardian41Category, ...GraniteGuardian41Category[]], options?: GraniteGuardian41FilterOptions): GraniteGuardian41FilterReturnType;
+```
+
+**Parameters:**
+
+- `categories`: Array of at least one category to filter - `harm`, `social_bias`,
+  `jailbreak`, `violence`, `profanity`, `sexual_content`, `unethical_behavior`
+- `options`: Optional filter options
+  - `enable_reasoning`: Return reasoning content for every configured category
+    (Granite Guardian filter reasoning, not assistant-model reasoning)
+
+**Returns:** IBM Granite Guardian 4.1 filter configuration
+
+**Filter placement:** the configuration applies to whichever module section
+contains it, so use it under `filtering.input` or `filtering.output`. Set
+`target_selector` on the returned object when a message scope is required.
+
+> **Note:** Granite Guardian needs a separate backend call per enabled category,
+> so enabling several categories multiplies latency and cost. Prefer the catch-all
+> `harm` category unless a specific category is required.
+
+**Example:**
+
+```typescript
+const provider = createSAPAIProvider({
+  defaultSettings: {
+    filtering: {
+      input: {
+        filters: [buildGraniteGuardian41Filter(["harm"])],
       },
     },
   },

@@ -146,6 +146,7 @@ export {
   buildAzureContentSafetyFilter,
   buildDocumentGroundingConfig,
   buildDpiMaskingProvider,
+  buildGraniteGuardian41Filter,
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- Preserve the upstream deprecated public API.
   buildLlamaGuard38BFilter,
   buildTranslationConfig,
