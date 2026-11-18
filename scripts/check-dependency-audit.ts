@@ -195,14 +195,16 @@ export function checkAuditProcessResult(
  *
  * npm audit data originates from the same advisory database, so a withdrawn advisory is a
  * retraction of the finding rather than an accepted risk. Lookup failures never weaken the gate.
- * The report shape is validated before any reference is removed, so a retraction can never mask
- * a malformed report. A record keeps npm's reported severity while its remaining causes are only
- * transitive references, whose severities the report does not restate.
+ * The vulnerability records are validated before any reference is removed, so a retraction can
+ * never mask a malformed report. Removal keeps npm's severity wherever a transitive cause remains.
  * @param reportValue - Parsed npm audit JSON
  * @param fetchImplementation - Fetch implementation used for advisory lookups
  * @param authorization - Optional GitHub API bearer token
  * @param signal - Optional lookup deadline signal; defaults to one timeout per advisory
  * @returns Filtered report and every withdrawn advisory identifier it dropped
+ * @throws {AuditError} When an advisory lookup fails or returns an unusable record: transport
+ * errors, redirects, non-2xx responses such as a deleted advisory, invalid JSON, a mismatched
+ * identifier, an unparseable withdrawal timestamp, or a missing, stalled, or oversized body.
  */
 export async function filterWithdrawnAdvisories<TReport>(
   reportValue: TReport,
@@ -740,9 +742,10 @@ async function readAdvisoryText(
 /**
  * Drop advisory references that the GitHub Advisory Database marks as withdrawn.
  *
- * A record whose only advisory reference is withdrawn is dropped entirely. A record that keeps
- * advisory references reports the most severe retained one, because npm derives that severity
- * from the same advisories. Records left with only transitive references keep npm's severity.
+ * A record whose only advisory reference is withdrawn is dropped entirely. A record whose
+ * remaining causes are all advisories reports the most severe retained one. A record that keeps a
+ * transitive reference keeps npm's severity, because that value folds in the transitive chain and
+ * the report does not restate its parts.
  * @param reportValue - Parsed npm audit JSON
  * @param withdrawnIds - Withdrawn advisory identifiers
  * @returns Report copy without those advisory references
@@ -773,17 +776,21 @@ function removeAdvisoryReferences<TReport>(
       continue;
     }
     const retainedVia = via.filter((entry) => !isWithdrawnReference(entry, withdrawnIds));
+    const keepsTransitive = retainedVia.some((entry) => typeof entry === "string");
     const severities = retainedVia
       .map((entry) =>
         entry && typeof entry === "object" ? (entry as { severity?: unknown }).severity : undefined,
       )
       .filter((severity): severity is string => typeof severity === "string");
-    if (severities.length === 0 && !retainedVia.some((entry) => typeof entry === "string")) {
+    if (severities.length === 0 && !keepsTransitive) {
       continue;
     }
     retained[name] = {
       ...record,
-      severity: severities.length === 0 ? record.severity : maximumAuditSeverity(severities),
+      severity:
+        severities.length === 0 || keepsTransitive
+          ? record.severity
+          : maximumAuditSeverity(severities),
       via: retainedVia,
     };
   }
@@ -914,7 +921,7 @@ function validateAuditMetaEdge(
 }
 
 /**
- * Validate the shape npm audit reports before any advisory reference is removed.
+ * Validate the vulnerability records that the advisory filter and the exception policy consume.
  * @param reportValue - Parsed npm audit JSON
  * @returns Structurally valid npm audit report
  */

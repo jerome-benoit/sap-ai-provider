@@ -19,8 +19,10 @@ const WITHDRAWN_ADVISORY = "GHSA-wdth-0000-0000";
 
 const KEPT_ADVISORY = "GHSA-kept-0000-0000";
 
+const CRITICAL_ADVISORY = "GHSA-crit-0000-0000";
+
 afterEach(() => {
-  for (const id of [TEST_ADVISORY, WITHDRAWN_ADVISORY, KEPT_ADVISORY]) {
+  for (const id of [TEST_ADVISORY, WITHDRAWN_ADVISORY, KEPT_ADVISORY, CRITICAL_ADVISORY]) {
     Reflect.deleteProperty(allowedAdvisories, id);
   }
 });
@@ -45,6 +47,11 @@ interface LockEntry {
   version?: string;
 }
 
+/** Mutable npm audit report fixture. */
+interface ReportFixture {
+  vulnerabilities: Record<string, Vulnerability>;
+}
+
 /** Mutable npm vulnerability fixture. */
 interface Vulnerability {
   effects?: string[];
@@ -62,7 +69,7 @@ interface Vulnerability {
  */
 function fixtures(): {
   lock: { lockfileVersion: 3; packages: Record<string, LockEntry> };
-  report: { vulnerabilities: Record<string, Vulnerability> };
+  report: ReportFixture;
 } {
   Object.assign(allowedAdvisories, {
     [TEST_ADVISORY]: {
@@ -630,11 +637,15 @@ interface AdvisoryStub {
   chunks?: readonly string[];
   /** Advertised `content-length` header value. */
   contentLength?: string;
+  /** Resolve the response, then never deliver a body chunk or honor the signal. */
+  hang?: boolean;
+  /** Answer without a response body. */
+  noBody?: boolean;
   ok?: boolean;
-  /** Hook invoked when a stalled read is first requested. */
-  onStall?: () => void;
-  /** Resolve the response, then never deliver a body chunk. */
-  stall?: boolean;
+  /** Hook invoked when a hanging read is first requested. */
+  onHang?: () => void;
+  /** Observe response body lifecycle events. */
+  record?: (event: "body-cancel" | "get-reader" | "reader-cancel") => void;
   status?: number;
 }
 
@@ -648,11 +659,11 @@ function advisoryFetch(responses: Record<string, AdvisoryStub>): {
   fetch: AdvisoryFetch;
 } {
   const calls: string[] = [];
-  const fetch: AdvisoryFetch = (input, init) => {
+  const fetch: AdvisoryFetch = (input) => {
     calls.push(input);
     const id = input.slice("https://api.github.com/advisories/".length);
     const stub = responses[id] ?? { ok: false, status: 404 };
-    return Promise.resolve(advisoryResponse(id, stub, init.signal));
+    return Promise.resolve(advisoryResponse(id, stub));
   };
   return { calls, fetch };
 }
@@ -661,27 +672,18 @@ function advisoryFetch(responses: Record<string, AdvisoryStub>): {
  * Build one advisory database response.
  * @param id - Advisory identifier the response answers
  * @param stub - Response fixture
- * @param signal - Request deadline signal
  * @returns Streaming advisory response
  */
-function advisoryResponse(id: string, stub: AdvisoryStub, signal: AbortSignal): AdvisoryResponse {
+function advisoryResponse(id: string, stub: AdvisoryStub): AdvisoryResponse {
   const encoder = new TextEncoder();
   const body = typeof stub.body === "string" ? stub.body : JSON.stringify(stub.body);
   const chunks = (stub.chunks ?? [body]).map((chunk) => encoder.encode(chunk));
   const declaredBytes = encoder.encode(body).byteLength;
   let next = 0;
-  const read = stub.stall
+  const read = stub.hang
     ? () =>
-        new Promise<{ done: boolean; value?: Uint8Array | undefined }>((_resolve, reject) => {
-          signal.addEventListener(
-            "abort",
-            () => {
-              const reason: unknown = signal.reason;
-              reject(reason instanceof Error ? reason : new Error(String(reason)));
-            },
-            { once: true },
-          );
-          stub.onStall?.();
+        new Promise<{ done: boolean; value?: Uint8Array | undefined }>(() => {
+          stub.onHang?.();
         })
     : () => {
         const chunk = chunks[next];
@@ -691,14 +693,25 @@ function advisoryResponse(id: string, stub: AdvisoryStub, signal: AbortSignal): 
         );
       };
   return {
-    body: {
-      cancel: () => Promise.resolve(),
-      getReader: () => ({
-        cancel: () => Promise.resolve(),
-        read,
-        releaseLock: () => undefined,
-      }),
-    },
+    body: stub.noBody
+      ? null
+      : {
+          cancel: () => {
+            stub.record?.("body-cancel");
+            return Promise.resolve();
+          },
+          getReader: () => {
+            stub.record?.("get-reader");
+            return {
+              cancel: () => {
+                stub.record?.("reader-cancel");
+                return Promise.resolve();
+              },
+              read,
+              releaseLock: () => undefined,
+            };
+          },
+        },
     headers: {
       get: (name: string) =>
         name.toLowerCase() === "content-length"
@@ -711,10 +724,46 @@ function advisoryResponse(id: string, stub: AdvisoryStub, signal: AbortSignal): 
   };
 }
 
+/**
+ * Build an advisory cause for a fixture record.
+ * @param id - GitHub Security Advisory identifier
+ * @param severity - Advisory severity
+ * @param affected - Package the advisory names
+ * @returns Advisory cause fixture
+ */
+function cause(id: string, severity: string, affected = "node-forge"): Advisory {
+  return {
+    dependency: affected,
+    name: affected,
+    severity,
+    url: `https://github.com/advisories/${id}`,
+  };
+}
+
+/**
+ * Point one fixture vulnerability at the given advisory causes.
+ * @param report - Mutable report fixture
+ * @param report.vulnerabilities - Vulnerability records keyed by package name
+ * @param packageName - Vulnerability record to rewrite
+ * @param causes - Advisory causes to install
+ */
+function setCauses(
+  report: ReportFixture,
+  packageName: string,
+  causes: (Advisory | string)[],
+): void {
+  requireVulnerability(report.vulnerabilities, packageName).via = causes;
+}
+
+const WITHDRAWN_RESPONSE = {
+  body: { ghsa_id: WITHDRAWN_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+};
+
 describe("withdrawn advisory filtering", () => {
   it("ignores an advisory retracted by the GitHub Advisory Database", async () => {
     const { lock, report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const snapshot = structuredClone(report);
     const { calls, fetch } = advisoryFetch({
       [TEST_ADVISORY]: {
         body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
@@ -726,6 +775,7 @@ describe("withdrawn advisory filtering", () => {
     expect(calls).toEqual([`https://api.github.com/advisories/${TEST_ADVISORY}`]);
     expect(filtered.withdrawn).toEqual([TEST_ADVISORY]);
     expect(filtered.report.vulnerabilities["node-forge"]).toBeUndefined();
+    expect(report).toEqual(snapshot);
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
     ).toEqual([]);
@@ -734,7 +784,6 @@ describe("withdrawn advisory filtering", () => {
   it("derives a retained record severity from the advisory it keeps", async () => {
     const { lock, report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
-    const withdrawnUrl = `https://github.com/advisories/${WITHDRAWN_ADVISORY}`;
     Object.assign(allowedAdvisories, {
       [KEPT_ADVISORY]: {
         dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
@@ -746,25 +795,13 @@ describe("withdrawn advisory filtering", () => {
         severity: "moderate",
       },
     });
-    requireVulnerability(report.vulnerabilities, "node-forge").via = [
-      {
-        dependency: "node-forge",
-        name: "node-forge",
-        severity: "high",
-        url: withdrawnUrl,
-      },
-      {
-        dependency: "node-forge",
-        name: "node-forge",
-        severity: "moderate",
-        url: `https://github.com/advisories/${KEPT_ADVISORY}`,
-      },
-    ];
+    setCauses(report, "node-forge", [
+      cause(WITHDRAWN_ADVISORY, "high"),
+      cause(KEPT_ADVISORY, "moderate"),
+    ]);
     const { fetch } = advisoryFetch({
       [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
-      [WITHDRAWN_ADVISORY]: {
-        body: { ghsa_id: WITHDRAWN_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
-      },
+      [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
     });
 
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
@@ -780,12 +817,79 @@ describe("withdrawn advisory filtering", () => {
     );
     expect(validated).toHaveLength(1);
     expect(validated[0]?.id).toBe(KEPT_ADVISORY);
-    expect(validated[0]?.policy.severity).toBe("moderate");
+  });
+
+  it("reports the most severe advisory among several retained causes", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    setCauses(report, "node-forge", [
+      cause(WITHDRAWN_ADVISORY, "low"),
+      cause(KEPT_ADVISORY, "moderate"),
+      cause(CRITICAL_ADVISORY, "critical"),
+    ]);
+    const { fetch } = advisoryFetch({
+      [CRITICAL_ADVISORY]: { body: { ghsa_id: CRITICAL_ADVISORY, withdrawn_at: null } },
+      [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+      [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(requireVulnerability(filtered.report.vulnerabilities, "node-forge").severity).toBe(
+      "critical",
+    );
+  });
+
+  it("keeps npm severity while a transitive cause remains", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    setCauses(report, "node-forge", [cause(WITHDRAWN_ADVISORY, "low"), "nested-dep"]);
+    const { fetch } = advisoryFetch({ [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+    const retained = requireVulnerability(filtered.report.vulnerabilities, "node-forge");
+
+    expect(filtered.withdrawn).toEqual([WITHDRAWN_ADVISORY]);
+    expect(retained.severity).toBe("high");
+    expect(retained.via).toEqual(["nested-dep"]);
+  });
+
+  it("looks one withdrawn advisory up once and removes it from every record", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const shared = cause(WITHDRAWN_ADVISORY, "high");
+    setCauses(report, "node-forge", [shared]);
+    setCauses(report, "jks-js", [shared, "node-forge"]);
+    const { calls, fetch } = advisoryFetch({ [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(calls).toEqual([`https://api.github.com/advisories/${WITHDRAWN_ADVISORY}`]);
+    expect(filtered.report.vulnerabilities["node-forge"]).toBeUndefined();
+    expect(requireVulnerability(filtered.report.vulnerabilities, "jks-js").via).toEqual([
+      "node-forge",
+    ]);
+  });
+
+  it("ignores letter case in the advisory record identifier", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    setCauses(report, "node-forge", [cause(WITHDRAWN_ADVISORY, "high")]);
+    const { fetch } = advisoryFetch({
+      [WITHDRAWN_ADVISORY]: {
+        body: { ghsa_id: WITHDRAWN_ADVISORY.toUpperCase(), withdrawn_at: "2026-11-18T15:38:56Z" },
+      },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(filtered.withdrawn).toEqual([WITHDRAWN_ADVISORY]);
   });
 
   it("keeps reporting an advisory that the database still lists as active", async () => {
     const { lock, report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const snapshot = structuredClone(report);
     const { fetch } = advisoryFetch({
       [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: null } },
     });
@@ -794,6 +898,7 @@ describe("withdrawn advisory filtering", () => {
 
     expect(filtered.withdrawn).toEqual([]);
     expect(filtered.report).toBe(report);
+    expect(report).toEqual(snapshot);
     expect(() =>
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
     ).toThrow(`Unexpected dependency advisory: ${TEST_ADVISORY}`);
@@ -801,12 +906,14 @@ describe("withdrawn advisory filtering", () => {
 
   it("never queries an advisory that already has an exception policy", async () => {
     const { lock, report } = fixtures();
+    const snapshot = structuredClone(report);
     const { calls, fetch } = advisoryFetch({});
 
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
 
     expect(calls).toEqual([]);
     expect(filtered.report).toBe(report);
+    expect(report).toEqual(snapshot);
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
     ).toHaveLength(1);
@@ -823,6 +930,7 @@ describe("withdrawn advisory filtering", () => {
     const invalidWithdrawal = advisoryFetch({
       [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "" } },
     });
+    const absentBody = advisoryFetch({ [TEST_ADVISORY]: { noBody: true } });
 
     await expect(filterWithdrawnAdvisories(report, unavailable.fetch, undefined)).rejects.toThrow(
       `GitHub advisory ${TEST_ADVISORY} returned HTTP 503`,
@@ -836,36 +944,45 @@ describe("withdrawn advisory filtering", () => {
     await expect(
       filterWithdrawnAdvisories(report, invalidWithdrawal.fetch, undefined),
     ).rejects.toThrow(`GitHub advisory ${TEST_ADVISORY} has an invalid withdrawn_at value`);
+    await expect(filterWithdrawnAdvisories(report, absentBody.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} did not provide a response body`,
+    );
   });
 
-  it("fails closed on a rejected transport, an oversized body, and a stalled read", async () => {
+  it("fails closed on a rejected transport, an oversized body, and a hanging read", async () => {
     const { report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
     const rejected = {
-      calls: [] as string[],
       fetch: (() => Promise.reject(new Error("socket hang up"))) as AdvisoryFetch,
     };
+    const bodyEvents: string[] = [];
     const declaredTooLarge = advisoryFetch({
       [TEST_ADVISORY]: {
         body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
         contentLength: String(MAXIMUM_ADVISORY_BYTES + 1),
+        record: (event) => {
+          bodyEvents.push(event);
+        },
       },
     });
     const multibyteTooLarge = advisoryFetch({
+      [TEST_ADVISORY]: { chunks: ["é".repeat(MAXIMUM_ADVISORY_BYTES)] },
+    });
+    const chunkedTooLarge = advisoryFetch({
       [TEST_ADVISORY]: {
-        chunks: ["é".repeat(MAXIMUM_ADVISORY_BYTES)],
+        chunks: ["a".repeat(MAXIMUM_ADVISORY_BYTES - 1), "a".repeat(MAXIMUM_ADVISORY_BYTES - 1)],
       },
     });
     const controller = new AbortController();
-    const stalled = advisoryFetch({
+    const hanging = advisoryFetch({
       [TEST_ADVISORY]: {
         body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
-        onStall: () => {
+        hang: true,
+        onHang: () => {
           queueMicrotask(() => {
             controller.abort(new Error("body stalled"));
           });
         },
-        stall: true,
       },
     });
 
@@ -877,11 +994,15 @@ describe("withdrawn advisory filtering", () => {
     ).rejects.toThrow(
       `declared a response body larger than ${String(MAXIMUM_ADVISORY_BYTES)} bytes`,
     );
+    expect(bodyEvents).toEqual(["body-cancel"]);
     await expect(
       filterWithdrawnAdvisories(report, multibyteTooLarge.fetch, undefined),
     ).rejects.toThrow(`response body exceeded ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
     await expect(
-      filterWithdrawnAdvisories(report, stalled.fetch, undefined, controller.signal),
+      filterWithdrawnAdvisories(report, chunkedTooLarge.fetch, undefined),
+    ).rejects.toThrow(`response body exceeded ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
+    await expect(
+      filterWithdrawnAdvisories(report, hanging.fetch, undefined, controller.signal),
     ).rejects.toThrow(`Unable to read GitHub advisory ${TEST_ADVISORY} response body`);
   });
 });
@@ -904,6 +1025,28 @@ describe("npm audit advisory lookup pipeline", () => {
       "npm audit did not return a valid vulnerability report",
     );
     expect(calls).toEqual([]);
+  });
+
+  it("looks every unknown advisory up before accepting the report", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    setCauses(report, "jks-js", [cause(WITHDRAWN_ADVISORY, "high")]);
+    setCauses(report, "node-forge", [cause(KEPT_ADVISORY, "high")]);
+    const { calls, fetch } = advisoryFetch({
+      [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+      [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(calls).toEqual([
+      `https://api.github.com/advisories/${WITHDRAWN_ADVISORY}`,
+      `https://api.github.com/advisories/${KEPT_ADVISORY}`,
+    ]);
+    expect(filtered.withdrawn).toEqual([WITHDRAWN_ADVISORY]);
+    expect(() => validateDependencyAudit(filtered.report, lock, TODAY)).toThrow(
+      `Unexpected dependency advisory: ${KEPT_ADVISORY}`,
+    );
   });
 
   it("accepts a withdrawn advisory and still rejects an active one", async () => {
