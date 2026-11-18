@@ -66,12 +66,18 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 - Run `npm run check-dependency-audit` with registry access. It forces production,
   development, optional, and peer scopes despite inherited npm `omit` settings.
-  Any advisory identifier outside the exception registry is checked against the GitHub Advisory
-  Database, the upstream source of npm audit data: GitHub marks a retraction with `withdrawn_at`,
-  the checker then prints `Withdrawn advisory ignored: <GHSA-id>`, removes those `via` references
-  from the report before policy validation, and needs no exception. Lookup failures (transport,
-  non-2xx, invalid JSON, mismatched `ghsa_id`) fail closed, so a retraction never weakens the gate.
-  CI supplies `GITHUB_TOKEN` for the advisory API rate limit.
+  Every canonical `https://github.com/advisories/GHSA-…` reference outside the exception
+  registry is checked against the GitHub Advisory Database, the upstream source of npm audit
+  data. A `withdrawn_at` timestamp means GitHub retracted that finding: the checker prints
+  `Withdrawn advisory ignored: <GHSA-id>` and drops the reference from the report before
+  policy validation, so a retraction needs no exception. It validates npm's own report shape
+  first, so a retraction can never mask a malformed report. A vulnerability whose only
+  advisory cause is withdrawn is dropped, and one that keeps advisory causes reports the most
+  severe retained advisory. Lookup failures fail closed: transport errors, non-2xx responses,
+  invalid JSON, a mismatched `ghsa_id`, an unparseable `withdrawn_at`, and a body that stalls
+  or exceeds its bound. The `Check dependency vulnerabilities` step of
+  `.github/workflows/check-pr.yaml` and of `.github/workflows/npm-publish-packages.yml` runs
+  it, and CI supplies `GITHUB_TOKEN` for the advisory API rate limit.
   Temporary exceptions start only from npm audit's exact nodes in the lockfile-v3
   package-instance graph, using Node ancestor resolution semantics. Validation covers
   every edge up to the directly declared root anchor and the identity coherence of

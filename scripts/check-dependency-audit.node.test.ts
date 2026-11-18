@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AuditProcessResult } from "./check-dependency-audit";
+import type { AdvisoryFetch, AdvisoryResponse, AuditProcessResult } from "./check-dependency-audit";
 
 import {
   allowedAdvisories,
   checkAuditProcessResult,
   filterWithdrawnAdvisories,
   getNpmAuditInvocation,
+  MAXIMUM_ADVISORY_BYTES,
   validateDependencyAudit,
 } from "./check-dependency-audit";
 
@@ -14,8 +15,14 @@ const TODAY = "2026-10-23";
 
 const TEST_ADVISORY = "GHSA-1111-1111-1111";
 
+const WITHDRAWN_ADVISORY = "GHSA-wdth-0000-0000";
+
+const KEPT_ADVISORY = "GHSA-kept-0000-0000";
+
 afterEach(() => {
-  Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+  for (const id of [TEST_ADVISORY, WITHDRAWN_ADVISORY, KEPT_ADVISORY]) {
+    Reflect.deleteProperty(allowedAdvisories, id);
+  }
 });
 
 /** Mutable advisory fixture. */
@@ -615,40 +622,96 @@ describe("npm audit process contract", () => {
   });
 });
 
+/** Advisory database response fixture. */
+interface AdvisoryStub {
+  /** JSON body or raw text body. */
+  body?: unknown;
+  /** Raw UTF-8 body chunks, used to exercise the byte bound. */
+  chunks?: readonly string[];
+  /** Advertised `content-length` header value. */
+  contentLength?: string;
+  ok?: boolean;
+  /** Hook invoked when a stalled read is first requested. */
+  onStall?: () => void;
+  /** Resolve the response, then never deliver a body chunk. */
+  stall?: boolean;
+  status?: number;
+}
+
 /**
  * Build a fetch stub for the GitHub Advisory Database.
  * @param responses - Canned response per advisory identifier
  * @returns Request log and fetch implementation
  */
-function advisoryFetch(
-  responses: Record<string, { body?: unknown; ok?: boolean; status?: number }>,
-): { calls: string[]; fetch: typeof fetch } {
+function advisoryFetch(responses: Record<string, AdvisoryStub>): {
+  calls: string[];
+  fetch: AdvisoryFetch;
+} {
   const calls: string[] = [];
-  const implementation = (input: string) => {
+  const fetch: AdvisoryFetch = (input, init) => {
     calls.push(input);
     const id = input.slice("https://api.github.com/advisories/".length);
-    const response = responses[id] ?? { ok: false, status: 404 };
-    const body = typeof response.body === "string" ? response.body : JSON.stringify(response.body);
-    return Promise.resolve({
-      headers: { get: () => null },
-      ok: response.ok ?? true,
-      status: response.status ?? 200,
-      text: () => Promise.resolve(body),
-      url: input,
-    });
+    const stub = responses[id] ?? { ok: false, status: 404 };
+    return Promise.resolve(advisoryResponse(id, stub, init.signal));
   };
-  return { calls, fetch: implementation as unknown as typeof fetch };
+  return { calls, fetch };
+}
+
+/**
+ * Build one advisory database response.
+ * @param id - Advisory identifier the response answers
+ * @param stub - Response fixture
+ * @param signal - Request deadline signal
+ * @returns Streaming advisory response
+ */
+function advisoryResponse(id: string, stub: AdvisoryStub, signal: AbortSignal): AdvisoryResponse {
+  const encoder = new TextEncoder();
+  const body = typeof stub.body === "string" ? stub.body : JSON.stringify(stub.body);
+  const chunks = (stub.chunks ?? [body]).map((chunk) => encoder.encode(chunk));
+  const declaredBytes = encoder.encode(body).byteLength;
+  let next = 0;
+  const read = stub.stall
+    ? () =>
+        new Promise<{ done: boolean; value?: Uint8Array | undefined }>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              const reason: unknown = signal.reason;
+              reject(reason instanceof Error ? reason : new Error(String(reason)));
+            },
+            { once: true },
+          );
+          stub.onStall?.();
+        })
+    : () => {
+        const chunk = chunks[next];
+        next += 1;
+        return Promise.resolve(
+          chunk === undefined ? { done: true, value: undefined } : { done: false, value: chunk },
+        );
+      };
+  return {
+    body: {
+      cancel: () => Promise.resolve(),
+      getReader: () => ({
+        cancel: () => Promise.resolve(),
+        read,
+        releaseLock: () => undefined,
+      }),
+    },
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "content-length"
+          ? (stub.contentLength ?? String(declaredBytes))
+          : null,
+    },
+    ok: stub.ok ?? true,
+    status: stub.status ?? 200,
+    url: `https://api.github.com/advisories/${id}`,
+  };
 }
 
 describe("withdrawn advisory filtering", () => {
-  const advisoryUrlId = (report: { vulnerabilities: Record<string, Vulnerability> }): string => {
-    const via = report.vulnerabilities["node-forge"]?.via[0];
-    if (typeof via === "string" || via === undefined) {
-      throw new Error("fixture lacks an advisory reference");
-    }
-    return via.url.replace("https://github.com/advisories/", "");
-  };
-
   it("ignores an advisory retracted by the GitHub Advisory Database", async () => {
     const { lock, report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
@@ -662,10 +725,62 @@ describe("withdrawn advisory filtering", () => {
 
     expect(calls).toEqual([`https://api.github.com/advisories/${TEST_ADVISORY}`]);
     expect(filtered.withdrawn).toEqual([TEST_ADVISORY]);
-    expect(filtered.report.vulnerabilities["node-forge"]?.via).toEqual([]);
+    expect(filtered.report.vulnerabilities["node-forge"]).toBeUndefined();
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
     ).toEqual([]);
+  });
+
+  it("derives a retained record severity from the advisory it keeps", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const withdrawnUrl = `https://github.com/advisories/${WITHDRAWN_ADVISORY}`;
+    Object.assign(allowedAdvisories, {
+      [KEPT_ADVISORY]: {
+        dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
+        direct: false,
+        expires: "2026-11-08",
+        packageName: "node-forge",
+        reason: "Synthetic test exception.",
+        scope: "runtime",
+        severity: "moderate",
+      },
+    });
+    requireVulnerability(report.vulnerabilities, "node-forge").via = [
+      {
+        dependency: "node-forge",
+        name: "node-forge",
+        severity: "high",
+        url: withdrawnUrl,
+      },
+      {
+        dependency: "node-forge",
+        name: "node-forge",
+        severity: "moderate",
+        url: `https://github.com/advisories/${KEPT_ADVISORY}`,
+      },
+    ];
+    const { fetch } = advisoryFetch({
+      [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+      [WITHDRAWN_ADVISORY]: {
+        body: { ghsa_id: WITHDRAWN_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+      },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+    const validated = checkAuditProcessResult(
+      processResult(JSON.stringify(filtered.report)),
+      lock,
+      TODAY,
+    );
+
+    expect(filtered.withdrawn).toEqual([WITHDRAWN_ADVISORY]);
+    expect(requireVulnerability(filtered.report.vulnerabilities, "node-forge").severity).toBe(
+      "moderate",
+    );
+    expect(validated).toHaveLength(1);
+    expect(validated[0]?.id).toBe(KEPT_ADVISORY);
+    expect(validated[0]?.policy.severity).toBe("moderate");
   });
 
   it("keeps reporting an advisory that the database still lists as active", async () => {
@@ -695,7 +810,6 @@ describe("withdrawn advisory filtering", () => {
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
     ).toHaveLength(1);
-    expect(advisoryUrlId(report)).toBe(TEST_ADVISORY);
   });
 
   it("fails closed when the advisory database is unavailable or inconsistent", async () => {
@@ -706,6 +820,9 @@ describe("withdrawn advisory filtering", () => {
     const mismatched = advisoryFetch({
       [TEST_ADVISORY]: { body: { ghsa_id: "GHSA-2222-2222-2222" } },
     });
+    const invalidWithdrawal = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "" } },
+    });
 
     await expect(filterWithdrawnAdvisories(report, unavailable.fetch, undefined)).rejects.toThrow(
       `GitHub advisory ${TEST_ADVISORY} returned HTTP 503`,
@@ -715,6 +832,97 @@ describe("withdrawn advisory filtering", () => {
     );
     await expect(filterWithdrawnAdvisories(report, mismatched.fetch, undefined)).rejects.toThrow(
       `GitHub advisory ${TEST_ADVISORY} returned a mismatched identifier`,
+    );
+    await expect(
+      filterWithdrawnAdvisories(report, invalidWithdrawal.fetch, undefined),
+    ).rejects.toThrow(`GitHub advisory ${TEST_ADVISORY} has an invalid withdrawn_at value`);
+  });
+
+  it("fails closed on a rejected transport, an oversized body, and a stalled read", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const rejected = {
+      calls: [] as string[],
+      fetch: (() => Promise.reject(new Error("socket hang up"))) as AdvisoryFetch,
+    };
+    const declaredTooLarge = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        contentLength: String(MAXIMUM_ADVISORY_BYTES + 1),
+      },
+    });
+    const multibyteTooLarge = advisoryFetch({
+      [TEST_ADVISORY]: {
+        chunks: ["é".repeat(MAXIMUM_ADVISORY_BYTES)],
+      },
+    });
+    const controller = new AbortController();
+    const stalled = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        onStall: () => {
+          queueMicrotask(() => {
+            controller.abort(new Error("body stalled"));
+          });
+        },
+        stall: true,
+      },
+    });
+
+    await expect(filterWithdrawnAdvisories(report, rejected.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY}: socket hang up`,
+    );
+    await expect(
+      filterWithdrawnAdvisories(report, declaredTooLarge.fetch, undefined),
+    ).rejects.toThrow(
+      `declared a response body larger than ${String(MAXIMUM_ADVISORY_BYTES)} bytes`,
+    );
+    await expect(
+      filterWithdrawnAdvisories(report, multibyteTooLarge.fetch, undefined),
+    ).rejects.toThrow(`response body exceeded ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
+    await expect(
+      filterWithdrawnAdvisories(report, stalled.fetch, undefined, controller.signal),
+    ).rejects.toThrow(`Unable to read GitHub advisory ${TEST_ADVISORY} response body`);
+  });
+});
+
+describe("npm audit advisory lookup pipeline", () => {
+  it("rejects a malformed report whose advisory reference is withdrawn", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const advisory = requireAdvisory(
+      requireVulnerability(report.vulnerabilities, "node-forge").via[0],
+    ) as Partial<Advisory>;
+    delete advisory.severity;
+    const { calls, fetch } = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+      },
+    });
+
+    await expect(filterWithdrawnAdvisories(report, fetch, undefined)).rejects.toThrow(
+      "npm audit did not return a valid vulnerability report",
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("accepts a withdrawn advisory and still rejects an active one", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const { fetch: withdrawnFetch } = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+      },
+    });
+    const { fetch: activeFetch } = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: null } },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, withdrawnFetch, undefined);
+    expect(validateDependencyAudit(filtered.report, lock, TODAY)).toEqual([]);
+    const retained = await filterWithdrawnAdvisories(report, activeFetch, undefined);
+    expect(() => validateDependencyAudit(retained.report, lock, TODAY)).toThrow(
+      `Unexpected dependency advisory: ${TEST_ADVISORY}`,
     );
   });
 });

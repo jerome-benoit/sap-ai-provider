@@ -399,6 +399,30 @@ export function parseCliArguments(args) {
 }
 
 /**
+ * Await an asynchronous operation while honoring the request's complete-operation signal.
+ * @param promise - Operation promise
+ * @param signal - Combined timeout and caller signal
+ * @returns Operation result
+ */
+export function raceWithAbort(promise, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
  * Select artifacts for a policy-baseline, complete, or differential gate.
  * @param mode - Validated command-line mode
  * @param currentLock - Parsed current lockfile
@@ -683,30 +707,6 @@ function parseJson(text, description) {
 function parseLockfileJson(text, description, sizeDescription = description) {
   assertLockfileSize(text, sizeDescription);
   return parseJson(text, description);
-}
-
-/**
- * Await an asynchronous operation while honoring the request's complete-operation signal.
- * @param promise - Operation promise
- * @param signal - Combined timeout and caller signal
- * @returns Operation result
- */
-function raceWithAbort(promise, signal) {
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise((resolve, reject) => {
-    const abort = () => reject(signal.reason);
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", abort);
-        resolve(value);
-      },
-      (error) => {
-        signal.removeEventListener("abort", abort);
-        reject(error);
-      },
-    );
-  });
 }
 
 /**

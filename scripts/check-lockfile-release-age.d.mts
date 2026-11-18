@@ -75,6 +75,10 @@ export function loadLockfiles(
   showGitObject?: (objectName: string) => string,
 ): { baseLock?: unknown; currentLock: unknown };
 export function parseCliArguments(args: string[]): LockfileReleaseAgeMode;
+export function raceWithAbort<TValue>(
+  promise: Promise<TValue>,
+  signal: AbortSignal,
+): Promise<TValue>;
 export function selectLockArtifacts(
   mode: LockfileReleaseAgeMode,
   currentLock: unknown,

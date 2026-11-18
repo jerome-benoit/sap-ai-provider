@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
+import { raceWithAbort } from "./check-lockfile-release-age.mjs";
+
 /** Contract for one temporary dependency advisory exception. */
 export interface AllowedAdvisory {
   dependencyPaths: readonly (readonly string[])[];
@@ -123,20 +125,40 @@ const DEPENDENCY_FIELDS = [
 ] as const;
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
 const GHSA_ADVISORY_API_BASE = "https://api.github.com/advisories/";
-const GHSA_ADVISORY_API_ORIGIN = "https://api.github.com";
+const GHSA_ADVISORY_API_ORIGIN = new URL(GHSA_ADVISORY_API_BASE).origin;
 const ADVISORY_TIMEOUT_MS = 10_000;
-const MAXIMUM_ADVISORY_BYTES = 1024 * 1024;
-const ADVISORY_ID_PATTERN = /^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}$/;
+export const MAXIMUM_ADVISORY_BYTES = 1024 * 1024;
 const ADVISORY_URL_PATTERN =
   /^https:\/\/github\.com\/advisories\/(GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4})$/;
+/** npm vulnerability severities ordered from least to most severe. */
+const AUDIT_SEVERITY_ORDER = ["info", "low", "moderate", "high", "critical"] as const;
 
 /** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
 export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {};
 
-/** Advisory metadata fields consumed for withdrawal detection. */
-export interface AdvisoryDatabaseRecord {
-  readonly ghsa_id?: unknown;
-  readonly withdrawn_at?: unknown;
+/** Response body stream consumed for one advisory lookup. */
+export interface AdvisoryBody {
+  cancel(reason?: unknown): Promise<unknown>;
+  getReader(): {
+    cancel(reason?: unknown): Promise<unknown>;
+    read(): Promise<{ done: boolean; value?: Uint8Array | undefined }>;
+    releaseLock(): void;
+  };
+}
+
+/** Fetch implementation used for advisory lookups. */
+export type AdvisoryFetch = (
+  url: string,
+  init: { headers: Record<string, string>; redirect: "error"; signal: AbortSignal },
+) => Promise<AdvisoryResponse>;
+
+/** GitHub Advisory Database response consumed for withdrawal detection. */
+export interface AdvisoryResponse {
+  readonly body: AdvisoryBody | null;
+  readonly headers: Pick<Headers, "get">;
+  readonly ok: boolean;
+  readonly status: number;
+  readonly url: string;
 }
 
 /** npm audit report with retracted advisories removed. */
@@ -145,6 +167,12 @@ export interface WithdrawnAdvisoryFilterResult<TReport> {
   readonly report: TReport;
   /** Advisory identifiers retracted by the GitHub Advisory Database. */
   readonly withdrawn: readonly string[];
+}
+
+/** Advisory record fields consumed for withdrawal detection. */
+interface AdvisoryDatabaseRecord {
+  readonly ghsa_id?: unknown;
+  readonly withdrawn_at?: unknown;
 }
 
 /**
@@ -163,27 +191,33 @@ export function checkAuditProcessResult(
 }
 
 /**
- * Remove advisories that the GitHub Advisory Database retracted after npm audit cached them.
+ * Remove advisory references that the GitHub Advisory Database marks as withdrawn.
  *
  * npm audit data originates from the same advisory database, so a withdrawn advisory is a
  * retraction of the finding rather than an accepted risk. Lookup failures never weaken the gate.
+ * The report shape is validated before any reference is removed, so a retraction can never mask
+ * a malformed report. A record keeps npm's reported severity while its remaining causes are only
+ * transitive references, whose severities the report does not restate.
  * @param reportValue - Parsed npm audit JSON
  * @param fetchImplementation - Fetch implementation used for advisory lookups
  * @param authorization - Optional GitHub API bearer token
+ * @param signal - Optional lookup deadline signal; defaults to one timeout per advisory
  * @returns Filtered report and every withdrawn advisory identifier it dropped
  */
 export async function filterWithdrawnAdvisories<TReport>(
   reportValue: TReport,
-  fetchImplementation: typeof fetch = globalThis.fetch,
+  fetchImplementation: AdvisoryFetch = globalThis.fetch,
   authorization: string | undefined = process.env.GITHUB_TOKEN,
+  signal?: AbortSignal,
 ): Promise<WithdrawnAdvisoryFilterResult<TReport>> {
+  validateAuditReportShape(reportValue);
   const unknownIds = collectAdvisoryIds(reportValue).filter(
     (id) => allowedAdvisories[id] === undefined,
   );
   const withdrawn: string[] = [];
   for (const id of unknownIds) {
-    const record = await fetchAdvisoryRecord(id, fetchImplementation, authorization);
-    if (typeof record.withdrawn_at === "string") {
+    const record = await fetchAdvisoryRecord(id, fetchImplementation, authorization, signal);
+    if (record.withdrawn_at !== undefined && record.withdrawn_at !== null) {
       withdrawn.push(id);
     }
   }
@@ -229,35 +263,6 @@ export function getNpmAuditInvocation(
 }
 
 /**
- * Validate the npm audit process result and parse its JSON report.
- * @param audit - Completed npm process result
- * @returns Parsed npm audit report value
- */
-export function parseAuditProcessResult(audit: AuditProcessResult): unknown {
-  if (audit.error) {
-    throw new Error(`Unable to run npm audit: ${audit.error.message}`);
-  }
-  if (audit.signal !== null) {
-    throw new Error(`npm audit terminated by signal ${audit.signal}`);
-  }
-  if (audit.status !== 0) {
-    const diagnostic = audit.stderr.trim();
-    throw new Error(
-      `npm audit exited with status ${String(audit.status ?? "unknown")}${diagnostic ? `: ${diagnostic}` : ""}`,
-    );
-  }
-
-  let reportValue: unknown;
-  try {
-    reportValue = JSON.parse(audit.stdout) as unknown;
-  } catch {
-    const diagnostic = audit.stderr.trim();
-    throw new Error(`npm audit did not return valid JSON${diagnostic ? `: ${diagnostic}` : ""}`);
-  }
-  return reportValue;
-}
-
-/**
  * Validate parsed npm audit and lockfile values against the exception policy.
  * @param reportValue - Parsed npm audit JSON
  * @param lockValue - Parsed package-lock.json
@@ -269,16 +274,12 @@ export function validateDependencyAudit(
   lockValue: unknown,
   today: string,
 ): ValidatedAdvisory[] {
-  const reportResult = auditReportSchema.safeParse(reportValue);
-  if (!reportResult.success) {
-    throw new Error("npm audit did not return a valid vulnerability report");
-  }
+  const report = validateAuditReportShape(reportValue);
   const lockResult = packageLockSchema.safeParse(lockValue);
   if (!lockResult.success) {
     throw new Error("package-lock.json is not a valid v3 packages map");
   }
 
-  const report = reportResult.data;
   const graph = buildDependencyGraph(lockResult.data);
   const foundIds = new Set<string>();
   const validated: ValidatedAdvisory[] = [];
@@ -310,6 +311,15 @@ export function validateDependencyAudit(
 }
 
 /**
+ * Extract the advisory identifier from a canonical GitHub advisory URL.
+ * @param url - Advisory URL from npm audit
+ * @returns GitHub Security Advisory ID, when the URL is canonical
+ */
+function advisoryIdFromUrl(url: string): null | string {
+  return ADVISORY_URL_PATTERN.exec(url)?.[1] ?? null;
+}
+
+/**
  * Resolve the advisory identifier referenced by one npm audit `via` entry.
  * @param entry - One entry of a vulnerability `via` array
  * @returns Advisory identifier, when the entry references a GitHub Security Advisory
@@ -319,10 +329,7 @@ function advisoryIdFromVia(entry: unknown): null | string {
     return null;
   }
   const url = (entry as { url?: unknown }).url;
-  if (typeof url !== "string") {
-    return null;
-  }
-  return ADVISORY_URL_PATTERN.exec(url)?.[1] ?? null;
+  return typeof url === "string" ? advisoryIdFromUrl(url) : null;
 }
 
 /**
@@ -418,16 +425,15 @@ function collectAdvisoryIds(reportValue: unknown): string[] {
  * @param id - GitHub Security Advisory identifier
  * @param fetchImplementation - Fetch implementation used for the request
  * @param authorization - Optional GitHub API bearer token
+ * @param signal - Optional deadline signal shared across lookups
  * @returns Validated advisory record
  */
 async function fetchAdvisoryRecord(
   id: string,
-  fetchImplementation: typeof fetch,
+  fetchImplementation: AdvisoryFetch,
   authorization: string | undefined,
+  signal?: AbortSignal,
 ): Promise<AdvisoryDatabaseRecord> {
-  if (!ADVISORY_ID_PATTERN.test(id)) {
-    throw new Error(`Invalid GitHub Security Advisory identifier: ${id}`);
-  }
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
     "user-agent": "sap-ai-provider-dependency-audit",
@@ -436,13 +442,17 @@ async function fetchAdvisoryRecord(
     headers.authorization = `Bearer ${authorization}`;
   }
 
-  let response: Awaited<ReturnType<typeof fetch>>;
+  const deadline = signal ?? AbortSignal.timeout(ADVISORY_TIMEOUT_MS);
+  let response: AdvisoryResponse;
   try {
-    response = await fetchImplementation(`${GHSA_ADVISORY_API_BASE}${id}`, {
-      headers,
-      redirect: "error",
-      signal: AbortSignal.timeout(ADVISORY_TIMEOUT_MS),
-    });
+    response = await raceWithAbort(
+      fetchImplementation(`${GHSA_ADVISORY_API_BASE}${id}`, {
+        headers,
+        redirect: "error",
+        signal: deadline,
+      }),
+      deadline,
+    );
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`Unable to fetch GitHub advisory ${id}: ${reason}`, { cause: error });
@@ -454,7 +464,7 @@ async function fetchAdvisoryRecord(
     throw new Error(`GitHub advisory ${id} returned an unexpected response origin`);
   }
 
-  const text = await readAdvisoryText(response, id);
+  const text = await readAdvisoryText(response, id, deadline);
   const record: unknown = (() => {
     try {
       return JSON.parse(text) as unknown;
@@ -469,10 +479,11 @@ async function fetchAdvisoryRecord(
   if (typeof advisory.ghsa_id !== "string" || advisory.ghsa_id.toLowerCase() !== id.toLowerCase()) {
     throw new Error(`GitHub advisory ${id} returned a mismatched identifier`);
   }
+  const { withdrawn_at: withdrawnAt } = advisory;
   if (
-    advisory.withdrawn_at !== undefined &&
-    advisory.withdrawn_at !== null &&
-    typeof advisory.withdrawn_at !== "string"
+    withdrawnAt !== undefined &&
+    withdrawnAt !== null &&
+    (typeof withdrawnAt !== "string" || Number.isNaN(Date.parse(withdrawnAt)))
   ) {
     throw new Error(`GitHub advisory ${id} has an invalid withdrawn_at value`);
   }
@@ -549,6 +560,26 @@ function inferLockPackageName(path: string, entry: LockPackage): string | undefi
   return name === "" ? undefined : name;
 }
 
+/**
+ * Check whether one vulnerability cause references a withdrawn advisory.
+ *
+ * A reference is only dropped once it parses as an advisory, so removal can never mask a
+ * malformed report.
+ * @param entry - One entry of a vulnerability's `via` array
+ * @param withdrawnIds - Withdrawn advisory identifiers
+ * @returns Whether the entry references a withdrawn advisory
+ */
+function isWithdrawnReference(entry: unknown, withdrawnIds: ReadonlySet<string>): boolean {
+  const id = advisoryIdFromVia(entry);
+  if (id === null || !withdrawnIds.has(id)) {
+    return false;
+  }
+  if (!auditAdvisorySchema.safeParse(entry).success) {
+    throw new Error(`${id} advisory reference is malformed`);
+  }
+  return true;
+}
+
 /** Run the dependency audit command-line checker. */
 async function main(): Promise<void> {
   const invocation = getNpmAuditInvocation();
@@ -580,6 +611,19 @@ async function main(): Promise<void> {
 }
 
 /**
+ * Most severe npm audit severity among the given values, where unknown values rank lowest.
+ * @param severities - Non-empty severity values
+ * @returns Highest ranked severity
+ */
+function maximumAuditSeverity(severities: readonly string[]): string {
+  const rank = (severity: string): number =>
+    AUDIT_SEVERITY_ORDER.indexOf(severity as (typeof AUDIT_SEVERITY_ORDER)[number]);
+  return severities.reduce((highest, severity) =>
+    rank(severity) > rank(highest) ? severity : highest,
+  );
+}
+
+/**
  * Return the containing package-instance path for one exact lockfile path.
  * @param path - Package instance path, or the root path
  * @returns Containing package path, or undefined above the root
@@ -597,35 +641,108 @@ function parentInstancePath(path: string): string | undefined {
  * @returns GitHub Security Advisory ID
  */
 function parseAdvisoryId(url: string): string {
-  const match = ADVISORY_URL_PATTERN.exec(url);
-  const id = match?.[1];
-  if (!id) throw new Error(`Invalid GitHub advisory URL: ${url}`);
+  const id = advisoryIdFromUrl(url);
+  if (id === null) throw new Error(`Invalid GitHub advisory URL: ${url}`);
   return id;
 }
 
 /**
- * Read one advisory response with a bounded body.
+ * Validate the npm audit process result and parse its JSON report.
+ * @param audit - Completed npm process result
+ * @returns Parsed npm audit report value
+ */
+function parseAuditProcessResult(audit: AuditProcessResult): unknown {
+  if (audit.error) {
+    throw new Error(`Unable to run npm audit: ${audit.error.message}`);
+  }
+  if (audit.signal !== null) {
+    throw new Error(`npm audit terminated by signal ${audit.signal}`);
+  }
+  if (audit.status !== 0) {
+    const diagnostic = audit.stderr.trim();
+    throw new Error(
+      `npm audit exited with status ${String(audit.status ?? "unknown")}${diagnostic ? `: ${diagnostic}` : ""}`,
+    );
+  }
+
+  let reportValue: unknown;
+  try {
+    reportValue = JSON.parse(audit.stdout) as unknown;
+  } catch {
+    const diagnostic = audit.stderr.trim();
+    throw new Error(`npm audit did not return valid JSON${diagnostic ? `: ${diagnostic}` : ""}`);
+  }
+  return reportValue;
+}
+
+/**
+ * Read one advisory response body with an abort-raced, byte-bounded stream.
  * @param response - Fetched advisory response
  * @param id - GitHub Security Advisory identifier
+ * @param signal - Deadline signal shared with the request
  * @returns Response body text
  */
 async function readAdvisoryText(
-  response: Awaited<ReturnType<typeof fetch>>,
+  response: AdvisoryResponse,
   id: string,
+  signal: AbortSignal,
 ): Promise<string> {
-  const declaredLength = Number(response.headers.get("content-length") ?? Number.NaN);
+  const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAXIMUM_ADVISORY_BYTES) {
-    throw new Error(`GitHub advisory ${id} exceeds ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
+    void response.body?.cancel().catch(() => undefined);
+    throw new Error(
+      `GitHub advisory ${id} declared a response body larger than ${String(MAXIMUM_ADVISORY_BYTES)} bytes`,
+    );
   }
-  const text = await response.text();
-  if (text.length > MAXIMUM_ADVISORY_BYTES) {
-    throw new Error(`GitHub advisory ${id} exceeds ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
+  if (!response.body) {
+    throw new Error(`GitHub advisory ${id} did not provide a response body`);
   }
-  return text;
+
+  const reader = response.body.getReader();
+  const discardBody = (): void => {
+    void reader.cancel().catch(() => undefined);
+  };
+  const decoder = new TextDecoder();
+  const fragments: string[] = [];
+  let bytesRead = 0;
+  let bodyComplete = false;
+  try {
+    for (;;) {
+      let result: { done: boolean; value?: Uint8Array | undefined };
+      try {
+        result = await raceWithAbort(reader.read(), signal);
+      } catch (error) {
+        discardBody();
+        throw new Error(`Unable to read GitHub advisory ${id} response body`, { cause: error });
+      }
+      const chunk = result.value;
+      if (result.done || chunk === undefined) {
+        bodyComplete = true;
+        break;
+      }
+      if (chunk.byteLength > MAXIMUM_ADVISORY_BYTES - bytesRead) {
+        discardBody();
+        throw new Error(
+          `GitHub advisory ${id} response body exceeded ${String(MAXIMUM_ADVISORY_BYTES)} bytes`,
+        );
+      }
+      bytesRead += chunk.byteLength;
+      fragments.push(decoder.decode(chunk, { stream: true }));
+    }
+    fragments.push(decoder.decode());
+  } finally {
+    if (bodyComplete) reader.releaseLock();
+  }
+
+  return fragments.join("");
 }
 
 /**
  * Drop advisory references that the GitHub Advisory Database marks as withdrawn.
+ *
+ * A record whose only advisory reference is withdrawn is dropped entirely. A record that keeps
+ * advisory references reports the most severe retained one, because npm derives that severity
+ * from the same advisories. Records left with only transitive references keep npm's severity.
  * @param reportValue - Parsed npm audit JSON
  * @param withdrawnIds - Withdrawn advisory identifiers
  * @returns Report copy without those advisory references
@@ -645,17 +762,29 @@ function removeAdvisoryReferences<TReport>(
     if (!vulnerability || typeof vulnerability !== "object") {
       throw new Error(`npm audit vulnerability ${name} is malformed`);
     }
-    const via = (vulnerability as { via?: unknown }).via;
+    const record = vulnerability as Record<string, unknown>;
+    const via = record.via;
     if (!Array.isArray(via)) {
       retained[name] = vulnerability;
       continue;
     }
+    if (!via.some((entry) => isWithdrawnReference(entry, withdrawnIds))) {
+      retained[name] = vulnerability;
+      continue;
+    }
+    const retainedVia = via.filter((entry) => !isWithdrawnReference(entry, withdrawnIds));
+    const severities = retainedVia
+      .map((entry) =>
+        entry && typeof entry === "object" ? (entry as { severity?: unknown }).severity : undefined,
+      )
+      .filter((severity): severity is string => typeof severity === "string");
+    if (severities.length === 0 && !retainedVia.some((entry) => typeof entry === "string")) {
+      continue;
+    }
     retained[name] = {
-      ...vulnerability,
-      via: via.filter((entry) => {
-        const id = advisoryIdFromVia(entry);
-        return id === null || !withdrawnIds.has(id);
-      }),
+      ...record,
+      severity: severities.length === 0 ? record.severity : maximumAuditSeverity(severities),
+      via: retainedVia,
     };
   }
 
@@ -782,6 +911,19 @@ function validateAuditMetaEdge(
   ) {
     throw new Error(`${id} audit via for ${parentName} does not include ${childName}`);
   }
+}
+
+/**
+ * Validate the shape npm audit reports before any advisory reference is removed.
+ * @param reportValue - Parsed npm audit JSON
+ * @returns Structurally valid npm audit report
+ */
+function validateAuditReportShape(reportValue: unknown): AuditReport {
+  const reportResult = auditReportSchema.safeParse(reportValue);
+  if (!reportResult.success) {
+    throw new Error("npm audit did not return a valid vulnerability report");
+  }
+  return reportResult.data;
 }
 
 /**
