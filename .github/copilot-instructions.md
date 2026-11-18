@@ -73,15 +73,14 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   reference before policy validation, so a retraction needs no exception, while a response
   without that timestamp keeps the advisory in the gate. It validates the vulnerability
   records it consumes first, so a retraction can never mask a malformed report. A
-  vulnerability whose only advisory cause is withdrawn is dropped; one whose remaining causes
-  are all advisories reports the most severe retained one; one that keeps a transitive cause
-  keeps npm's severity. Lookup failures fail closed: transport errors, redirects, non-2xx
-  responses, an unexpected response origin, invalid JSON, a mismatched `ghsa_id`, an
-  unparseable `withdrawn_at`, and a missing, stalled, or oversized body. A deleted advisory
-  (HTTP 404) also stops the gate. CI runs it in the
-  step `Check dependency vulnerabilities` of `.github/workflows/check-pr.yaml` and of
-  `.github/workflows/npm-publish-packages.yml`, and supplies `GITHUB_TOKEN` for the advisory
-  API rate limit.
+  vulnerability whose causes are all withdrawn advisories disappears; one left with advisory
+  causes only reports the most severe retained one; one that keeps a transitive cause keeps
+  npm's severity. Lookup failures fail closed: transport errors, redirects, non-2xx
+  responses including a deleted advisory (HTTP 404), an unexpected response origin, invalid
+  JSON, a mismatched `ghsa_id`, an unparseable `withdrawn_at`, and a missing, stalled, or
+  oversized body. CI runs it in the step `Check dependency vulnerabilities`
+  of `.github/workflows/check-pr.yaml` and of `.github/workflows/npm-publish-packages.yml`,
+  and supplies `GITHUB_TOKEN` for the advisory API rate limit.
   Temporary exceptions start only from npm audit's exact nodes in the lockfile-v3
   package-instance graph, using Node ancestor resolution semantics. Validation covers
   every edge up to the directly declared root anchor and the identity coherence of
@@ -89,7 +88,9 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   recursively treated as new provenance. Scope, severity, directness, and audit
   `effects`/`via` meta-links are also checked. npm 11 `fixAvailable` is validated as
   exactly `false`, `true`, or a strict named-version object; only literal `true`
-  invalidates an allowlisted root vulnerability.
+  invalidates an allowlisted root vulnerability. An exception is enforced while it is used:
+  an entry whose advisory the report no longer contains, an entry whose expiry has passed,
+  and an expiry that is not a real `YYYY-MM-DD` calendar day all stop the gate.
 - npm `min-release-age` filters resolution only; `npm ci` installs an existing
   lockfile verbatim. Policy is exactly 3 days against `https://registry.npmjs.org/`.
   The checker fetches raw canonical packuments directly, without redirects, caching
@@ -313,9 +314,9 @@ All commands should pass; execution time depends on the environment.
 ### CI/CD Pipeline
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
-- **CI checks**: candidate dependency-free gates run before installs in validation and autofix; the separate `pull_request_target`/`push` trusted workflow never checks out or executes PR head code and publishes its dedicated status context on the exact PR head; after validation passes, complete-scope dependency audit, type-check, Node/Edge tests, and builds run on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
+- **CI checks**: candidate dependency-free gates run before installs in validation and autofix; the separate `pull_request_target`/`push` trusted workflow never checks out or executes PR head code and publishes its dedicated status context on the exact PR head; the candidate lockfile attestation job runs first, then the `validation` job installs and runs the complete-scope dependency audit, type-check, Node/Edge tests, and builds on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
 - **Build coverage**: portable artifact checks validate the main V3/V2/V4 build and the standalone V2 build on every OS; the main build also validates ESM/CommonJS declaration routing
-- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful exact-SHA `push` run of the dedicated trusted lockfile workflow, re-runs the checker, then publishes both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful exact-SHA `push` run of the dedicated trusted lockfile workflow; its `build` job re-runs the release-age checker and the complete-scope dependency audit, and both publish jobs require that job, then publish both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
 - **Runtime coverage**: Node and Edge suites run sequentially within each OS job; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies

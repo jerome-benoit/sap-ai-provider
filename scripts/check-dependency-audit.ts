@@ -1,6 +1,6 @@
 /** Validates npm audit output against narrowly scoped, expiring exceptions. */
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -130,6 +130,8 @@ const ADVISORY_TIMEOUT_MS = 10_000;
 export const MAXIMUM_ADVISORY_BYTES = 1024 * 1024;
 const ADVISORY_URL_PATTERN =
   /^https:\/\/github\.com\/advisories\/(GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4})$/;
+/** Exception expiry date form compared against the current UTC date. */
+const ADVISORY_EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /** npm vulnerability severities ordered from least to most severe. */
 const AUDIT_SEVERITY_ORDER = ["info", "low", "moderate", "high", "critical"] as const;
 
@@ -159,6 +161,25 @@ export interface AdvisoryResponse {
   readonly ok: boolean;
   readonly status: number;
   readonly url: string;
+}
+
+/** Inputs one dependency audit run consumes. */
+export interface DependencyAuditRun {
+  /** Completed `npm audit --json` process result. */
+  audit: AuditProcessResult;
+  /** Bearer token for the GitHub Advisory Database, when supplied. */
+  authorization?: string | undefined;
+  /** Advisory database fetch implementation. */
+  fetchImplementation?: AdvisoryFetch;
+  /** Parsed `package-lock.json` value. */
+  lockValue: unknown;
+  /** Diagnostic sink for ignored and allowed advisories. */
+  log?: (line: string) => void;
+  /**
+   * Current date in `YYYY-MM-DD` form. Defaults to the UTC date read just before the exception
+   * policy runs, so advisory lookups cannot straddle midnight.
+   */
+  today?: string;
 }
 
 /** npm audit report with retracted advisories removed. */
@@ -265,6 +286,41 @@ export function getNpmAuditInvocation(
 }
 
 /**
+ * Apply the withdrawal filter and the exception policy to one audit run.
+ * @param config - Audit process result, lockfile, date, and injected dependencies
+ * @returns Every validated advisory exception occurrence
+ */
+export async function runDependencyAudit(config: DependencyAuditRun): Promise<ValidatedAdvisory[]> {
+  const {
+    audit,
+    authorization,
+    fetchImplementation,
+    lockValue,
+    log = (line: string) => {
+      console.log(line);
+    },
+    today,
+  } = config;
+  const { report, withdrawn } = await filterWithdrawnAdvisories(
+    parseAuditProcessResult(audit),
+    fetchImplementation,
+    authorization,
+  );
+  for (const id of withdrawn) {
+    log(`Withdrawn advisory ignored: ${id}`);
+  }
+  const validated = validateDependencyAudit(
+    report,
+    lockValue,
+    today ?? new Date().toISOString().slice(0, 10),
+  );
+  for (const { id, policy } of validated) {
+    log(`Allowed until ${policy.expires}: ${id} (${policy.severity}) - ${policy.reason}`);
+  }
+  return validated;
+}
+
+/**
  * Validate parsed npm audit and lockfile values against the exception policy.
  * @param reportValue - Parsed npm audit JSON
  * @param lockValue - Parsed package-lock.json
@@ -277,6 +333,7 @@ export function validateDependencyAudit(
   today: string,
 ): ValidatedAdvisory[] {
   const report = validateAuditReportShape(reportValue);
+  rejectUnassignableLockNames(lockValue);
   const lockResult = packageLockSchema.safeParse(lockValue);
   if (!lockResult.success) {
     throw new Error("package-lock.json is not a valid v3 packages map");
@@ -513,12 +570,18 @@ function findAuditVulnerability(
 
 /**
  * Resolve one advisory policy without weakening indexed-access checks.
+ *
+ * The expiry is compared as text against the current UTC date, so a malformed value could stay
+ * unexpired instead of failing; it is rejected instead.
  * @param id - GitHub Security Advisory ID
  * @returns Structured temporary exception
  */
 function getAllowedAdvisory(id: string): AllowedAdvisory {
   const policy = allowedAdvisories[id];
   if (!policy) throw new Error(`Unexpected dependency advisory: ${id}`);
+  if (!isCalendarDate(policy.expires)) {
+    throw new Error(`${id} exception expiry must be a YYYY-MM-DD date`);
+  }
   return policy;
 }
 
@@ -563,6 +626,47 @@ function inferLockPackageName(path: string, entry: LockPackage): string | undefi
 }
 
 /**
+ * Check that a value names a real calendar day in `YYYY-MM-DD` form.
+ *
+ * `Date.parse` accepts impossible days, so the components are checked against a built date.
+ * @param value - Candidate date string
+ * @returns Whether the value is a real `YYYY-MM-DD` date
+ */
+function isCalendarDate(value: string): boolean {
+  if (!ADVISORY_EXPIRY_PATTERN.test(value)) return false;
+  const [year, month, day] = value.split("-").map((part) => Number(part)) as [
+    number,
+    number,
+    number,
+  ];
+  const date = new Date(Date.UTC(1970, 0, 1));
+  // `Date.UTC` would rebase years below 100, so the full year is set explicitly.
+  date.setUTCFullYear(year, month - 1, day);
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+/**
+ * Check whether this module is the invoked command-line entry point.
+ *
+ * A symlinked entry keeps the link in `process.argv[1]` while `import.meta.url` reports the real
+ * file, so the comparison falls back to realpaths instead of silently skipping the gate.
+ * @returns Whether this module should run as a command
+ */
+function isCommandLineEntry(): boolean {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  const self = fileURLToPath(import.meta.url);
+  if (resolve(invoked) === self) return true;
+  try {
+    return realpathSync(resolve(invoked)) === realpathSync(self);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check whether one vulnerability cause references a withdrawn advisory.
  *
  * A reference is only dropped once it parses as an advisory, so removal can never mask a
@@ -587,29 +691,25 @@ async function main(): Promise<void> {
   const invocation = getNpmAuditInvocation();
   const audit = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
-    env: process.env,
+    // The advisory token belongs to this process only; `npm audit` never needs it.
+    // Some platforms resolve environment names case-insensitively, so drop every spelling.
+    env: Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => name.toUpperCase() !== "GITHUB_TOKEN"),
+    ),
+    // Node's 1 MiB default would truncate a large audit report into an ENOBUFS failure.
+    maxBuffer: 64 * 1024 * 1024,
   });
   const lockValue = JSON.parse(readFileSync("package-lock.json", "utf8")) as unknown;
-  const { report, withdrawn } = await filterWithdrawnAdvisories(
-    parseAuditProcessResult({
+  await runDependencyAudit({
+    audit: {
       error: audit.error,
       signal: audit.signal,
       status: audit.status,
       stderr: audit.stderr,
       stdout: audit.stdout,
-    }),
-  );
-  for (const id of withdrawn) {
-    console.log(`Withdrawn advisory ignored: ${id}`);
-  }
-  const validated = validateDependencyAudit(
-    report,
+    },
     lockValue,
-    new Date().toISOString().slice(0, 10),
-  );
-  for (const { id, policy } of validated) {
-    console.log(`Allowed until ${policy.expires}: ${id} (${policy.severity}) - ${policy.reason}`);
-  }
+  });
 }
 
 /**
@@ -737,6 +837,41 @@ async function readAdvisoryText(
   }
 
   return fragments.join("");
+}
+
+/**
+ * Reject map keys that assignment-based parsing would silently drop.
+ *
+ * `JSON.parse` reports a literal `__proto__` key as an own property, while object assignment would
+ * set the prototype instead of the record, hiding the record from validation.
+ * @param map - Parsed record keyed by package, instance, or dependency name
+ * @param description - Human-readable map description for the error message
+ */
+function rejectUnassignableKeys(map: unknown, description: string): void {
+  if (map && typeof map === "object" && Object.hasOwn(map, "__proto__")) {
+    throw new Error(`${description} contains the unusable record name __proto__`);
+  }
+}
+
+/**
+ * Reject prototype-special names in every lockfile map this checker consumes.
+ *
+ * Schema parsing assigns keys, so a `__proto__` entry would vanish instead of being checked, and an
+ * ignored dependency declaration could hide an approving route.
+ * @param lockValue - Parsed `package-lock.json` value
+ */
+function rejectUnassignableLockNames(lockValue: unknown): void {
+  const packages = (lockValue as null | { packages?: Record<string, unknown> })?.packages;
+  if (!packages || typeof packages !== "object") return;
+  rejectUnassignableKeys(packages, "package-lock.json package map");
+  for (const [path, raw] of Object.entries(packages)) {
+    for (const field of DEPENDENCY_FIELDS) {
+      rejectUnassignableKeys(
+        (raw as null | Record<string, unknown>)?.[field],
+        `package-lock.json dependency map of ${path === "" ? "<root>" : path}`,
+      );
+    }
+  }
 }
 
 /**
@@ -926,6 +1061,10 @@ function validateAuditMetaEdge(
  * @returns Structurally valid npm audit report
  */
 function validateAuditReportShape(reportValue: unknown): AuditReport {
+  rejectUnassignableKeys(
+    (reportValue as null | { vulnerabilities?: unknown })?.vulnerabilities,
+    "npm audit vulnerability report",
+  );
   const reportResult = auditReportSchema.safeParse(reportValue);
   if (!reportResult.success) {
     throw new Error("npm audit did not return a valid vulnerability report");
@@ -1052,7 +1191,7 @@ function validateIncomingRoutes(
   memo.add(memoKey);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (isCommandLineEntry()) {
   try {
     await main();
   } catch (error) {

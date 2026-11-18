@@ -1,6 +1,16 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AdvisoryFetch, AdvisoryResponse, AuditProcessResult } from "./check-dependency-audit";
+import type {
+  AdvisoryFetch,
+  AdvisoryResponse,
+  AllowedAdvisory,
+  AuditProcessResult,
+} from "./check-dependency-audit";
 
 import {
   allowedAdvisories,
@@ -8,6 +18,7 @@ import {
   filterWithdrawnAdvisories,
   getNpmAuditInvocation,
   MAXIMUM_ADVISORY_BYTES,
+  runDependencyAudit,
   validateDependencyAudit,
 } from "./check-dependency-audit";
 
@@ -21,8 +32,10 @@ const KEPT_ADVISORY = "GHSA-kept-0000-0000";
 
 const CRITICAL_ADVISORY = "GHSA-crit-0000-0000";
 
+const LOW_ADVISORY = "GHSA-low0-0000-0000";
+
 afterEach(() => {
-  for (const id of [TEST_ADVISORY, WITHDRAWN_ADVISORY, KEPT_ADVISORY, CRITICAL_ADVISORY]) {
+  for (const id of Object.keys(allowedAdvisories)) {
     Reflect.deleteProperty(allowedAdvisories, id);
   }
 });
@@ -71,17 +84,7 @@ function fixtures(): {
   lock: { lockfileVersion: 3; packages: Record<string, LockEntry> };
   report: ReportFixture;
 } {
-  Object.assign(allowedAdvisories, {
-    [TEST_ADVISORY]: {
-      dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
-      direct: false,
-      expires: "2026-11-08",
-      packageName: "node-forge",
-      reason: "Synthetic test exception.",
-      scope: "runtime",
-      severity: "high",
-    },
-  });
+  Object.assign(allowedAdvisories, { [TEST_ADVISORY]: testPolicy() });
   return {
     lock: {
       lockfileVersion: 3,
@@ -181,6 +184,22 @@ function requireVulnerability(
   const vulnerability = vulnerabilities[name];
   if (!vulnerability) throw new Error(`Missing test vulnerability ${name}`);
   return vulnerability;
+}
+
+/**
+ * Build the exception fixture for the advisory that report fixtures reference.
+ * @returns Temporary exception contract
+ */
+function testPolicy(): AllowedAdvisory {
+  return {
+    dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
+    direct: false,
+    expires: "2026-11-08",
+    packageName: "node-forge",
+    reason: "Synthetic test exception.",
+    scope: "runtime",
+    severity: "high",
+  };
 }
 
 describe("production advisory policy", () => {
@@ -633,8 +652,8 @@ describe("npm audit process contract", () => {
 interface AdvisoryStub {
   /** JSON body or raw text body. */
   body?: unknown;
-  /** Raw UTF-8 body chunks, used to exercise the byte bound. */
-  chunks?: readonly string[];
+  /** Raw response body chunks, used to exercise the byte bound and decoding. */
+  chunks?: readonly (readonly number[] | string)[];
   /** Advertised `content-length` header value. */
   contentLength?: string;
   /** Resolve the response, then never deliver a body chunk or honor the signal. */
@@ -642,30 +661,37 @@ interface AdvisoryStub {
   /** Answer without a response body. */
   noBody?: boolean;
   ok?: boolean;
+  /** Answer without a `content-length` header. */
+  omitContentLength?: boolean;
   /** Hook invoked when a hanging read is first requested. */
   onHang?: () => void;
   /** Observe response body lifecycle events. */
-  record?: (event: "body-cancel" | "get-reader" | "reader-cancel") => void;
+  record?: (event: "body-cancel" | "get-reader" | "reader-cancel" | "release-lock") => void;
   status?: number;
+  /** Reported request origin, used to exercise the origin check. */
+  url?: string;
 }
 
 /**
  * Build a fetch stub for the GitHub Advisory Database.
  * @param responses - Canned response per advisory identifier
- * @returns Request log and fetch implementation
+ * @returns Request log, request options log, and fetch implementation
  */
 function advisoryFetch(responses: Record<string, AdvisoryStub>): {
   calls: string[];
   fetch: AdvisoryFetch;
+  inits: { headers: Record<string, string>; redirect: "error"; signal: AbortSignal }[];
 } {
   const calls: string[] = [];
-  const fetch: AdvisoryFetch = (input) => {
+  const inits: { headers: Record<string, string>; redirect: "error"; signal: AbortSignal }[] = [];
+  const fetch: AdvisoryFetch = (input, init) => {
     calls.push(input);
+    inits.push(init);
     const id = input.slice("https://api.github.com/advisories/".length);
     const stub = responses[id] ?? { ok: false, status: 404 };
     return Promise.resolve(advisoryResponse(id, stub));
   };
-  return { calls, fetch };
+  return { calls, fetch, inits };
 }
 
 /**
@@ -676,8 +702,10 @@ function advisoryFetch(responses: Record<string, AdvisoryStub>): {
  */
 function advisoryResponse(id: string, stub: AdvisoryStub): AdvisoryResponse {
   const encoder = new TextEncoder();
-  const body = typeof stub.body === "string" ? stub.body : JSON.stringify(stub.body);
-  const chunks = (stub.chunks ?? [body]).map((chunk) => encoder.encode(chunk));
+  const body = typeof stub.body === "string" ? stub.body : JSON.stringify(stub.body ?? {});
+  const chunks = (stub.chunks ?? [body]).map((chunk) =>
+    typeof chunk === "string" ? encoder.encode(chunk) : Uint8Array.from(chunk),
+  );
   const declaredBytes = encoder.encode(body).byteLength;
   let next = 0;
   const read = stub.hang
@@ -708,19 +736,21 @@ function advisoryResponse(id: string, stub: AdvisoryStub): AdvisoryResponse {
                 return Promise.resolve();
               },
               read,
-              releaseLock: () => undefined,
+              releaseLock: () => {
+                stub.record?.("release-lock");
+              },
             };
           },
         },
     headers: {
       get: (name: string) =>
-        name.toLowerCase() === "content-length"
+        name.toLowerCase() === "content-length" && stub.omitContentLength !== true
           ? (stub.contentLength ?? String(declaredBytes))
           : null,
     },
     ok: stub.ok ?? true,
     status: stub.status ?? 200,
-    url: `https://api.github.com/advisories/${id}`,
+    url: stub.url ?? `https://api.github.com/advisories/${id}`,
   };
 }
 
@@ -799,7 +829,7 @@ describe("withdrawn advisory filtering", () => {
       cause(WITHDRAWN_ADVISORY, "high"),
       cause(KEPT_ADVISORY, "moderate"),
     ]);
-    const { fetch } = advisoryFetch({
+    const { calls, fetch } = advisoryFetch({
       [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
       [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
     });
@@ -811,33 +841,80 @@ describe("withdrawn advisory filtering", () => {
       TODAY,
     );
 
+    expect(calls).toEqual([`https://api.github.com/advisories/${WITHDRAWN_ADVISORY}`]);
     expect(filtered.withdrawn).toEqual([WITHDRAWN_ADVISORY]);
-    expect(requireVulnerability(filtered.report.vulnerabilities, "node-forge").severity).toBe(
-      "moderate",
-    );
-    expect(validated).toHaveLength(1);
-    expect(validated[0]?.id).toBe(KEPT_ADVISORY);
+    const retained = requireVulnerability(filtered.report.vulnerabilities, "node-forge");
+    expect(retained.severity).toBe("moderate");
+    expect(retained.via).toEqual([cause(KEPT_ADVISORY, "moderate")]);
+    expect(validated).toEqual([
+      {
+        id: KEPT_ADVISORY,
+        policy: {
+          dependencyPaths: [["@sap-cloud-sdk/connectivity", "jks-js", "node-forge"]],
+          direct: false,
+          expires: "2026-11-08",
+          packageName: "node-forge",
+          reason: "Synthetic test exception.",
+          scope: "runtime",
+          severity: "moderate",
+        },
+      },
+    ]);
   });
 
   it("reports the most severe advisory among several retained causes", async () => {
     const { report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    requireVulnerability(report.vulnerabilities, "node-forge").severity = "high";
     setCauses(report, "node-forge", [
       cause(WITHDRAWN_ADVISORY, "low"),
       cause(KEPT_ADVISORY, "moderate"),
       cause(CRITICAL_ADVISORY, "critical"),
+      cause(LOW_ADVISORY, "low"),
     ]);
-    const { fetch } = advisoryFetch({
+    const { calls, fetch } = advisoryFetch({
       [CRITICAL_ADVISORY]: { body: { ghsa_id: CRITICAL_ADVISORY, withdrawn_at: null } },
       [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+      [LOW_ADVISORY]: { body: { ghsa_id: LOW_ADVISORY, withdrawn_at: null } },
       [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
     });
 
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
 
+    expect(calls).toEqual([
+      `https://api.github.com/advisories/${WITHDRAWN_ADVISORY}`,
+      `https://api.github.com/advisories/${KEPT_ADVISORY}`,
+      `https://api.github.com/advisories/${CRITICAL_ADVISORY}`,
+      `https://api.github.com/advisories/${LOW_ADVISORY}`,
+    ]);
     expect(requireVulnerability(filtered.report.vulnerabilities, "node-forge").severity).toBe(
       "critical",
     );
+  });
+
+  it("keeps npm severity when a transitive cause and an advisory remain", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    requireVulnerability(report.vulnerabilities, "node-forge").severity = "critical";
+    setCauses(report, "node-forge", [
+      cause(WITHDRAWN_ADVISORY, "low"),
+      cause(KEPT_ADVISORY, "moderate"),
+      "nested-dep",
+    ]);
+    const { calls, fetch } = advisoryFetch({
+      [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+      [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+    const retained = requireVulnerability(filtered.report.vulnerabilities, "node-forge");
+
+    expect(calls).toEqual([
+      `https://api.github.com/advisories/${WITHDRAWN_ADVISORY}`,
+      `https://api.github.com/advisories/${KEPT_ADVISORY}`,
+    ]);
+    expect(retained.severity).toBe("critical");
+    expect(retained.via).toEqual([cause(KEPT_ADVISORY, "moderate"), "nested-dep"]);
   });
 
   it("keeps npm severity while a transitive cause remains", async () => {
@@ -857,9 +934,12 @@ describe("withdrawn advisory filtering", () => {
   it("looks one withdrawn advisory up once and removes it from every record", async () => {
     const { report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
-    const shared = cause(WITHDRAWN_ADVISORY, "high");
-    setCauses(report, "node-forge", [shared]);
-    setCauses(report, "jks-js", [shared, "node-forge"]);
+    setCauses(report, "node-forge", [cause(WITHDRAWN_ADVISORY, "high")]);
+    setCauses(report, "jks-js", [
+      cause(WITHDRAWN_ADVISORY, "high"),
+      cause(WITHDRAWN_ADVISORY, "high"),
+      "node-forge",
+    ]);
     const { calls, fetch } = advisoryFetch({ [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE });
 
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
@@ -897,7 +977,6 @@ describe("withdrawn advisory filtering", () => {
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
 
     expect(filtered.withdrawn).toEqual([]);
-    expect(filtered.report).toBe(report);
     expect(report).toEqual(snapshot);
     expect(() =>
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
@@ -912,11 +991,16 @@ describe("withdrawn advisory filtering", () => {
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
 
     expect(calls).toEqual([]);
-    expect(filtered.report).toBe(report);
+    expect(filtered.report).toEqual(snapshot);
     expect(report).toEqual(snapshot);
     expect(
       checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
-    ).toHaveLength(1);
+    ).toEqual([
+      {
+        id: TEST_ADVISORY,
+        policy: testPolicy(),
+      },
+    ]);
   });
 
   it("fails closed when the advisory database is unavailable or inconsistent", async () => {
@@ -1007,6 +1091,231 @@ describe("withdrawn advisory filtering", () => {
   });
 });
 
+describe("advisory database responses", () => {
+  it("fails closed when the advisory record was deleted", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const { calls, fetch } = advisoryFetch({});
+
+    await expect(filterWithdrawnAdvisories(report, fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} returned HTTP 404`,
+    );
+    expect(calls).toEqual([`https://api.github.com/advisories/${TEST_ADVISORY}`]);
+  });
+
+  it("treats a record without a withdrawal timestamp as active", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const snapshot = structuredClone(report);
+    const { calls, fetch } = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY } },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(calls).toEqual([`https://api.github.com/advisories/${TEST_ADVISORY}`]);
+    expect(filtered.withdrawn).toEqual([]);
+    expect(filtered.report).toEqual(snapshot);
+    expect(report).toEqual(snapshot);
+  });
+
+  it("fails closed on a JSON array record and a foreign response origin", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const arrayBody = advisoryFetch({ [TEST_ADVISORY]: { body: [] } });
+    const foreignOrigin = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        url: "https://example.com/advisories/GHSA-1111-1111-1111",
+      },
+    });
+
+    await expect(filterWithdrawnAdvisories(report, arrayBody.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} did not return a JSON object`,
+    );
+    await expect(filterWithdrawnAdvisories(report, foreignOrigin.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} returned an unexpected response origin`,
+    );
+  });
+
+  it("sends one redirect-refusing authorized request per advisory", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    setCauses(report, "node-forge", [
+      cause(TEST_ADVISORY, "high"),
+      cause(WITHDRAWN_ADVISORY, "high"),
+    ]);
+    const { calls, fetch, inits } = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: null } },
+      [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
+    });
+
+    await filterWithdrawnAdvisories(report, fetch, "test-token");
+
+    expect(inits).toHaveLength(2);
+    expect(calls).toEqual([
+      `https://api.github.com/advisories/${TEST_ADVISORY}`,
+      `https://api.github.com/advisories/${WITHDRAWN_ADVISORY}`,
+    ]);
+    for (const init of inits) {
+      expect(init.headers.accept).toBe("application/vnd.github+json");
+      expect(init.redirect).toBe("error");
+      expect(init.headers.authorization).toBe("Bearer test-token");
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    }
+    expect(inits[0]?.signal).not.toBe(inits[1]?.signal);
+  });
+
+  it("reads a maximal body delivered in multibyte-split chunks", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const record = {
+      ghsa_id: TEST_ADVISORY,
+      p: "",
+      withdrawn_at: "2026-11-18T15:38:56Z",
+    };
+    const encoder = new TextEncoder();
+    const baseBytes = encoder.encode(JSON.stringify(record)).byteLength;
+    const padBytes = MAXIMUM_ADVISORY_BYTES - baseBytes;
+    const padding = `${"é".repeat(padBytes >> 1)}${padBytes % 2 === 0 ? "" : "x"}`;
+    const body = encoder.encode(JSON.stringify({ ...record, p: padding }));
+    expect(body.byteLength).toBe(MAXIMUM_ADVISORY_BYTES);
+    const chunks: number[][] = [];
+    for (let offset = 0; offset < body.byteLength; offset += 4097) {
+      chunks.push([...body.subarray(offset, offset + 4097)]);
+    }
+    const events: string[] = [];
+    const { fetch } = advisoryFetch({
+      [TEST_ADVISORY]: {
+        chunks,
+        omitContentLength: true,
+        record: (event) => {
+          events.push(event);
+        },
+      },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(filtered.withdrawn).toEqual([TEST_ADVISORY]);
+    expect(events).toEqual(["get-reader", "release-lock"]);
+  });
+});
+
+describe("advisory exception lifecycle", () => {
+  it("rejects an exception whose expiry date has passed", () => {
+    const { lock, report } = fixtures();
+    Object.assign(allowedAdvisories, {
+      [TEST_ADVISORY]: { ...testPolicy(), expires: "2026-10-22" },
+    });
+
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      `Expired dependency advisory exceptions: ${TEST_ADVISORY}`,
+    );
+  });
+
+  it("rejects an exception whose advisory the report no longer contains", () => {
+    const { lock, report } = fixtures();
+    setCauses(report, "node-forge", []);
+
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      `Resolved dependency advisory exceptions must be removed: ${TEST_ADVISORY}`,
+    );
+  });
+
+  it("rejects an exception expiry that is not a real calendar date", () => {
+    const { lock, report } = fixtures();
+    for (const expires of [
+      "2026-11-1",
+      "9999-99-99",
+      "2026-02-30",
+      "2026-02-29",
+      "2026-13-01",
+      "November 2026",
+    ]) {
+      Object.assign(allowedAdvisories, {
+        [TEST_ADVISORY]: { ...testPolicy(), expires },
+      });
+
+      expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+        `${TEST_ADVISORY} exception expiry must be a YYYY-MM-DD date`,
+      );
+    }
+  });
+
+  it("rejects a report whose vulnerability record name cannot be validated", () => {
+    const { lock } = fixtures();
+    const report = JSON.parse(
+      String.raw`{"vulnerabilities":{"__proto__":{"fixAvailable":false,"isDirect":true,"name":"x","nodes":[],"severity":"high","via":[]}}}`,
+    ) as unknown;
+
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "npm audit vulnerability report contains the unusable record name __proto__",
+    );
+  });
+
+  it("accepts real expiry dates and keeps the expiry day valid", () => {
+    const { lock, report } = fixtures();
+    for (const expires of ["2026-10-23", "2027-10-23", "2028-02-29", "9999-12-31"]) {
+      Object.assign(allowedAdvisories, { [TEST_ADVISORY]: { ...testPolicy(), expires } });
+
+      expect(() => validateDependencyAudit(report, lock, TODAY)).not.toThrow();
+    }
+  });
+
+  it("compares an expiry year below 0100 as a calendar date", () => {
+    const { lock, report } = fixtures();
+    Object.assign(allowedAdvisories, {
+      [TEST_ADVISORY]: { ...testPolicy(), expires: "0004-02-29" },
+    });
+
+    // Reaching the expiry comparison proves the date itself was accepted.
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      `Expired dependency advisory exceptions: ${TEST_ADVISORY}`,
+    );
+  });
+
+  it("rejects a report that is not an object", () => {
+    const { lock } = fixtures();
+
+    expect(() => validateDependencyAudit(null, lock, TODAY)).toThrow(
+      "npm audit did not return a valid vulnerability report",
+    );
+  });
+
+  it("rejects a lockfile whose instance name cannot be validated", () => {
+    const { report } = fixtures();
+    const lock = JSON.parse(
+      String.raw`{"lockfileVersion":3,"packages":{"__proto__":{"version":"1.0.0"}}}`,
+    ) as unknown;
+
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "package-lock.json package map contains the unusable record name __proto__",
+    );
+  });
+
+  it("rejects a lockfile dependency declaration that cannot be validated", () => {
+    const { report } = fixtures();
+    for (const field of [
+      "dependencies",
+      "devDependencies",
+      "optionalDependencies",
+      "peerDependencies",
+    ]) {
+      for (const path of ["", "node_modules/jks-js"]) {
+        // `JSON.parse` reports the literal key as an own property; an object literal would not.
+        const lock = JSON.parse(
+          `{"lockfileVersion":3,"packages":{"":{},"${path}":{"${field}":{"__proto__":"^1.0.0"}}}}`,
+        ) as unknown;
+
+        expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+          `package-lock.json dependency map of ${path === "" ? "<root>" : path} contains the unusable record name __proto__`,
+        );
+      }
+    }
+  });
+});
+
 describe("npm audit advisory lookup pipeline", () => {
   it("rejects a malformed report whose advisory reference is withdrawn", async () => {
     const { report } = fixtures();
@@ -1068,4 +1377,178 @@ describe("npm audit advisory lookup pipeline", () => {
       `Unexpected dependency advisory: ${TEST_ADVISORY}`,
     );
   });
+});
+
+describe("dependency audit run", () => {
+  it("logs an ignored withdrawal and passes the filtered report to the policy", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const lines: string[] = [];
+    const { calls, fetch, inits } = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+      },
+    });
+
+    const validated = await runDependencyAudit({
+      audit: processResult(JSON.stringify(report)),
+      authorization: "test-token",
+      fetchImplementation: fetch,
+      lockValue: lock,
+      log: (line) => {
+        lines.push(line);
+      },
+      today: TODAY,
+    });
+
+    expect(calls).toEqual([`https://api.github.com/advisories/${TEST_ADVISORY}`]);
+    expect(inits[0]?.redirect).toBe("error");
+    expect(inits[0]?.headers.authorization).toBe("Bearer test-token");
+    expect(lines).toEqual([`Withdrawn advisory ignored: ${TEST_ADVISORY}`]);
+    expect(validated).toEqual([]);
+  });
+
+  it("logs each validated exception occurrence", async () => {
+    const { lock, report } = fixtures();
+    const lines: string[] = [];
+    const { calls, fetch } = advisoryFetch({});
+
+    const validated = await runDependencyAudit({
+      audit: processResult(JSON.stringify(report)),
+      fetchImplementation: fetch,
+      lockValue: lock,
+      log: (line) => {
+        lines.push(line);
+      },
+      today: TODAY,
+    });
+
+    expect(calls).toEqual([]);
+    expect(validated).toEqual([{ id: TEST_ADVISORY, policy: testPolicy() }]);
+    expect(lines).toEqual([
+      `Allowed until 2026-11-08: ${TEST_ADVISORY} (high) - Synthetic test exception.`,
+    ]);
+  });
+
+  it("reports the ignored withdrawal before the policy rejects the report", async () => {
+    const { lock, report } = fixtures();
+    const lines: string[] = [];
+    setCauses(report, "jks-js", [
+      cause(WITHDRAWN_ADVISORY, "high"),
+      cause(KEPT_ADVISORY, "high"),
+      "node-forge",
+    ]);
+    const { fetch } = advisoryFetch({
+      [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+      [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
+    });
+
+    await expect(
+      runDependencyAudit({
+        audit: processResult(JSON.stringify(report)),
+        fetchImplementation: fetch,
+        lockValue: lock,
+        log: (line) => {
+          lines.push(line);
+        },
+        today: TODAY,
+      }),
+    ).rejects.toThrow(`Unexpected dependency advisory: ${KEPT_ADVISORY}`);
+    expect(lines).toEqual([`Withdrawn advisory ignored: ${WITHDRAWN_ADVISORY}`]);
+  });
+
+  it("stops the run when the database still lists the advisory", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const lines: string[] = [];
+    const { fetch } = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: null } },
+    });
+
+    await expect(
+      runDependencyAudit({
+        audit: processResult(JSON.stringify(report)),
+        fetchImplementation: fetch,
+        lockValue: lock,
+        log: (line) => {
+          lines.push(line);
+        },
+        today: TODAY,
+      }),
+    ).rejects.toThrow(`Unexpected dependency advisory: ${TEST_ADVISORY}`);
+    expect(lines).toEqual([]);
+  });
+
+  it("stops the run when the advisory record was deleted", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const { fetch } = advisoryFetch({});
+
+    await expect(
+      runDependencyAudit({
+        audit: processResult(JSON.stringify(report)),
+        fetchImplementation: fetch,
+        lockValue: lock,
+        log: () => undefined,
+        today: TODAY,
+      }),
+    ).rejects.toThrow(`GitHub advisory ${TEST_ADVISORY} returned HTTP 404`);
+  });
+
+  it("stops the run when the npm audit process fails", async () => {
+    const { lock } = fixtures();
+
+    await expect(
+      runDependencyAudit({
+        audit: { error: undefined, signal: null, status: 1, stderr: " registry down ", stdout: "" },
+        fetchImplementation: advisoryFetch({}).fetch,
+        lockValue: lock,
+        log: () => undefined,
+        today: TODAY,
+      }),
+    ).rejects.toThrow("npm audit exited with status 1: registry down");
+  });
+});
+
+const NODE_MAJOR = Number(process.versions.node.split(".")[0] ?? "0");
+
+const CHECKER_ENTRY = fileURLToPath(new URL("./check-dependency-audit.ts", import.meta.url));
+
+/**
+ * Run the checker as a command without an npm context.
+ * @param entry - Path used to invoke the checker
+ * @returns Exit status and stderr text
+ */
+function runChecker(entry: string): { status: null | number; stderr: string } {
+  const environment = { ...process.env };
+  delete environment.npm_execpath;
+  const run = spawnSync(process.execPath, [entry], {
+    encoding: "utf8",
+    env: environment,
+  });
+  return { status: run.status, stderr: run.stderr };
+}
+
+describe("command-line entry", () => {
+  // Direct TypeScript execution needs Node's type stripping, and Windows file links need
+  // elevated privileges; those runtimes skip this check.
+  it.runIf(NODE_MAJOR >= 23 && process.platform !== "win32")(
+    "runs the gate when invoked through a symlinked entry file",
+    { timeout: 60_000 },
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "audit-entry-"));
+      const link = join(directory, "linked-checker.ts");
+      symlinkSync(CHECKER_ENTRY, link);
+      try {
+        // A skipped gate would exit 0 silently, indistinguishable from a clean audit.
+        for (const entry of [CHECKER_ENTRY, link]) {
+          const { status, stderr } = runChecker(entry);
+          expect(status).toBe(1);
+          expect(stderr.match(/Missing npm_execpath/g)).toHaveLength(1);
+        }
+      } finally {
+        rmSync(directory, { force: true, recursive: true });
+      }
+    },
+  );
 });

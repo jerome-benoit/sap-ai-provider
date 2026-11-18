@@ -445,7 +445,9 @@ npm run test:node             # Runs test suite
 - Keep any necessary advisory exception narrowly scoped, justified and time-limited.
   Remove exceptions when the advisory is withdrawn or the vulnerability is resolved.
   Once no exception covers an advisory that GitHub has withdrawn, the checker confirms
-  the retraction against the GitHub Advisory Database and ignores that advisory.
+  the retraction against the GitHub Advisory Database and ignores that advisory. An
+  exception whose `expires` date has passed, whose advisory is gone, or whose date is
+  not a real `YYYY-MM-DD` day fails the check.
 - Use dependency overrides only when needed for a reviewed fix. Scope them to the
   affected dependency paths and remove them when the parent dependency supports
   the fixed version.
