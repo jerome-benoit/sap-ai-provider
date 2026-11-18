@@ -5,6 +5,7 @@ import type { AuditProcessResult } from "./check-dependency-audit";
 import {
   allowedAdvisories,
   checkAuditProcessResult,
+  filterWithdrawnAdvisories,
   getNpmAuditInvocation,
   validateDependencyAudit,
 } from "./check-dependency-audit";
@@ -611,5 +612,109 @@ describe("npm audit process contract", () => {
       checkAuditProcessResult(processResult(JSON.stringify(report)), lock, TODAY),
     ).toHaveLength(1);
     expect(() => getNpmAuditInvocation("", "/node")).toThrow("Missing npm_execpath");
+  });
+});
+
+/**
+ * Build a fetch stub for the GitHub Advisory Database.
+ * @param responses - Canned response per advisory identifier
+ * @returns Request log and fetch implementation
+ */
+function advisoryFetch(
+  responses: Record<string, { body?: unknown; ok?: boolean; status?: number }>,
+): { calls: string[]; fetch: typeof fetch } {
+  const calls: string[] = [];
+  const implementation = (input: string) => {
+    calls.push(input);
+    const id = input.slice("https://api.github.com/advisories/".length);
+    const response = responses[id] ?? { ok: false, status: 404 };
+    const body = typeof response.body === "string" ? response.body : JSON.stringify(response.body);
+    return Promise.resolve({
+      headers: { get: () => null },
+      ok: response.ok ?? true,
+      status: response.status ?? 200,
+      text: () => Promise.resolve(body),
+      url: input,
+    });
+  };
+  return { calls, fetch: implementation as unknown as typeof fetch };
+}
+
+describe("withdrawn advisory filtering", () => {
+  const advisoryUrlId = (report: { vulnerabilities: Record<string, Vulnerability> }): string => {
+    const via = report.vulnerabilities["node-forge"]?.via[0];
+    if (typeof via === "string" || via === undefined) {
+      throw new Error("fixture lacks an advisory reference");
+    }
+    return via.url.replace("https://github.com/advisories/", "");
+  };
+
+  it("ignores an advisory retracted by the GitHub Advisory Database", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const { calls, fetch } = advisoryFetch({
+      [TEST_ADVISORY]: {
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+      },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(calls).toEqual([`https://api.github.com/advisories/${TEST_ADVISORY}`]);
+    expect(filtered.withdrawn).toEqual([TEST_ADVISORY]);
+    expect(filtered.report.vulnerabilities["node-forge"]?.via).toEqual([]);
+    expect(
+      checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
+    ).toEqual([]);
+  });
+
+  it("keeps reporting an advisory that the database still lists as active", async () => {
+    const { lock, report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const { fetch } = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: null } },
+    });
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(filtered.withdrawn).toEqual([]);
+    expect(filtered.report).toBe(report);
+    expect(() =>
+      checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
+    ).toThrow(`Unexpected dependency advisory: ${TEST_ADVISORY}`);
+  });
+
+  it("never queries an advisory that already has an exception policy", async () => {
+    const { lock, report } = fixtures();
+    const { calls, fetch } = advisoryFetch({});
+
+    const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+    expect(calls).toEqual([]);
+    expect(filtered.report).toBe(report);
+    expect(
+      checkAuditProcessResult(processResult(JSON.stringify(filtered.report)), lock, TODAY),
+    ).toHaveLength(1);
+    expect(advisoryUrlId(report)).toBe(TEST_ADVISORY);
+  });
+
+  it("fails closed when the advisory database is unavailable or inconsistent", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    const unavailable = advisoryFetch({ [TEST_ADVISORY]: { ok: false, status: 503 } });
+    const invalidJson = advisoryFetch({ [TEST_ADVISORY]: { body: "not-json" } });
+    const mismatched = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: "GHSA-2222-2222-2222" } },
+    });
+
+    await expect(filterWithdrawnAdvisories(report, unavailable.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} returned HTTP 503`,
+    );
+    await expect(filterWithdrawnAdvisories(report, invalidJson.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} did not return valid JSON`,
+    );
+    await expect(filterWithdrawnAdvisories(report, mismatched.fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} returned a mismatched identifier`,
+    );
   });
 });

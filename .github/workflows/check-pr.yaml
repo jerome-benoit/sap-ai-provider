@@ -57,6 +57,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Check dependency vulnerabilities
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run check-dependency-audit
       - name: Run lint
         if: runner.os == 'Linux'

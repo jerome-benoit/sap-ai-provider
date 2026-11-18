@@ -66,6 +66,12 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 - Run `npm run check-dependency-audit` with registry access. It forces production,
   development, optional, and peer scopes despite inherited npm `omit` settings.
+  Any advisory identifier outside the exception registry is checked against the GitHub Advisory
+  Database, the upstream source of npm audit data: GitHub marks a retraction with `withdrawn_at`,
+  the checker then prints `Withdrawn advisory ignored: <GHSA-id>`, removes those `via` references
+  from the report before policy validation, and needs no exception. Lookup failures (transport,
+  non-2xx, invalid JSON, mismatched `ghsa_id`) fail closed, so a retraction never weakens the gate.
+  CI supplies `GITHUB_TOKEN` for the advisory API rate limit.
   Temporary exceptions start only from npm audit's exact nodes in the lockfile-v3
   package-instance graph, using Node ancestor resolution semantics. Validation covers
   every edge up to the directly declared root anchor and the identity coherence of
