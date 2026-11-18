@@ -43,6 +43,8 @@ jobs:
         run: npm ci --dry-run --ignore-scripts
       - run: npm ci
       - name: Check dependency vulnerabilities
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run check-dependency-audit
       - run: npm run type-check
       - run: npm run lint
