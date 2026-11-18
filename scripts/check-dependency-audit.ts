@@ -122,9 +122,30 @@ const DEPENDENCY_FIELDS = [
   "peerDependencies",
 ] as const;
 const PUBLIC_NPM_REGISTRY = "https://registry.npmjs.org/";
+const GHSA_ADVISORY_API_BASE = "https://api.github.com/advisories/";
+const GHSA_ADVISORY_API_ORIGIN = "https://api.github.com";
+const ADVISORY_TIMEOUT_MS = 10_000;
+const MAXIMUM_ADVISORY_BYTES = 1024 * 1024;
+const ADVISORY_ID_PATTERN = /^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}$/;
+const ADVISORY_URL_PATTERN =
+  /^https:\/\/github\.com\/advisories\/(GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4})$/;
 
 /** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
 export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {};
+
+/** Advisory metadata fields consumed for withdrawal detection. */
+export interface AdvisoryDatabaseRecord {
+  readonly ghsa_id?: unknown;
+  readonly withdrawn_at?: unknown;
+}
+
+/** npm audit report with retracted advisories removed. */
+export interface WithdrawnAdvisoryFilterResult<TReport> {
+  /** Report whose advisory references exclude withdrawn advisories. */
+  readonly report: TReport;
+  /** Advisory identifiers retracted by the GitHub Advisory Database. */
+  readonly withdrawn: readonly string[];
+}
 
 /**
  * Validate a completed npm audit process and its report against the package lock.
@@ -138,28 +159,41 @@ export function checkAuditProcessResult(
   lockValue: unknown,
   today = new Date().toISOString().slice(0, 10),
 ): ValidatedAdvisory[] {
-  if (audit.error) {
-    throw new Error(`Unable to run npm audit: ${audit.error.message}`);
-  }
-  if (audit.signal !== null) {
-    throw new Error(`npm audit terminated by signal ${audit.signal}`);
-  }
-  if (audit.status !== 0) {
-    const diagnostic = audit.stderr.trim();
-    throw new Error(
-      `npm audit exited with status ${String(audit.status ?? "unknown")}${diagnostic ? `: ${diagnostic}` : ""}`,
-    );
-  }
+  return validateDependencyAudit(parseAuditProcessResult(audit), lockValue, today);
+}
 
-  let reportValue: unknown;
-  try {
-    reportValue = JSON.parse(audit.stdout) as unknown;
-  } catch {
-    const diagnostic = audit.stderr.trim();
-    throw new Error(`npm audit did not return valid JSON${diagnostic ? `: ${diagnostic}` : ""}`);
+/**
+ * Remove advisories that the GitHub Advisory Database retracted after npm audit cached them.
+ *
+ * npm audit data originates from the same advisory database, so a withdrawn advisory is a
+ * retraction of the finding rather than an accepted risk. Lookup failures never weaken the gate.
+ * @param reportValue - Parsed npm audit JSON
+ * @param fetchImplementation - Fetch implementation used for advisory lookups
+ * @param authorization - Optional GitHub API bearer token
+ * @returns Filtered report and every withdrawn advisory identifier it dropped
+ */
+export async function filterWithdrawnAdvisories<TReport>(
+  reportValue: TReport,
+  fetchImplementation: typeof fetch = globalThis.fetch,
+  authorization: string | undefined = process.env.GITHUB_TOKEN,
+): Promise<WithdrawnAdvisoryFilterResult<TReport>> {
+  const unknownIds = collectAdvisoryIds(reportValue).filter(
+    (id) => allowedAdvisories[id] === undefined,
+  );
+  const withdrawn: string[] = [];
+  for (const id of unknownIds) {
+    const record = await fetchAdvisoryRecord(id, fetchImplementation, authorization);
+    if (typeof record.withdrawn_at === "string") {
+      withdrawn.push(id);
+    }
   }
-
-  return validateDependencyAudit(reportValue, lockValue, today);
+  if (withdrawn.length === 0) {
+    return { report: reportValue, withdrawn };
+  }
+  return {
+    report: removeAdvisoryReferences(reportValue, new Set(withdrawn)),
+    withdrawn,
+  };
 }
 
 /**
@@ -192,6 +226,35 @@ export function getNpmAuditInvocation(
     ],
     command: nodeExecPath,
   };
+}
+
+/**
+ * Validate the npm audit process result and parse its JSON report.
+ * @param audit - Completed npm process result
+ * @returns Parsed npm audit report value
+ */
+export function parseAuditProcessResult(audit: AuditProcessResult): unknown {
+  if (audit.error) {
+    throw new Error(`Unable to run npm audit: ${audit.error.message}`);
+  }
+  if (audit.signal !== null) {
+    throw new Error(`npm audit terminated by signal ${audit.signal}`);
+  }
+  if (audit.status !== 0) {
+    const diagnostic = audit.stderr.trim();
+    throw new Error(
+      `npm audit exited with status ${String(audit.status ?? "unknown")}${diagnostic ? `: ${diagnostic}` : ""}`,
+    );
+  }
+
+  let reportValue: unknown;
+  try {
+    reportValue = JSON.parse(audit.stdout) as unknown;
+  } catch {
+    const diagnostic = audit.stderr.trim();
+    throw new Error(`npm audit did not return valid JSON${diagnostic ? `: ${diagnostic}` : ""}`);
+  }
+  return reportValue;
 }
 
 /**
@@ -244,6 +307,22 @@ export function validateDependencyAudit(
   }
 
   return validated;
+}
+
+/**
+ * Resolve the advisory identifier referenced by one npm audit `via` entry.
+ * @param entry - One entry of a vulnerability `via` array
+ * @returns Advisory identifier, when the entry references a GitHub Security Advisory
+ */
+function advisoryIdFromVia(entry: unknown): null | string {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const url = (entry as { url?: unknown }).url;
+  if (typeof url !== "string") {
+    return null;
+  }
+  return ADVISORY_URL_PATTERN.exec(url)?.[1] ?? null;
 }
 
 /**
@@ -305,6 +384,99 @@ function buildDependencyGraph(lock: PackageLock): DependencyGraph {
     }
   }
   return { incoming, instances };
+}
+
+/**
+ * Collect every advisory identifier referenced by an npm audit report.
+ * @param reportValue - Parsed npm audit JSON
+ * @returns Unique advisory identifiers in report order
+ */
+function collectAdvisoryIds(reportValue: unknown): string[] {
+  const vulnerabilities = (reportValue as { vulnerabilities?: Record<string, unknown> })
+    .vulnerabilities;
+  if (!vulnerabilities || typeof vulnerabilities !== "object") {
+    return [];
+  }
+  const ids = new Set<string>();
+  for (const vulnerability of Object.values(vulnerabilities)) {
+    const via = (vulnerability as undefined | { via?: unknown })?.via;
+    if (!Array.isArray(via)) {
+      continue;
+    }
+    for (const entry of via) {
+      const id = advisoryIdFromVia(entry);
+      if (id !== null) {
+        ids.add(id);
+      }
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Fetch one record from the GitHub Advisory Database, the source of npm audit advisories.
+ * @param id - GitHub Security Advisory identifier
+ * @param fetchImplementation - Fetch implementation used for the request
+ * @param authorization - Optional GitHub API bearer token
+ * @returns Validated advisory record
+ */
+async function fetchAdvisoryRecord(
+  id: string,
+  fetchImplementation: typeof fetch,
+  authorization: string | undefined,
+): Promise<AdvisoryDatabaseRecord> {
+  if (!ADVISORY_ID_PATTERN.test(id)) {
+    throw new Error(`Invalid GitHub Security Advisory identifier: ${id}`);
+  }
+  const headers: Record<string, string> = {
+    accept: "application/vnd.github+json",
+    "user-agent": "sap-ai-provider-dependency-audit",
+  };
+  if (authorization !== undefined && authorization !== "") {
+    headers.authorization = `Bearer ${authorization}`;
+  }
+
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetchImplementation(`${GHSA_ADVISORY_API_BASE}${id}`, {
+      headers,
+      redirect: "error",
+      signal: AbortSignal.timeout(ADVISORY_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to fetch GitHub advisory ${id}: ${reason}`, { cause: error });
+  }
+  if (!response.ok) {
+    throw new Error(`GitHub advisory ${id} returned HTTP ${String(response.status)}`);
+  }
+  if (new URL(response.url).origin !== GHSA_ADVISORY_API_ORIGIN) {
+    throw new Error(`GitHub advisory ${id} returned an unexpected response origin`);
+  }
+
+  const text = await readAdvisoryText(response, id);
+  const record: unknown = (() => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(`GitHub advisory ${id} did not return valid JSON`);
+    }
+  })();
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error(`GitHub advisory ${id} did not return a JSON object`);
+  }
+  const advisory = record as AdvisoryDatabaseRecord;
+  if (typeof advisory.ghsa_id !== "string" || advisory.ghsa_id.toLowerCase() !== id.toLowerCase()) {
+    throw new Error(`GitHub advisory ${id} returned a mismatched identifier`);
+  }
+  if (
+    advisory.withdrawn_at !== undefined &&
+    advisory.withdrawn_at !== null &&
+    typeof advisory.withdrawn_at !== "string"
+  ) {
+    throw new Error(`GitHub advisory ${id} has an invalid withdrawn_at value`);
+  }
+  return advisory;
 }
 
 /**
@@ -378,22 +550,29 @@ function inferLockPackageName(path: string, entry: LockPackage): string | undefi
 }
 
 /** Run the dependency audit command-line checker. */
-function main(): void {
+async function main(): Promise<void> {
   const invocation = getNpmAuditInvocation();
   const audit = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
     env: process.env,
   });
   const lockValue = JSON.parse(readFileSync("package-lock.json", "utf8")) as unknown;
-  const validated = checkAuditProcessResult(
-    {
+  const { report, withdrawn } = await filterWithdrawnAdvisories(
+    parseAuditProcessResult({
       error: audit.error,
       signal: audit.signal,
       status: audit.status,
       stderr: audit.stderr,
       stdout: audit.stdout,
-    },
+    }),
+  );
+  for (const id of withdrawn) {
+    console.log(`Withdrawn advisory ignored: ${id}`);
+  }
+  const validated = validateDependencyAudit(
+    report,
     lockValue,
+    new Date().toISOString().slice(0, 10),
   );
   for (const { id, policy } of validated) {
     console.log(`Allowed until ${policy.expires}: ${id} (${policy.severity}) - ${policy.reason}`);
@@ -418,11 +597,69 @@ function parentInstancePath(path: string): string | undefined {
  * @returns GitHub Security Advisory ID
  */
 function parseAdvisoryId(url: string): string {
-  const match =
-    /^https:\/\/github\.com\/advisories\/(GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4})$/.exec(url);
+  const match = ADVISORY_URL_PATTERN.exec(url);
   const id = match?.[1];
   if (!id) throw new Error(`Invalid GitHub advisory URL: ${url}`);
   return id;
+}
+
+/**
+ * Read one advisory response with a bounded body.
+ * @param response - Fetched advisory response
+ * @param id - GitHub Security Advisory identifier
+ * @returns Response body text
+ */
+async function readAdvisoryText(
+  response: Awaited<ReturnType<typeof fetch>>,
+  id: string,
+): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length") ?? Number.NaN);
+  if (Number.isFinite(declaredLength) && declaredLength > MAXIMUM_ADVISORY_BYTES) {
+    throw new Error(`GitHub advisory ${id} exceeds ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
+  }
+  const text = await response.text();
+  if (text.length > MAXIMUM_ADVISORY_BYTES) {
+    throw new Error(`GitHub advisory ${id} exceeds ${String(MAXIMUM_ADVISORY_BYTES)} bytes`);
+  }
+  return text;
+}
+
+/**
+ * Drop advisory references that the GitHub Advisory Database marks as withdrawn.
+ * @param reportValue - Parsed npm audit JSON
+ * @param withdrawnIds - Withdrawn advisory identifiers
+ * @returns Report copy without those advisory references
+ */
+function removeAdvisoryReferences<TReport>(
+  reportValue: TReport,
+  withdrawnIds: ReadonlySet<string>,
+): TReport {
+  const report = reportValue as { vulnerabilities?: unknown };
+  const vulnerabilities = report.vulnerabilities as Record<string, unknown> | undefined;
+  if (!vulnerabilities || typeof vulnerabilities !== "object") {
+    return reportValue;
+  }
+
+  const retained: Record<string, unknown> = {};
+  for (const [name, vulnerability] of Object.entries(vulnerabilities)) {
+    if (!vulnerability || typeof vulnerability !== "object") {
+      throw new Error(`npm audit vulnerability ${name} is malformed`);
+    }
+    const via = (vulnerability as { via?: unknown }).via;
+    if (!Array.isArray(via)) {
+      retained[name] = vulnerability;
+      continue;
+    }
+    retained[name] = {
+      ...vulnerability,
+      via: via.filter((entry) => {
+        const id = advisoryIdFromVia(entry);
+        return id === null || !withdrawnIds.has(id);
+      }),
+    };
+  }
+
+  return { ...report, vulnerabilities: retained } as TReport;
 }
 
 /**
@@ -668,7 +905,7 @@ function validateIncomingRoutes(
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   try {
-    main();
+    await main();
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
