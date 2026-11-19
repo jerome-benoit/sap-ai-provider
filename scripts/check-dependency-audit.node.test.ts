@@ -1637,6 +1637,22 @@ const TSX_ENTRY = fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", impo
 
 const CHECKER_ENTRY = fileURLToPath(new URL("./check-dependency-audit-cli.ts", import.meta.url));
 
+interface CompletedRun {
+  error?: Error;
+  status: null | number;
+  stderr: string;
+  stdout: string;
+}
+
+/**
+ * Describe a finished child process inside an assertion message.
+ * @param run - Completed child process
+ * @returns Exit status, spawn error, and both output streams
+ */
+function describeRun(run: CompletedRun): string {
+  return `status=${String(run.status)} error=${run.error?.message ?? "none"} out=${run.stdout.trim()} err=${run.stderr.trim()}`;
+}
+
 /**
  * Read the command that CI and contributors are told to run.
  * @returns Runner and script path of the published npm script
@@ -1652,17 +1668,45 @@ function publishedAuditCommand(): { runner: string; script: string } {
 /**
  * Run the checker as a command without an npm context.
  * @param entry - Path used to invoke the checker
- * @returns Exit status and stderr text
+ * @returns Exit status, error, and output of the child
  */
-function runChecker(entry: string): { status: null | number; stderr: string } {
-  const environment = { ...process.env };
-  delete environment.npm_execpath;
+function runChecker(entry: string): CompletedRun {
   const run = spawnSync(process.execPath, [TSX_ENTRY, entry], {
     encoding: "utf8",
-    env: environment,
+    env: withoutNpmContext(process.env),
   });
-  return { status: run.status, stderr: run.stderr };
+  return { error: run.error, status: run.status, stderr: run.stderr, stdout: run.stdout };
 }
+
+/**
+ * Copy an environment with every npm context marker removed.
+ *
+ * Windows environment names are case-insensitive, so dropping only the lower-case spelling can
+ * leave a differently cased entry in the block a child process receives. That child finds a real
+ * npm, audits the real checkout, and exits successfully while the test believes nothing ran.
+ * @param source - Environment to copy
+ * @returns Copy without any `npm_execpath` spelling
+ */
+function withoutNpmContext(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => key.toLowerCase() !== "npm_execpath"),
+  );
+}
+
+describe("spawn environment preparation", () => {
+  it("removes npm context in every casing", () => {
+    const prepared = withoutNpmContext({
+      Npm_ExecPath: "stale-one",
+      npm_execpath: "stale-two",
+      PATH: "/bin",
+    });
+
+    // Dropping only the lower-case spelling leaves the first key, and a child on Windows reads it
+    // back as the npm context.
+    expect(Object.keys(prepared).filter((key) => key.toLowerCase() === "npm_execpath")).toEqual([]);
+    expect(prepared.PATH).toBe("/bin");
+  });
+});
 
 describe("command-line entry", () => {
   // Creating a file link needs elevated privileges on Windows, where this check is skipped.
@@ -1691,8 +1735,7 @@ describe("command-line entry", () => {
   it("runs the gate through the published npm command", { timeout: 120_000 }, () => {
     const { runner, script } = publishedAuditCommand();
     expect(runner).toBe("tsx");
-    const environment = { ...process.env };
-    delete environment.npm_execpath;
+    const environment = withoutNpmContext(process.env);
     const run = spawnSync(
       process.execPath,
       [
@@ -1706,7 +1749,7 @@ describe("command-line entry", () => {
       },
     );
 
-    expect(run.status).toBe(1);
+    expect(run.status, describeRun(run)).toBe(1);
     expect(run.stderr).toContain("Missing npm_execpath");
   });
 
@@ -1729,7 +1772,7 @@ describe("command-line entry", () => {
       ].join("\n"),
     );
     const environment: NodeJS.ProcessEnv = {
-      ...process.env,
+      ...withoutNpmContext(process.env),
       AUDIT_STUB_FILE: recorded,
       AUDIT_STUB_STDOUT: JSON.stringify({ auditReportVersion: 2, vulnerabilities: {} }),
       GITHUB_TOKEN: "audit-cli-secret",
@@ -1737,7 +1780,7 @@ describe("command-line entry", () => {
     };
     if (process.platform !== "win32") environment.Github_Token = "audit-cli-secret";
 
-    const run = (lock: string): { status: null | number; stderr: string; stdout: string } => {
+    const run = (lock: string): CompletedRun => {
       writeFileSync(join(directory, "package-lock.json"), lock);
       rmSync(recorded, { force: true });
       const child = spawnSync(process.execPath, [TSX_ENTRY, CHECKER_ENTRY], {
@@ -1745,7 +1788,12 @@ describe("command-line entry", () => {
         encoding: "utf8",
         env: environment,
       });
-      return { status: child.status, stderr: child.stderr, stdout: child.stdout };
+      return {
+        error: child.error,
+        status: child.status,
+        stderr: child.stderr,
+        stdout: child.stdout,
+      };
     };
     const invocation = (): { argv: string[]; env: NodeJS.ProcessEnv } =>
       JSON.parse(readFileSync(recorded, "utf8")) as { argv: string[]; env: NodeJS.ProcessEnv };
@@ -1755,10 +1803,7 @@ describe("command-line entry", () => {
       expect([clean.status, clean.stderr]).toEqual([0, ""]);
       // A missing record means the checker exited without running npm, i.e. it failed to treat
       // the path it was invoked with as its own entry point, which is a silent skip.
-      expect(
-        existsSync(recorded),
-        `npm child never ran: ${String(clean.status)} ${clean.stderr}`,
-      ).toBe(true);
+      expect(existsSync(recorded), `npm child never ran: ${describeRun(clean)}`).toBe(true);
       expect(clean.stdout).not.toContain("audit-cli-secret");
       expect(clean.stderr).not.toContain("audit-cli-secret");
       const recordedInit = invocation();
