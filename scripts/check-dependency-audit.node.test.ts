@@ -1633,9 +1633,21 @@ describe("dependency audit run", () => {
   });
 });
 
-const NODE_MAJOR = Number(process.versions.node.split(".")[0] ?? "0");
+const TSX_ENTRY = fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url));
 
-const CHECKER_ENTRY = fileURLToPath(new URL("./check-dependency-audit.ts", import.meta.url));
+const CHECKER_ENTRY = fileURLToPath(new URL("./check-dependency-audit-cli.ts", import.meta.url));
+
+/**
+ * Read the command that CI and contributors are told to run.
+ * @returns Runner and script path of the published npm script
+ */
+function publishedAuditCommand(): { runner: string; script: string } {
+  const manifest = JSON.parse(
+    readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+  ) as { scripts: Record<string, string> };
+  const [runner = "", script = ""] = (manifest.scripts["check-dependency-audit"] ?? "").split(" ");
+  return { runner, script };
+}
 
 /**
  * Run the checker as a command without an npm context.
@@ -1645,7 +1657,7 @@ const CHECKER_ENTRY = fileURLToPath(new URL("./check-dependency-audit.ts", impor
 function runChecker(entry: string): { status: null | number; stderr: string } {
   const environment = { ...process.env };
   delete environment.npm_execpath;
-  const run = spawnSync(process.execPath, [entry], {
+  const run = spawnSync(process.execPath, [TSX_ENTRY, entry], {
     encoding: "utf8",
     env: environment,
   });
@@ -1653,9 +1665,8 @@ function runChecker(entry: string): { status: null | number; stderr: string } {
 }
 
 describe("command-line entry", () => {
-  // Direct TypeScript execution needs Node's type stripping, and Windows file links need
-  // elevated privileges; those runtimes skip this check.
-  it.runIf(NODE_MAJOR >= 23 && process.platform !== "win32")(
+  // Creating a file link needs elevated privileges on Windows, where this check is skipped.
+  it.runIf(process.platform !== "win32")(
     "runs the gate when invoked through a symlinked entry file",
     { timeout: 60_000 },
     () => {
@@ -1675,14 +1686,19 @@ describe("command-line entry", () => {
     },
   );
 
-  // The published command runs this checker through the package's own `tsx`, the form both CI
-  // workflows use, so a guard that misreads the entry path would skip the gate silently there.
-  it("runs the gate when launched through the package tsx command", { timeout: 120_000 }, () => {
+  // The published command is what both CI workflows and the contribution docs run, so the npm
+  // script itself is executed here: pointing it at a file that does not run the gate must fail.
+  it("runs the gate through the published npm command", { timeout: 120_000 }, () => {
+    const { runner, script } = publishedAuditCommand();
+    expect(runner).toBe("tsx");
     const environment = { ...process.env };
     delete environment.npm_execpath;
     const run = spawnSync(
       process.execPath,
-      [fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)), CHECKER_ENTRY],
+      [
+        fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)),
+        fileURLToPath(new URL(`../${script}`, import.meta.url)),
+      ],
       {
         cwd: fileURLToPath(new URL("..", import.meta.url)),
         encoding: "utf8",
@@ -1696,106 +1712,102 @@ describe("command-line entry", () => {
 
   // The child-facing path is only observable in a real process: what npm is asked to run, which
   // environment it receives, and whether the report it prints reaches the exception policy.
-  it.runIf(NODE_MAJOR >= 23)(
-    "runs the gate end to end against a stubbed npm child",
-    { timeout: 180_000 },
-    () => {
-      const directory = mkdtempSync(join(tmpdir(), "audit-cli-"));
-      const shim = join(directory, "fake-npm.cjs");
-      const recorded = join(directory, "invocation.json");
-      writeFileSync(
-        shim,
-        [
-          'const { writeFileSync } = require("node:fs");',
-          "writeFileSync(",
-          "  process.env.AUDIT_STUB_FILE,",
-          "  JSON.stringify({ argv: process.argv.slice(2), env: process.env }),",
-          ");",
-          'process.stdout.write(process.env.AUDIT_STUB_STDOUT ?? "");',
-          "",
-        ].join("\n"),
+  it("runs the gate end to end against a stubbed npm child", { timeout: 180_000 }, () => {
+    const directory = mkdtempSync(join(tmpdir(), "audit-cli-"));
+    const shim = join(directory, "fake-npm.cjs");
+    const recorded = join(directory, "invocation.json");
+    writeFileSync(
+      shim,
+      [
+        'const { writeFileSync } = require("node:fs");',
+        "writeFileSync(",
+        "  process.env.AUDIT_STUB_FILE,",
+        "  JSON.stringify({ argv: process.argv.slice(2), env: process.env }),",
+        ");",
+        'process.stdout.write(process.env.AUDIT_STUB_STDOUT ?? "");',
+        "",
+      ].join("\n"),
+    );
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      AUDIT_STUB_FILE: recorded,
+      AUDIT_STUB_STDOUT: JSON.stringify({ auditReportVersion: 2, vulnerabilities: {} }),
+      GITHUB_TOKEN: "audit-cli-secret",
+      npm_execpath: shim,
+    };
+    if (process.platform !== "win32") environment.Github_Token = "audit-cli-secret";
+
+    const run = (lock: string): { status: null | number; stderr: string; stdout: string } => {
+      writeFileSync(join(directory, "package-lock.json"), lock);
+      rmSync(recorded, { force: true });
+      const child = spawnSync(process.execPath, [TSX_ENTRY, CHECKER_ENTRY], {
+        cwd: directory,
+        encoding: "utf8",
+        env: environment,
+      });
+      return { status: child.status, stderr: child.stderr, stdout: child.stdout };
+    };
+    const invocation = (): { argv: string[]; env: NodeJS.ProcessEnv } =>
+      JSON.parse(readFileSync(recorded, "utf8")) as { argv: string[]; env: NodeJS.ProcessEnv };
+
+    try {
+      const clean = run('{"lockfileVersion":3,"packages":{"":{}}}');
+      expect([clean.status, clean.stderr]).toEqual([0, ""]);
+      // A missing record means the checker exited without running npm, i.e. it failed to treat
+      // the path it was invoked with as its own entry point, which is a silent skip.
+      expect(
+        existsSync(recorded),
+        `npm child never ran: ${String(clean.status)} ${clean.stderr}`,
+      ).toBe(true);
+      expect(clean.stdout).not.toContain("audit-cli-secret");
+      expect(clean.stderr).not.toContain("audit-cli-secret");
+      const recordedInit = invocation();
+      expect(recordedInit.argv).toEqual(
+        getNpmAuditInvocation(shim, process.execPath).args.slice(1),
       );
-      const environment: NodeJS.ProcessEnv = {
-        ...process.env,
-        AUDIT_STUB_FILE: recorded,
-        AUDIT_STUB_STDOUT: JSON.stringify({ auditReportVersion: 2, vulnerabilities: {} }),
-        GITHUB_TOKEN: "audit-cli-secret",
-        npm_execpath: shim,
-      };
-      if (process.platform !== "win32") environment.Github_Token = "audit-cli-secret";
-
-      const run = (lock: string): { status: null | number; stderr: string; stdout: string } => {
-        writeFileSync(join(directory, "package-lock.json"), lock);
-        rmSync(recorded, { force: true });
-        const child = spawnSync(process.execPath, [CHECKER_ENTRY], {
-          cwd: directory,
-          encoding: "utf8",
-          env: environment,
-        });
-        return { status: child.status, stderr: child.stderr, stdout: child.stdout };
-      };
-      const invocation = (): { argv: string[]; env: NodeJS.ProcessEnv } =>
-        JSON.parse(readFileSync(recorded, "utf8")) as { argv: string[]; env: NodeJS.ProcessEnv };
-
-      try {
-        const clean = run('{"lockfileVersion":3,"packages":{"":{}}}');
-        expect([clean.status, clean.stderr]).toEqual([0, ""]);
-        // A missing record means the checker exited without running npm, i.e. it failed to treat
-        // the path it was invoked with as its own entry point, which is a silent skip.
-        expect(
-          existsSync(recorded),
-          `npm child never ran: ${String(clean.status)} ${clean.stderr}`,
-        ).toBe(true);
-        expect(clean.stdout).not.toContain("audit-cli-secret");
-        expect(clean.stderr).not.toContain("audit-cli-secret");
-        const recordedInit = invocation();
-        expect(recordedInit.argv).toEqual(
-          getNpmAuditInvocation(shim, process.execPath).args.slice(1),
-        );
-        expect(recordedInit.env.GITHUB_TOKEN).toBeUndefined();
-        expect(recordedInit.env.npm_execpath).toBe(shim);
-        if (process.platform !== "win32") {
-          expect(recordedInit.env.Github_Token).toBeUndefined();
-        }
-
-        // A non-canonical advisory URL reaches policy validation without any network lookup.
-        environment.AUDIT_STUB_STDOUT = JSON.stringify({
-          auditReportVersion: 2,
-          vulnerabilities: {
-            "aliased-dep": {
-              effects: [],
-              fixAvailable: false,
-              isDirect: false,
-              name: "aliased-dep",
-              nodes: ["node_modules/aliased-dep"],
-              severity: "high",
-              via: [
-                {
-                  dependency: "aliased-dep",
-                  name: "aliased-dep",
-                  severity: "high",
-                  url: "https://non-canonical.example/advisories/GHSA-1111-1111-1111",
-                },
-              ],
-            },
-          },
-        });
-        const reported = run('{"lockfileVersion":3,"packages":{"":{}}}');
-        expect(reported.status).toBe(1);
-        expect(reported.stderr).toContain("Invalid GitHub advisory URL:");
-        expect(reported.stderr).not.toContain("audit-cli-secret");
-
-        // The lockfile next to the run is the graph the policy validates against.
-        environment.AUDIT_STUB_STDOUT = JSON.stringify({
-          auditReportVersion: 2,
-          vulnerabilities: {},
-        });
-        const lockless = run('{"lockfileVersion":3,"packages":{}}');
-        expect(lockless.status).toBe(1);
-        expect(lockless.stderr).toContain("missing its root package entry");
-      } finally {
-        rmSync(directory, { force: true, recursive: true });
+      expect(recordedInit.env.GITHUB_TOKEN).toBeUndefined();
+      expect(recordedInit.env.npm_execpath).toBe(shim);
+      if (process.platform !== "win32") {
+        expect(recordedInit.env.Github_Token).toBeUndefined();
       }
-    },
-  );
+
+      // A non-canonical advisory URL reaches policy validation without any network lookup.
+      environment.AUDIT_STUB_STDOUT = JSON.stringify({
+        auditReportVersion: 2,
+        vulnerabilities: {
+          "aliased-dep": {
+            effects: [],
+            fixAvailable: false,
+            isDirect: false,
+            name: "aliased-dep",
+            nodes: ["node_modules/aliased-dep"],
+            severity: "high",
+            via: [
+              {
+                dependency: "aliased-dep",
+                name: "aliased-dep",
+                severity: "high",
+                url: "https://non-canonical.example/advisories/GHSA-1111-1111-1111",
+              },
+            ],
+          },
+        },
+      });
+      const reported = run('{"lockfileVersion":3,"packages":{"":{}}}');
+      expect(reported.status).toBe(1);
+      expect(reported.stderr).toContain("Invalid GitHub advisory URL:");
+      expect(reported.stderr).not.toContain("audit-cli-secret");
+
+      // The lockfile next to the run is the graph the policy validates against.
+      environment.AUDIT_STUB_STDOUT = JSON.stringify({
+        auditReportVersion: 2,
+        vulnerabilities: {},
+      });
+      const lockless = run('{"lockfileVersion":3,"packages":{}}');
+      expect(lockless.status).toBe(1);
+      expect(lockless.stderr).toContain("missing its root package entry");
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
 });

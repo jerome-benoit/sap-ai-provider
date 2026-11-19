@@ -1,8 +1,11 @@
-/** Validates npm audit output against narrowly scoped, expiring exceptions. */
+/**
+ * Validates npm audit output against narrowly scoped, expiring exceptions.
+ *
+ * Import-safe: nothing runs on import. The command is `scripts/check-dependency-audit-cli.ts`,
+ * which `npm run check-dependency-audit` executes.
+ */
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync, statSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 import { raceWithAbort } from "./check-lockfile-release-age.mjs";
@@ -309,6 +312,23 @@ export function getNpmAuditInvocation(
     ],
     command: nodeExecPath,
   };
+}
+
+/**
+ * Run the command-line gate, reporting one diagnostic and exit code 1 on any violation.
+ *
+ * Importing this module never runs the gate, and the gate never depends on guessing which path
+ * Node was asked to execute: `scripts/check-dependency-audit-cli.ts` is the command entry, and
+ * `npm run check-dependency-audit` runs it. A failed guess would skip the gate in silence, which is
+ * the very failure this checker exists to prevent.
+ */
+export async function runCommandLineAudit(): Promise<void> {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
 
 /**
@@ -677,46 +697,6 @@ function isCalendarDate(value: string): boolean {
 }
 
 /**
- * Check whether this module is the invoked command-line entry point.
- *
- * The entry path in `process.argv` and this module's own URL can name the same file through
- * different spellings: a symlink, an 8.3 short form, a different drive-letter case, or a mounted
- * or substituted root. Reading any of them as two files would skip the gate in silence, so the
- * comparison falls back from the literal path to realpaths, to case-insensitive equality on a
- * case-insensitive platform, and finally to the identity of the file itself.
- * @returns Whether this module should run as a command
- */
-function isCommandLineEntry(): boolean {
-  const invoked = process.argv[1];
-  if (!invoked) return false;
-  const self = fileURLToPath(import.meta.url);
-  const caseInsensitiveFileSystem = process.platform === "win32";
-  const sameText = (left: string, right: string): boolean =>
-    caseInsensitiveFileSystem ? left.toLowerCase() === right.toLowerCase() : left === right;
-  const invokedPath = resolve(invoked);
-  if (sameText(invokedPath, self)) return true;
-  let invokedReal: string;
-  let selfReal: string;
-  try {
-    invokedReal = realpathSync(invokedPath);
-    selfReal = realpathSync(self);
-  } catch {
-    return false;
-  }
-  if (sameText(invokedReal, selfReal)) return true;
-  // Realpaths can still differ per drive mapping, so compare the files themselves.
-  try {
-    const invokedStat = statSync(invokedReal);
-    const selfStat = statSync(selfReal);
-    return (
-      invokedStat.ino !== 0 && invokedStat.ino === selfStat.ino && invokedStat.dev === selfStat.dev
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Check whether one vulnerability cause references a withdrawn advisory.
  *
  * A reference is only dropped once it parses as an advisory, so removal can never mask a
@@ -736,7 +716,7 @@ function isWithdrawnReference(entry: unknown, withdrawnIds: ReadonlySet<string>)
   return true;
 }
 
-/** Run the dependency audit command-line checker. */
+/** Audit, filter retractions, and enforce the exception policy once. */
 async function main(): Promise<void> {
   const invocation = getNpmAuditInvocation();
   const audit = spawnSync(invocation.command, invocation.args, {
@@ -1235,13 +1215,4 @@ function validateIncomingRoutes(
 
   visiting.delete(memoKey);
   memo.add(memoKey);
-}
-
-if (isCommandLineEntry()) {
-  try {
-    await main();
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  }
 }

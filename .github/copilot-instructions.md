@@ -64,7 +64,8 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 
 ### Dependency Security
 
-- Run `npm run check-dependency-audit` with registry access. It forces production,
+- Run `npm run check-dependency-audit` with registry access. Its entry is
+  `scripts/check-dependency-audit-cli.ts`, and the checker library runs nothing on import. It forces production,
   development, optional, and peer scopes despite inherited npm `omit` settings, and audits the
   committed `package-lock.json` alone, ignoring `node_modules`, so every reported node is a
   lockfile instance.
