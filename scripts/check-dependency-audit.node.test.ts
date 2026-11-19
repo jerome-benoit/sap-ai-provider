@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,7 @@ import type {
 
 import {
   allowedAdvisories,
+  auditChildEnvironment,
   checkAuditProcessResult,
   filterWithdrawnAdvisories,
   getNpmAuditInvocation,
@@ -27,6 +28,9 @@ const TODAY = "2026-10-23";
 const TEST_ADVISORY = "GHSA-1111-1111-1111";
 
 const WITHDRAWN_ADVISORY = "GHSA-wdth-0000-0000";
+
+/** Retraction timestamp, far enough in the past that no runner clock can read it as future. */
+const WITHDRAWN_TIMESTAMP = "2020-01-01T00:00:00Z";
 
 const KEPT_ADVISORY = "GHSA-kept-0000-0000";
 
@@ -593,6 +597,69 @@ describe("dependency audit instance graph policy", () => {
     via.push({ ...requireAdvisory(via[0]), severity: "critical" });
     expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow("severity critical");
   });
+
+  it("rejects an advisory naming a package other than the excepted one", () => {
+    const { lock, report } = fixtures();
+    const advisory = requireAdvisory(
+      requireVulnerability(report.vulnerabilities, "node-forge").via[0],
+    );
+    advisory.dependency = "left-pad";
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 package does not match node-forge",
+    );
+  });
+
+  it("rejects a root record whose severity differs from the exception", () => {
+    const { lock, report } = fixtures();
+    requireVulnerability(report.vulnerabilities, "node-forge").severity = "critical";
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 root severity critical does not match high",
+    );
+  });
+
+  it("rejects a root record whose directness differs from the exception", () => {
+    const { lock, report } = fixtures();
+    requireVulnerability(report.vulnerabilities, "node-forge").isDirect = true;
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 directness does not match the exception policy",
+    );
+  });
+
+  it("rejects a root record the lockfile does not resolve to any node", () => {
+    const { lock, report } = fixtures();
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes = [];
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 has no lockfile nodes",
+    );
+  });
+
+  it("rejects an audited node the lockfile assigns to another package", () => {
+    const { lock, report } = fixtures();
+    requireVulnerability(report.vulnerabilities, "node-forge").nodes = ["node_modules/jks-js"];
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 has an unapproved dependency route through jks-js",
+    );
+  });
+
+  it("rejects a second root record naming the excepted package", () => {
+    const { lock, report } = fixtures();
+    report.vulnerabilities["aliased-node-forge"] = {
+      ...requireVulnerability(report.vulnerabilities, "node-forge"),
+      nodes: [],
+      via: [],
+    };
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 has no unique root vulnerability for node-forge",
+    );
+  });
+
+  it("rejects an approved route whose parent audit record omits the audited child", () => {
+    const { lock, report } = fixtures();
+    requireVulnerability(report.vulnerabilities, "jks-js").via = [];
+    expect(() => validateDependencyAudit(report, lock, TODAY)).toThrow(
+      "GHSA-1111-1111-1111 audit via for jks-js does not include node-forge",
+    );
+  });
 });
 
 describe("npm audit process contract", () => {
@@ -629,6 +696,7 @@ describe("npm audit process contract", () => {
         "--json",
         "--audit-level=none",
         "--package-lock=true",
+        "--package-lock-only",
         "--include=prod",
         "--include=dev",
         "--include=optional",
@@ -786,7 +854,7 @@ function setCauses(
 }
 
 const WITHDRAWN_RESPONSE = {
-  body: { ghsa_id: WITHDRAWN_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+  body: { ghsa_id: WITHDRAWN_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
 };
 
 describe("withdrawn advisory filtering", () => {
@@ -796,7 +864,7 @@ describe("withdrawn advisory filtering", () => {
     const snapshot = structuredClone(report);
     const { calls, fetch } = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
       },
     });
 
@@ -892,6 +960,32 @@ describe("withdrawn advisory filtering", () => {
     );
   });
 
+  it("ranks retained advisory severities by the npm audit order", async () => {
+    const ladder = ["info", "low", "moderate", "high", "critical"];
+    for (const [index, lower] of ladder.entries()) {
+      const upper = ladder[index + 1];
+      if (!upper) continue;
+      const { report } = fixtures();
+      Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+      setCauses(report, "node-forge", [
+        cause(WITHDRAWN_ADVISORY, "low"),
+        cause(KEPT_ADVISORY, lower),
+        cause(CRITICAL_ADVISORY, upper),
+      ]);
+      const { fetch } = advisoryFetch({
+        [CRITICAL_ADVISORY]: { body: { ghsa_id: CRITICAL_ADVISORY, withdrawn_at: null } },
+        [KEPT_ADVISORY]: { body: { ghsa_id: KEPT_ADVISORY, withdrawn_at: null } },
+        [WITHDRAWN_ADVISORY]: WITHDRAWN_RESPONSE,
+      });
+
+      const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
+
+      expect(requireVulnerability(filtered.report.vulnerabilities, "node-forge").severity).toBe(
+        upper,
+      );
+    }
+  });
+
   it("keeps npm severity when a transitive cause and an advisory remain", async () => {
     const { report } = fixtures();
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
@@ -957,13 +1051,26 @@ describe("withdrawn advisory filtering", () => {
     setCauses(report, "node-forge", [cause(WITHDRAWN_ADVISORY, "high")]);
     const { fetch } = advisoryFetch({
       [WITHDRAWN_ADVISORY]: {
-        body: { ghsa_id: WITHDRAWN_ADVISORY.toUpperCase(), withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: WITHDRAWN_ADVISORY.toUpperCase(), withdrawn_at: WITHDRAWN_TIMESTAMP },
       },
     });
 
     const filtered = await filterWithdrawnAdvisories(report, fetch, undefined);
 
     expect(filtered.withdrawn).toEqual([WITHDRAWN_ADVISORY]);
+  });
+
+  it("refuses a withdrawal timestamp in the future", async () => {
+    const { report } = fixtures();
+    Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
+    setCauses(report, "node-forge", [cause(TEST_ADVISORY, "high")]);
+    const { fetch } = advisoryFetch({
+      [TEST_ADVISORY]: { body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2999-01-01T00:00:00Z" } },
+    });
+
+    await expect(filterWithdrawnAdvisories(report, fetch, undefined)).rejects.toThrow(
+      `GitHub advisory ${TEST_ADVISORY} reports a withdrawal timestamp in the future`,
+    );
   });
 
   it("keeps reporting an advisory that the database still lists as active", async () => {
@@ -1042,7 +1149,7 @@ describe("withdrawn advisory filtering", () => {
     const bodyEvents: string[] = [];
     const declaredTooLarge = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
         contentLength: String(MAXIMUM_ADVISORY_BYTES + 1),
         record: (event) => {
           bodyEvents.push(event);
@@ -1060,7 +1167,7 @@ describe("withdrawn advisory filtering", () => {
     const controller = new AbortController();
     const hanging = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
         hang: true,
         onHang: () => {
           queueMicrotask(() => {
@@ -1125,7 +1232,7 @@ describe("advisory database responses", () => {
     const arrayBody = advisoryFetch({ [TEST_ADVISORY]: { body: [] } });
     const foreignOrigin = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
         url: "https://example.com/advisories/GHSA-1111-1111-1111",
       },
     });
@@ -1172,7 +1279,7 @@ describe("advisory database responses", () => {
     const record = {
       ghsa_id: TEST_ADVISORY,
       p: "",
-      withdrawn_at: "2026-11-18T15:38:56Z",
+      withdrawn_at: WITHDRAWN_TIMESTAMP,
     };
     const encoder = new TextEncoder();
     const baseBytes = encoder.encode(JSON.stringify(record)).byteLength;
@@ -1283,6 +1390,22 @@ describe("advisory exception lifecycle", () => {
     );
   });
 
+  it("keeps every spelling of the advisory token out of the npm child", () => {
+    const child = auditChildEnvironment({
+      GITHUB_TOKEN: "secret",
+      Github_Token: "secret",
+      github_token: "secret",
+      npm_config_audit: "kept",
+      PATH: "/bin",
+    });
+
+    expect(Object.keys(child).filter((name) => name.toUpperCase() === "GITHUB_TOKEN")).toEqual([]);
+    expect(child.PATH).toBe("/bin");
+    expect(child.npm_config_audit).toBe("kept");
+    const inherited = auditChildEnvironment({ ...process.env, GITHUB_TOKEN: "secret" });
+    expect(inherited.GITHUB_TOKEN).toBeUndefined();
+  });
+
   it("rejects a lockfile whose instance name cannot be validated", () => {
     const { report } = fixtures();
     const lock = JSON.parse(
@@ -1326,7 +1449,7 @@ describe("npm audit advisory lookup pipeline", () => {
     delete advisory.severity;
     const { calls, fetch } = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
       },
     });
 
@@ -1363,7 +1486,7 @@ describe("npm audit advisory lookup pipeline", () => {
     Reflect.deleteProperty(allowedAdvisories, TEST_ADVISORY);
     const { fetch: withdrawnFetch } = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
       },
     });
     const { fetch: activeFetch } = advisoryFetch({
@@ -1386,7 +1509,7 @@ describe("dependency audit run", () => {
     const lines: string[] = [];
     const { calls, fetch, inits } = advisoryFetch({
       [TEST_ADVISORY]: {
-        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: "2026-11-18T15:38:56Z" },
+        body: { ghsa_id: TEST_ADVISORY, withdrawn_at: WITHDRAWN_TIMESTAMP },
       },
     });
 
@@ -1546,6 +1669,105 @@ describe("command-line entry", () => {
           expect(status).toBe(1);
           expect(stderr.match(/Missing npm_execpath/g)).toHaveLength(1);
         }
+      } finally {
+        rmSync(directory, { force: true, recursive: true });
+      }
+    },
+  );
+
+  // The child-facing path is only observable in a real process: what npm is asked to run, which
+  // environment it receives, and whether the report it prints reaches the exception policy.
+  it.runIf(NODE_MAJOR >= 23)(
+    "runs the gate end to end against a stubbed npm child",
+    { timeout: 180_000 },
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "audit-cli-"));
+      const shim = join(directory, "fake-npm.cjs");
+      const recorded = join(directory, "invocation.json");
+      writeFileSync(
+        shim,
+        [
+          'const { writeFileSync } = require("node:fs");',
+          "writeFileSync(",
+          "  process.env.AUDIT_STUB_FILE,",
+          "  JSON.stringify({ argv: process.argv.slice(2), env: process.env }),",
+          ");",
+          'process.stdout.write(process.env.AUDIT_STUB_STDOUT ?? "");',
+          "",
+        ].join("\n"),
+      );
+      const environment: NodeJS.ProcessEnv = {
+        ...process.env,
+        AUDIT_STUB_FILE: recorded,
+        AUDIT_STUB_STDOUT: JSON.stringify({ auditReportVersion: 2, vulnerabilities: {} }),
+        GITHUB_TOKEN: "audit-cli-secret",
+        npm_execpath: shim,
+      };
+      if (process.platform !== "win32") environment.Github_Token = "audit-cli-secret";
+
+      const run = (lock: string): { status: null | number; stderr: string; stdout: string } => {
+        writeFileSync(join(directory, "package-lock.json"), lock);
+        rmSync(recorded, { force: true });
+        const child = spawnSync(process.execPath, [CHECKER_ENTRY], {
+          cwd: directory,
+          encoding: "utf8",
+          env: environment,
+        });
+        return { status: child.status, stderr: child.stderr, stdout: child.stdout };
+      };
+      const invocation = (): { argv: string[]; env: NodeJS.ProcessEnv } =>
+        JSON.parse(readFileSync(recorded, "utf8")) as { argv: string[]; env: NodeJS.ProcessEnv };
+
+      try {
+        const clean = run('{"lockfileVersion":3,"packages":{"":{}}}');
+        expect([clean.status, clean.stderr]).toEqual([0, ""]);
+        expect(clean.stdout).not.toContain("audit-cli-secret");
+        expect(clean.stderr).not.toContain("audit-cli-secret");
+        const recordedInit = invocation();
+        expect(recordedInit.argv).toEqual(
+          getNpmAuditInvocation(shim, process.execPath).args.slice(1),
+        );
+        expect(recordedInit.env.GITHUB_TOKEN).toBeUndefined();
+        expect(recordedInit.env.npm_execpath).toBe(shim);
+        if (process.platform !== "win32") {
+          expect(recordedInit.env.Github_Token).toBeUndefined();
+        }
+
+        // A non-canonical advisory URL reaches policy validation without any network lookup.
+        environment.AUDIT_STUB_STDOUT = JSON.stringify({
+          auditReportVersion: 2,
+          vulnerabilities: {
+            "aliased-dep": {
+              effects: [],
+              fixAvailable: false,
+              isDirect: false,
+              name: "aliased-dep",
+              nodes: ["node_modules/aliased-dep"],
+              severity: "high",
+              via: [
+                {
+                  dependency: "aliased-dep",
+                  name: "aliased-dep",
+                  severity: "high",
+                  url: "https://non-canonical.example/advisories/GHSA-1111-1111-1111",
+                },
+              ],
+            },
+          },
+        });
+        const reported = run('{"lockfileVersion":3,"packages":{"":{}}}');
+        expect(reported.status).toBe(1);
+        expect(reported.stderr).toContain("Invalid GitHub advisory URL:");
+        expect(reported.stderr).not.toContain("audit-cli-secret");
+
+        // The lockfile next to the run is the graph the policy validates against.
+        environment.AUDIT_STUB_STDOUT = JSON.stringify({
+          auditReportVersion: 2,
+          vulnerabilities: {},
+        });
+        const lockless = run('{"lockfileVersion":3,"packages":{}}');
+        expect(lockless.status).toBe(1);
+        expect(lockless.stderr).toContain("missing its root package entry");
       } finally {
         rmSync(directory, { force: true, recursive: true });
       }

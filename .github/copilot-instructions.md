@@ -65,7 +65,9 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 ### Dependency Security
 
 - Run `npm run check-dependency-audit` with registry access. It forces production,
-  development, optional, and peer scopes despite inherited npm `omit` settings.
+  development, optional, and peer scopes despite inherited npm `omit` settings, and audits the
+  committed `package-lock.json` alone, ignoring `node_modules`, so every reported node is a
+  lockfile instance.
   Every canonical `https://github.com/advisories/GHSA-…` reference without an exception entry
   is looked up in the GitHub Advisory Database, the upstream source of npm audit data, so CI
   also needs `https://api.github.com`. GitHub retracts an advisory with a `withdrawn_at`
@@ -77,12 +79,14 @@ suite does not establish deployability to an Edge isolate without Node compatibi
   causes only reports the most severe retained one; one that keeps a transitive cause keeps
   npm's severity. Lookup failures fail closed: transport errors, redirects, non-2xx
   responses including a deleted advisory (HTTP 404), an unexpected response origin, invalid
-  JSON, a mismatched `ghsa_id`, an unparseable `withdrawn_at`, and a missing, stalled, or
-  oversized body. CI runs it in the step `Check dependency vulnerabilities`
+  JSON, a mismatched `ghsa_id`, an unparseable or future `withdrawn_at`, and a missing, stalled,
+  or oversized body. CI runs it in the step `Check dependency vulnerabilities`
   of `.github/workflows/check-pr.yaml` and of `.github/workflows/npm-publish-packages.yml`,
   and supplies `GITHUB_TOKEN` for the advisory API rate limit.
-  Temporary exceptions start only from npm audit's exact nodes in the lockfile-v3
-  package-instance graph, using Node ancestor resolution semantics. Validation covers
+  Record a temporary exception in the `allowedAdvisories` map of
+  `scripts/check-dependency-audit.ts`, never in a manifest a pull request controls. Such an
+  exception starts only from npm audit's exact nodes in the lockfile-v3 package-instance graph,
+  using Node ancestor resolution semantics. Validation covers
   every edge up to the directly declared root anchor and the identity coherence of
   every edge entering that anchor; coherent shared references above it are not
   recursively treated as new provenance. Scope, severity, directness, and audit

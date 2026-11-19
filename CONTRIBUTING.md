@@ -443,7 +443,9 @@ npm run test:node             # Runs test suite
   and development dependencies. Fix reported vulnerabilities rather than bypassing
   the check.
 - Keep any necessary advisory exception narrowly scoped, justified and time-limited.
-  Remove exceptions when the advisory is withdrawn or the vulnerability is resolved.
+  Record it in the `allowedAdvisories` map of `scripts/check-dependency-audit.ts`, never in a
+  manifest a pull request controls. Remove exceptions when the advisory is withdrawn or the
+  vulnerability is resolved.
   Once no exception covers an advisory that GitHub has withdrawn, the checker confirms
   the retraction against the GitHub Advisory Database and ignores that advisory. An
   exception whose `expires` date has passed, whose advisory is gone, or whose date is

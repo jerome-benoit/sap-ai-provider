@@ -135,7 +135,13 @@ const ADVISORY_EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /** npm vulnerability severities ordered from least to most severe. */
 const AUDIT_SEVERITY_ORDER = ["info", "low", "moderate", "high", "critical"] as const;
 
-/** Temporary exceptions keyed by their exact GitHub Security Advisory ID. */
+/**
+ * Temporary exceptions keyed by their exact GitHub Security Advisory ID.
+ *
+ * This map is the entire exception store: an entry is added here, in reviewed source, and is never
+ * read from `package-lock.json` or any other input a pull request can change. While an entry is
+ * used, every field is enforced against the live audit report and the lockfile instance graph.
+ */
 export const allowedAdvisories: Readonly<Record<string, AllowedAdvisory>> = {};
 
 /** Response body stream consumed for one advisory lookup. */
@@ -194,6 +200,23 @@ export interface WithdrawnAdvisoryFilterResult<TReport> {
 interface AdvisoryDatabaseRecord {
   readonly ghsa_id?: unknown;
   readonly withdrawn_at?: unknown;
+}
+
+/**
+ * Build the environment handed to the `npm audit` child process.
+ *
+ * The advisory database token belongs to this process alone: `npm audit` never needs it, and npm
+ * would echo inherited values into its diagnostics and log files. Some platforms resolve
+ * environment names case-insensitively, so every spelling is dropped.
+ * @param environment - Environment of the checker process
+ * @returns Copy without any advisory token spelling
+ */
+export function auditChildEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(environment).filter(([name]) => name.toUpperCase() !== "GITHUB_TOKEN"),
+  );
 }
 
 /**
@@ -274,7 +297,10 @@ export function getNpmAuditInvocation(
       "audit",
       "--json",
       "--audit-level=none",
+      // Require a lockfile, and audit that lockfile alone, so every reported node is a lockfile
+      // instance rather than whatever the working tree happens to hold.
       "--package-lock=true",
+      "--package-lock-only",
       "--include=prod",
       "--include=dev",
       "--include=optional",
@@ -539,12 +565,15 @@ async function fetchAdvisoryRecord(
     throw new Error(`GitHub advisory ${id} returned a mismatched identifier`);
   }
   const { withdrawn_at: withdrawnAt } = advisory;
-  if (
-    withdrawnAt !== undefined &&
-    withdrawnAt !== null &&
-    (typeof withdrawnAt !== "string" || Number.isNaN(Date.parse(withdrawnAt)))
-  ) {
-    throw new Error(`GitHub advisory ${id} has an invalid withdrawn_at value`);
+  if (withdrawnAt !== undefined && withdrawnAt !== null) {
+    const withdrawnTime = typeof withdrawnAt === "string" ? Date.parse(withdrawnAt) : Number.NaN;
+    if (Number.isNaN(withdrawnTime)) {
+      throw new Error(`GitHub advisory ${id} has an invalid withdrawn_at value`);
+    }
+    // A future timestamp is not a retraction, so it must not drop the advisory from the gate.
+    if (withdrawnTime > Date.now()) {
+      throw new Error(`GitHub advisory ${id} reports a withdrawal timestamp in the future`);
+    }
   }
   return advisory;
 }
@@ -691,11 +720,7 @@ async function main(): Promise<void> {
   const invocation = getNpmAuditInvocation();
   const audit = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
-    // The advisory token belongs to this process only; `npm audit` never needs it.
-    // Some platforms resolve environment names case-insensitively, so drop every spelling.
-    env: Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => name.toUpperCase() !== "GITHUB_TOKEN"),
-    ),
+    env: auditChildEnvironment(),
     // Node's 1 MiB default would truncate a large audit report into an ENOBUFS failure.
     maxBuffer: 64 * 1024 * 1024,
   });
