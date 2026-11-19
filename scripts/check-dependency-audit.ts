@@ -1,6 +1,6 @@
 /** Validates npm audit output against narrowly scoped, expiring exceptions. */
 import { spawnSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -679,17 +679,38 @@ function isCalendarDate(value: string): boolean {
 /**
  * Check whether this module is the invoked command-line entry point.
  *
- * A symlinked entry keeps the link in `process.argv[1]` while `import.meta.url` reports the real
- * file, so the comparison falls back to realpaths instead of silently skipping the gate.
+ * The entry path in `process.argv` and this module's own URL can name the same file through
+ * different spellings: a symlink, an 8.3 short form, a different drive-letter case, or a mounted
+ * or substituted root. Reading any of them as two files would skip the gate in silence, so the
+ * comparison falls back from the literal path to realpaths, to case-insensitive equality on a
+ * case-insensitive platform, and finally to the identity of the file itself.
  * @returns Whether this module should run as a command
  */
 function isCommandLineEntry(): boolean {
   const invoked = process.argv[1];
   if (!invoked) return false;
   const self = fileURLToPath(import.meta.url);
-  if (resolve(invoked) === self) return true;
+  const caseInsensitiveFileSystem = process.platform === "win32";
+  const sameText = (left: string, right: string): boolean =>
+    caseInsensitiveFileSystem ? left.toLowerCase() === right.toLowerCase() : left === right;
+  const invokedPath = resolve(invoked);
+  if (sameText(invokedPath, self)) return true;
+  let invokedReal: string;
+  let selfReal: string;
   try {
-    return realpathSync(resolve(invoked)) === realpathSync(self);
+    invokedReal = realpathSync(invokedPath);
+    selfReal = realpathSync(self);
+  } catch {
+    return false;
+  }
+  if (sameText(invokedReal, selfReal)) return true;
+  // Realpaths can still differ per drive mapping, so compare the files themselves.
+  try {
+    const invokedStat = statSync(invokedReal);
+    const selfStat = statSync(selfReal);
+    return (
+      invokedStat.ino !== 0 && invokedStat.ino === selfStat.ino && invokedStat.dev === selfStat.dev
+    );
   } catch {
     return false;
   }

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1675,6 +1675,25 @@ describe("command-line entry", () => {
     },
   );
 
+  // The published command runs this checker through the package's own `tsx`, the form both CI
+  // workflows use, so a guard that misreads the entry path would skip the gate silently there.
+  it("runs the gate when launched through the package tsx command", { timeout: 120_000 }, () => {
+    const environment = { ...process.env };
+    delete environment.npm_execpath;
+    const run = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("../node_modules/tsx/dist/cli.mjs", import.meta.url)), CHECKER_ENTRY],
+      {
+        cwd: fileURLToPath(new URL("..", import.meta.url)),
+        encoding: "utf8",
+        env: environment,
+      },
+    );
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("Missing npm_execpath");
+  });
+
   // The child-facing path is only observable in a real process: what npm is asked to run, which
   // environment it receives, and whether the report it prints reaches the exception policy.
   it.runIf(NODE_MAJOR >= 23)(
@@ -1721,6 +1740,12 @@ describe("command-line entry", () => {
       try {
         const clean = run('{"lockfileVersion":3,"packages":{"":{}}}');
         expect([clean.status, clean.stderr]).toEqual([0, ""]);
+        // A missing record means the checker exited without running npm, i.e. it failed to treat
+        // the path it was invoked with as its own entry point, which is a silent skip.
+        expect(
+          existsSync(recorded),
+          `npm child never ran: ${String(clean.status)} ${clean.stderr}`,
+        ).toBe(true);
         expect(clean.stdout).not.toContain("audit-cli-secret");
         expect(clean.stderr).not.toContain("audit-cli-secret");
         const recordedInit = invocation();
