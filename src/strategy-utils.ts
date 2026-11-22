@@ -291,10 +291,25 @@ export interface SDKResponse {
 }
 
 /**
+ * Streaming choice fields read by this package, mirroring the Orchestration
+ * `LlmChoiceStreaming` shape returned by {@link SDKStreamChunk.findChoiceByIndex}.
+ * @internal
+ */
+export interface SDKStreamChoice {
+  delta?: { reasoning_content?: ReasoningBlock[] };
+  provider_specific_fields?: unknown;
+}
+
+/**
  * @internal
  */
 export interface SDKStreamChunk {
   _data?: unknown;
+  /**
+   * Choice accessor exposed by Orchestration stream chunks. Absent on chunks
+   * from APIs that do not index streaming choices.
+   */
+  findChoiceByIndex?(index: number): SDKStreamChoice | undefined;
   getCitations?(): SDKCitation[] | undefined;
   getDeltaContent(): null | string | undefined;
   getDeltaToolCalls(): null | SDKDeltaToolCall[] | undefined;
