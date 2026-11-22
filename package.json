@@ -124,9 +124,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.118",
-    "@ai-sdk/provider": "^4.0.38",
-    "@ai-sdk/provider-utils": "^5.0.81",
+    "@ai-sdk/openai": "^4.0.121",
+    "@ai-sdk/provider": "^4.0.39",
+    "@ai-sdk/provider-utils": "^5.0.82",
     "@sap-ai-sdk/ai-api": "^2.18.0",
     "@sap-ai-sdk/core": "^2.18.0",
     "@sap-ai-sdk/foundation-models": "^2.18.0",
@@ -141,11 +141,11 @@
     "@edge-runtime/vm": "5.0.0",
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",
-    "@vitest/coverage-v8": "5.1.0",
-    "ai": "7.0.173",
+    "@vitest/coverage-v8": "5.1.1",
+    "ai": "7.0.177",
     "dotenv": "18.0.10",
     "eslint": "10.15.0",
-    "eslint-plugin-jsdoc": "65.4.8",
+    "eslint-plugin-jsdoc": "65.5.0",
     "eslint-plugin-perfectionist": "5.14.0",
     "github-slugger": "2.0.0",
     "globals": "17.14.0",
@@ -159,8 +159,8 @@
     "tsup": "9.0.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.2",
-    "vitest": "5.1.0"
+    "typescript-eslint": "8.73.0",
+    "vitest": "5.1.1"
   },
   "overrides": {
     "@eslint/config-array": {
