@@ -8,7 +8,6 @@ import type {
   OrchestrationClient,
   OrchestrationModuleConfig,
   OrchestrationModuleConfigList,
-  OrchestrationStreamChunkResponse,
 } from "@sap-ai-sdk/orchestration";
 
 import type { ParsePartProviderOptions } from "./sap-ai-provider-options.js";
@@ -347,9 +346,8 @@ export class OrchestrationLanguageModelStrategy extends BaseLanguageModelStrateg
         disposeSapStream(streamResponse);
       },
       extractProviderSpecificFields: (chunk) =>
-        (chunk as OrchestrationStreamChunkResponse).findChoiceByIndex(0)?.provider_specific_fields,
-      extractReasoningBlocks: (chunk) =>
-        (chunk as OrchestrationStreamChunkResponse).findChoiceByIndex(0)?.delta.reasoning_content,
+        chunk.findChoiceByIndex?.(0)?.provider_specific_fields,
+      extractReasoningBlocks: (chunk) => chunk.findChoiceByIndex?.(0)?.delta?.reasoning_content,
       getCitations: () => streamResponse.getCitations(),
       getFinishReason: () => streamResponse.getFinishReason(),
       getIntermediateFailures: () => streamResponse.getIntermediateFailures(),
