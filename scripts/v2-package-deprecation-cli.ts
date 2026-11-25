@@ -12,6 +12,7 @@ import type { Invocation, PackageDocument } from "./v2-package-deprecation.js";
 
 import {
   DEPRECATION_MESSAGE,
+  DEPRECATION_SPEC,
   fetchPackageDocument,
   FROZEN_VERSION,
   getNpmDeprecationInvocation,
@@ -24,11 +25,14 @@ import {
 /**
  * Ask npm to store the canonical message, and report a refused write.
  *
- * Exit status zero proves that npm accepted the write. It does not prove that the public registry
- * document already shows it: that document is cached, `cache-control: public, max-age=300`, so
- * `verify` is the command that confirms coverage.
+ * Exit status zero proves only that npm reported no error. It does not prove that the public
+ * registry document already shows the message: that document is cached, `cache-control: public,
+ * max-age=300`, so `verify` is the command that confirms coverage once the cache has refreshed.
  */
 function applyDeprecation(): void {
+  if (process.env.npm_lifecycle_event !== "deprecate-v2-package") {
+    throw new Error("Run npm run deprecate-v2-package -- --apply to write the message.");
+  }
   const { args, command } = getNpmDeprecationInvocation();
   const result = spawnSync(command, args, { stdio: "inherit" });
   if (result.error) {
@@ -112,11 +116,16 @@ async function runCommand(invocation: Invocation): Promise<0 | 1> {
   }
 
   if (pending.length === 0) {
-    console.log("Nothing to write: every published version carries the canonical message.");
+    console.log(
+      "Nothing to write: every version of the registry snapshot carries the canonical message.",
+    );
     return 0;
   }
   if (!invocation.apply) {
-    console.log(`Dry run: would write the message to ${String(pending.length)} versions.`);
+    console.log(`Dry run: npm deprecate targets every version matching ${DEPRECATION_SPEC}.`);
+    console.log(
+      `Registry snapshot: ${String(pending.length)} of ${String(versions.length)} published versions lack the canonical deprecation message.`,
+    );
     console.log(`Message: ${DEPRECATION_MESSAGE}`);
     console.log(
       "Re-run with --apply to write (needs an authenticated npm CLI and an OTP when 2FA is on).",
@@ -126,7 +135,7 @@ async function runCommand(invocation: Invocation): Promise<0 | 1> {
 
   applyDeprecation();
   console.log(
-    "npm accepted the write. The public registry document stays cached for up to five minutes, so run npm run verify-v2-package to confirm coverage.",
+    "npm reported no error. The public registry document stays cached for up to five minutes, so run npm run verify-v2-package to confirm coverage.",
   );
   return 0;
 }

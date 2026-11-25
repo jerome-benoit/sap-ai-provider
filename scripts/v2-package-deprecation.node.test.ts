@@ -21,6 +21,7 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 const DOCUMENT_URL = `https://registry.npmjs.org/${encodeURIComponent(STANDALONE_PACKAGE_NAME)}`;
@@ -150,19 +151,37 @@ describe("npm write invocation", () => {
     }).toThrow("Missing npm_execpath; run npm run deprecate-v2-package -- --apply");
   });
 
-  it("launches the npm entry point through Node against the read registry", () => {
-    expect(getNpmDeprecationInvocation("/tools/npm-cli.js", "/tools/node")).toEqual({
-      args: [
-        "/tools/npm-cli.js",
-        "deprecate",
-        STANDALONE_PACKAGE_NAME,
-        DEPRECATION_MESSAGE,
-        "--dry-run=false",
-        `--registry=${DEFAULT_REGISTRY}`,
-        `--@jerome-benoit:registry=${DEFAULT_REGISTRY}`,
-      ],
-      command: "/tools/node",
-    });
+  it("rejects flags, relative paths, and other executables", () => {
+    for (const path of ["--version", "bin/npm-cli.js", process.execPath]) {
+      expect(() => {
+        getNpmDeprecationInvocation(path);
+      }).toThrow("Invalid npm_execpath");
+    }
+  });
+
+  it("launches an existing npm entry point with Node against the read registry", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v2-package-npm-"));
+    const npmExecPath = join(directory, "npm-cli.js");
+    try {
+      expect(() => {
+        getNpmDeprecationInvocation(npmExecPath);
+      }).toThrow("Invalid npm_execpath");
+      writeFileSync(npmExecPath, "");
+      expect(getNpmDeprecationInvocation(npmExecPath)).toEqual({
+        args: [
+          npmExecPath,
+          "deprecate",
+          `${STANDALONE_PACKAGE_NAME}@<=${FROZEN_VERSION}`,
+          DEPRECATION_MESSAGE,
+          "--dry-run=false",
+          `--registry=${DEFAULT_REGISTRY}`,
+          `--@jerome-benoit:registry=${DEFAULT_REGISTRY}`,
+        ],
+        command: process.execPath,
+      });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
   });
 });
 
@@ -316,9 +335,27 @@ function describeRun(run: CompletedRun): string {
 }
 
 /**
+ * Copy an environment without inherited npm context, Node options, or tsx loader options.
+ *
+ * Windows environment names are case-insensitive, so filtering one spelling can leave another in
+ * the block a child receives: an `npm_` spelling would hand the child a real npm to write with, and
+ * a `TSX_` spelling would fail the child on a loader configuration unrelated to the gate.
+ * @param source - Environment to copy
+ * @returns Copy with every `npm_` and `tsx_` spelling and `NODE_OPTIONS` removed
+ */
+function gateEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => {
+      const name = key.toLowerCase();
+      return !name.startsWith("npm_") && !name.startsWith("tsx_") && name !== "node_options";
+    }),
+  );
+}
+
+/**
  * Run the gate as a command against a stubbed registry.
  *
- * Only read-only commands and the dry run are exercised: no case may reach the npm write.
+ * The child gets no npm context, so no case can reach the npm write.
  * @param document - Registry document the stubbed transport serves
  * @param args - Gate arguments
  * @returns Exit status, served read count, and both output streams
@@ -344,7 +381,7 @@ function runGate(document: unknown, args: readonly string[]): CompletedRun {
       {
         cwd: fileURLToPath(new URL("..", import.meta.url)),
         encoding: "utf8",
-        env: withoutNpmContext(process.env),
+        env: gateEnvironment(process.env),
       },
     );
     return {
@@ -360,23 +397,14 @@ function runGate(document: unknown, args: readonly string[]): CompletedRun {
   }
 }
 
-/**
- * Copy an environment without any npm context marker.
- *
- * Windows environment names are case-insensitive, so filtering one spelling can leave another in
- * the block a child receives, and that child would find a real npm to write with.
- * @param source - Environment to copy
- * @returns Copy with every `npm_` spelling and `NODE_OPTIONS` removed
- */
-function withoutNpmContext(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(
-    Object.entries(source).filter(
-      ([key]) => !key.toLowerCase().startsWith("npm_") && key.toLowerCase() !== "node_options",
-    ),
-  );
-}
-
 describe("gate command", () => {
+  it("ignores an inherited tsx configuration before reading the registry", () => {
+    vi.stubEnv("TSX_TSCONFIG_PATH", "./examples/nonexistent.json");
+    const run = runGate(frozenDocument(), ["check"]);
+    expect(run.status, describeRun(run)).toBe(0);
+    expect(run.reads).toBe(1);
+  });
+
   it("reports the freeze and the exact coverage without writing", () => {
     const run = runGate(frozenDocument(), ["check"]);
     expect(run.status, describeRun(run)).toBe(0);
@@ -422,11 +450,28 @@ describe("gate command", () => {
     expect(run.stdout).toContain("carries the canonical deprecation message");
   });
 
-  it("previews the write without starting npm", () => {
-    const run = runGate(frozenDocument(), ["deprecate"]);
+  it("refuses to write outside its own npm lifecycle script", () => {
+    const run = runGate(frozenDocument(), ["deprecate", "--apply"]);
+    expect(run.status, describeRun(run)).toBe(1);
+    expect(run.reads).toBe(1);
+    expect(run.stderr).toContain("Run npm run deprecate-v2-package -- --apply to write");
+  });
+
+  it("previews the npm write scope separately from the observed gaps", () => {
+    const run = runGate(
+      frozenDocument({
+        versions: { "4.1.2-rc.1": {}, "5.1.2": { deprecated: DEPRECATION_MESSAGE } },
+      }),
+      ["deprecate"],
+    );
     expect(run.status, describeRun(run)).toBe(0);
     expect(run.reads).toBe(1);
-    expect(run.stdout).toContain("Dry run: would write the message to 1 versions.");
+    expect(run.stdout).toContain(
+      `Dry run: npm deprecate targets every version matching ${STANDALONE_PACKAGE_NAME}@<=${FROZEN_VERSION}.`,
+    );
+    expect(run.stdout).toContain(
+      "Registry snapshot: 1 of 2 published versions lack the canonical deprecation message.",
+    );
     expect(run.stdout).toContain(DEPRECATION_MESSAGE);
   });
 });

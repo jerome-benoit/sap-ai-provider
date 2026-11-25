@@ -5,6 +5,9 @@
  * explicit call. The `check` entry is read-only and safe for continuous integration, while
  * `deprecate` writes and must be run by a maintainer with an authenticated npm CLI.
  */
+import { statSync } from "node:fs";
+import { basename, isAbsolute } from "node:path";
+
 import { fetchPackagePackument } from "./check-lockfile-release-age.mjs";
 
 /** Published name of the deprecated standalone package. */
@@ -12,6 +15,9 @@ export const STANDALONE_PACKAGE_NAME = "@jerome-benoit/sap-ai-provider-v2";
 
 /** Last version published to the standalone package; any newer version breaks the freeze. */
 export const FROZEN_VERSION = "5.1.2";
+
+/** npm package spec that selects every release and prerelease up to the frozen version. */
+export const DEPRECATION_SPEC = `${STANDALONE_PACKAGE_NAME}@<=${FROZEN_VERSION}`;
 
 /** Registry the gate reads and the one-time deprecation write targets. */
 export const DEFAULT_REGISTRY = "https://registry.npmjs.org";
@@ -124,9 +130,13 @@ export async function fetchPackageDocument(
  * Build the npm command that writes the deprecation message.
  *
  * Node launches the npm entry point that `npm run` exports instead of an `npm` shim, which Windows
- * ships as a batch file that cannot be spawned without a shell. Both the plain and the scoped
+ * ships as a batch file that cannot be spawned without a shell. The entry point must be an absolute
+ * path to an existing `npm-cli.js` file, so neither a Node flag nor another executable can be
+ * started with the credentials of the npm that exported the variable. Both the plain and the scoped
  * registry are pinned to the registry this gate reads, because npm prefers a
  * `@jerome-benoit:registry` setting over a plain `--registry`.
+ * npm picks the versions to write from its own uncached registry read, so the package spec caps the
+ * write at the frozen version even when that read holds a version this gate never saw.
  * An inherited `dry-run` setting would make npm skip its write and still exit zero, so the command
  * line pins `--dry-run=false`, which outranks both `npm_config_dry_run` and any `.npmrc`.
  * @param npmExecPath - npm entry point exported by `npm run`
@@ -140,11 +150,20 @@ export function getNpmDeprecationInvocation(
   if (!npmExecPath) {
     throw new Error("Missing npm_execpath; run npm run deprecate-v2-package -- --apply");
   }
+  if (
+    !isAbsolute(npmExecPath) ||
+    basename(npmExecPath) !== "npm-cli.js" ||
+    !statSync(npmExecPath, { throwIfNoEntry: false })?.isFile()
+  ) {
+    throw new Error(
+      "Invalid npm_execpath: expected an absolute path to an existing npm-cli.js file; run npm run deprecate-v2-package -- --apply",
+    );
+  }
   return {
     args: [
       npmExecPath,
       "deprecate",
-      STANDALONE_PACKAGE_NAME,
+      DEPRECATION_SPEC,
       DEPRECATION_MESSAGE,
       "--dry-run=false",
       `--registry=${DEFAULT_REGISTRY}`,

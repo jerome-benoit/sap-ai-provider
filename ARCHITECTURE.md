@@ -1663,15 +1663,20 @@ needs no disposable checkout; the release workflow still stamps the version into
 `package.json` with `npm version`. `npm run check-v2-package` reads the npm registry and
 fails when the freeze no longer holds: a version above that ceiling, a `latest` dist-tag
 that moved away from it, or a document it cannot read. It also prints how many published
-versions carry the message.
+versions carry the message. The guard reads that document through npm's CDN, which
+caches it for up to five minutes (`cache-control: public, max-age=300`), so a version
+published inside that window can stay invisible to `check`, and `verify` inherits the
+same delay after the one-time write.
 
 Writing the deprecation message is a one-time authenticated operation, never a CI step:
 `npm run deprecate-v2-package` previews it, and
-`npm run deprecate-v2-package -- --apply` stores it on every published version with a
-logged-in npm CLI, plus an OTP when two-factor authentication is enabled. That write pins
-`--dry-run=false`, because an inherited dry-run setting makes npm skip the write and still
-exit zero. `npm run verify-v2-package` reads the registry again and fails while any
-version still lacks the message.
+`npm run deprecate-v2-package -- --apply` stores it on every published version up to
+the frozen one, through a logged-in npm CLI plus an OTP when two-factor
+authentication is enabled. That write pins `--dry-run=false`, because an inherited
+dry-run setting makes npm skip the write and still exit zero, and it selects the
+versions with a range that stops at the frozen version, so a registry read newer
+than the gate snapshot cannot widen it. `npm run verify-v2-package` reads the
+registry again and fails while any version still lacks the message.
 
 ### Key Design Decisions
 

@@ -23,8 +23,10 @@ versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
     frozen versions.
   - **What To Use Instead**: the `/v2` subpath of `@jerome-benoit/sap-ai-provider`.
     It exposes the same `LanguageModelV2`/`EmbeddingModelV2` facade and the same
-    API surface, ships in every release, and targets Vercel AI SDK 5 plus the
-    AI SDK 6 V2 compatibility layer.
+    API surface, ships in every 5.x release of the main package, and targets Vercel
+    AI SDK 5 plus the AI SDK 6 V2 compatibility layer. The `/v2` subpath first ships
+    in main-package release 5.0.0, so a consumer on the 4.x line must move to `^5`
+    before switching the import.
 
 - **`@jerome-benoit/sap-ai-provider/v4` (V4 Facade)**:
   - **When to Use**: Use this main-package subpath with Vercel AI SDK 7.
@@ -144,11 +146,17 @@ or to `/v4`. The root entrypoint does not become V4 in this release.
 
 The standalone V2 package `@jerome-benoit/sap-ai-provider-v2` is deprecated and frozen
 at 5.1.2: it receives no further release, and its published versions keep
-installing. Install the main package instead:
+installing. Replace it with the main package and leave the AI SDK dependency as it is:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider@^5 ai@^5
+npm uninstall @jerome-benoit/sap-ai-provider-v2
+npm install @jerome-benoit/sap-ai-provider@^5
 ```
+
+The table above lists the installation line and the `ai` range for every AI SDK major;
+use it when you also change that major. The frozen package accepts AI SDK 5 and AI SDK 6
+(`ai: ^5.0.0 || ^6.0.0` in its published manifest), so moving to `/v2` needs no AI SDK
+change.
 
 Import `@jerome-benoit/sap-ai-provider/v2`, the supported V2 facade. For V2 with AI SDK 6,
 use a current 6.x patch: the initial 6.0.0 embedding compatibility adapter has a
