@@ -1570,7 +1570,7 @@ src/
 
 ### V2 Facade Layer
 
-The V2 package uses a facade that wraps the internal V3 implementation and
+The `/v2` entrypoint exposes a facade that wraps the internal V3 implementation and
 preserves AI SDK 5 result contracts. Its published declarations include the
 required V2 types.
 
@@ -1584,7 +1584,7 @@ The JSON type divergence remains in provider 2.0.4 and 4.0.13; see
 
 ```mermaid
 graph TB
-    subgraph "V2 Package (Facade)"
+    subgraph "/v2 Facade (wrapping V3)"
         V2Provider[SAPAIProviderV2]
         V2LM[SAPAILanguageModelV2]
         V2EM[SAPAIEmbeddingModelV2]
@@ -1657,15 +1657,21 @@ npm publish                # @jerome-benoit/sap-ai-provider
 ```
 
 No standalone publication remains. The deprecated `@jerome-benoit/sap-ai-provider-v2`
-package is frozen at 5.1.2, so publishing never rewrites `package.json`,
-`package-lock.json`, or the `/v2`, `/v3`, and `/v4` exports. `npm run check-v2-package`
-reads the npm registry and fails when a version above that ceiling appears.
+package is frozen at 5.1.2, so the retired standalone preparation never rewrites a
+manifest name, an AI peer range, or the `/v2`, `/v3`, and `/v4` exports, and a release
+needs no disposable checkout; the release workflow still stamps the version into
+`package.json` with `npm version`. `npm run check-v2-package` reads the npm registry and
+fails when the freeze no longer holds: a version above that ceiling, a `latest` dist-tag
+that moved away from it, or a document it cannot read. It also prints how many published
+versions carry the message.
 
 Writing the deprecation message is a one-time authenticated operation, never a CI step:
 `npm run deprecate-v2-package` previews it, and
-`npm run deprecate-v2-package -- --apply` stores it on every published version with a logged-in
-npm CLI, plus an OTP when two-factor authentication is enabled. `npm run verify-v2-package`
-reads the registry again and fails while any version still lacks the message.
+`npm run deprecate-v2-package -- --apply` stores it on every published version with a
+logged-in npm CLI, plus an OTP when two-factor authentication is enabled. That write pins
+`--dry-run=false`, because an inherited dry-run setting makes npm skip the write and still
+exit zero. `npm run verify-v2-package` reads the registry again and fails while any
+version still lacks the message.
 
 ### Key Design Decisions
 
@@ -1674,7 +1680,7 @@ reads the registry again and fails while any version still lacks the message.
 2. **Contract-specific dispatch**: V2 wraps V3; V4 uses native Responses,
    V3-compatible language strategies for other APIs, and V3 embeddings.
 3. **Versioned entrypoints**: One main package supports AI SDK 5–7 without mixing model contracts
-4. **Standalone V2 publication**: Existing V2 consumers retain their dedicated package
+4. **Standalone V2 freeze**: The deprecated package keeps its published versions, but no release is published under it
 5. **Adapter isolation**: Version conversions remain centralized and independently testable
 
 ---

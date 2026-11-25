@@ -7,7 +7,7 @@ description: Build, type-check, test, and publish workflow for the package
 ## Build Outputs
 
 - Bundler: tsup (CJS + ESM + DTS + sourcemaps) — see
-  [tsup.config.ts](mdc:tsup.config.ts) and [tsup.config.v2.ts](mdc:tsup.config.v2.ts)
+  [tsup.config.ts](mdc:tsup.config.ts)
 - Output dir: [dist/](mdc:dist/)
 - Package exports configured in [package.json](mdc:package.json)
 - Main build stems: `index` (V3 / AI SDK 6), `index-v2` (V2 / AI SDK 5,
@@ -19,13 +19,13 @@ description: Build, type-check, test, and publish workflow for the package
 
 ### Build Commands
 
-- Build the main package (V3 root, `/v2`, `/v3`, and `/v4`): `npm run build`
-- Watch the main package build: `npm run build:watch`
-- Build the standalone V2 package: `npm run build:v2`
-- Watch the standalone V2 build: `npm run build:v2:watch`
-- Prepare standalone V2 for npm publish: `npm run prepare:v2`
-- Check all main-package entrypoints: `npm run check-build`
-- Check one facade explicitly: `npm run check-build:v2` or `npm run check-build:v4`
+- Build the package (V3 root, `/v2`, `/v3`, and `/v4`): `npm run build`
+- Watch the build: `npm run build:watch`
+- Check all entrypoints: `npm run check-build`
+- Check the V4 facade explicitly: `npm run check-build:v4`
+- Guard the frozen standalone V2 package: `npm run check-v2-package`
+- Confirm its deprecation coverage: `npm run verify-v2-package`
+- Preview or store its deprecation message: `npm run deprecate-v2-package`, with `-- --apply` to write
 
 ### Quality Checks
 
@@ -53,29 +53,27 @@ description: Build, type-check, test, and publish workflow for the package
   `fixAvailable` must be its exact boolean/object union, and literal `true` rejects an
   exception (requires registry access)
 
-### Versioned Entrypoints and Packages
+## Versioned Entrypoints and Packages
 
-This repository publishes two npm packages from the same codebase:
+This repository publishes one npm package:
 
 - `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2`, `/v3`, and `/v4` subpaths
-- `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade
 
-`prepublishOnly` runs the appropriate build and verification before publish:
+`prepublishOnly` runs `build && check-build`, and
+`tsx scripts/check-package-exports.ts` verifies ESM/CommonJS runtime and
+declaration routing. No standalone publication remains: the deprecated
+`@jerome-benoit/sap-ai-provider-v2` package is frozen at 5.1.2 and never built
+for publication again, so the retired preparation never rewrites a manifest name, an
+AI peer range, or the subpath exports, and needs no disposable checkout.
+`npm run check-v2-package` guards that ceiling in continuous integration.
 
-- Main package: `build && check-build`
-- Standalone V2 (when `AI_SDK_VERSION=v2`):
-  `build:v2 && check-build:v2 && prepare:v2`, followed by
-  `tsx scripts/check-package-exports.ts` on the prepared package.
-
-See [package.json](mdc:package.json) for the full script.
-
-Both build configurations clean `dist/` first: `build:v2` replaces the main
-package artifacts with V2-only outputs. `prepare:v2` renames `index-v2.*` to
-`index.*`, updates JavaScript source-map references and any matching map `file`
-metadata without changing mapped sources, rewrites the package name and AI peer
-range to AI SDK 5/6, removes
-`/v2`, `/v3`, and `/v4` exports from the manifest, and updates the lockfile.
-Run publish preparation only in a disposable publishing checkout.
+Storing the deprecation message is a one-time authenticated operation:
+`npm run deprecate-v2-package -- --apply` runs `npm deprecate` with both registry
+flags and `--dry-run=false`, because an inherited `dry-run` setting makes npm skip
+the write and still exit zero. It needs a logged-in npm CLI plus an OTP when
+two-factor authentication is enabled. No workflow runs this write, and continuous
+integration runs `check` but never `verify`. `npm run verify-v2-package` re-reads the
+registry and fails while any published version still lacks the message.
 
 Before `npm ci`, run `npm run check-lockfile-release-age` as a local
 non-authoritative candidate gate; it needs the public registry, runs without
@@ -107,8 +105,7 @@ is claimed active.
 
 - Verify all main-package artifacts exist and ESM/CommonJS runtime and declaration
   routing resolves correctly: `npm run check-build`.
-- Verify one facade build explicitly with `npm run check-build:v2` or
-  `npm run check-build:v4`.
+- Verify one facade build explicitly with `npm run check-build:v4`.
 - `test:edge` exercises provider source behavior, not published-bundle
   portability. The ESM banner and SAP SDK dependencies use Node built-ins;
   do not infer pure Edge deployment support from that test suite.

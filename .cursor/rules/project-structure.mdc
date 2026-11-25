@@ -86,10 +86,11 @@ Package release versions are independent of provider specification versions.
 - Adapters: [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
   and [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts).
 
-### V2 Entrypoint and Standalone Package
+### V2 Entrypoint
 
-`@jerome-benoit/sap-ai-provider/v2` and `@jerome-benoit/sap-ai-provider-v2`
-expose the same V2 facade for AI SDK 5 and AI SDK 6 compatibility.
+`@jerome-benoit/sap-ai-provider/v2` exposes the V2 facade for AI SDK 5 and AI
+SDK 6 compatibility. The standalone `@jerome-benoit/sap-ai-provider-v2` package
+is deprecated and frozen at 5.1.2, and `/v2` is the only V2 facade that ships.
 
 - Entry: [src/index-v2.ts](mdc:src/index-v2.ts)
 - Provider: [src/sap-ai-provider-v2.ts](mdc:src/sap-ai-provider-v2.ts)
@@ -131,9 +132,7 @@ expose the same V2 facade for AI SDK 5 and AI SDK 6 compatibility.
 ## Build, Types, and Distribution
 
 - TypeScript config: [tsconfig.json](mdc:tsconfig.json)
-- Main-package build config: [tsup.config.ts](mdc:tsup.config.ts)
-- V2 build config: [tsup.config.v2.ts](mdc:tsup.config.v2.ts)
-- V2 publish script: [scripts/prepare-v2-package.ts](mdc:scripts/prepare-v2-package.ts)
+- Build config: [tsup.config.ts](mdc:tsup.config.ts)
 - ESLint config: [eslint.config.js](mdc:eslint.config.js)
 - Output: [dist/](mdc:dist/) produces V3 root (`index.*`), V2 (`index-v2.*`),
   and V4 (`index-v4.*`) CommonJS, ESM, declaration, and sourcemap artifacts.
@@ -142,10 +141,10 @@ expose the same V2 facade for AI SDK 5 and AI SDK 6 compatibility.
 
 ### Build Commands
 
-- `npm run build` — Build the main package's V3, V2, and V4 entrypoints
-- `npm run build:v2` — Build the standalone V2 package
-- `npm run prepare:v2` — Prepare standalone V2 for publishing (mutates manifests and outputs)
+- `npm run build` — Build the V3, V2, and V4 entrypoints
+- `npm run check-build` — Verify every entrypoint and its declaration routing
 - `npm run check-build:v4` — Verify V4 build outputs explicitly
+- `npm run check-v2-package` — Guard the frozen standalone V2 package
 
 ## Testing
 

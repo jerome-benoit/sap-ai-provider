@@ -8,102 +8,127 @@
  */
 import { spawnSync } from "node:child_process";
 
+import type { Invocation, PackageDocument } from "./v2-package-deprecation.js";
+
 import {
   DEPRECATION_MESSAGE,
   fetchPackageDocument,
   FROZEN_VERSION,
+  getNpmDeprecationInvocation,
+  parseArguments,
   STANDALONE_PACKAGE_NAME,
   versionsAbove,
   versionsWithoutMessage,
 } from "./v2-package-deprecation.js";
 
-const [command = "check", ...flags] = process.argv.slice(2);
+/**
+ * Ask npm to store the canonical message, and report a refused write.
+ *
+ * Exit status zero proves that npm accepted the write. It does not prove that the public registry
+ * document already shows it: that document is cached, `cache-control: public, max-age=300`, so
+ * `verify` is the command that confirms coverage.
+ */
+function applyDeprecation(): void {
+  const { args, command } = getNpmDeprecationInvocation();
+  const result = spawnSync(command, args, { stdio: "inherit" });
+  if (result.error) {
+    throw new Error(`Unable to start npm deprecate: ${result.error.message}`);
+  }
+  if (result.signal !== null) {
+    throw new Error(`npm deprecate terminated by signal ${result.signal}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`npm deprecate exited with status ${String(result.status ?? "unknown")}`);
+  }
+}
 
 /**
- * Write the canonical deprecation message to every published version, then read the registry again.
- * @returns Versions still without the message
+ * Stop every command on a registry that no longer matches the freeze.
+ * @param document - Validated registry document
  */
-async function applyDeprecation(): Promise<string[]> {
-  const pending = versionsWithoutMessage(await fetchPackageDocument());
-  if (pending.length > 0) {
-    const result = spawnSync("npm", ["deprecate", STANDALONE_PACKAGE_NAME, DEPRECATION_MESSAGE], {
-      stdio: "inherit",
-    });
-    if (result.status !== 0) {
-      process.exitCode = result.status ?? 1;
-      return pending;
-    }
-  } else {
-    console.log("Every version already carries the deprecation message: nothing to write.");
+function assertFrozen(document: PackageDocument): void {
+  const unexpected = versionsAbove(Object.keys(document.versions), FROZEN_VERSION);
+  if (unexpected.length > 0) {
+    throw new Error(
+      `The standalone V2 package is frozen at ${FROZEN_VERSION}, but the registry also holds: ${unexpected.join(", ")}`,
+    );
   }
-  return versionsWithoutMessage(await fetchPackageDocument());
 }
 
-switch (command) {
-  case "check": {
-    const document = await fetchPackageDocument();
-    const versions = Object.keys(document.versions);
-    const unexpected = versionsAbove(versions, FROZEN_VERSION);
-    const pending = versionsWithoutMessage(document).length;
-    console.log(
-      `${STANDALONE_PACKAGE_NAME}: ${String(versions.length)} published versions, ${String(versions.length - pending)} deprecated.`,
-    );
-    if (unexpected.length > 0) {
-      console.error(
-        `The standalone V2 package is frozen at ${FROZEN_VERSION}, but the registry also holds: ${unexpected.join(", ")}`,
-      );
-      process.exitCode = 1;
-      break;
-    }
-    console.log(`Freeze holds: no version above ${FROZEN_VERSION}.`);
-    if (pending > 0) {
-      console.log(
-        `Run npm run deprecate-v2-package -- --apply to store the message on ${String(pending)} versions.`,
-      );
-    }
-    break;
+/**
+ * Run one gate command and turn every failure into a single diagnostic line.
+ * @param args - Arguments after the Node and script entries
+ * @returns Exit status: 0 success, 1 violation or operational failure, 2 invalid usage
+ */
+async function main(args: readonly string[]): Promise<0 | 1 | 2> {
+  let invocation: Invocation;
+  try {
+    invocation = parseArguments(args);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 2;
   }
-  case "deprecate": {
-    if (!flags.every((flag) => flag === "--apply")) {
-      console.error(
-        `Unknown flag for deprecate: ${flags.filter((flag) => flag !== "--apply").join(", ")}`,
-      );
-      process.exitCode = 2;
-      break;
-    }
-    const pending = versionsWithoutMessage(await fetchPackageDocument());
-    if (pending.length === 0) {
-      console.log("Nothing to do: every version is deprecated.");
-      break;
-    }
-    if (!flags.includes("--apply")) {
-      console.log(`Dry run: would write the message to ${String(pending.length)} versions.`);
-      console.log(`Message: ${DEPRECATION_MESSAGE}`);
-      console.log(
-        "Re-run with --apply to write (needs an authenticated npm CLI and an OTP when 2FA is on).",
-      );
-      break;
-    }
-    const missing = await applyDeprecation();
-    if (missing.length > 0) {
-      console.error(`Still not deprecated after the write: ${missing.join(", ")}`);
-      process.exitCode = 1;
-      break;
-    }
-    console.log(`Deprecated every version of ${STANDALONE_PACKAGE_NAME}.`);
-    break;
+  try {
+    return await runCommand(invocation);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
   }
-  case "verify": {
-    const missing = versionsWithoutMessage(await fetchPackageDocument());
-    if (missing.length > 0) {
-      console.error(`Deprecation message missing on: ${missing.join(", ")}`);
-      process.exitCode = 1;
-      break;
-    }
-    console.log(`Every published version of ${STANDALONE_PACKAGE_NAME} is deprecated.`);
-    break;
-  }
-  default:
-    console.error(`Expected command check, verify, or deprecate; received ${command}`);
-    process.exitCode = 2;
 }
+
+/**
+ * Run the validated command against the registry.
+ * @param invocation - Validated command line
+ * @returns Exit status of the command
+ */
+async function runCommand(invocation: Invocation): Promise<0 | 1> {
+  const document = await fetchPackageDocument();
+  assertFrozen(document);
+  const versions = Object.keys(document.versions);
+  const pending = versionsWithoutMessage(document);
+
+  if (invocation.command === "check") {
+    console.log(
+      `Freeze holds: ${String(versions.length)} published versions, none above ${FROZEN_VERSION}.`,
+    );
+    console.log(
+      `${String(versions.length - pending.length)} carry the canonical deprecation message; ${String(pending.length)} miss it or carry a different one.`,
+    );
+    if (pending.length > 0) {
+      console.log("Run npm run deprecate-v2-package -- --apply to store the message.");
+    }
+    return 0;
+  }
+
+  if (invocation.command === "verify") {
+    if (pending.length > 0) {
+      console.error(`Canonical deprecation message missing on: ${pending.join(", ")}`);
+      return 1;
+    }
+    console.log(
+      `Every published version of ${STANDALONE_PACKAGE_NAME} carries the canonical deprecation message.`,
+    );
+    return 0;
+  }
+
+  if (pending.length === 0) {
+    console.log("Nothing to write: every published version carries the canonical message.");
+    return 0;
+  }
+  if (!invocation.apply) {
+    console.log(`Dry run: would write the message to ${String(pending.length)} versions.`);
+    console.log(`Message: ${DEPRECATION_MESSAGE}`);
+    console.log(
+      "Re-run with --apply to write (needs an authenticated npm CLI and an OTP when 2FA is on).",
+    );
+    return 0;
+  }
+
+  applyDeprecation();
+  console.log(
+    "npm accepted the write. The public registry document stays cached for up to five minutes, so run npm run verify-v2-package to confirm coverage.",
+  );
+  return 0;
+}
+
+process.exitCode = await main(process.argv.slice(2));

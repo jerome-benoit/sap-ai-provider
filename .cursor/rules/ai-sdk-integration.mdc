@@ -4,10 +4,11 @@ description: Guidance for integrating with the Vercel AI SDK
 
 # AI SDK Integration
 
-This repository publishes two npm packages with versioned Vercel AI SDK entrypoints:
+This repository publishes one npm package with versioned Vercel AI SDK entrypoints:
 
 - **`@jerome-benoit/sap-ai-provider`** — V3 root plus `/v2`, `/v3`, and `/v4` entrypoints
-- **`@jerome-benoit/sap-ai-provider-v2`** — standalone V2 facade
+
+The standalone `@jerome-benoit/sap-ai-provider-v2` package is deprecated and frozen at 5.1.2.
 
 Use `/v2` with AI SDK 5, the root or identical `/v3` entrypoint with AI SDK 6, and `/v4`
 with AI SDK 7. The V2 facade also supports AI SDK 6 compatibility. Package
@@ -52,11 +53,12 @@ unsupported parts with warnings. See the adapters for supported conversions.
 - [src/sap-ai-adapters-v4-to-v3.ts](mdc:src/sap-ai-adapters-v4-to-v3.ts)
 - [src/sap-ai-adapters-v3-to-v4.ts](mdc:src/sap-ai-adapters-v3-to-v4.ts)
 
-## V2 Facade Entrypoint and Standalone Package
+## V2 Facade Entrypoint
 
-The `/v2` subpath and standalone `@jerome-benoit/sap-ai-provider-v2` package
-wrap V3 internally and expose `ProviderV2`, `LanguageModelV2`, and
-`EmbeddingModelV2` interfaces for AI SDK 5 and AI SDK 6 compatibility.
+The `/v2` subpath wraps V3 internally and exposes `ProviderV2`,
+`LanguageModelV2`, and `EmbeddingModelV2` interfaces for AI SDK 5 and AI SDK 6
+compatibility. The standalone `@jerome-benoit/sap-ai-provider-v2` package is
+deprecated and frozen at 5.1.2, so install the main package and import `/v2`.
 
 | Method                                 | Description                                 |
 | -------------------------------------- | ------------------------------------------- |
@@ -106,7 +108,7 @@ const model = provider("gpt-4.1");
 const embeddingModel = provider.embedding("text-embedding-3-small");
 ```
 
-**V2 entrypoint or standalone package (AI SDK 5; also AI SDK 6 compatibility):**
+**V2 entrypoint (AI SDK 5; also AI SDK 6 compatibility):**
 
 ```typescript
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";

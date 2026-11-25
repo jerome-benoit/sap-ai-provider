@@ -34,7 +34,8 @@ Always reference these instructions first and fallback to search or bash command
 - **Watch main build**: `npm run build:watch` -- continuous rebuild of all main entrypoints.
 - **Check main build outputs**: `npm run check-build` -- verifies V3, V2, and V4 artifacts.
 - **Check the V4 facade explicitly**: `npm run check-build:v4`.
-- **Check the standalone V2 freeze**: `npm run check-v2-package` -- reads the npm registry and fails when a version of `@jerome-benoit/sap-ai-provider-v2` above 5.1.2 exists. Takes ~1 second. Set timeout to 15+ seconds.
+- **Check the standalone V2 freeze**: `npm run check-v2-package` -- reads the npm registry and fails when `@jerome-benoit/sap-ai-provider-v2` holds a version above 5.1.2, when its `latest` dist-tag moved away from that version, or when the document cannot be read; otherwise it reports how many published versions carry the deprecation message. Takes ~1 second. Set timeout to 15+ seconds.
+- **Check standalone V2 deprecation coverage**: `npm run verify-v2-package` -- same registry read, exit 1 while any published version lacks the canonical deprecation message. Not part of CI, because the published versions are not deprecated yet.
 
 **Versioned Entrypoint Architecture:**
 
@@ -347,6 +348,7 @@ npm run build            # ~3s - Build main V3/V2/V4 entrypoints
 npm run build:watch      # Continuous main-package rebuild
 npm run check-v2-package # ~1s - Guard the standalone V2 package freeze
 npm run deprecate-v2-package # Dry-run the standalone V2 deprecation write
+npm run verify-v2-package # Fail until every published version carries the message
 npm run check-build      # <1s - Verify all main-package outputs
 npm run check-build:v4   # <1s - Verify V4 outputs explicitly
 npm run prettier-check   # ~1s - Check formatting
