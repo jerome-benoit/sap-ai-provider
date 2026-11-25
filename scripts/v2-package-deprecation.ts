@@ -102,7 +102,8 @@ export async function fetchPackageDocument(
   registry: string = DEFAULT_REGISTRY,
   fetchImpl: typeof fetch = fetch,
 ): Promise<PackageDocument> {
-  const response = await fetchImpl(`${registry}/${name.replace("/", "%2F")}`, {
+  const encodedName = name.split("/").join("%2F");
+  const response = await fetchImpl(`${registry}/${encodedName}`, {
     headers: { accept: "application/vnd.npm.install-v1+json" },
   });
   if (!response.ok) {
