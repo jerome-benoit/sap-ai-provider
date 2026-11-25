@@ -42,7 +42,7 @@ interface SAPAIEmbeddingModelV2Config {
  * {@link createSAPAIProvider} factory function:
  * @example
  * ```typescript
- * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+ * import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
  * import { embed, embedMany } from "ai";
  *
  * const provider = createSAPAIProvider();

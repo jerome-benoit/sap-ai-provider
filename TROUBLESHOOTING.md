@@ -7,7 +7,8 @@ Examples below use AI SDK 6 and the V3 root entrypoint. For AI SDK 7, use
 `textEmbeddingModel()` instead of `embedding()`.
 
 The explicit `@jerome-benoit/sap-ai-provider/v3` subpath is identical to the
-root V3 entrypoint. The standalone V2 package does not provide a `/v3` subpath.
+root V3 entrypoint. The deprecated standalone V2 package never provided a `/v3`
+subpath.
 
 ## Quick Reference
 
@@ -696,14 +697,14 @@ configuration.
 
 ### Problem: Type mismatch with AI SDK
 
-**Symptoms:** TypeScript errors related to `LanguageModelV2` or `EmbeddingModelV2` types when using `@jerome-benoit/sap-ai-provider-v2`.
+**Symptoms:** TypeScript errors related to `LanguageModelV2` or `EmbeddingModelV2` types when using `@jerome-benoit/sap-ai-provider/v2`.
 
 **Cause:** The selected provider specification does not match the installed
 AI SDK major. V2 targets AI SDK 5 and is also supported by AI SDK 6 through its
 V2 compatibility layer, but not by AI SDK 7.
 
-**Solution:** Use `/v2` or the standalone `-v2` package with AI SDK 5; use the
-V3 root or identical `/v3` subpath, or V2 compatibility, with
+**Solution:** Use `/v2` with AI SDK 5; use the V3 root or identical `/v3` subpath, or
+V2 compatibility, with
 AI SDK 6; use `/v4` with AI SDK 7. See [Installation](./README.md#installation)
 for matching install commands.
 
@@ -719,20 +720,6 @@ V2 embedding contract. This is an SDK consumer bug, not a SAP transport failure.
 
 **Solution:** Upgrade to a current AI SDK 6 patch (verified with 6.0.282), or use
 the V3 root or `/v3` entrypoint. No V2-specific provider workaround is required.
-
-### Problem: Missing build directory during V2 preparation
-
-**Symptoms:** `npm run prepare:v2` fails with `ENOENT` because `dist/` does not exist.
-
-**Cause:** The `prepare:v2` script requires the `build:v2` script to be run first.
-
-**Solution:** For local V2 build checks, run `npm run build:v2` then
-`npm run check-build:v2`. For standalone publication, run
-`AI_SDK_VERSION=v2 npm publish` from a separate clean checkout: the lifecycle
-builds and prepares V2, then verifies the prepared exports. Do not manually run
-`prepare:v2` before publishing; it rewrites the package manifests.
-
-**Reference:** See [Architecture - Build Process](./ARCHITECTURE.md#build-process).
 
 ## Known Limitations
 

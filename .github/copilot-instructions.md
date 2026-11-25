@@ -31,26 +31,24 @@ Always reference these instructions first and fallback to search or bash command
 - **Build main package**: `npm run build` -- takes ~3 seconds. Set timeout to 15+ seconds.
   - Builds V3, V2, and V4 artifact families serving root, `/v2`, `/v3`, and `/v4`.
   - Root and `/v3` share the same CommonJS, ESM, declarations and sourcemaps.
-- **Build standalone V2 package**: `npm run build:v2` -- takes ~3 seconds. Set timeout to 15+ seconds.
-  - Builds only the V2 facade from `src/index-v2.ts`.
 - **Watch main build**: `npm run build:watch` -- continuous rebuild of all main entrypoints.
-- **Watch standalone V2 build**: `npm run build:v2:watch` -- continuous V2 rebuild.
-- **Prepare V2 for publish**: `npm run prepare:v2` -- renames V2 artifacts and rewrites manifests for the standalone package; use a disposable publishing checkout.
 - **Check main build outputs**: `npm run check-build` -- verifies V3, V2, and V4 artifacts.
-- **Check one facade explicitly**: `npm run check-build:v2` or `npm run check-build:v4`.
+- **Check the V4 facade explicitly**: `npm run check-build:v4`.
+- **Check the standalone V2 freeze**: `npm run check-v2-package` -- reads the npm registry and fails when a version of `@jerome-benoit/sap-ai-provider-v2` above 5.1.2 exists. Takes ~1 second. Set timeout to 15+ seconds.
 
 **Versioned Entrypoint Architecture:**
 
-This repository publishes two npm packages from the same codebase:
+This repository publishes one npm package:
 
 - `@jerome-benoit/sap-ai-provider` — V3 root plus `/v2`, `/v3`, and `/v4` subpaths.
-- `@jerome-benoit/sap-ai-provider-v2` — standalone V2 facade wrapping the V3 core.
 
-Use the root or identical `/v3` entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the V2 facade
-(`/v2` or standalone `-v2`) for AI SDK 5 and AI SDK 6 compatibility. Package
-release versions, provider specifications (V2/V3/V4), and AI SDK majors
-(5/6/7) are independent. Both build configurations clean `dist/`, so `build:v2`
-replaces the main build outputs with V2-only artifacts.
+The standalone `@jerome-benoit/sap-ai-provider-v2` package is deprecated and frozen at
+5.1.2: it receives no further release, and `npm run check-v2-package` guards that freeze
+in continuous integration.
+
+Use the root or identical `/v3` entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the
+`/v2` subpath for AI SDK 5 and AI SDK 6 compatibility. Package release versions, provider
+specifications (V2/V3/V4), and AI SDK majors (5/6/7) are independent.
 
 ### Testing
 
@@ -159,7 +157,7 @@ suite does not establish deployability to an Edge isolate without Node compatibi
 **ALWAYS run this command before committing (CI will fail otherwise):**
 
 ```bash
-npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run check-v2-package
 ```
 
 **Detailed checklist and standards**: See [Contributing Guide - Pre-Commit Checklist](../CONTRIBUTING.md#pre-commit-checklist)
@@ -190,7 +188,7 @@ Since full example testing requires SAP credentials, validate changes using this
 **Complete CI-like validation command:**
 
 ```bash
-npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run check-v2-package
 ```
 
 All commands should pass; execution time depends on the environment.
@@ -207,7 +205,9 @@ All commands should pass; execution time depends on the environment.
 │   ├── check-toc.ts                                  # Markdown TOC validation (used by lint:md:toc)
 │   ├── check-toc.test.ts                              # Tests for check-toc
 │   ├── check-package-exports.ts                       # ESM/CommonJS declaration routing validation
-│   └── prepare-v2-package.ts                         # V2 publish preparation script
+│   ├── v2-package-deprecation.ts                       # Standalone V2 freeze and deprecation library
+│   ├── v2-package-deprecation-cli.ts                   # Standalone V2 freeze gate entry
+│   └── v2-package-deprecation.node.test.ts             # Tests for the freeze gate
 ├── src/                   # TypeScript source code
 │   │   # V3 Implementation (AI SDK 6: LanguageModelV3/EmbeddingModelV3)
 │   ├── index.ts                                      # V3 public API exports (AI SDK 6 root)
@@ -255,7 +255,6 @@ All commands should pass; execution time depends on the environment.
 ├── package.json          # Dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
 ├── tsup.config.ts        # Main V3/V2/V4 build configuration
-├── tsup.config.v2.ts     # V2 build configuration
 ├── vitest.node.config.ts # Node.js test configuration
 ├── vitest.edge.config.ts # Edge runtime test configuration
 ├── README.md             # Getting started and usage guide
@@ -291,7 +290,7 @@ All commands should pass; execution time depends on the environment.
 
 **V2 Facade Layer (AI SDK 5; also AI SDK 6 compatibility, wraps V3 internally):**
 
-- **`src/index-v2.ts`**: V2 public API exports for `/v2` and the standalone `-v2` package
+- **`src/index-v2.ts`**: V2 public API exports for the `/v2` subpath
 - **`src/sap-ai-provider-v2.ts`**: V2 provider factory (`ProviderV2`, only `textEmbeddingModel()` for embeddings)
 - **`src/sap-ai-language-model-v2.ts`**: V2 language model (wraps V3)
 - **`src/sap-ai-embedding-model-v2.ts`**: V2 embedding model (wraps V3)
@@ -301,8 +300,8 @@ All commands should pass; execution time depends on the environment.
 
 - **`package.json`**: All available npm scripts and dependencies
 - **`tsup.config.ts`**: Main V3/V2/V4 build configuration
-- **`tsup.config.v2.ts`**: V2 build configuration
-- **`scripts/prepare-v2-package.ts`**: Renames V2 build files and rewrites manifests for standalone npm publish
+- **`scripts/v2-package-deprecation.ts`**: Standalone V2 freeze check and deprecation driver
+- **`scripts/v2-package-deprecation-cli.ts`**: Command-line entry for `check`, `verify`, and `deprecate`
 - **`examples/`**: Working examples of how to use the library
 
 **Documentation:**
@@ -320,14 +319,14 @@ All commands should pass; execution time depends on the environment.
 
 - **GitHub Actions**: `.github/workflows/check-pr.yaml` runs on PRs targeting `main` and pushes to `main`
 - **CI checks**: candidate dependency-free gates run before installs in validation and autofix; the separate `pull_request_target`/`push` trusted workflow never checks out or executes PR head code and publishes its dedicated status context on the exact PR head; the candidate lockfile attestation job runs first, then the `validation` job installs and runs the complete-scope dependency audit, type-check, Node/Edge tests, and builds on Ubuntu, macOS, and Windows with Node.js 24; lint and format run once on Ubuntu
-- **Build coverage**: portable artifact checks validate the main V3/V2/V4 build and the standalone V2 build on every OS; the main build also validates ESM/CommonJS declaration routing
-- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful exact-SHA `push` run of the dedicated trusted lockfile workflow; its `build` job re-runs the release-age checker and the complete-scope dependency audit, and both publish jobs require that job, then publish both packages; `prepublishOnly` selects the standalone package when `AI_SDK_VERSION=v2`
+- **Build coverage**: portable artifact checks validate the main V3/V2/V4 build on every OS; the main build also validates ESM/CommonJS declaration routing
+- **Publishing**: `.github/workflows/npm-publish-packages.yml` requires the exact release SHA on `main` with a successful exact-SHA `push` run of the dedicated trusted lockfile workflow; its `build` job re-runs the release-age checker, the complete-scope dependency audit, and the standalone V2 freeze check, and the publish job requires that job, then publishes the package
 - **Runtime coverage**: Node and Edge suites run sequentially within each OS job; Edge excludes `*.node.test.ts`
 
 ### Package Dependencies
 
 - **Runtime**: AI SDK provider contracts/utilities, SAP AI and Cloud SDKs, and Zod (exact packages and ranges in `package.json`)
-- **Peer**: `ai` (main package: `^5.0.0 || ^6.0.0 || ^7.0.0`; standalone V2: `^5.0.0 || ^6.0.0`)
+- **Peer**: `ai` (main package: `^5.0.0 || ^6.0.0 || ^7.0.0`)
 - **Dev**: `@ai-sdk/provider-v2` (official V2 types bundled into declarations, never a consumer dependency), `ai` 7, TypeScript, Vitest, tsup, ESLint, Prettier, dotenv; `ai` is not a direct runtime dependency
 - **Node requirement**: Node.js 22.12+
 
@@ -346,11 +345,9 @@ npm run test:node        # ~1s - Canonical Node.js suite
 npm run test:edge        # ~1s - Edge runtime tests
 npm run build            # ~3s - Build main V3/V2/V4 entrypoints
 npm run build:watch      # Continuous main-package rebuild
-npm run build:v2         # ~3s - Build standalone V2 package
-npm run build:v2:watch   # Continuous standalone V2 rebuild
-npm run prepare:v2       # Rename V2 files for standalone publish
+npm run check-v2-package # ~1s - Guard the standalone V2 package freeze
+npm run deprecate-v2-package # Dry-run the standalone V2 deprecation write
 npm run check-build      # <1s - Verify all main-package outputs
-npm run check-build:v2   # <1s - Verify V2 outputs explicitly
 npm run check-build:v4   # <1s - Verify V4 outputs explicitly
 npm run prettier-check   # ~1s - Check formatting
 npm run lint             # ~2s - Markdown lint + TOC + Mermaid + ESLint
@@ -359,8 +356,7 @@ npm run lint:md:fix      # Auto-fix Markdown lint issues
 npm run clean            # Remove dist/ directory
 
 # Complete validation
-npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run build:v2 && npm run check-build:v2
-# Run npm run build again if main-package artifacts are needed after build:v2
+npm run check-lockfile-release-age && npm run check-dependency-audit && npm run type-check && npm run test:node && npm run test:edge && npm run prettier-check && npm run lint && npm run build && npm run check-build && npm run check-v2-package
 
 # Examples (requires SAP service key)
 npx tsx examples/example-generate-text.ts
@@ -475,8 +471,7 @@ npm run prettier-check &&
 npm run lint &&
 npm run build &&
 npm run check-build &&
-npm run build:v2 &&
-npm run check-build:v2
+npm run check-v2-package
 ```
 
 **Documentation Checks:**

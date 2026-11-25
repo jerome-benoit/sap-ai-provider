@@ -14,8 +14,8 @@ AI SDK 6 emits compatibility warnings when adapting V2 models. Use the root or
 
 `@jerome-benoit/sap-ai-provider/v3` aliases the root V3 API: both resolve to
 the same ESM/CommonJS modules and TypeScript declarations, including the same
-`sapai` instance within each module format. The standalone V2 package has no
-`/v3` subpath.
+`sapai` instance within each module format. The deprecated standalone V2 package had
+no `/v3` subpath.
 
 To avoid confusion, this documentation uses the following terminology
 consistently:
@@ -192,7 +192,7 @@ SAP converter.
 
 ## V2 Facade Package API
 
-The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provider/v2` subpath and from the standalone `@jerome-benoit/sap-ai-provider-v2` package. Both wrap the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for AI SDK 5/6 or other V2-compatible consumers. AI SDK 7 integrations must use the [V4 facade](#v4-facade-api-ai-sdk-7) instead.
+The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provider/v2` subpath, which wraps the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for AI SDK 5/6 or other V2-compatible consumers. The standalone `@jerome-benoit/sap-ai-provider-v2` package is deprecated and frozen at 5.1.2, so install the main package and import the subpath. AI SDK 7 integrations must use the [V4 facade](#v4-facade-api-ai-sdk-7) instead.
 
 ### Export Aliases
 
@@ -207,10 +207,8 @@ The V2 entrypoints export model classes and the provider interface with simplifi
 **Example:**
 
 ```typescript
-// Main-package subpath:
+// Import the V2 facade from the main package:
 import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider/v2";
-// Standalone-package alternative:
-// import { SAPAILanguageModel } from "@jerome-benoit/sap-ai-provider-v2";
 ```
 
 ---
@@ -2272,13 +2270,13 @@ type SAPAIEmbeddingProviderOptions = {
 Type-only contract exports give downstream libraries public names when emitting
 inferred declarations from model methods, tool schemas, and provider options.
 
-| Types                                                 | Entrypoints                       |
-| ----------------------------------------------------- | --------------------------------- |
-| `JSONArray`, `JSONObject`, `JSONSchema7`, `JSONValue` | Root, `/v3`, `/v2`, standalone V2 |
-| `LanguageModelV3CallOptions`                          | Root, `/v3`, `/v2`, standalone V2 |
-| `LanguageModelV3ResponseMetadata`                     | Root, `/v3`                       |
-| `LanguageModelV2ResponseMetadata`                     | `/v2`, standalone V2              |
-| `V3JSONArray`, `V3JSONObject`, `V3JSONValue`          | `/v2`, standalone V2              |
+| Types                                                 | Entrypoints        |
+| ----------------------------------------------------- | ------------------ |
+| `JSONArray`, `JSONObject`, `JSONSchema7`, `JSONValue` | Root, `/v3`, `/v2` |
+| `LanguageModelV3CallOptions`                          | Root, `/v3`, `/v2` |
+| `LanguageModelV3ResponseMetadata`                     | Root, `/v3`        |
+| `LanguageModelV2ResponseMetadata`                     | `/v2`              |
+| `V3JSONArray`, `V3JSONObject`, `V3JSONValue`          | `/v2`              |
 
 The unprefixed JSON types match the selected provider contract. The V2 entrypoints
 also name the distinct V3 JSON types exposed by shared-core provider options and

@@ -172,20 +172,21 @@ configuration owns model parameters and ignores local reasoning options with a
 warning. See the [V4 API reference](./API_REFERENCE.md#v4-facade-api-ai-sdk-7).
 
 **V2 facade:** AI SDK 5, AI SDK 6 through its V2 compatibility layer, and other `LanguageModelV2`/`EmbeddingModelV2`
-consumers can use the main package's `v2` subpath or the dedicated V2 package:
+consumers use the main package's `v2` subpath:
 
 ```bash
 npm install @jerome-benoit/sap-ai-provider ai@^5
-# Alternatively: npm install @jerome-benoit/sap-ai-provider-v2 ai@^5
 ```
 
-Both entrypoints expose the same V2 facade:
+The subpath exposes the V2 facade:
 
 ```typescript
 import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
-// Dedicated-package alternative:
-// import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
 ```
+
+The standalone `@jerome-benoit/sap-ai-provider-v2` package is deprecated and frozen at
+5.1.2: it receives no further release. Install the main package and import the `v2`
+subpath instead.
 
 For AI SDK 6, prefer the main package's root or `/v3` entrypoint.
 V2 models use the SDK's compatibility layer and emit compatibility warnings.
@@ -326,7 +327,7 @@ const embeddingModel = provider.embedding("text-embedding-3-small");
 > `embedding()` and `embeddingModel()` are identical. `textEmbeddingModel()` is
 > deprecated in the V3 and V4 entrypoints — use `embeddingModel()` instead.
 >
-> **Note:** The V2 facade package (`@jerome-benoit/sap-ai-provider-v2`) only exposes
+> **Note:** The V2 facade (`/v2`) only exposes
 > `textEmbeddingModel()` for embeddings per the `ProviderV2` specification. Use the
 > V3 root with AI SDK 6 or V4 subpath with AI SDK 7 if you need these aliases.
 
@@ -820,7 +821,7 @@ Version 5.0 adds **AI SDK 7** support through the **V4** facade and requires
 - **Runtime**: Upgrade local, CI and deployment environments from Node.js 20
   to Node.js 22.12 or newer.
 - **Entrypoints**: Use `/v4` with SDK 7, the root with SDK 6, or `/v2` with
-  SDK 5. The standalone V2 package remains available for SDK 5/6.
+  SDK 5. The standalone V2 package is deprecated and frozen at 5.1.2.
 - **Multimodal inputs**: V4 tagged JPEG/PDF inputs are normalized correctly;
   unsupported binary objects are rejected instead of silently stringified.
 

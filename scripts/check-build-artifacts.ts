@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 
 const artifactStems = {
   main: ["index", "index-v2", "index-v4"],
-  v2: ["index-v2"],
   v4: ["index-v4"],
 } as const;
 
@@ -32,8 +31,8 @@ export function verifyBuildArtifacts(buildFamily: BuildFamily, rootDirectory = "
 /** Run the build artifact command-line checker. */
 function main(): void {
   const buildFamily = process.argv[2];
-  if (buildFamily !== "main" && buildFamily !== "v2" && buildFamily !== "v4") {
-    throw new Error(`Expected build family main, v2, or v4; received ${buildFamily ?? "none"}`);
+  if (buildFamily !== "main" && buildFamily !== "v4") {
+    throw new Error(`Expected build family main or v4; received ${buildFamily ?? "none"}`);
   }
   verifyBuildArtifacts(buildFamily);
   console.log(`Verified ${buildFamily} build artifacts.`);

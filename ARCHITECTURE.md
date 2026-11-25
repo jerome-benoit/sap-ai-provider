@@ -1528,10 +1528,10 @@ AI SDK.
 
 ## Versioned Package Architecture (V4 + V3 + V2)
 
-This repository publishes **two npm packages** from a single codebase. The main
-package exposes four entrypoints for three provider specifications; the standalone
-V2 package preserves the existing package name for consumers that cannot use
-subpath exports.
+This repository publishes **one npm package** from a single codebase. The package
+exposes four entrypoints for three provider specifications. The former standalone
+V2 package `@jerome-benoit/sap-ai-provider-v2` is deprecated and frozen at 5.1.2:
+its facade ships as the `/v2` subpath of this package instead.
 
 | Package export                      | Interface                              | Target users                     |
 | ----------------------------------- | -------------------------------------- | -------------------------------- |
@@ -1539,7 +1539,6 @@ subpath exports.
 | `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
 | `@jerome-benoit/sap-ai-provider/v3` | Same V3 exports as the root            | AI SDK 6                         |
 | `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
 
 The root and `/v3` share `src/index.ts` and the exact same export targets:
 `dist/index.js` / `dist/index.d.ts` for ESM and `dist/index.cjs` /
@@ -1649,22 +1648,24 @@ The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 
 
 ### Build Process
 
-The builds are **sequential** to the same `dist/` directory:
+One build fills `dist/` with the three artifact families:
 
 ```bash
 # Main package build: root, /v2, /v3, /v4 using three artifact families
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
-
-# V2 publication (run from a separate clean checkout)
-AI_SDK_VERSION=v2 npm publish
 ```
 
-**Why sequential?** Both builds use `clean: true` and replace `dist/`. The
-standalone publication also rewrites `package.json` and `package-lock.json` and
-removes the `/v2`, `/v3`, and `/v4` exports, leaving only the V2 root API.
-Run it in a separate clean checkout. Do not run `prepare:v2` manually before
-`npm publish`: its lifecycle builds V2, prepares it, and verifies the prepared exports.
+No standalone publication remains. The deprecated `@jerome-benoit/sap-ai-provider-v2`
+package is frozen at 5.1.2, so publishing never rewrites `package.json`,
+`package-lock.json`, or the `/v2`, `/v3`, and `/v4` exports. `npm run check-v2-package`
+reads the npm registry and fails when a version above that ceiling appears.
+
+Writing the deprecation message is a one-time authenticated operation, never a CI step:
+`npm run deprecate-v2-package` previews it, and
+`npm run deprecate-v2-package -- --apply` stores it on every published version with a logged-in
+npm CLI, plus an OTP when two-factor authentication is enabled. `npm run verify-v2-package`
+reads the registry again and fails while any version still lacks the message.
 
 ### Key Design Decisions
 
