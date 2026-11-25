@@ -134,7 +134,7 @@ consistently:
   - [Dependencies](#dependencies)
   - [`VERSION`](#version)
 - [V4 Facade API (AI SDK 7)](#v4-facade-api-ai-sdk-7)
-- [V2 Facade Package API](#v2-facade-package-api)
+- [V2 Facade API](#v2-facade-api)
 - [Related Documentation](#related-documentation-1)
 
 ## V4 Facade API (AI SDK 7)
@@ -190,7 +190,7 @@ For Orchestration and Foundation Models, V4 assistant `reasoning-file` and
 tool-result content are instead preserved and serialized as JSON by the shared
 SAP converter.
 
-## V2 Facade Package API
+## V2 Facade API
 
 The V2 facade is available from the main package's `@jerome-benoit/sap-ai-provider/v2` subpath, which wraps the internal V3 implementation to expose `LanguageModelV2` and `EmbeddingModelV2` interfaces for AI SDK 5/6 or other V2-compatible consumers. The standalone `@jerome-benoit/sap-ai-provider-v2` package is deprecated and frozen at 5.1.2, so install the main package and import the subpath. AI SDK 7 integrations must use the [V4 facade](#v4-facade-api-ai-sdk-7) instead.
 

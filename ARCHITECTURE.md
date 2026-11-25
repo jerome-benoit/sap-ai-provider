@@ -1661,12 +1661,22 @@ package is frozen at 5.1.2, so the retired standalone preparation never rewrites
 manifest name, an AI peer range, or the `/v2`, `/v3`, and `/v4` exports, and a release
 needs no disposable checkout; the release workflow still stamps the version into
 `package.json` with `npm version`. `npm run check-v2-package` reads the npm registry and
-fails when the freeze no longer holds: a version above that ceiling, a `latest` dist-tag
-that moved away from it, or a document it cannot read. It also prints how many published
+fails when the freeze cannot be attested: a version above that ceiling, a `latest`
+dist-tag that moved away from it or that the versions table does not list, another
+dist-tag pointing outside that table, a version key npm could not have published, a
+version record whose own `name` or `version` does not match its key, or a document it
+cannot read, including a registry that answers 404. It also prints how many published
 versions carry the message. The guard reads that document through npm's CDN, which
 caches it for up to five minutes (`cache-control: public, max-age=300`), so a version
 published inside that window can stay invisible to `check`, and `verify` inherits the
 same delay after the one-time write.
+
+That guard detects, it does not prevent. npm still holds a live trusted-publisher
+configuration for the frozen name, so a workflow of this repository could still publish
+under it, and a pull request that deletes the guard step also deletes the detection,
+because the guard runs the code of the pull request head. Prevention lives outside this
+repository: removing that configuration on the npm side, and a branch protection rule
+that requires the guard to pass before a merge.
 
 Writing the deprecation message is a one-time authenticated operation, never a CI step:
 `npm run deprecate-v2-package` previews it, and
@@ -1676,7 +1686,12 @@ authentication is enabled. That write pins `--dry-run=false`, because an inherit
 dry-run setting makes npm skip the write and still exit zero, and it selects the
 versions with a range that stops at the frozen version, so a registry read newer
 than the gate snapshot cannot widen it. `npm run verify-v2-package` reads the
-registry again and fails while any version still lacks the message.
+registry again and fails while any version still lacks the message. Until that write has
+run, `verify` stays out of continuous integration; after it, add it beside
+`check-v2-package` in the two jobs that already run it — `validation` of
+`.github/workflows/check-pr.yaml`, under that step's existing `runner.os == 'Linux'`
+condition, and `build` of `.github/workflows/npm-publish-packages.yml` — and retire this
+sentence.
 
 ### Key Design Decisions
 

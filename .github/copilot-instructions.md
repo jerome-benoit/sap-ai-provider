@@ -34,8 +34,8 @@ Always reference these instructions first and fallback to search or bash command
 - **Watch main build**: `npm run build:watch` -- continuous rebuild of all main entrypoints.
 - **Check main build outputs**: `npm run check-build` -- verifies V3, V2, and V4 artifacts.
 - **Check the V4 facade explicitly**: `npm run check-build:v4`.
-- **Check the standalone V2 freeze**: `npm run check-v2-package` -- reads the npm registry and fails when `@jerome-benoit/sap-ai-provider-v2` holds a version above 5.1.2, when its `latest` dist-tag moved away from that version, or when the document cannot be read; otherwise it reports how many published versions carry the deprecation message. Takes ~1 second. Set timeout to 15+ seconds.
-- **Check standalone V2 deprecation coverage**: `npm run verify-v2-package` -- same registry read, exit 1 while any published version lacks the canonical deprecation message. Not part of CI, because the published versions are not deprecated yet.
+- **Check the standalone V2 freeze**: `npm run check-v2-package` -- reads the npm registry and stops when the freeze cannot be attested: a version above 5.1.2, a `latest` dist-tag that moved away from that version or that the versions table does not list, another dist-tag pointing outside that table, a version key npm could not have published, a version record whose own `name` or `version` does not match its key, or a document it cannot read, including a registry that answers 404; otherwise it reports how many published versions carry the deprecation message. Takes ~1 second. Set timeout to 15+ seconds.
+- **Check standalone V2 deprecation coverage**: `npm run verify-v2-package` -- same registry read, exit 1 while any published version lacks the canonical deprecation message. Not part of CI until the one-time write has run; `ARCHITECTURE.md` (Build Process) owns that rule.
 
 **Versioned Entrypoint Architecture:**
 
@@ -45,7 +45,10 @@ This repository publishes one npm package:
 
 The standalone `@jerome-benoit/sap-ai-provider-v2` package is deprecated and frozen at
 5.1.2: it receives no further release, and `npm run check-v2-package` guards that freeze
-in continuous integration.
+in continuous integration. That guard detects rather than prevents: npm still holds a
+trusted-publisher configuration for the frozen name, and a pull request can delete the
+guard step. Prevention lives outside this repository -- remove that configuration on the
+npm side and require the guard to pass in branch protection.
 
 Use the root or identical `/v3` entrypoint for AI SDK 6, `/v4` for AI SDK 7, and the
 `/v2` subpath for AI SDK 5 and AI SDK 6 compatibility. Package release versions, provider
@@ -203,6 +206,8 @@ All commands should pass; execution time depends on the environment.
 ├── .github/               # GitHub Actions workflows and configs
 ├── examples/              # Example usage files (AI SDK 7 / V4)
 ├── scripts/               # Build and publish scripts
+│   ├── check-build-artifacts-cli.ts                  # Build artifact checker command entry
+│   ├── check-lockfile-release-age-cli.mjs            # Release-age gate command entry
 │   ├── check-toc.ts                                  # Markdown TOC validation (used by lint:md:toc)
 │   ├── check-toc.test.ts                              # Tests for check-toc
 │   ├── check-package-exports.ts                       # ESM/CommonJS declaration routing validation

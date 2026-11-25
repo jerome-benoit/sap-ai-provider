@@ -813,8 +813,9 @@ npx tsx examples/example-generate-text.ts
 ### Upgrading from v4.x to v5.x
 
 Version 5.0 adds **AI SDK 7** support through the **V4** facade and requires
-**Node.js 22.12 or newer** for both packages. The root entrypoint remains
-**V3 for AI SDK 6**; upgrading the provider does not require switching SDKs.
+**Node.js 22.12 or newer** for the main package and for the frozen standalone
+package. The root entrypoint remains **V3 for AI SDK 6**; upgrading the provider
+does not require switching SDKs.
 
 **Key changes:**
 

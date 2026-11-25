@@ -71,9 +71,11 @@ Storing the deprecation message is a one-time authenticated operation:
 `npm run deprecate-v2-package -- --apply` runs `npm deprecate` with both registry
 flags and `--dry-run=false`, because an inherited `dry-run` setting makes npm skip
 the write and still exit zero. It needs a logged-in npm CLI plus an OTP when
-two-factor authentication is enabled. No workflow runs this write, and continuous
-integration runs `check` but never `verify`. `npm run verify-v2-package` re-reads the
-registry and fails while any published version still lacks the message.
+two-factor authentication is enabled. No workflow runs this write. Until that write has
+run, continuous integration runs `check` but not `verify`; `ARCHITECTURE.md`
+(Build Process) owns when `verify` joins continuous integration.
+`npm run verify-v2-package` re-reads the registry and fails while any published version
+still lacks the message.
 
 Before `npm ci`, run `npm run check-lockfile-release-age` as a local
 non-authoritative candidate gate; it needs the public registry, runs without

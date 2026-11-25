@@ -102,7 +102,8 @@ retaining the V3 root entrypoint and V2 compatibility. Package version 5 does
 
 **Breaking Changes:**
 
-- Both packages require Node.js 22.12 or newer, up from Node.js 20.
+- The main package and the frozen standalone package require **Node.js 22.12 or
+  newer**, up from Node.js 20.
 - Unsupported binary objects and detached `ArrayBuffer` values are rejected
   explicitly instead of silently stringified.
 
