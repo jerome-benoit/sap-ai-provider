@@ -32,11 +32,21 @@ const DOCUMENT_URL = `https://registry.npmjs.org/${encodeURIComponent(STANDALONE
  * @returns Registry document
  */
 function frozenDocument(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
+  const document = {
     "dist-tags": { latest: FROZEN_VERSION },
     name: STANDALONE_PACKAGE_NAME,
     versions: { "5.1.2": {} },
     ...overrides,
+  };
+  const versions = document.versions as Record<string, Record<string, unknown>>;
+  return {
+    ...document,
+    versions: Object.fromEntries(
+      Object.entries(versions).map(([version, record]) => [
+        version,
+        { name: STANDALONE_PACKAGE_NAME, version, ...record },
+      ]),
+    ),
   };
 }
 
@@ -63,10 +73,19 @@ function registryAnswer(body: unknown, init: { ok?: boolean; status?: number } =
 
 describe("version comparison", () => {
   it("parses build and prerelease identifiers", () => {
-    expect(parseVersion("5.1.2")).toEqual({ build: [5, 1, 2], prerelease: [] });
-    expect(parseVersion("5.2.0-rc.1")).toEqual({ build: [5, 2, 0], prerelease: ["rc", 1] });
+    expect(parseVersion("5.1.2")).toEqual({ build: ["5", "1", "2"], prerelease: [] });
+    expect(parseVersion("5.2.0-rc.1")).toEqual({ build: ["5", "2", "0"], prerelease: ["rc", "1"] });
+  });
+
+  it("rejects every version npm could not publish", () => {
     expect(parseVersion("5.1.2+build.7")).toBeUndefined();
+    expect(parseVersion("5.01.2")).toBeUndefined();
+    expect(parseVersion("5.1.2-01")).toBeUndefined();
+    expect(parseVersion("5.1.2-a..1")).toBeUndefined();
+    expect(parseVersion("v5.1.2")).toBeUndefined();
+    expect(parseVersion("5.1.2 ")).toBeUndefined();
     expect(parseVersion("latest")).toBeUndefined();
+    expect(parseVersion(`5.1.2-${"a".repeat(260)}`)).toBeUndefined();
   });
 
   it("orders releases, then prereleases below their release", () => {
@@ -77,6 +96,13 @@ describe("version comparison", () => {
     expect(compareVersions("5.2.0-rc.1", "5.2.0-rc.10")).toBeLessThan(0);
     expect(compareVersions("5.2.0-alpha", "5.2.0-1")).toBeGreaterThan(0);
     expect(compareVersions("5.2.0-rc.1", "5.2.0-rc.1.0")).toBeLessThan(0);
+  });
+
+  it("orders identifiers wider than a float can hold", () => {
+    const wider = "99999999999999999999";
+    expect(compareVersions(`5.2.0-${wider}2`, `5.2.0-${wider}3`)).toBeLessThan(0);
+    expect(compareVersions(`${wider}.0.0`, FROZEN_VERSION)).toBeGreaterThan(0);
+    expect(compareVersions(`5.1.3-${wider}`, FROZEN_VERSION)).toBeGreaterThan(0);
   });
 
   it("rejects a version it cannot parse", () => {
@@ -101,17 +127,19 @@ describe("deprecation coverage", () => {
   it("lists versions whose message differs from the canonical one", () => {
     const document = {
       versions: {
-        "5.0.0": { deprecated: DEPRECATION_MESSAGE },
-        "5.1.0": {},
-        "5.1.1": { deprecated: "older wording" },
-        "5.1.2": { deprecated: DEPRECATION_MESSAGE },
+        "5.0.0": { deprecated: DEPRECATION_MESSAGE, name: "p", version: "5.0.0" },
+        "5.1.0": { name: "p", version: "5.1.0" },
+        "5.1.1": { deprecated: "older wording", name: "p", version: "5.1.1" },
+        "5.1.2": { deprecated: DEPRECATION_MESSAGE, name: "p", version: "5.1.2" },
       },
     };
     expect(versionsWithoutMessage(document)).toEqual(["5.1.0", "5.1.1"]);
   });
 
   it("accepts a fully deprecated document", () => {
-    const document = { versions: { "5.1.2": { deprecated: DEPRECATION_MESSAGE } } };
+    const document = {
+      versions: { "5.1.2": { deprecated: DEPRECATION_MESSAGE, name: "p", version: "5.1.2" } },
+    };
     expect(versionsWithoutMessage(document)).toEqual([]);
   });
 });
@@ -201,22 +229,53 @@ describe("registry reader", () => {
     expect(Object.keys(document.versions)).toEqual(["5.1.2"]);
   });
 
-  it("tolerates dist-tags other than latest", async () => {
+  it("accepts other dist-tags that point at a published version", async () => {
     const fetchImpl = vi.fn(() =>
       Promise.resolve(
         registryAnswer(
-          frozenDocument({ "dist-tags": { latest: FROZEN_VERSION, next: "4.4.12-rc.0" } }),
+          frozenDocument({
+            "dist-tags": { latest: FROZEN_VERSION, next: "4.4.12-rc.0" },
+            versions: { "4.4.12-rc.0": {}, "5.1.2": {} },
+          }),
         ),
       ),
     );
-    await expect(fetchPackageDocument(fetchImpl)).resolves.toHaveProperty("versions");
+    const document = await fetchPackageDocument(fetchImpl);
+    expect(Object.keys(document.versions)).toEqual(["4.4.12-rc.0", "5.1.2"]);
+  });
+
+  it("fails closed on a dist-tag that points outside the versions table", async () => {
+    const dangling = vi.fn(() =>
+      Promise.resolve(
+        registryAnswer(
+          frozenDocument({ "dist-tags": { latest: FROZEN_VERSION, next: "5.2.0-rc.1" } }),
+        ),
+      ),
+    );
+    await expect(fetchPackageDocument(dangling)).rejects.toThrow(
+      `Registry dist-tag "next" points at "5.2.0-rc.1", which the versions table does not list`,
+    );
+    const targetless = vi.fn(() =>
+      Promise.resolve(
+        registryAnswer(frozenDocument({ "dist-tags": { latest: FROZEN_VERSION, next: null } })),
+      ),
+    );
+    await expect(fetchPackageDocument(targetless)).rejects.toThrow(
+      `Registry dist-tag "next" must point to a version string`,
+    );
   });
 
   it("fails closed on a registry error answer", async () => {
-    const fetchImpl = vi.fn(() =>
+    const unavailable = vi.fn(() =>
       Promise.resolve(registryAnswer("gone", { ok: false, status: 404 })),
     );
-    await expect(fetchPackageDocument(fetchImpl)).rejects.toThrow("returned HTTP 404");
+    await expect(fetchPackageDocument(unavailable)).rejects.toThrow(
+      "is unavailable (HTTP 404); cannot attest the freeze",
+    );
+    const failing = vi.fn(() =>
+      Promise.resolve(registryAnswer("unavailable", { ok: false, status: 500 })),
+    );
+    await expect(fetchPackageDocument(failing)).rejects.toThrow("returned HTTP 500");
   });
 
   it("fails closed on a document that is not the standalone package", async () => {
@@ -290,6 +349,26 @@ describe("registry reader", () => {
       ),
     );
     await expect(fetchPackageDocument(fetchImpl)).rejects.toThrow("is not readable");
+  });
+
+  it("fails closed on a version record whose identity does not match its key", async () => {
+    const document = (record: Record<string, unknown>) =>
+      registryAnswer({
+        "dist-tags": { latest: FROZEN_VERSION },
+        name: STANDALONE_PACKAGE_NAME,
+        versions: { "5.1.2": { deprecated: DEPRECATION_MESSAGE, ...record } },
+      });
+    for (const record of [
+      { version: "5.1.2" },
+      { name: STANDALONE_PACKAGE_NAME },
+      { name: "some-other-package", version: "5.1.2" },
+      { name: STANDALONE_PACKAGE_NAME, version: "5.1.1" },
+    ]) {
+      const fetchImpl = vi.fn(() => Promise.resolve(document(record)));
+      await expect(fetchPackageDocument(fetchImpl)).rejects.toThrow(
+        "has a missing or mismatched name or version",
+      );
+    }
   });
 });
 

@@ -16,7 +16,7 @@ export const STANDALONE_PACKAGE_NAME = "@jerome-benoit/sap-ai-provider-v2";
 /** Last version published to the standalone package; any newer version breaks the freeze. */
 export const FROZEN_VERSION = "5.1.2";
 
-/** npm package spec that selects every release and prerelease up to the frozen version. */
+/** Package spec this gate passes to `npm deprecate`; npm alone selects the versions. */
 export const DEPRECATION_SPEC = `${STANDALONE_PACKAGE_NAME}@<=${FROZEN_VERSION}`;
 
 /** Registry the gate reads and the one-time deprecation write targets. */
@@ -29,11 +29,23 @@ const ABBREVIATED_DOCUMENT_ACCEPT = "application/vnd.npm.install-v1+json";
 export const DEPRECATION_MESSAGE = [
   `${STANDALONE_PACKAGE_NAME}@${FROZEN_VERSION} is the last release of this package.`,
   "Use the /v2 subpath of @jerome-benoit/sap-ai-provider instead: same LanguageModelV2 facade,",
-  "same releases, still supported for AI SDK 5.",
+  "shipped with the main package, still supported for AI SDK 5.",
   "https://github.com/jerome-benoit/sap-ai-provider/blob/main/MIGRATION_GUIDE.md",
 ].join(" ");
 
-const versionPattern = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+/** Longest version string npm publishes, the limit npm's own semver applies. */
+const MAXIMUM_VERSION_LENGTH = 256;
+
+/**
+ * Canonical npm version grammar: three unprefixed numbers and an optional prerelease of
+ * dot-separated identifiers, where a fully numeric identifier carries no leading zero. Build
+ * metadata is absent because npm will not publish it.
+ */
+const versionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?$/;
+
+/** Prerelease identifier made of digits only. */
+const numericIdentifierPattern = /^\d+$/;
 
 /** Command asked for, with the only flag that changes its behaviour. */
 export interface Invocation {
@@ -49,11 +61,13 @@ export interface PackageDocument {
 /** Registry record of one published version, narrowed to the fields this gate reads. */
 export interface PackageVersionRecord {
   readonly deprecated?: string;
+  readonly name: string;
+  readonly version: string;
 }
 
 interface ParsedVersion {
-  readonly build: readonly number[];
-  readonly prerelease: readonly (number | string)[];
+  readonly build: readonly string[];
+  readonly prerelease: readonly string[];
 }
 
 /**
@@ -70,7 +84,10 @@ export function compareVersions(left: string, right: string): number {
     throw new Error(`Not a semantic version: ${!parsedLeft ? left : right}`);
   }
   for (let index = 0; index < 3; index += 1) {
-    const difference = (parsedLeft.build[index] ?? 0) - (parsedRight.build[index] ?? 0);
+    const difference = compareNumericIdentifiers(
+      parsedLeft.build[index] ?? "0",
+      parsedRight.build[index] ?? "0",
+    );
     if (difference !== 0) {
       return difference;
     }
@@ -92,13 +109,15 @@ export function compareVersions(left: string, right: string): number {
     if (a === b) {
       continue;
     }
-    if (typeof a === "number" && typeof b === "number") {
-      return a - b;
+    const leftIsNumeric = numericIdentifierPattern.test(a);
+    const rightIsNumeric = numericIdentifierPattern.test(b);
+    if (leftIsNumeric && rightIsNumeric) {
+      return compareNumericIdentifiers(a, b);
     }
-    if (typeof a === "number") {
+    if (leftIsNumeric) {
       return -1;
     }
-    if (typeof b === "number") {
+    if (rightIsNumeric) {
       return 1;
     }
     return a < b ? -1 : 1;
@@ -119,10 +138,18 @@ export async function fetchPackageDocument(
 ): Promise<PackageDocument> {
   const readAbbreviatedDocument: typeof fetch = (input, init) =>
     fetchImpl(input, { ...init, headers: { accept: ABBREVIATED_DOCUMENT_ACCEPT } });
-  const value: unknown = await fetchPackagePackument(
-    STANDALONE_PACKAGE_NAME,
-    readAbbreviatedDocument,
-  );
+  let value: unknown;
+  try {
+    value = await fetchPackagePackument(STANDALONE_PACKAGE_NAME, readAbbreviatedDocument);
+  } catch (error) {
+    if (isUnavailableRegistryDocument(error)) {
+      throw new Error(
+        `Registry document for ${STANDALONE_PACKAGE_NAME} is unavailable (HTTP 404); cannot attest the freeze`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   return validatePackageDocument(value);
 }
 
@@ -196,23 +223,22 @@ export function parseArguments(args: readonly string[]): Invocation {
 }
 
 /**
- * Split a semantic version into its numeric build and its prerelease identifiers.
+ * Split a canonical version into its numeric build and its prerelease identifiers.
  * @param value - Version string to parse
- * @returns Parsed version, or undefined when the string is not a semantic version
+ * @returns Parsed version, or undefined when npm could not have published the string
  */
 export function parseVersion(value: string): ParsedVersion | undefined {
+  if (value.length > MAXIMUM_VERSION_LENGTH) {
+    return undefined;
+  }
   const match = versionPattern.exec(value);
   if (!match) {
     return undefined;
   }
-  const [, major, minor, patch, prerelease] = match;
+  const [, major = "0", minor = "0", patch = "0", prerelease] = match;
   return {
-    build: [Number(major), Number(minor), Number(patch)],
-    prerelease: prerelease
-      ? prerelease
-          .split(".")
-          .map((identifier) => (/^\d+$/.test(identifier) ? Number(identifier) : identifier))
-      : [],
+    build: [major, minor, patch],
+    prerelease: prerelease ? prerelease.split(".") : [],
   };
 }
 
@@ -242,6 +268,22 @@ export function versionsWithoutMessage(
 }
 
 /**
+ * Compare two digit identifiers by exact value, without converting them to a float.
+ * @param left - Digit identifier without a leading zero
+ * @param right - Digit identifier without a leading zero
+ * @returns Negative, zero, or positive number following `Array.prototype.sort` conventions
+ */
+function compareNumericIdentifiers(left: string, right: string): number {
+  if (left.length !== right.length) {
+    return left.length - right.length;
+  }
+  if (left === right) {
+    return 0;
+  }
+  return left < right ? -1 : 1;
+}
+
+/**
  * Decide whether a registry value is a usable JSON object.
  * @param value - Value read from the registry
  * @returns True for a non-array object
@@ -251,11 +293,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Decide whether the shared reader was answered that the canonical registry has no document.
+ *
+ * A missing document proves neither that the frozen package was removed nor that the freeze holds,
+ * so the gate still stops; only the diagnostic names the state it observed.
+ * @param error - Error raised while reading the packument
+ * @returns True for a 404 answered by the canonical registry origin
+ */
+function isUnavailableRegistryDocument(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const { responseUrl, status } = error as Error & { responseUrl?: unknown; status?: unknown };
+  if (status !== 404 || typeof responseUrl !== "string" || !URL.canParse(responseUrl)) {
+    return false;
+  }
+  return new URL(responseUrl).origin === DEFAULT_REGISTRY;
+}
+
+/**
  * Reject any registry document this gate cannot read as the frozen standalone package.
  *
- * An empty versions table, a document for another package name, a missing or moved `latest` tag, or
- * a version key this gate cannot order all stop the gate: each of them would otherwise let `check`
- * report a held freeze and `verify` report full coverage over a document that proves nothing.
+ * An empty versions table, a document for another package name, a version key npm could not have
+ * published, a missing or moved `latest` tag, a dist-tag pointing outside the table, or a version
+ * record whose identity does not match its key all stop the gate: each of them would otherwise let
+ * `check` report a held freeze and `verify` report full coverage over a document that proves
+ * nothing.
  * @param value - Decoded registry document
  * @returns Document narrowed to the fields this gate reads
  */
@@ -296,12 +359,31 @@ function validatePackageDocument(value: unknown): PackageDocument {
     );
   }
 
+  for (const [tag, target] of Object.entries(tags)) {
+    if (tag === "latest") {
+      continue;
+    }
+    if (typeof target !== "string") {
+      throw new Error(`Registry dist-tag ${JSON.stringify(tag)} must point to a version string`);
+    }
+    if (!Object.hasOwn(versions, target)) {
+      throw new Error(
+        `Registry dist-tag ${JSON.stringify(tag)} points at ${JSON.stringify(target)}, which the versions table does not list`,
+      );
+    }
+  }
+
   for (const version of keys) {
     const record = versions[version];
-    if (
-      !isRecord(record) ||
-      (record.deprecated !== undefined && typeof record.deprecated !== "string")
-    ) {
+    if (!isRecord(record)) {
+      throw new Error(`Registry record of ${STANDALONE_PACKAGE_NAME}@${version} is not readable`);
+    }
+    if (record.name !== STANDALONE_PACKAGE_NAME || record.version !== version) {
+      throw new Error(
+        `Registry record of ${STANDALONE_PACKAGE_NAME}@${version} has a missing or mismatched name or version`,
+      );
+    }
+    if (record.deprecated !== undefined && typeof record.deprecated !== "string") {
       throw new Error(`Registry record of ${STANDALONE_PACKAGE_NAME}@${version} is not readable`);
     }
   }
