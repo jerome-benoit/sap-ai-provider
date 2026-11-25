@@ -1,7 +1,6 @@
 /** Verifies that a build produced every artifact required by its entrypoints. */
 import { statSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const artifactStems = {
   main: ["index", "index-v2", "index-v4"],
@@ -27,15 +26,3 @@ export function verifyBuildArtifacts(buildFamily: BuildFamily, rootDirectory = "
     }
   }
 }
-
-/** Run the build artifact command-line checker. */
-function main(): void {
-  const buildFamily = process.argv[2];
-  if (buildFamily !== "main" && buildFamily !== "v4") {
-    throw new Error(`Expected build family main or v4; received ${buildFamily ?? "none"}`);
-  }
-  verifyBuildArtifacts(buildFamily);
-  console.log(`Verified ${buildFamily} build artifacts.`);
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main();

@@ -1,8 +1,6 @@
-#!/usr/bin/env node
 /** Policy-baseline, complete, differential, or trusted gate for package-lock artifacts. */
 import { spawnSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FULL_GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
@@ -234,7 +232,14 @@ export async function fetchPackagePackument(
       );
     }
     if (!response.ok) {
-      throw new Error(`npm packument for ${packageName} returned HTTP ${response.status}`);
+      // The status and the answered URL let a caller name the state it observed instead of
+      // matching the text of this message.
+      const failure = new Error(
+        `npm packument for ${packageName} returned HTTP ${response.status}`,
+      );
+      failure.responseUrl = response.url;
+      failure.status = response.status;
+      throw failure;
     }
     try {
       if (new URL(response.url).origin !== PUBLIC_NPM_REGISTRY_ORIGIN) {
@@ -366,6 +371,32 @@ export function loadLockfiles(
     "Base package-lock.json",
   );
   return { baseLock, currentLock };
+}
+
+/**
+ * Run the release-age command-line gate.
+ * @returns Completion after all selected artifacts pass
+ */
+export async function main() {
+  const mode = parseCliArguments(process.argv.slice(2));
+  const npmInvocation = getNpmInvocation();
+  const configuredAge = validateMinimumReleaseAge(
+    parseJson(
+      runSync(npmInvocation.command, [
+        ...npmInvocation.args,
+        "config",
+        "get",
+        "min-release-age",
+        "--json",
+      ]),
+      "npm min-release-age configuration",
+    ),
+  );
+  const { baseLock, currentLock } = loadLockfiles(mode);
+  const artifacts = selectLockArtifacts(mode, currentLock, baseLock);
+  await validateArtifactsConcurrently(artifacts, configuredAge, Date.now());
+  const qualifier = mode.mode === "all" ? "lockfile" : "new lockfile";
+  console.log(`Verified release age for ${artifacts.length} ${qualifier} artifact(s).`);
 }
 
 /**
@@ -658,32 +689,6 @@ function getNpmInvocation() {
 }
 
 /**
- * Run the release-age command-line gate.
- * @returns Completion after all selected artifacts pass
- */
-async function main() {
-  const mode = parseCliArguments(process.argv.slice(2));
-  const npmInvocation = getNpmInvocation();
-  const configuredAge = validateMinimumReleaseAge(
-    parseJson(
-      runSync(npmInvocation.command, [
-        ...npmInvocation.args,
-        "config",
-        "get",
-        "min-release-age",
-        "--json",
-      ]),
-      "npm min-release-age configuration",
-    ),
-  );
-  const { baseLock, currentLock } = loadLockfiles(mode);
-  const artifacts = selectLockArtifacts(mode, currentLock, baseLock);
-  await validateArtifactsConcurrently(artifacts, configuredAge, Date.now());
-  const qualifier = mode.mode === "all" ? "lockfile" : "new lockfile";
-  console.log(`Verified release age for ${artifacts.length} ${qualifier} artifact(s).`);
-}
-
-/**
  * Parse complete JSON text with a contextual diagnostic.
  * @param text - JSON text
  * @param description - Diagnostic source name
@@ -851,13 +856,4 @@ function runSync(command, args, options = {}) {
     );
   }
   return result.stdout;
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try {
-    await main();
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  }
 }

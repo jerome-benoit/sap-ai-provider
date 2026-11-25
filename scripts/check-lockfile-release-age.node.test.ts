@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -1013,5 +1014,35 @@ describe("canonical npm packument validation", () => {
   it("requires the exact repository minimum release-age configuration", () => {
     expect(() => validateMinimumReleaseAge(2)).toThrow("must equal repository policy 3 days");
     expect(validateMinimumReleaseAge(3)).toBe(3);
+  });
+});
+
+const PROJECT_ROOT = fileURLToPath(new URL("..", import.meta.url));
+
+describe("release-age command entry", () => {
+  it("runs the published command and rejects an unknown flag", () => {
+    const manifest = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    const command = manifest.scripts["check-lockfile-release-age"] ?? "";
+    const [runner = "", script = ""] = command.split(" ");
+    expect(runner).toBe("node");
+    expect(script).toContain("check-lockfile-release-age-cli.mjs");
+    const result = spawnSync(process.execPath, [join(PROJECT_ROOT, script), "--unknown"], {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Usage: npm run check-lockfile-release-age");
+  });
+
+  it("runs nothing when the library is loaded without the entry", () => {
+    const result = spawnSync(
+      process.execPath,
+      [join(PROJECT_ROOT, "scripts", "check-lockfile-release-age.mjs"), "--unknown"],
+      { cwd: PROJECT_ROOT, encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
   });
 });

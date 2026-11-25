@@ -43,7 +43,7 @@ export default defineConfig(
   },
   {
     extends: [tseslint.configs.disableTypeChecked],
-    files: ["scripts/check-lockfile-release-age.mjs"],
+    files: ["scripts/*.mjs"],
     languageOptions: {
       globals: globals.node,
     },
