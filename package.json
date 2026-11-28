@@ -124,7 +124,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.122",
+    "@ai-sdk/openai": "^4.0.123",
     "@ai-sdk/provider": "^4.0.39",
     "@ai-sdk/provider-utils": "^5.0.83",
     "@sap-ai-sdk/ai-api": "^2.18.0",
@@ -140,16 +140,16 @@
     "@ai-sdk/provider-v3": "npm:@ai-sdk/provider@3.0.19",
     "@edge-runtime/vm": "5.0.0",
     "@eslint/js": "10.0.1",
-    "@types/node": "24.19.2",
-    "@vitest/coverage-v8": "5.1.1",
-    "ai": "7.0.179",
+    "@types/node": "24.19.4",
+    "@vitest/coverage-v8": "5.1.2",
+    "ai": "7.0.181",
     "dotenv": "18.0.10",
     "eslint": "10.15.0",
-    "eslint-plugin-jsdoc": "65.5.2",
+    "eslint-plugin-jsdoc": "65.5.5",
     "eslint-plugin-perfectionist": "5.14.0",
     "github-slugger": "2.0.0",
     "globals": "17.14.0",
-    "lefthook": "2.2.2",
+    "lefthook": "2.2.3",
     "link-check": "5.6.0",
     "markdown-it": "15.0.3",
     "markdownlint-cli2": "0.24.2",
@@ -159,8 +159,8 @@
     "tsup": "9.0.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.73.0",
-    "vitest": "5.1.1"
+    "typescript-eslint": "8.74.0",
+    "vitest": "5.1.2"
   },
   "overrides": {
     "@eslint/config-array": {
