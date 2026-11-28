@@ -95,6 +95,16 @@ accept pull requests.
    npm ci
    ```
 
+   `.npmrc` sets `strict-allow-scripts=true`, so `npm ci` runs install scripts only for
+   entries of the `allowScripts` map in `package.json`, and each entry pins an exact
+   `name@version`. After a dependency version change, the stale entry makes `npm ci` fail
+   with `ESTRICTALLOWSCRIPTS` before any other check runs; that gate is separate from the
+   release-age gate above. Review the new version, then rewrite the entry:
+
+   ```bash
+   npm approve-scripts <package>
+   ```
+
 4. **Set up environment variables** (optional, for testing)
 
    ```bash
@@ -229,6 +239,11 @@ afterward.
 
 This project uses [lefthook](https://github.com/evilmartians/lefthook) to enforce
 code quality automatically via git hooks. Hooks are installed automatically when you run `npm ci` or `npm install` (via the `prepare` lifecycle script).
+
+Lefthook ships an install script, so its pinned `allowScripts` entry has to follow every
+lefthook bump, including the ones a dependency PR opens. Otherwise `npm ci` fails with
+`ESTRICTALLOWSCRIPTS`. Run `npm approve-scripts lefthook` on the branch to rewrite the
+entry to the installed version.
 
 **Pre-commit hook** (runs on every `git commit`):
 

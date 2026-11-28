@@ -25,6 +25,10 @@ Always reference these instructions first and fallback to search or bash command
   `npm ci`; NEVER CANCEL and set timeout to 30+ seconds.
   - Use when package-lock.json already exists
   - Faster than `npm install` for CI/existing setups
+- **Install-script policy**: `.npmrc` sets `strict-allow-scripts=true` and the `allowScripts`
+  map of `package.json` pins approved `name@version` entries. When a dependency version
+  changes, `npm ci` fails with `ESTRICTALLOWSCRIPTS` until the reviewed version is approved:
+  `npm approve-scripts <package>`. Never bypass with `--dangerously-allow-all-scripts`.
 
 ### Building
 
