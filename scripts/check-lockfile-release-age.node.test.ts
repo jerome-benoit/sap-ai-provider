@@ -959,6 +959,7 @@ describe("canonical npm packument validation", () => {
     const successfulFetch: PackumentFetch = (input, init) => {
       requests.push(input.toString());
       expect(init.redirect).toBe("error");
+      expect(init.cache).toBe("no-cache");
       return Promise.resolve(response(packument(artifact), { url: input.toString() }));
     };
     await expect(fetchPackagePackument("@scope/pkg", successfulFetch)).resolves.toEqual(

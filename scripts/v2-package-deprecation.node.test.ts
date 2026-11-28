@@ -88,6 +88,15 @@ describe("version comparison", () => {
     expect(parseVersion(`5.1.2-${"a".repeat(260)}`)).toBeUndefined();
   });
 
+  it("rejects a well-formed version over the length cap", () => {
+    const exactBoundary = `1.1.1-${"a".repeat(250)}`; // 6 + 250 = 256 chars
+    const overCap = `1.1.1-${"a".repeat(251)}`; // 6 + 251 = 257 chars
+    expect(exactBoundary.length).toBe(256);
+    expect(overCap.length).toBe(257);
+    expect(parseVersion(exactBoundary)).toBeDefined();
+    expect(parseVersion(overCap)).toBeUndefined();
+  });
+
   it("orders releases, then prereleases below their release", () => {
     expect(compareVersions("5.1.10", "5.1.9")).toBeGreaterThan(0);
     expect(compareVersions("5.1.2", "5.1.2")).toBe(0);
@@ -489,7 +498,7 @@ describe("gate command", () => {
     expect(run.status, describeRun(run)).toBe(0);
     expect(run.reads).toBe(1);
     expect(run.stdout).toContain(
-      `Freeze holds: 1 published versions, none above ${FROZEN_VERSION}.`,
+      `Freeze holds: 1 published version, none above ${FROZEN_VERSION}.`,
     );
     expect(run.stdout).toContain(
       "0 carry the canonical deprecation message; 1 miss it or carry a different one.",
@@ -527,6 +536,30 @@ describe("gate command", () => {
     );
     expect(run.status, describeRun(run)).toBe(0);
     expect(run.stdout).toContain("carries the canonical deprecation message");
+  });
+
+  it("names the versions missing the canonical message", () => {
+    const run = runGate(frozenDocument({ versions: { "4.1.2-rc.1": {}, "5.1.2": {} } }), [
+      "verify",
+    ]);
+    expect(run.status, describeRun(run)).toBe(1);
+    expect(run.reads).toBe(1);
+    expect(run.stderr).toContain("Canonical deprecation message missing on: 4.1.2-rc.1, 5.1.2");
+    expect(run.stdout).not.toContain("carries the canonical deprecation message");
+  });
+
+  it("writes nothing when every version already carries the message", () => {
+    const run = runGate(
+      frozenDocument({ versions: { "5.1.2": { deprecated: DEPRECATION_MESSAGE } } }),
+      ["deprecate", "--apply"],
+    );
+    expect(run.status, describeRun(run)).toBe(0);
+    expect(run.reads).toBe(1);
+    expect(run.stdout).toContain(
+      "Nothing to write: every version of the registry snapshot carries the canonical message.",
+    );
+    expect(run.stdout).not.toContain("Dry run:");
+    expect(run.stderr).not.toContain("Run npm run deprecate-v2-package -- --apply to write");
   });
 
   it("refuses to write outside its own npm lifecycle script", () => {

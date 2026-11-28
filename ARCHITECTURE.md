@@ -1666,10 +1666,10 @@ dist-tag that moved away from it or that the versions table does not list, anoth
 dist-tag pointing outside that table, a version key npm could not have published, a
 version record whose own `name` or `version` does not match its key, or a document it
 cannot read, including a registry that answers 404. It also prints how many published
-versions carry the message. The guard reads that document through npm's CDN, which
-caches it for up to five minutes (`cache-control: public, max-age=300`), so a version
-published inside that window can stay invisible to `check`, and `verify` inherits the
-same delay after the one-time write.
+versions carry the message. The guard requests those fields with `cache: "no-cache"`, so the
+CDN revalidates rather than serving a stale copy; revalidation still depends on that answer, so
+`check` is attested against the registry as the CDN sees it, and `verify` reads the same way after
+the one-time write.
 
 That guard detects, it does not prevent. npm still holds a live trusted-publisher
 configuration for the frozen name, so a workflow of this repository could still publish

@@ -93,7 +93,7 @@ async function runCommand(invocation: Invocation): Promise<0 | 1> {
 
   if (invocation.command === "check") {
     console.log(
-      `Freeze holds: ${String(versions.length)} published versions, none above ${FROZEN_VERSION}.`,
+      `Freeze holds: ${String(versions.length)} published ${versions.length === 1 ? "version" : "versions"}, none above ${FROZEN_VERSION}.`,
     );
     console.log(
       `${String(versions.length - pending.length)} carry the canonical deprecation message; ${String(pending.length)} miss it or carry a different one.`,

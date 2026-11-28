@@ -183,7 +183,7 @@ Our development workflow follows these steps:
    and provider-option types, catching names that downstream declaration emission cannot
    express as well as contract incompatibilities.
    The official V2/V3 provider contract aliases are development-only dependencies;
-   both builds inline their declarations, so consumers need no alias packages.
+   the main build inlines their declarations, so consumers need no alias packages.
 
 7. **Test with examples** (requires SAP credentials)
 

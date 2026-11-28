@@ -219,6 +219,7 @@ export async function fetchPackagePackument(
     try {
       response = await raceWithAbort(
         fetchImplementation(requestUrl, {
+          cache: "no-cache",
           headers: { accept: "application/json" },
           redirect: "error",
           signal,

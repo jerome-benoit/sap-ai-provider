@@ -33,7 +33,11 @@ export const DEPRECATION_MESSAGE = [
   "https://github.com/jerome-benoit/sap-ai-provider/blob/main/MIGRATION_GUIDE.md",
 ].join(" ");
 
-/** Longest version string npm publishes, the limit npm's own semver applies. */
+/**
+ * Upper bound on version strings the gate parses: a sanity cap over the grammar, not a published
+ * npm limit. Inputs over this length are rejected before parsing, so a pathological key cannot
+ * push the comparison loop into an unbounded search.
+ */
 const MAXIMUM_VERSION_LENGTH = 256;
 
 /**
@@ -101,11 +105,9 @@ export function compareVersions(left: string, right: string): number {
   }
   const length = Math.min(parsedLeft.prerelease.length, parsedRight.prerelease.length);
   for (let index = 0; index < length; index += 1) {
-    const a = parsedLeft.prerelease[index];
-    const b = parsedRight.prerelease[index];
-    if (a === undefined || b === undefined) {
-      break;
-    }
+    // Defensive fallback: index < length <= both lengths, so neither identifier is absent
+    const a = parsedLeft.prerelease[index] ?? "";
+    const b = parsedRight.prerelease[index] ?? "";
     if (a === b) {
       continue;
     }
