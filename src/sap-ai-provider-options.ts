@@ -230,7 +230,7 @@ export const promptTemplateRefSchema = z.union([
 export const orchestrationConfigRefOverrideSchema = z
   .custom<OrchestrationConfigRefOverride>(
     (value) => typeof value === "object" && value !== null && !Array.isArray(value),
-    { message: "overrideConfig must be an object" },
+    { error: "overrideConfig must be an object" },
   )
   .refine(
     (value) => {
@@ -246,7 +246,7 @@ export const orchestrationConfigRefOverrideSchema = z
         (Boolean(stream) && typeof stream === "object" && !Array.isArray(stream))
       );
     },
-    { message: "overrideConfig.stream must be an object" },
+    { error: "overrideConfig.stream must be an object" },
   )
   .refine(
     (value) => {
@@ -268,7 +268,7 @@ export const orchestrationConfigRefOverrideSchema = z
       }
     },
     {
-      message:
+      error:
         "stream.enabled is not allowed in overrideConfig: it is controlled by the call site (stream() or chatCompletion())",
     },
   );
