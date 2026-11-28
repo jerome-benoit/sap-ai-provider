@@ -11,14 +11,6 @@
     "declaration": true,
     "outDir": "dist"
   },
-  "include": [
-    "src",
-    "scripts",
-    "tests",
-    "examples",
-    "test-quick.ts",
-    "*.config.ts",
-    "tsup.config.v2.ts"
-  ],
+  "include": ["src", "scripts", "tests", "examples", "test-quick.ts", "*.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

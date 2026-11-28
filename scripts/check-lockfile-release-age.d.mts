@@ -21,7 +21,12 @@ export type LockfileReleaseAgeMode =
   | { mode: "all" };
 export type PackumentFetch = (
   input: URL,
-  init: { headers: { accept: string }; redirect: "error"; signal: AbortSignal },
+  init: {
+    cache: "no-cache";
+    headers: { accept: string };
+    redirect: "error";
+    signal: AbortSignal;
+  },
 ) => Promise<PackumentResponse>;
 
 export interface PackumentResponse {

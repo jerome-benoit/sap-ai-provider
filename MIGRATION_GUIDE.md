@@ -4,9 +4,9 @@
 
 ## Choosing Between V4, V3, and V2 Entrypoints
 
-This library publishes two npm packages. The main package exposes four
-entrypoints: the root, `/v2`, `/v3` and `/v4`. The root and `/v3` expose the
-same V3 implementation; choose the specification matching your AI SDK major.
+This library publishes one npm package. It exposes four entrypoints: the root,
+`/v2`, `/v3` and `/v4`. The root and `/v3` expose the same V3 implementation;
+choose the specification matching your AI SDK major.
 Package release numbers (such as 5.x) are independent of provider specification
 versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
 
@@ -16,16 +16,17 @@ versions (V2, V3, V4) and AI SDK versions (5, 6, 7).
     consume V3 models; AI SDK 7 integrations must use the V4 subpath below.
   - **Key Features**: Implements Vercel AI SDK `LanguageModelV3` and `EmbeddingModelV3` interfaces.
 
-- **`@jerome-benoit/sap-ai-provider-v2` (V2 Facade Package)**:
-  - **When to Use**: Use this package if your project requires
-    `LanguageModelV2`/`EmbeddingModelV2` interfaces (e.g., for libraries,
-    frameworks, or tools that haven't migrated to V3 interfaces yet).
-    It targets Vercel AI SDK 5 and is also supported by AI SDK 6 through its
-    V2 compatibility layer. The same facade is available from
-    `@jerome-benoit/sap-ai-provider/v2`.
-    It acts as a facade, wrapping the V3 implementation to provide a V2-compatible
-    API surface.
-  - **Key Features**: Implements Vercel AI SDK `LanguageModelV2` and `EmbeddingModelV2` interfaces.
+- **`@jerome-benoit/sap-ai-provider-v2` (Deprecated V2 Facade Package)**:
+  - **Status**: Deprecated and frozen at version 5.1.2. No further release is
+    published under this package name, and `npm run check-v2-package` guards
+    that ceiling in continuous integration. `npm install` keeps working for the
+    frozen versions.
+  - **What To Use Instead**: the `/v2` subpath of `@jerome-benoit/sap-ai-provider`.
+    It exposes the same `LanguageModelV2`/`EmbeddingModelV2` facade and the same
+    API surface, ships in every 5.x release of the main package, and targets Vercel
+    AI SDK 5 plus the AI SDK 6 V2 compatibility layer. The `/v2` subpath first ships
+    in main-package release 5.0.0, so a consumer on the 4.x line must move to `^5`
+    before switching the import.
 
 - **`@jerome-benoit/sap-ai-provider/v4` (V4 Facade)**:
   - **When to Use**: Use this main-package subpath with Vercel AI SDK 7.
@@ -76,11 +77,11 @@ If you need to downgrade your Vercel AI SDK version or require strict
    // Before (V3)
    import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v3";
    // After (V2)
-   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider-v2";
+   import { createSAPAIProvider } from "@jerome-benoit/sap-ai-provider/v2";
    ```
 
-2. **Provider Method Differences**: The V2 package's provider
-   (`@jerome-benoit/sap-ai-provider-v2`) only exposes the `textEmbeddingModel()`
+2. **Provider Method Differences**: The V2 facade provider
+   (`@jerome-benoit/sap-ai-provider/v2`) only exposes the `textEmbeddingModel()`
    method, aligning with the `ProviderV2` specification.
    The `embedding()` method is not available.
 
@@ -101,7 +102,8 @@ retaining the V3 root entrypoint and V2 compatibility. Package version 5 does
 
 **Breaking Changes:**
 
-- Both packages require Node.js 22.12 or newer, up from Node.js 20.
+- The main package and the frozen standalone package require **Node.js 22.12 or
+  newer**, up from Node.js 20.
 - Unsupported binary objects and detached `ArrayBuffer` values are rejected
   explicitly instead of silently stringified.
 
@@ -112,19 +114,19 @@ retaining the V3 root entrypoint and V2 compatibility. Package version 5 does
 
 ### Who Is Affected?
 
-| User Type                          | Impact                                               | Action Required                                |
-| ---------------------------------- | ---------------------------------------------------- | ---------------------------------------------- |
-| All users upgrading either package | Higher runtime minimum                               | Upgrade Node.js to 22.12 or newer              |
-| Existing AI SDK 6 users on V3      | Root contract unchanged                              | Keep the root import and SDK 6                 |
-| Existing V2 users                  | Standalone package retained; `/v2` is an alternative | Keep SDK 5 or a compatible current SDK 6 patch |
-| AI SDK 7 users                     | V4 facade required                                   | Use the `/v4` entrypoint                       |
-| Users of custom binary wrappers    | Unsupported representations now fail explicitly      | Use supported SDK file input forms             |
+| User Type                       | Impact                                          | Action Required                                |
+| ------------------------------- | ----------------------------------------------- | ---------------------------------------------- |
+| All users upgrading the package | Higher runtime minimum                          | Upgrade Node.js to 22.12 or newer              |
+| Existing AI SDK 6 users on V3   | Root contract unchanged                         | Keep the root import and SDK 6                 |
+| Existing V2 users               | Standalone package frozen; `/v2` is the facade  | Keep SDK 5 or a compatible current SDK 6 patch |
+| AI SDK 7 users                  | V4 facade required                              | Use the `/v4` entrypoint                       |
+| Users of custom binary wrappers | Unsupported representations now fail explicitly | Use supported SDK file input forms             |
 
 ### Migration Steps
 
 #### 1. Update the Runtime
 
-Both published packages now require **Node.js 22.12 or newer**, up from Node.js 20. Upgrade local development, CI and deployment runtimes before installing
+The main package and the frozen standalone package both require **Node.js 22.12 or newer**, up from Node.js 20. Upgrade local development, CI and deployment runtimes before installing
 5.x. Node.js 22.12 is also the minimum supported CommonJS runtime for loading
 the ESM-only AI SDK provider dependencies without experimental flags.
 
@@ -143,17 +145,23 @@ to the unchanged V3 root entrypoint.
 Upgrading the provider package alone does not require switching to AI SDK 7
 or to `/v4`. The root entrypoint does not become V4 in this release.
 
-The standalone V2 package remains available:
+The standalone V2 package `@jerome-benoit/sap-ai-provider-v2` is deprecated and frozen
+at 5.1.2: it receives no further release, and its published versions keep
+installing. Replace it with the main package and leave the AI SDK dependency as it is:
 
 ```bash
-npm install @jerome-benoit/sap-ai-provider-v2@^5 ai@^5
+npm uninstall @jerome-benoit/sap-ai-provider-v2
+npm install @jerome-benoit/sap-ai-provider@^5
 ```
 
-Its import remains `@jerome-benoit/sap-ai-provider-v2`. The main package's
-`/v2` entrypoint is an alternative, not a required migration. For V2 with
-AI SDK 6, use a current 6.x patch: the initial 6.0.0 embedding compatibility
-adapter has a warning-handling failure absent in 6.0.280. Do not pair the
-standalone V2 package with AI SDK 7.
+The table above lists the installation line and the `ai` range for every AI SDK major;
+use it when you also change that major. The frozen package accepts AI SDK 5 and AI SDK 6
+(`ai: ^5.0.0 || ^6.0.0` in its published manifest), so moving to `/v2` needs no AI SDK
+change.
+
+Import `@jerome-benoit/sap-ai-provider/v2`, the supported V2 facade. For V2 with AI SDK 6,
+use a current 6.x patch: the initial 6.0.0 embedding compatibility adapter has a
+warning-handling failure absent in 6.0.280. Do not pair the V2 facade with AI SDK 7.
 
 #### 3. Adopt the V4 Facade for AI SDK 7
 

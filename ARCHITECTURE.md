@@ -1528,10 +1528,10 @@ AI SDK.
 
 ## Versioned Package Architecture (V4 + V3 + V2)
 
-This repository publishes **two npm packages** from a single codebase. The main
-package exposes four entrypoints for three provider specifications; the standalone
-V2 package preserves the existing package name for consumers that cannot use
-subpath exports.
+This repository publishes **one npm package** from a single codebase. The package
+exposes four entrypoints for three provider specifications. The former standalone
+V2 package `@jerome-benoit/sap-ai-provider-v2` is deprecated and frozen at 5.1.2:
+its facade ships as the `/v2` subpath of this package instead.
 
 | Package export                      | Interface                              | Target users                     |
 | ----------------------------------- | -------------------------------------- | -------------------------------- |
@@ -1539,7 +1539,6 @@ subpath exports.
 | `@jerome-benoit/sap-ai-provider/v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
 | `@jerome-benoit/sap-ai-provider/v3` | Same V3 exports as the root            | AI SDK 6                         |
 | `@jerome-benoit/sap-ai-provider/v4` | `LanguageModelV4` / `EmbeddingModelV4` | AI SDK 7                         |
-| `@jerome-benoit/sap-ai-provider-v2` | `LanguageModelV2` / `EmbeddingModelV2` | AI SDK 5; AI SDK 6 compatibility |
 
 The root and `/v3` share `src/index.ts` and the exact same export targets:
 `dist/index.js` / `dist/index.d.ts` for ESM and `dist/index.cjs` /
@@ -1571,7 +1570,7 @@ src/
 
 ### V2 Facade Layer
 
-The V2 package uses a facade that wraps the internal V3 implementation and
+The `/v2` entrypoint exposes a facade that wraps the internal V3 implementation and
 preserves AI SDK 5 result contracts. Its published declarations include the
 required V2 types.
 
@@ -1585,7 +1584,7 @@ The JSON type divergence remains in provider 2.0.4 and 4.0.13; see
 
 ```mermaid
 graph TB
-    subgraph "V2 Package (Facade)"
+    subgraph "/v2 Facade (wrapping V3)"
         V2Provider[SAPAIProviderV2]
         V2LM[SAPAILanguageModelV2]
         V2EM[SAPAIEmbeddingModelV2]
@@ -1649,22 +1648,50 @@ The adapter layer (`sap-ai-adapters-v3-to-v2.ts`) handles conversion between V3 
 
 ### Build Process
 
-The builds are **sequential** to the same `dist/` directory:
+One build fills `dist/` with the three artifact families:
 
 ```bash
 # Main package build: root, /v2, /v3, /v4 using three artifact families
 npm run build              # tsup.config.ts → dist/
 npm publish                # @jerome-benoit/sap-ai-provider
-
-# V2 publication (run from a separate clean checkout)
-AI_SDK_VERSION=v2 npm publish
 ```
 
-**Why sequential?** Both builds use `clean: true` and replace `dist/`. The
-standalone publication also rewrites `package.json` and `package-lock.json` and
-removes the `/v2`, `/v3`, and `/v4` exports, leaving only the V2 root API.
-Run it in a separate clean checkout. Do not run `prepare:v2` manually before
-`npm publish`: its lifecycle builds V2, prepares it, and verifies the prepared exports.
+No standalone publication remains. The deprecated `@jerome-benoit/sap-ai-provider-v2`
+package is frozen at 5.1.2, so the retired standalone preparation never rewrites a
+manifest name, an AI peer range, or the `/v2`, `/v3`, and `/v4` exports, and a release
+needs no disposable checkout; the release workflow still stamps the version into
+`package.json` with `npm version`. `npm run check-v2-package` reads the npm registry and
+fails when the freeze cannot be attested: a version above that ceiling, a `latest`
+dist-tag that moved away from it or that the versions table does not list, another
+dist-tag pointing outside that table, a version key npm could not have published, a
+version record whose own `name` or `version` does not match its key, or a document it
+cannot read, including a registry that answers 404. It also prints how many published
+versions carry the message. The guard requests those fields with `cache: "no-cache"`, so the
+CDN revalidates rather than serving a stale copy; revalidation still depends on that answer, so
+`check` is attested against the registry as the CDN sees it, and `verify` reads the same way after
+the one-time write.
+
+That guard detects, it does not prevent. npm still holds a live trusted-publisher
+configuration for the frozen name, so a workflow of this repository could still publish
+under it, and a pull request that deletes the guard step also deletes the detection,
+because the guard runs the code of the pull request head. Prevention lives outside this
+repository: removing that configuration on the npm side, and a branch protection rule
+that requires the guard to pass before a merge.
+
+Writing the deprecation message is a one-time authenticated operation, never a CI step:
+`npm run deprecate-v2-package` previews it, and
+`npm run deprecate-v2-package -- --apply` stores it on every published version up to
+the frozen one, through a logged-in npm CLI plus an OTP when two-factor
+authentication is enabled. That write pins `--dry-run=false`, because an inherited
+dry-run setting makes npm skip the write and still exit zero, and it selects the
+versions with a range that stops at the frozen version, so a registry read newer
+than the gate snapshot cannot widen it. `npm run verify-v2-package` reads the
+registry again and fails while any version still lacks the message. Until that write has
+run, `verify` stays out of continuous integration; after it, add it beside
+`check-v2-package` in the two jobs that already run it — `validation` of
+`.github/workflows/check-pr.yaml`, under that step's existing `runner.os == 'Linux'`
+condition, and `build` of `.github/workflows/npm-publish-packages.yml` — and retire this
+sentence.
 
 ### Key Design Decisions
 
@@ -1673,7 +1700,7 @@ Run it in a separate clean checkout. Do not run `prepare:v2` manually before
 2. **Contract-specific dispatch**: V2 wraps V3; V4 uses native Responses,
    V3-compatible language strategies for other APIs, and V3 embeddings.
 3. **Versioned entrypoints**: One main package supports AI SDK 5–7 without mixing model contracts
-4. **Standalone V2 publication**: Existing V2 consumers retain their dedicated package
+4. **Standalone V2 freeze**: The deprecated package keeps its published versions, but no release is published under it
 5. **Adapter isolation**: Version conversions remain centralized and independently testable
 
 ---

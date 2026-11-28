@@ -11,8 +11,10 @@ Start with the README’s Quick Start and Advanced Features sections:
 
 Repository examples use the V4 entrypoint (`src/index-v4.ts`) with the
 AI SDK 7 development dependency. Consumers use `@jerome-benoit/sap-ai-provider/v4`
-for AI SDK 7, the package root or identical `/v3` for AI SDK 6, or `/v2` / the
-standalone `-v2` package for AI SDK 5 (also supported for AI SDK 6 compatibility).
+for AI SDK 7, the package root or identical `/v3` for AI SDK 6, and `/v2` for
+AI SDK 5 (also supported for AI SDK 6 compatibility). The standalone `-v2` package
+is deprecated and frozen at 5.1.2: it stays installable, but never install it for
+a new integration.
 
 - Simple chat completion:
   [examples/example-simple-chat-completion.ts](mdc:examples/example-simple-chat-completion.ts)

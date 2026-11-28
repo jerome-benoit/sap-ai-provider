@@ -183,7 +183,7 @@ Our development workflow follows these steps:
    and provider-option types, catching names that downstream declaration emission cannot
    express as well as contract incompatibilities.
    The official V2/V3 provider contract aliases are development-only dependencies;
-   both builds inline their declarations, so consumers need no alias packages.
+   the main build inlines their declarations, so consumers need no alias packages.
 
 7. **Test with examples** (requires SAP credentials)
 
@@ -207,8 +207,7 @@ npm run prettier-check && \
 npm run lint && \
 npm run build && \
 npm run check-build && \
-npm run build:v2 && \
-npm run check-build:v2
+npm run check-v2-package
 ```
 
 CI runs these checks on Node.js 24 across Ubuntu, macOS, and Windows. The PR and
@@ -221,9 +220,8 @@ final commit status `dependency-security/trusted-lockfile-release-age` on the ex
 PR head; its `push` job checks `main` against the immutable policy baseline.
 Release jobs re-run that checker.
 Lint and formatting run once on Ubuntu; the complete-scope dependency audit,
-types, Node and Edge tests, and builds run on every OS. `build:v2` replaces
-`dist/`, so rerun `npm run build` before using or packaging the main package
-afterward.
+types, Node and Edge tests, and builds run on every OS. The standalone V2 package
+freeze check also runs once on Ubuntu and reads the npm registry.
 
 ### Git Hooks (Lefthook)
 

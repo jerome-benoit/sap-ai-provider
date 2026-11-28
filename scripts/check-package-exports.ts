@@ -16,19 +16,14 @@ const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8")) as {
   exports: Record<string, unknown>;
   name: string;
 };
-const standaloneV2 = pkg.name === "@jerome-benoit/sap-ai-provider-v2";
-assert.ok(standaloneV2 || pkg.name === "@jerome-benoit/sap-ai-provider", "Unexpected package name");
+assert.ok(pkg.name === "@jerome-benoit/sap-ai-provider", "Unexpected package name");
 
 const entryPoints: EntryPoint[] = [
-  { specification: standaloneV2 ? 2 : 3, specifier: pkg.name, stem: "index" },
+  { specification: 3, specifier: pkg.name, stem: "index" },
+  { specification: 2, specifier: `${pkg.name}/v2`, stem: "index-v2" },
+  { specification: 3, specifier: `${pkg.name}/v3`, stem: "index" },
+  { specification: 4, specifier: `${pkg.name}/v4`, stem: "index-v4" },
 ];
-if (!standaloneV2) {
-  entryPoints.push(
-    { specification: 2, specifier: `${pkg.name}/v2`, stem: "index-v2" },
-    { specification: 3, specifier: `${pkg.name}/v3`, stem: "index" },
-    { specification: 4, specifier: `${pkg.name}/v4`, stem: "index-v4" },
-  );
-}
 assert.deepEqual(
   Object.keys(pkg.exports).sort(),
   entryPoints.map(({ specifier }) => `.${specifier.slice(pkg.name.length)}`).sort(),
